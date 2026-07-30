@@ -1,0 +1,166 @@
+import { useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Breadcrumb, BreadcrumbItem, PageBreadcrumb } from '@patternfly/react-core';
+import {
+  BrowserRouter,
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
+
+import LoginPage from '../pages/LoginPage';
+import GatewayOverviewPage from '../pages/GatewayOverviewPage';
+import WorkspaceListPage from '../pages/WorkspaceListPage';
+import WorkspaceDetailPage from '../pages/WorkspaceDetailPage';
+import SandboxDetailPage from '../pages/SandboxDetailPage';
+import ProviderDetailPage from '../pages/ProviderDetailPage';
+import GlobalPolicyPage from '../pages/GlobalPolicyPage';
+import SettingsPage from '../pages/SettingsPage';
+import { AlertProvider } from './AlertContext';
+import AppLayout from './AppLayout';
+import AuthCallbackPage from './AuthCallbackPage';
+import { hasSession } from './authStore';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: 1, refetchOnWindowFocus: false },
+  },
+});
+
+// Route wrappers: pages are self-contained (props in), the router supplies
+// the props from URL params here in the standalone app shell.
+const WorkspaceListRoute: React.FC = () => {
+  const navigate = useNavigate();
+  return <WorkspaceListPage onSelect={(name) => navigate(`/workspaces/${name}`)} />;
+};
+
+// Breadcrumbs live in the standalone shell, not in the self-contained pages —
+// downstream consumers wrap pages with their own navigation chrome.
+const WorkspaceCrumbs: React.FC<{ workspace: string; leaf?: string }> = ({
+  workspace,
+  leaf,
+}) => (
+  <PageBreadcrumb>
+    <Breadcrumb>
+      <BreadcrumbItem
+        render={({ className }) => (
+          <Link className={className} to="/workspaces">
+            Workspaces
+          </Link>
+        )}
+      />
+      {leaf ? (
+        <>
+          <BreadcrumbItem
+            render={({ className }) => (
+              <Link className={className} to={`/workspaces/${workspace}`}>
+                {workspace}
+              </Link>
+            )}
+          />
+          <BreadcrumbItem isActive>{leaf}</BreadcrumbItem>
+        </>
+      ) : (
+        <BreadcrumbItem isActive>{workspace}</BreadcrumbItem>
+      )}
+    </Breadcrumb>
+  </PageBreadcrumb>
+);
+
+const WorkspaceDetailRoute: React.FC = () => {
+  const { workspace } = useParams<{ workspace: string }>();
+  const navigate = useNavigate();
+  if (!workspace) {
+    return <Navigate to="/workspaces" replace />;
+  }
+  return (
+    <>
+      <WorkspaceCrumbs workspace={workspace} />
+      <WorkspaceDetailPage
+        workspace={workspace}
+        onSelectSandbox={(name) => navigate(`/workspaces/${workspace}/sandboxes/${name}`)}
+        onSelectProvider={(name) => navigate(`/workspaces/${workspace}/providers/${name}`)}
+      />
+    </>
+  );
+};
+
+const SandboxDetailRoute: React.FC = () => {
+  const { workspace, sandbox } = useParams<{ workspace: string; sandbox: string }>();
+  if (!workspace || !sandbox) {
+    return <Navigate to="/workspaces" replace />;
+  }
+  return (
+    <>
+      <WorkspaceCrumbs workspace={workspace} leaf={sandbox} />
+      <SandboxDetailPage workspace={workspace} sandboxName={sandbox} />
+    </>
+  );
+};
+
+const ProviderDetailRoute: React.FC = () => {
+  const { workspace, provider } = useParams<{ workspace: string; provider: string }>();
+  if (!workspace || !provider) {
+    return <Navigate to="/workspaces" replace />;
+  }
+  return (
+    <>
+      <WorkspaceCrumbs workspace={workspace} leaf={provider} />
+      <ProviderDetailPage workspace={workspace} providerName={provider} />
+    </>
+  );
+};
+
+const AuthenticatedApp: React.FC = () => (
+  <AppLayout>
+    <Routes>
+      <Route path="/gateway" element={<GatewayOverviewPage />} />
+      <Route path="/global-policy" element={<GlobalPolicyPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/workspaces" element={<WorkspaceListRoute />} />
+      <Route path="/workspaces/:workspace" element={<WorkspaceDetailRoute />} />
+      <Route path="/workspaces/:workspace/sandboxes/:sandbox" element={<SandboxDetailRoute />} />
+      <Route path="/workspaces/:workspace/providers/:provider" element={<ProviderDetailRoute />} />
+      <Route path="*" element={<Navigate to="/gateway" replace />} />
+    </Routes>
+  </AppLayout>
+);
+
+const AppRoutes: React.FC = () => {
+  const [authenticated, setAuthenticated] = useState(hasSession());
+
+  return (
+    <Routes>
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      <Route
+        path="/login"
+        element={
+          authenticated ? (
+            <Navigate to="/gateway" replace />
+          ) : (
+            <LoginPage onAuthenticated={() => setAuthenticated(true)} />
+          )
+        }
+      />
+      <Route
+        path="*"
+        element={authenticated ? <AuthenticatedApp /> : <Navigate to="/login" replace />}
+      />
+    </Routes>
+  );
+};
+
+const App: React.FC = () => (
+  <QueryClientProvider client={queryClient}>
+    <AlertProvider>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AppRoutes />
+      </BrowserRouter>
+    </AlertProvider>
+  </QueryClientProvider>
+);
+
+export default App;

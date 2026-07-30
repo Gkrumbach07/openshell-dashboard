@@ -1,0 +1,78 @@
+package api
+
+import (
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"regexp"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+// ErrorResponse is the standard error envelope.
+type ErrorResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		slog.Error("encode response", "error", err)
+	}
+}
+
+func writeError(w http.ResponseWriter, statusCode int, code, message string) {
+	writeJSON(w, statusCode, ErrorResponse{Code: code, Message: message})
+}
+
+// writeGrpcError maps a gateway gRPC error onto a safe HTTP error response.
+func writeGrpcError(w http.ResponseWriter, err error) {
+	st, ok := status.FromError(err)
+	if !ok {
+		slog.Error("gateway call failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal error")
+		return
+	}
+	slog.Warn("gateway error", "code", st.Code().String(), "message", st.Message())
+	switch st.Code() {
+	case codes.NotFound:
+		writeError(w, http.StatusNotFound, "not_found", st.Message())
+	case codes.AlreadyExists:
+		writeError(w, http.StatusConflict, "already_exists", st.Message())
+	case codes.InvalidArgument, codes.FailedPrecondition, codes.OutOfRange:
+		writeError(w, http.StatusBadRequest, "invalid_argument", st.Message())
+	case codes.PermissionDenied:
+		writeError(w, http.StatusForbidden, "permission_denied", st.Message())
+	case codes.Unauthenticated:
+		writeError(w, http.StatusUnauthorized, "unauthenticated", st.Message())
+	case codes.Aborted:
+		writeError(w, http.StatusConflict, "conflict", st.Message())
+	case codes.ResourceExhausted:
+		writeError(w, http.StatusTooManyRequests, "resource_exhausted", st.Message())
+	case codes.Unavailable, codes.DeadlineExceeded:
+		writeError(w, http.StatusBadGateway, "gateway_unavailable", "OpenShell gateway is unreachable")
+	default:
+		writeError(w, http.StatusInternalServerError, "internal", "internal error")
+	}
+}
+
+func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "invalid request body: "+err.Error())
+		return false
+	}
+	return true
+}
+
+var dns1123Label = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
+// validDNS1123 reports whether name is a valid DNS-1123 label (workspace and
+// sandbox names).
+func validDNS1123(name string) bool {
+	return len(name) <= 63 && dns1123Label.MatchString(name)
+}

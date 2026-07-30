@@ -1,0 +1,34 @@
+# Local dev stack: the dashboard container plus a Keycloak IdP for OIDC.
+#
+#   docker compose -f deploy/docker-compose.yml up
+#
+# Keycloak dev credentials: admin/admin at http://localhost:8081
+# Create a realm "openshell" with a public client "openshell-dashboard"
+# (redirect URI http://localhost:8080/auth/callback), then restart the
+# dashboard service with AUTH_DISABLED=false to exercise real OIDC.
+services:
+  dashboard:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      # host.docker.internal reaches an `openshell gateway start` on the host.
+      OPENSHELL_GATEWAY_URL: "host.docker.internal:50051"
+      OIDC_ISSUER: "http://keycloak:8080/realms/openshell"
+      OIDC_CLIENT_ID: "openshell-dashboard"
+      # Flip to "false" once the Keycloak realm/client exist.
+      AUTH_DISABLED: "true"
+    depends_on:
+      - keycloak
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8081:8080"

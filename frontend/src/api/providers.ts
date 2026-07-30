@@ -1,0 +1,163 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+
+import { apiFetch, del, get, post, put } from './client';
+import type {
+  ConfigureProviderRefreshRequest,
+  CreateProviderRequest,
+  CredentialRefreshStatus,
+  Provider,
+  ProviderProfile,
+} from '../types';
+
+export const listProviders = (workspace: string): Promise<Provider[]> =>
+  get<Provider[]>(`/api/v1/workspaces/${encodeURIComponent(workspace)}/providers`);
+
+export const getProvider = (workspace: string, name: string): Promise<Provider> =>
+  get<Provider>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/providers/${encodeURIComponent(name)}`,
+  );
+
+export const createProvider = (workspace: string, body: CreateProviderRequest): Promise<Provider> =>
+  post<Provider>(`/api/v1/workspaces/${encodeURIComponent(workspace)}/providers`, body);
+
+export const updateProvider = (
+  workspace: string,
+  name: string,
+  body: { credentials?: Record<string, string>; credentialExpiresAtMs?: Record<string, number>; config?: Record<string, string> },
+): Promise<Provider> =>
+  put<Provider>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/providers/${encodeURIComponent(name)}`,
+    body,
+  );
+
+export const deleteProvider = (workspace: string, name: string): Promise<{ deleted: boolean }> =>
+  del<{ deleted: boolean }>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/providers/${encodeURIComponent(name)}`,
+  );
+
+// Provider type profiles: the valid Provider.type slugs and their credential
+// schemas. Drives the Add Provider form.
+export const listProviderProfiles = (workspace: string): Promise<ProviderProfile[]> =>
+  get<ProviderProfile[]>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/provider-profiles`,
+  );
+
+export const getProviderRefreshStatus = (workspace: string, name: string): Promise<CredentialRefreshStatus[]> =>
+  get<CredentialRefreshStatus[]>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/providers/${encodeURIComponent(name)}/refresh-status`,
+  );
+
+export const useProviderRefreshStatus = (workspace: string, name: string) =>
+  useQuery({
+    queryKey: ['provider-refresh', workspace, name],
+    queryFn: () => getProviderRefreshStatus(workspace, name),
+    retry: false,
+  });
+
+export const useProviders = (workspace: string) =>
+  useQuery({ queryKey: ['providers', workspace], queryFn: () => listProviders(workspace) });
+
+export const useProvider = (workspace: string, name: string) =>
+  useQuery({
+    queryKey: ['providers', workspace, name],
+    queryFn: () => getProvider(workspace, name),
+  });
+
+export const useProviderProfiles = (workspace: string) =>
+  useQuery({
+    queryKey: ['provider-profiles', workspace],
+    queryFn: () => listProviderProfiles(workspace),
+    staleTime: 5 * 60 * 1000,
+  });
+
+export const useCreateProvider = (workspace: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateProviderRequest) => createProvider(workspace, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['providers', workspace] }),
+  });
+};
+
+export const useUpdateProvider = (workspace: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      ...body
+    }: {
+      name: string;
+      credentials?: Record<string, string>;
+      credentialExpiresAtMs?: Record<string, number>;
+      config?: Record<string, string>;
+    }) => updateProvider(workspace, name, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['providers', workspace] }),
+  });
+};
+
+export const useDeleteProvider = (workspace: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => deleteProvider(workspace, name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['providers', workspace] }),
+  });
+};
+
+export const configureProviderRefresh = (
+  workspace: string,
+  name: string,
+  body: ConfigureProviderRefreshRequest,
+): Promise<CredentialRefreshStatus> =>
+  post<CredentialRefreshStatus>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/providers/${encodeURIComponent(name)}/refresh`,
+    body,
+  );
+
+export const rotateProviderCredential = (
+  workspace: string,
+  name: string,
+  credentialKey: string,
+): Promise<CredentialRefreshStatus> =>
+  post<CredentialRefreshStatus>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/providers/${encodeURIComponent(name)}/refresh/rotate`,
+    { credentialKey },
+  );
+
+export const deleteProviderRefresh = (
+  workspace: string,
+  name: string,
+  credentialKey: string,
+): Promise<{ deleted: boolean }> =>
+  apiFetch<{ deleted: boolean }>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/providers/${encodeURIComponent(name)}/refresh?credentialKey=${encodeURIComponent(credentialKey)}`,
+    { method: 'DELETE' },
+  );
+
+export const useConfigureProviderRefresh = (workspace: string, name: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ConfigureProviderRefreshRequest) =>
+      configureProviderRefresh(workspace, name, body),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['provider-refresh', workspace, name] }),
+  });
+};
+
+export const useRotateProviderCredential = (workspace: string, name: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (credentialKey: string) =>
+      rotateProviderCredential(workspace, name, credentialKey),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['provider-refresh', workspace, name] }),
+  });
+};
+
+export const useDeleteProviderRefresh = (workspace: string, name: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (credentialKey: string) =>
+      deleteProviderRefresh(workspace, name, credentialKey),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['provider-refresh', workspace, name] }),
+  });
+};

@@ -1,0 +1,16 @@
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Go
+backend/bin/
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Env files are never committed
+.env
+.env.*
