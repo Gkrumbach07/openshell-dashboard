@@ -11,6 +11,10 @@ backend/bin/
 .idea/
 .vscode/
 
+# Dev environment state (generated certs, runtime artifacts)
+scripts/.pki/
+scripts/.state/
+
 # Env files are never committed
 .env
 .env.*
