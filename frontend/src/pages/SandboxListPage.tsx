@@ -42,6 +42,7 @@ import { deleteSandbox, useSandboxes } from '../api/sandboxes';
 import { useAlerts } from '../app/AlertContext';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CreateSandboxModal from '../components/CreateSandboxModal';
+import LabelsList from '../components/LabelsList';
 import SandboxGalleryView from '../components/SandboxGalleryView';
 import { useBulkDelete } from '../components/useBulkDelete';
 import StatusDot from '../components/StatusDot';
@@ -295,6 +296,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
               <Th>Status</Th>
               <Th>Policy</Th>
               <Th>Providers</Th>
+              <Th>Labels</Th>
               <Th>Age</Th>
               <Th screenReaderText="Actions" />
             </Tr>
@@ -396,6 +398,9 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
                     ) : (
                       <Content component="small">—</Content>
                     )}
+                  </Td>
+                  <Td dataLabel="Labels">
+                    <LabelsList labels={sandbox.metadata.labels} numLabels={2} />
                   </Td>
                   <Td dataLabel="Age">{formatAge(sandbox.metadata.createdAtMs)}</Td>
                   <Td isActionCell>
