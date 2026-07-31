@@ -81,7 +81,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               <Link {...props} to={isPlatformAdmin ? '/gateway' : '/workspaces'} className="pf-v6-u-text-decoration-none" />
             )}
           >
-            <img src={openshellLogo} alt="OpenShell Dashboard" style={{ height: '36px' }} />
+            <img src={openshellLogo} alt="OpenShell Dashboard" style={{ height: 'var(--pf-t--global--spacer--2xl)' }} />
           </MastheadLogo>
         </MastheadBrand>
       </MastheadMain>

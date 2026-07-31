@@ -13,10 +13,8 @@ import {
   Dropdown,
   DropdownItem,
   DropdownList,
-  ExpandableSection,
   Flex,
   FlexItem,
-  Label,
   LabelGroup,
   MenuToggle,
   Stack,
@@ -25,7 +23,6 @@ import {
 import {
   EllipsisVIcon,
   ScreenIcon,
-  SecurityIcon,
 } from '@patternfly/react-icons';
 
 import type {
@@ -35,14 +32,11 @@ import type {
 } from '../types';
 import LabelsList from './LabelsList';
 import SandboxAttention from './SandboxAttention';
+import SandboxEgressSummary from './SandboxEgressSummary';
 import StatusDot from './StatusDot';
-import {
-  countEgressHosts,
-  formatAge,
-  formatUptime,
-  getEnforcementColor,
-  getEnforcementLabel,
-} from './utils';
+import { formatAge, formatUptime } from './utils';
+import { useSlots } from '../slots';
+import { Label } from '@patternfly/react-core';
 
 type SandboxCardProps = {
   sandbox: Sandbox;
@@ -73,19 +67,12 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
   onReviewDrafts,
 }) => {
   const [isMenuOpen, setMenuOpen] = useState(false);
-  const [isEgressExpanded, setEgressExpanded] = useState(false);
   const { metadata, spec, status } = sandbox;
   const providers = spec.providers ?? [];
   const hasLabels = Object.keys(metadata.labels ?? {}).length > 0;
   const pendingDrafts = draftSummary?.pendingCount ?? 0;
   const isReady = status.phase === 'READY';
-
-  const activePolicy = policyView?.latest?.policy ?? spec.policy;
-  const networkPolicies = activePolicy?.networkPolicies ?? {};
-  const ruleEntries = Object.entries(networkPolicies);
-  const ruleCount = ruleEntries.length;
-  const hostCount = countEgressHosts(networkPolicies);
-  const policyVersion = policyView?.activeVersion ?? status.currentPolicyVersion;
+  const slots = useSlots();
 
   return (
     <Card data-testid={`sandbox-card-${metadata.name}`}>
@@ -176,6 +163,13 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
         wrapper={(children) => <CardBody>{children}</CardBody>}
       />
 
+      {/* ── Slot: sandbox metadata ── */}
+      {slots.sandboxMetadata && (
+        <CardBody>
+          {slots.sandboxMetadata(metadata.workspace ?? '', metadata.name)}
+        </CardBody>
+      )}
+
       {/* ── Providers + Labels ── */}
       {(providers.length > 0 || hasLabels) && status.phase !== 'ERROR' && (
         <CardBody>
@@ -209,96 +203,19 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
       {/* ── Egress ── */}
       {status.phase !== 'ERROR' && (
         <CardBody>
-          <Flex
-            alignItems={{ default: 'alignItemsFlexStart' }}
-            gap={{ default: 'gapSm' }}
-            flexWrap={{ default: 'nowrap' }}
-          >
-            <FlexItem style={{ flexShrink: 0, marginTop: 2 }}>
-              <SecurityIcon
-                style={{
-                  color: policyVersion > 0
-                    ? 'var(--pf-t--global--icon--color--status--success--default)'
-                    : 'var(--pf-t--global--icon--color--subtle)',
-                }}
-              />
-            </FlexItem>
-            <FlexItem style={{ minWidth: 0 }}>
-              {policyVersion > 0 ? (
-                <span>
-                  <strong>Policy v{policyVersion} enforced</strong>
-                  <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
-                    {' · '}
-                    {hostCount > 0
-                      ? `${hostCount} host${hostCount > 1 ? 's' : ''} in ${ruleCount} rule${ruleCount > 1 ? 's' : ''}`
-                      : 'no egress'}
-                  </span>
-                </span>
-              ) : (
-                <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
-                  No policy loaded
-                </span>
-              )}
-            </FlexItem>
-            {pendingDrafts > 0 && (
-              <FlexItem style={{ flexShrink: 0 }}>
-                <Label color="yellow" isCompact>
-                  {pendingDrafts} proposed
-                </Label>
-              </FlexItem>
-            )}
-          </Flex>
+          <SandboxEgressSummary
+            policy={spec.policy}
+            policyView={policyView}
+            currentPolicyVersion={status.currentPolicyVersion}
+            pendingDrafts={pendingDrafts}
+          />
+        </CardBody>
+      )}
 
-          {ruleCount > 0 && (
-            <ExpandableSection
-              toggleText="Allowed egress"
-              isExpanded={isEgressExpanded}
-              onToggle={(_e, expanded) => setEgressExpanded(expanded)}
-            >
-              <Stack>
-                {ruleEntries.map(([name, rule], idx) => {
-                  const hosts = rule.endpoints?.length ?? 0;
-                  const bins = rule.binaries?.length ?? 0;
-                  const enforcement = getEnforcementLabel(rule);
-                  return (
-                    <StackItem key={name}>
-                      {idx > 0 && <Divider />}
-                      <Flex
-                        alignItems={{ default: 'alignItemsCenter' }}
-                        gap={{ default: 'gapSm' }}
-                        flexWrap={{ default: 'nowrap' }}
-                        style={{ padding: 'var(--pf-t--global--spacer--sm) 0' }}
-                      >
-                        <FlexItem
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            fontFamily: 'var(--pf-t--global--font--family--mono)',
-                          }}
-                        >
-                          {name}
-                        </FlexItem>
-                        <FlexItem style={{ flexShrink: 0 }}>
-                          <Content component="small">
-                            {hosts} host{hosts > 1 ? 's' : ''}
-                            {bins > 0 && ` · ${bins} binar${bins > 1 ? 'ies' : 'y'}`}
-                          </Content>
-                        </FlexItem>
-                        <FlexItem style={{ flexShrink: 0 }}>
-                          <Label color={getEnforcementColor(enforcement)} isCompact>
-                            {enforcement}
-                          </Label>
-                        </FlexItem>
-                      </Flex>
-                    </StackItem>
-                  );
-                })}
-              </Stack>
-            </ExpandableSection>
-          )}
+      {/* ── Slot: sandbox actions ── */}
+      {slots.sandboxActions && (
+        <CardBody>
+          {slots.sandboxActions(metadata.workspace ?? '', metadata.name)}
         </CardBody>
       )}
 

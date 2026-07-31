@@ -242,11 +242,12 @@ const getDraftSummary = (workspace?: string): Promise<DraftSummary> =>
     `/api/v1/draft-summary${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ''}`,
   );
 
-export const useDraftNotifications = () => {
+export const useDraftNotifications = (enabled = true) => {
   const query = useQuery({
     queryKey: ['draft-summary'],
     queryFn: () => getDraftSummary(),
     refetchInterval: 15_000,
+    enabled,
   });
 
   return {

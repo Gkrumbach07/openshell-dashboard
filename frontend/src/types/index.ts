@@ -262,7 +262,7 @@ export type GatewayInfo = {
 
 // --- Auth / misc ---
 
-export type DeploymentContext = 'standalone' | 'rhoai' | 'openshift';
+export type DeploymentContext = 'standalone' | 'managed' | 'openshift';
 
 export type FeatureFlags = {
   terminal: boolean;

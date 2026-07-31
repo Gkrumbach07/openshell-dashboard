@@ -95,7 +95,7 @@ export const buildAttentionItems = (
 
 const renderAlert = (
   item: AttentionItem,
-  opts?: { dismissable?: boolean; onDismiss?: () => void; pager?: React.ReactNode },
+  opts?: { dismissable?: boolean; onDismiss?: () => void },
 ) => (
   <Alert
     key={item.key}
@@ -103,10 +103,9 @@ const renderAlert = (
     isInline
     title={item.title}
     actionClose={
-      opts?.pager ??
-      (opts?.dismissable ? (
+      opts?.dismissable ? (
         <AlertActionCloseButton onClose={opts.onDismiss} />
-      ) : undefined)
+      ) : undefined
     }
     actionLinks={
       item.action ? (
@@ -128,39 +127,46 @@ const CardAttention: React.FC<{ items: AttentionItem[] }> = ({ items }) => {
   const current = items[page];
   if (!current) return null;
 
-  const pager = items.length > 1 ? (
-    <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsNone' }}>
-      <FlexItem>
-        <Button
-          variant="plain"
-          size="sm"
-          isDisabled={page === 0}
-          onClick={() => setPage((p) => p - 1)}
-          aria-label="Previous alert"
+  return (
+    <div>
+      {renderAlert(current)}
+      {items.length > 1 && (
+        <Flex
+          justifyContent={{ default: 'justifyContentFlexEnd' }}
+          alignItems={{ default: 'alignItemsCenter' }}
+          spaceItems={{ default: 'spaceItemsNone' }}
         >
-          <AngleLeftIcon />
-        </Button>
-      </FlexItem>
-      <FlexItem>
-        <Content component="small">
-          {page + 1}/{items.length}
-        </Content>
-      </FlexItem>
-      <FlexItem>
-        <Button
-          variant="plain"
-          size="sm"
-          isDisabled={page === items.length - 1}
-          onClick={() => setPage((p) => p + 1)}
-          aria-label="Next alert"
-        >
-          <AngleRightIcon />
-        </Button>
-      </FlexItem>
-    </Flex>
-  ) : undefined;
-
-  return renderAlert(current, { pager });
+          <FlexItem>
+            <Button
+              variant="plain"
+              size="sm"
+              isDisabled={page === 0}
+              onClick={() => setPage((p) => p - 1)}
+              aria-label="Previous alert"
+            >
+              <AngleLeftIcon />
+            </Button>
+          </FlexItem>
+          <FlexItem>
+            <Content component="small">
+              {page + 1}/{items.length}
+            </Content>
+          </FlexItem>
+          <FlexItem>
+            <Button
+              variant="plain"
+              size="sm"
+              isDisabled={page === items.length - 1}
+              onClick={() => setPage((p) => p + 1)}
+              aria-label="Next alert"
+            >
+              <AngleRightIcon />
+            </Button>
+          </FlexItem>
+        </Flex>
+      )}
+    </div>
+  );
 };
 
 // ── Detail mode: stacked AlertGroupInline, each dismissable ──

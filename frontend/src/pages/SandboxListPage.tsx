@@ -37,6 +37,7 @@ import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/reac
 
 import { useNavigate } from 'react-router-dom';
 
+import { useFeatureFlags } from '../api/auth';
 import { useDraftNotifications, useSandboxPolicies } from '../api/policy';
 import { deleteSandbox, useSandboxes } from '../api/sandboxes';
 import { useAlerts } from '../app/AlertContext';
@@ -45,9 +46,10 @@ import CreateSandboxModal from '../components/CreateSandboxModal';
 import LabelsList from '../components/LabelsList';
 import SandboxGalleryView from '../components/SandboxGalleryView';
 import { useBulkDelete } from '../components/useBulkDelete';
+import { getPolicySummary } from '../components/SandboxEgressSummary';
 import StatusDot from '../components/StatusDot';
-import { countEgressHosts, formatAge } from '../components/utils';
-import type { Sandbox, SandboxPolicyView } from '../types';
+import { formatAge } from '../components/utils';
+import type { Sandbox } from '../types';
 
 const getStatusText = (sandbox: Sandbox): string => {
   if (sandbox.status.phase === 'READY') return 'Ready';
@@ -55,40 +57,6 @@ const getStatusText = (sandbox: Sandbox): string => {
     return sandbox.status.conditions?.find((c) => c.reason)?.reason ?? 'Error';
   }
   return sandbox.status.phase;
-};
-
-const getPolicyCells = (sandbox: Sandbox, pv?: SandboxPolicyView) => {
-  const policy = pv?.latest?.policy ?? sandbox.spec.policy;
-  const version = pv?.activeVersion ?? sandbox.status.currentPolicyVersion;
-  const np = policy?.networkPolicies ?? {};
-  const ruleCount = Object.keys(np).length;
-  const hostCount = countEgressHosts(np);
-  const latestStatus = pv?.latest?.status;
-
-  let title: string;
-  let iconColor: string;
-  if (version === 0 || !policy) {
-    title = 'Never loaded';
-    iconColor = 'var(--pf-t--global--icon--color--status--warning--default)';
-  } else if (latestStatus === 'PENDING') {
-    title = `v${version} pending`;
-    iconColor = 'var(--pf-t--global--icon--color--subtle)';
-  } else if (latestStatus === 'FAILED') {
-    title = `v${version} failed`;
-    iconColor = 'var(--pf-t--global--icon--color--status--danger--default)';
-  } else {
-    title = `v${version} enforced`;
-    iconColor = 'var(--pf-t--global--icon--color--status--success--default)';
-  }
-
-  let subtitle = '';
-  if (version > 0 && hostCount > 0) {
-    subtitle = `${hostCount} host${hostCount > 1 ? 's' : ''} in ${ruleCount} rule${ruleCount > 1 ? 's' : ''}`;
-  } else if (version > 0) {
-    subtitle = `v${version} defined, no egress`;
-  }
-
-  return { title, iconColor, subtitle };
 };
 
 type ViewMode = 'list' | 'cards';
@@ -107,6 +75,7 @@ type SandboxListPageProps = {
 
 const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }) => {
   const navigate = useNavigate();
+  const features = useFeatureFlags();
   const sandboxes = useSandboxes(workspace);
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
@@ -121,7 +90,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
     return all.slice(start, start + perPage).map((s) => s.metadata.name);
   }, [sandboxes.data, page, perPage]);
   const policyViews = useSandboxPolicies(workspace, visibleNames);
-  const drafts = useDraftNotifications();
+  const drafts = useDraftNotifications(features.draftPolicy);
   const { addSuccess } = useAlerts();
   const bulkDelete = useBulkDelete(
     (name) => deleteSandbox(workspace, name),
@@ -304,7 +273,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
           <Tbody>
             {rows.map((sandbox, rowIndex) => {
               const pv = policyViews[sandbox.metadata.name];
-              const pc = getPolicyCells(sandbox, pv);
+              const pc = getPolicySummary(pv, sandbox.spec.policy, sandbox.status.currentPolicyVersion);
               const providers = sandbox.spec.providers ?? [];
               const isReady = sandbox.status.phase === 'READY';
               const imageParts = (sandbox.spec.image || '').split('/');
@@ -406,7 +375,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
                   <Td isActionCell>
                     <ActionsColumn
                       items={[
-                        ...(isReady
+                        ...(isReady && features.terminal
                           ? [
                               {
                                 title: 'Terminal',
@@ -449,8 +418,8 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
           onDelete={(name) => setDeleteTargets([name])}
           onSelect={onSelect}
           onViewLogs={(name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=logs`)}
-          onOpenTerminal={(name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=terminal`)}
-          onReviewDrafts={(name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=proposals`)}
+          onOpenTerminal={features.terminal ? (name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=terminal`) : undefined}
+          onReviewDrafts={features.draftPolicy ? (name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=proposals`) : undefined}
           onCreateClick={() => setCreateOpen(true)}
         />
       )}
