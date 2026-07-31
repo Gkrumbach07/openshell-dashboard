@@ -28,8 +28,9 @@ func envOr(key, fallback string) string {
 func main() {
 	var (
 		port         = flag.String("port", envOr("PORT", "8080"), "listen port (env PORT)")
-		gatewayURL   = flag.String("gateway-url", envOr("OPENSHELL_GATEWAY_URL", "localhost:50051"), "OpenShell gateway gRPC endpoint (env OPENSHELL_GATEWAY_URL)")
-		oidcIssuer   = flag.String("oidc-issuer", envOr("OIDC_ISSUER", ""), "OIDC issuer URL (env OIDC_ISSUER)")
+		gatewayURL    = flag.String("gateway-url", envOr("OPENSHELL_GATEWAY_URL", "localhost:50051"), "OpenShell gateway gRPC endpoint (env OPENSHELL_GATEWAY_URL)")
+		gatewayCACert = flag.String("gateway-ca-cert", envOr("GATEWAY_CA_CERT", ""), "path to CA cert for gateway TLS (env GATEWAY_CA_CERT)")
+		oidcIssuer    = flag.String("oidc-issuer", envOr("OIDC_ISSUER", ""), "OIDC issuer URL (env OIDC_ISSUER)")
 		oidcClientID = flag.String("oidc-client-id", envOr("OIDC_CLIENT_ID", ""), "OIDC client ID (env OIDC_CLIENT_ID)")
 		staticDir    = flag.String("static-dir", envOr("STATIC_DIR", ""), "frontend static assets directory (env STATIC_DIR)")
 		authDisabled = flag.Bool("auth-disabled", envOr("AUTH_DISABLED", "false") == "true", "skip OIDC validation — dev only (env AUTH_DISABLED)")
@@ -70,7 +71,7 @@ func main() {
 		},
 	})
 
-	gatewayClient, err := gateway.New(*gatewayURL)
+	gatewayClient, err := gateway.New(*gatewayURL, *gatewayCACert)
 	if err != nil {
 		slog.Error("gateway client setup failed", "error", err)
 		os.Exit(1)

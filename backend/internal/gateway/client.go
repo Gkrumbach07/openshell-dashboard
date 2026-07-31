@@ -6,7 +6,9 @@ package gateway
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"os"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -45,8 +47,10 @@ func (c tokenCredentials) RequireTransportSecurity() bool {
 }
 
 // New connects to the OpenShell gateway. The URL may be a bare host:port
-// (plaintext) or prefixed with grpcs:// / https:// for TLS.
-func New(gatewayURL string) (*Client, error) {
+// (plaintext) or prefixed with grpcs:// / https:// for TLS. If caCertPath
+// is non-empty, the PEM file is loaded into the TLS RootCAs pool for
+// trusting self-signed certificates.
+func New(gatewayURL, caCertPath string) (*Client, error) {
 	target := gatewayURL
 	useTLS := false
 	for _, prefix := range []string{"grpcs://", "https://"} {
@@ -61,7 +65,19 @@ func New(gatewayURL string) (*Client, error) {
 
 	transport := insecure.NewCredentials()
 	if useTLS {
-		transport = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+		if caCertPath != "" {
+			caCert, err := os.ReadFile(caCertPath)
+			if err != nil {
+				return nil, fmt.Errorf("read CA cert %q: %w", caCertPath, err)
+			}
+			pool := x509.NewCertPool()
+			if !pool.AppendCertsFromPEM(caCert) {
+				return nil, fmt.Errorf("failed to parse CA cert %q", caCertPath)
+			}
+			tlsCfg.RootCAs = pool
+		}
+		transport = credentials.NewTLS(tlsCfg)
 	}
 
 	conn, err := grpc.NewClient(target,

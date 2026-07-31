@@ -32,7 +32,7 @@ const AuthCallbackPage: React.FC = () => {
         if (result.refreshToken) {
           setRefreshToken(result.refreshToken);
         }
-        navigate('/workspaces', { replace: true });
+        window.location.replace('/workspaces');
       } catch (exchangeError) {
         setError((exchangeError as Error).message);
       }
