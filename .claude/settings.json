@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "design-audit@patternfly-ai-helpers": true,
+    "patternfly-mcp@patternfly-ai-helpers": true
+  }
+}
