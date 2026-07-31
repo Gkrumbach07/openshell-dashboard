@@ -33,6 +33,7 @@ import {
 import { BarsIcon, QuestionCircleIcon } from '@patternfly/react-icons';
 import { Link, useLocation } from 'react-router-dom';
 
+import openshellLogo from '~/assets/openshell-logo.svg';
 import { useGatewayInfo } from '../api/gateway';
 import { useCurrentUser, useFeatureFlags } from '../api/auth';
 import { useUserRole } from './useUserRole';
@@ -80,9 +81,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               <Link {...props} to={isPlatformAdmin ? '/gateway' : '/workspaces'} className="pf-v6-u-text-decoration-none" />
             )}
           >
-            <span className="pf-v6-u-font-weight-bold pf-v6-u-font-size-lg pf-v6-u-white-space-nowrap">
-              OpenShell Dashboard
-            </span>
+            <img src={openshellLogo} alt="OpenShell Dashboard" style={{ height: 'var(--pf-t--global--spacer--2xl)' }} />
           </MastheadLogo>
         </MastheadBrand>
       </MastheadMain>
@@ -209,8 +208,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         onClose={() => setAboutOpen(false)}
         productName="OpenShell Dashboard"
         trademark="Apache-2.0 license."
-        brandImageSrc=""
-        brandImageAlt=""
+        brandImageSrc={openshellLogo}
+        brandImageAlt="OpenShell Dashboard"
       >
         <Content>
           <DescriptionList isCompact>

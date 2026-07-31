@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Bullseye,
@@ -24,12 +24,13 @@ import {
   Title,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-
 import { useFeatureFlags } from '../api/auth';
+import { useDraftPolicy, useSandboxPolicy } from '../api/policy';
 import { useSandbox } from '../api/sandboxes';
 import ConnectCard from '../components/ConnectCard';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
+import SandboxAttention from '../components/SandboxAttention';
 import SandboxDraftsTab from '../components/SandboxDraftsTab';
 import SandboxFilesTab from '../components/SandboxFilesTab';
 import SandboxLogsTab from '../components/SandboxLogsTab';
@@ -47,7 +48,22 @@ type SandboxDetailPageProps = {
 const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandboxName }) => {
   const sandbox = useSandbox(workspace, sandboxName);
   const features = useFeatureFlags();
+  const policyQuery = useSandboxPolicy(workspace, sandboxName);
+  const draftsQuery = useDraftPolicy(workspace, sandboxName);
   const [activeTab, setActiveTab] = useState<string | number>('details');
+
+  const draftSummary = useMemo(() => {
+    const chunks = draftsQuery.data?.chunks ?? [];
+    const pending = chunks.filter((c) => c.status === 'pending');
+    if (pending.length === 0) return undefined;
+    return {
+      workspace,
+      sandboxName,
+      pendingCount: pending.length,
+      hasSecurityFlags: pending.some((c) => !!c.securityNotes),
+      latestDraftMs: Math.max(...pending.map((c) => c.createdAtMs ?? 0)),
+    };
+  }, [draftsQuery.data, workspace, sandboxName]);
 
   if (sandbox.isLoading) {
     return (
@@ -90,6 +106,15 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
           </FlexItem>
         </Flex>
       </PageSection>
+      <SandboxAttention
+        sandbox={data}
+        draftSummary={draftSummary}
+        policyView={policyQuery.data}
+        onReviewDrafts={() => setActiveTab('proposals')}
+        onViewLogs={() => setActiveTab('logs')}
+        mode="detail"
+        wrapper={(children) => <PageSection style={{ paddingTop: 0 }}>{children}</PageSection>}
+      />
       <PageSection>
         <Tabs
           activeKey={activeTab}

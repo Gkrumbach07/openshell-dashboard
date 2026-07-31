@@ -28,6 +28,7 @@ import {
 import { useDeleteInferenceRoute, useInferenceRoute, useSetInferenceRoute } from '../api/inference';
 import { useProviders } from '../api/providers';
 import { useWorkspaceRole } from '../app/useWorkspaceRole';
+import { useSlots } from '../slots';
 import type { ApiError } from '../api/client';
 import type { ModelPickerSlot } from '../types';
 
@@ -111,6 +112,8 @@ const RouteCard: React.FC<{ workspace: string; route: string; title: string; not
 // Inference routing: all sandboxes in the workspace reach inference.local,
 // and the gateway routes it to the configured provider/model.
 const InferenceTab: React.FC<InferenceTabProps> = ({ workspace, renderModelPicker }) => {
+  const slots = useSlots();
+  const resolvedModelPicker = renderModelPicker ?? slots.modelPicker;
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const providers = useProviders(workspace);
   const setRoute = useSetInferenceRoute(workspace);
@@ -188,8 +191,8 @@ const InferenceTab: React.FC<InferenceTabProps> = ({ workspace, renderModelPicke
                 </FormSelect>
               </FormGroup>
               <FormGroup label="Model" isRequired fieldId="inference-model">
-                {renderModelPicker ? (
-                  renderModelPicker(modelId, setModelId)
+                {resolvedModelPicker ? (
+                  resolvedModelPicker(modelId, setModelId)
                 ) : (
                   <TextInput
                     id="inference-model"

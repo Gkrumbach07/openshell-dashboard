@@ -26,6 +26,7 @@ import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/reac
 import { deleteProvider, useProviders } from '../api/providers';
 import { useAlerts } from '../app/AlertContext';
 import { useWorkspaceRole } from '../app/useWorkspaceRole';
+import { useSlots } from '../slots';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CreateProviderModal from '../components/CreateProviderModal';
 import { useBulkDelete } from '../components/useBulkDelete';
@@ -39,6 +40,8 @@ type ProviderListPageProps = {
 };
 
 const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect, renderCredentialInput }) => {
+  const slots = useSlots();
+  const resolvedCredentialInput = renderCredentialInput ?? slots.credentialInput;
   const providers = useProviders(workspace);
   const { addSuccess } = useAlerts();
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
@@ -118,7 +121,7 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
           isOpen={isCreateOpen}
           onClose={() => setCreateOpen(false)}
           onSuccess={() => addSuccess('Provider created')}
-          renderCredentialInput={renderCredentialInput}
+          renderCredentialInput={resolvedCredentialInput}
         />
       </>
     );

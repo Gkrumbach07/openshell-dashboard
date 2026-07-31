@@ -21,6 +21,7 @@ import InferenceTab from '../components/InferenceTab';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
 import ProfilesTab from '../components/ProfilesTab';
+import { useSlots } from '../slots';
 import MemberListPage from './MemberListPage';
 import ProviderListPage from './ProviderListPage';
 import SandboxListPage from './SandboxListPage';
@@ -45,6 +46,9 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
   renderCredentialInput,
   renderModelPicker,
 }) => {
+  const slots = useSlots();
+  const resolvedCredentialInput = renderCredentialInput ?? slots.credentialInput;
+  const resolvedModelPicker = renderModelPicker ?? slots.modelPicker;
   const workspaceQuery = useWorkspace(workspace);
   const sandboxCount = useSandboxes(workspace);
   const providerCount = useProviders(workspace);
@@ -105,7 +109,7 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
           </Tab>
           <Tab eventKey="providers" title={<TabTitleText>Providers {providerCount.data && <Badge isRead>{providerCount.data.length}</Badge>}</TabTitleText>} data-testid="tab-providers">
             <TabPanel>
-              <ProviderListPage workspace={workspace} onSelect={onSelectProvider} renderCredentialInput={renderCredentialInput} />
+              <ProviderListPage workspace={workspace} onSelect={onSelectProvider} renderCredentialInput={resolvedCredentialInput} />
             </TabPanel>
           </Tab>
           <Tab eventKey="members" title={<TabTitleText>Members {memberCount.data && <Badge isRead>{memberCount.data.length}</Badge>}</TabTitleText>} data-testid="tab-members">
@@ -115,7 +119,7 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
           </Tab>
           <Tab eventKey="inference" title={<TabTitleText>Inference</TabTitleText>} data-testid="tab-inference">
             <TabPanel>
-              <InferenceTab workspace={workspace} renderModelPicker={renderModelPicker} />
+              <InferenceTab workspace={workspace} renderModelPicker={resolvedModelPicker} />
             </TabPanel>
           </Tab>
           <Tab eventKey="profiles" title={<TabTitleText>Profiles</TabTitleText>} data-testid="tab-profiles">
