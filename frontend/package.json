@@ -11,7 +11,8 @@
     "./pages": "./src/pages/index.ts",
     "./components": "./src/components/index.ts",
     "./api": "./src/api/index.ts",
-    "./types": "./src/types/index.ts"
+    "./types": "./src/types/index.ts",
+    "./slots": "./src/slots/index.ts"
   },
   "scripts": {
     "start": "webpack serve --mode development",

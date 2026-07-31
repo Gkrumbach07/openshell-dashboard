@@ -26,13 +26,16 @@ func (app *App) GetGateway(w http.ResponseWriter, r *http.Request) {
 // FeatureFlags controls which optional features the frontend should render.
 // Parsed from FEATURE_* env vars in main.go.
 type FeatureFlags struct {
-	Terminal          bool `json:"terminal"`
-	FileTransfer      bool `json:"fileTransfer"`
-	Settings          bool `json:"settings"`
-	GlobalPolicy      bool `json:"globalPolicy"`
-	CredentialRefresh bool `json:"credentialRefresh"`
-	Services          bool `json:"services"`
-	DraftPolicy       bool `json:"draftPolicy"`
+	Terminal          bool   `json:"terminal"`
+	FileTransfer      bool   `json:"fileTransfer"`
+	Settings          bool   `json:"settings"`
+	GlobalPolicy      bool   `json:"globalPolicy"`
+	CredentialRefresh bool   `json:"credentialRefresh"`
+	Services          bool   `json:"services"`
+	DraftPolicy       bool   `json:"draftPolicy"`
+	DeploymentContext string `json:"deploymentContext"`
+	WorkspaceBinding  bool   `json:"workspaceBinding"`
+	ResourceLinks     bool   `json:"resourceLinks"`
 }
 
 // AuthConfigResponse tells the frontend how to authenticate and which
