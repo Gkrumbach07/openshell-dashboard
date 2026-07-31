@@ -107,6 +107,7 @@ export type NetworkEndpoint = {
   denyRules?: L7DenyRule[];
   allowedIps?: string[];
   path?: string;
+  advisorProposed?: boolean;
 };
 
 export type NetworkBinary = {
@@ -261,6 +262,8 @@ export type GatewayInfo = {
 
 // --- Auth / misc ---
 
+export type DeploymentContext = 'standalone' | 'rhoai' | 'openshift';
+
 export type FeatureFlags = {
   terminal: boolean;
   fileTransfer: boolean;
@@ -269,6 +272,9 @@ export type FeatureFlags = {
   credentialRefresh: boolean;
   services: boolean;
   draftPolicy: boolean;
+  deploymentContext: DeploymentContext;
+  workspaceBinding: boolean;
+  resourceLinks: boolean;
 };
 
 export type AuthConfig = {
@@ -381,6 +387,19 @@ export type DraftHistoryEntry = {
   eventType: string;
   description: string;
   chunkId?: string;
+};
+
+export type DraftSandboxSummary = {
+  workspace: string;
+  sandboxName: string;
+  pendingCount: number;
+  hasSecurityFlags: boolean;
+  latestDraftMs: number;
+};
+
+export type DraftSummary = {
+  sandboxes: DraftSandboxSummary[];
+  totalPending: number;
 };
 
 // --- Inference routes ---

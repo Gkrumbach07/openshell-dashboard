@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Bullseye,
   Button,
+  Content,
   Dropdown,
   DropdownItem,
   DropdownList,
@@ -10,25 +11,93 @@ import {
   EmptyStateActions,
   EmptyStateBody,
   EmptyStateFooter,
+  Flex,
+  FlexItem,
+  Label,
+  LabelGroup,
   MenuToggle,
   Pagination,
   Spinner,
+  Stack,
+  StackItem,
+  ToggleGroup,
+  ToggleGroupItem,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
-  Tooltip,
 } from '@patternfly/react-core';
-import { CubesIcon, EllipsisVIcon } from '@patternfly/react-icons';
+import {
+  CubesIcon,
+  EllipsisVIcon,
+  ListIcon,
+  SecurityIcon,
+  ThIcon,
+} from '@patternfly/react-icons';
 import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
+import { useNavigate } from 'react-router-dom';
+
+import { useDraftNotifications, useSandboxPolicies } from '../api/policy';
 import { deleteSandbox, useSandboxes } from '../api/sandboxes';
 import { useAlerts } from '../app/AlertContext';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CreateSandboxModal from '../components/CreateSandboxModal';
-import LabelsList from '../components/LabelsList';
-import PhaseLabel from '../components/PhaseLabel';
+import SandboxGalleryView from '../components/SandboxGalleryView';
 import { useBulkDelete } from '../components/useBulkDelete';
-import { formatAge } from '../components/utils';
+import StatusDot from '../components/StatusDot';
+import { countEgressHosts, formatAge } from '../components/utils';
+import type { Sandbox, SandboxPolicyView } from '../types';
+
+const getStatusText = (sandbox: Sandbox): string => {
+  if (sandbox.status.phase === 'READY') return 'Ready';
+  if (sandbox.status.phase === 'ERROR') {
+    return sandbox.status.conditions?.find((c) => c.reason)?.reason ?? 'Error';
+  }
+  return sandbox.status.phase;
+};
+
+const getPolicyCells = (sandbox: Sandbox, pv?: SandboxPolicyView) => {
+  const policy = pv?.latest?.policy ?? sandbox.spec.policy;
+  const version = pv?.activeVersion ?? sandbox.status.currentPolicyVersion;
+  const np = policy?.networkPolicies ?? {};
+  const ruleCount = Object.keys(np).length;
+  const hostCount = countEgressHosts(np);
+  const latestStatus = pv?.latest?.status;
+
+  let title: string;
+  let iconColor: string;
+  if (version === 0 || !policy) {
+    title = 'Never loaded';
+    iconColor = 'var(--pf-t--global--icon--color--status--warning--default)';
+  } else if (latestStatus === 'PENDING') {
+    title = `v${version} pending`;
+    iconColor = 'var(--pf-t--global--icon--color--subtle)';
+  } else if (latestStatus === 'FAILED') {
+    title = `v${version} failed`;
+    iconColor = 'var(--pf-t--global--icon--color--status--danger--default)';
+  } else {
+    title = `v${version} enforced`;
+    iconColor = 'var(--pf-t--global--icon--color--status--success--default)';
+  }
+
+  let subtitle = '';
+  if (version > 0 && hostCount > 0) {
+    subtitle = `${hostCount} host${hostCount > 1 ? 's' : ''} in ${ruleCount} rule${ruleCount > 1 ? 's' : ''}`;
+  } else if (version > 0) {
+    subtitle = `v${version} defined, no egress`;
+  }
+
+  return { title, iconColor, subtitle };
+};
+
+type ViewMode = 'list' | 'cards';
+
+const VIEW_MODE_KEY = 'sandboxViewMode';
+
+const getInitialViewMode = (): ViewMode => {
+  const stored = localStorage.getItem(VIEW_MODE_KEY);
+  return stored === 'cards' ? 'cards' : 'list';
+};
 
 type SandboxListPageProps = {
   workspace: string;
@@ -36,6 +105,7 @@ type SandboxListPageProps = {
 };
 
 const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }) => {
+  const navigate = useNavigate();
   const sandboxes = useSandboxes(workspace);
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
@@ -43,6 +113,14 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
   const [isActionsOpen, setActionsOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+  const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
+  const visibleNames = useMemo(() => {
+    const all = sandboxes.data ?? [];
+    const start = (page - 1) * perPage;
+    return all.slice(start, start + perPage).map((s) => s.metadata.name);
+  }, [sandboxes.data, page, perPage]);
+  const policyViews = useSandboxPolicies(workspace, visibleNames);
+  const drafts = useDraftNotifications();
   const { addSuccess } = useAlerts();
   const bulkDelete = useBulkDelete(
     (name) => deleteSandbox(workspace, name),
@@ -162,6 +240,32 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
             </Dropdown>
           </ToolbarItem>
           <ToolbarItem align={{ default: 'alignEnd' }}>
+            <ToggleGroup aria-label="View type" data-testid="view-toggle">
+              <ToggleGroupItem
+                text=""
+                icon={<ListIcon />}
+                aria-label="List view"
+                isSelected={viewMode === 'list'}
+                onChange={() => {
+                  setViewMode('list');
+                  localStorage.setItem(VIEW_MODE_KEY, 'list');
+                }}
+                data-testid="view-toggle-list"
+              />
+              <ToggleGroupItem
+                text=""
+                icon={<ThIcon />}
+                aria-label="Card view"
+                isSelected={viewMode === 'cards'}
+                onChange={() => {
+                  setViewMode('cards');
+                  localStorage.setItem(VIEW_MODE_KEY, 'cards');
+                }}
+                data-testid="view-toggle-cards"
+              />
+            </ToggleGroup>
+          </ToolbarItem>
+          <ToolbarItem>
             <Pagination
               itemCount={totalCount}
               perPage={perPage}
@@ -176,76 +280,175 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
           </ToolbarItem>
         </ToolbarContent>
       </Toolbar>
-      <Table aria-label="Sandboxes" data-testid="sandbox-table">
-        <Thead>
-          <Tr>
-            <Th
-              select={{
-                onSelect: (_event, isSelecting) => toggleAll(isSelecting),
-                isSelected: pageAllSelected,
-              }}
-              aria-label="Select all sandboxes"
-            />
-            <Th>Name</Th>
-            <Th>Phase</Th>
-            <Th>Image</Th>
-            <Th>Labels</Th>
-            <Th>Age</Th>
-            <Th screenReaderText="Actions" />
-          </Tr>
-        </Thead>
-        <Tbody>
-          {rows.map((sandbox, rowIndex) => (
-            <Tr key={sandbox.metadata.name}>
-              <Td
-                select={{
-                  rowIndex,
-                  onSelect: (_event, isSelecting) =>
-                    toggleOne(sandbox.metadata.name, isSelecting),
-                  isSelected: selected.includes(sandbox.metadata.name),
-                }}
-              />
-              <Td dataLabel="Name">
-                <Button
-                  variant="link"
-                  isInline
-                  onClick={() => onSelect?.(sandbox.metadata.name)}
-                  data-testid={`sandbox-link-${sandbox.metadata.name}`}
-                >
-                  {sandbox.metadata.name}
-                </Button>
-              </Td>
-              <Td dataLabel="Phase">
-                <PhaseLabel phase={sandbox.status.phase} />
-              </Td>
-              <Td dataLabel="Image" modifier="truncate">
-                <Tooltip content={sandbox.spec.image || '-'}>
-                  <span>{sandbox.spec.image || '-'}</span>
-                </Tooltip>
-              </Td>
-              <Td dataLabel="Labels">
-                <LabelsList labels={sandbox.metadata.labels} />
-              </Td>
-              <Td dataLabel="Age">{formatAge(sandbox.metadata.createdAtMs)}</Td>
-              <Td isActionCell>
-                <ActionsColumn
-                  items={[
-                    {
-                      title: 'Delete',
-                      onClick: () => setDeleteTargets([sandbox.metadata.name]),
-                    },
-                  ]}
-                />
-              </Td>
-            </Tr>
-          ))}
-          {rows.length === 0 && (
+      {viewMode === 'list' ? (
+        <Table aria-label="Sandboxes" data-testid="sandbox-table">
+          <Thead>
             <Tr>
-              <Td colSpan={7}>No sandboxes match this filter.</Td>
+              <Th
+                select={{
+                  onSelect: (_event, isSelecting) => toggleAll(isSelecting),
+                  isSelected: pageAllSelected,
+                }}
+                aria-label="Select all sandboxes"
+              />
+              <Th>Name</Th>
+              <Th>Status</Th>
+              <Th>Policy</Th>
+              <Th>Providers</Th>
+              <Th>Age</Th>
+              <Th screenReaderText="Actions" />
             </Tr>
-          )}
-        </Tbody>
-      </Table>
+          </Thead>
+          <Tbody>
+            {rows.map((sandbox, rowIndex) => {
+              const pv = policyViews[sandbox.metadata.name];
+              const pc = getPolicyCells(sandbox, pv);
+              const providers = sandbox.spec.providers ?? [];
+              const isReady = sandbox.status.phase === 'READY';
+              const imageParts = (sandbox.spec.image || '').split('/');
+              const imageShort = imageParts[imageParts.length - 1] || '-';
+              return (
+                <Tr key={sandbox.metadata.name}>
+                  <Td
+                    select={{
+                      rowIndex,
+                      onSelect: (_event, isSelecting) =>
+                        toggleOne(sandbox.metadata.name, isSelecting),
+                      isSelected: selected.includes(sandbox.metadata.name),
+                    }}
+                  />
+                  <Td dataLabel="Name">
+                    <Stack>
+                      <StackItem>
+                        <Button
+                          variant="link"
+                          isInline
+                          onClick={() => onSelect?.(sandbox.metadata.name)}
+                          data-testid={`sandbox-link-${sandbox.metadata.name}`}
+                        >
+                          {sandbox.metadata.name}
+                        </Button>
+                      </StackItem>
+                      <StackItem>
+                        <Content
+                          component="small"
+                          style={{ fontFamily: 'var(--pf-t--global--font--family--mono)' }}
+                        >
+                          {imageShort}
+                        </Content>
+                      </StackItem>
+                    </Stack>
+                  </Td>
+                  <Td dataLabel="Status">
+                    <Flex
+                      alignItems={{ default: 'alignItemsCenter' }}
+                      gap={{ default: 'gapSm' }}
+                      flexWrap={{ default: 'nowrap' }}
+                    >
+                      <FlexItem>
+                        <StatusDot phase={sandbox.status.phase} />
+                      </FlexItem>
+                      <FlexItem>
+                        <span
+                          style={{
+                            color: sandbox.status.phase === 'ERROR'
+                              ? 'var(--pf-t--global--text--color--status--danger--default)'
+                              : undefined,
+                          }}
+                        >
+                          {getStatusText(sandbox)}
+                        </span>
+                      </FlexItem>
+                    </Flex>
+                  </Td>
+                  <Td dataLabel="Policy">
+                    <Stack>
+                      <StackItem>
+                        <Flex
+                          alignItems={{ default: 'alignItemsCenter' }}
+                          gap={{ default: 'gapSm' }}
+                          flexWrap={{ default: 'nowrap' }}
+                        >
+                          <FlexItem>
+                            <SecurityIcon style={{ color: pc.iconColor }} />
+                          </FlexItem>
+                          <FlexItem>
+                            <strong>{pc.title}</strong>
+                          </FlexItem>
+                        </Flex>
+                      </StackItem>
+                      {pc.subtitle && (
+                        <StackItem>
+                          <Content component="small">{pc.subtitle}</Content>
+                        </StackItem>
+                      )}
+                    </Stack>
+                  </Td>
+                  <Td dataLabel="Providers">
+                    {providers.length > 0 ? (
+                      <LabelGroup numLabels={2}>
+                        {providers.map((p) => (
+                          <Label key={p} color="teal" isCompact>
+                            {p}
+                          </Label>
+                        ))}
+                      </LabelGroup>
+                    ) : (
+                      <Content component="small">—</Content>
+                    )}
+                  </Td>
+                  <Td dataLabel="Age">{formatAge(sandbox.metadata.createdAtMs)}</Td>
+                  <Td isActionCell>
+                    <ActionsColumn
+                      items={[
+                        ...(isReady
+                          ? [
+                              {
+                                title: 'Terminal',
+                                onClick: () =>
+                                  navigate(
+                                    `/workspaces/${workspace}/sandboxes/${sandbox.metadata.name}?tab=terminal`,
+                                  ),
+                              },
+                            ]
+                          : []),
+                        {
+                          title: 'Logs',
+                          onClick: () =>
+                            navigate(
+                              `/workspaces/${workspace}/sandboxes/${sandbox.metadata.name}?tab=logs`,
+                            ),
+                        },
+                        {
+                          title: 'Delete',
+                          onClick: () => setDeleteTargets([sandbox.metadata.name]),
+                        },
+                      ]}
+                    />
+                  </Td>
+                </Tr>
+              );
+            })}
+            {rows.length === 0 && (
+              <Tr>
+                <Td colSpan={7}>No sandboxes match this filter.</Td>
+              </Tr>
+            )}
+          </Tbody>
+        </Table>
+      ) : (
+        <SandboxGalleryView
+          sandboxes={rows}
+          draftSummaries={drafts.items.filter((d) => d.workspace === workspace)}
+          policyViews={policyViews}
+          onDelete={(name) => setDeleteTargets([name])}
+          onSelect={onSelect}
+          onViewLogs={(name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=logs`)}
+          onOpenTerminal={(name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=terminal`)}
+          onReviewDrafts={(name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=proposals`)}
+          onCreateClick={() => setCreateOpen(true)}
+        />
+      )}
       <CreateSandboxModal
         workspace={workspace}
         isOpen={isCreateOpen}

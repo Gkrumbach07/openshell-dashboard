@@ -67,6 +67,9 @@ func main() {
 			CredentialRefresh: envOr("FEATURE_CREDENTIAL_REFRESH", "true") == "true",
 			Services:          envOr("FEATURE_SERVICES", "true") == "true",
 			DraftPolicy:       envOr("FEATURE_DRAFT_POLICY", "true") == "true",
+			DeploymentContext: envOr("DEPLOYMENT_CONTEXT", "standalone"),
+			WorkspaceBinding:  envOr("FEATURE_WORKSPACE_BINDING", "false") == "true",
+			ResourceLinks:     envOr("FEATURE_RESOURCE_LINKS", "false") == "true",
 		},
 	})
 

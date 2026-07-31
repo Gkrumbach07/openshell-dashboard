@@ -11,6 +11,7 @@ import {
   useParams,
 } from 'react-router-dom';
 
+import { SlotProvider } from '../slots';
 import LoginPage from '../pages/LoginPage';
 import GatewayOverviewPage from '../pages/GatewayOverviewPage';
 import WorkspaceListPage from '../pages/WorkspaceListPage';
@@ -155,11 +156,13 @@ const AppRoutes: React.FC = () => {
 
 const App: React.FC = () => (
   <QueryClientProvider client={queryClient}>
-    <AlertProvider>
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <AppRoutes />
-      </BrowserRouter>
-    </AlertProvider>
+    <SlotProvider slots={{}}>
+      <AlertProvider>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <AppRoutes />
+        </BrowserRouter>
+      </AlertProvider>
+    </SlotProvider>
   </QueryClientProvider>
 );
 

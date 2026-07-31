@@ -7,5 +7,8 @@ export { default as CreateWorkspaceModal } from './CreateWorkspaceModal';
 export { default as CreateSandboxModal } from './CreateSandboxModal';
 export { default as CreateProviderModal } from './CreateProviderModal';
 export { default as AddMemberModal } from './AddMemberModal';
+export { default as SandboxCard } from './SandboxCard';
+export { default as SandboxGalleryView } from './SandboxGalleryView';
 export * from './policyTemplates';
 export * from './utils';
+export { AlertProvider, useAlerts } from '../app/AlertContext';

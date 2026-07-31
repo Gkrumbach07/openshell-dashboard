@@ -23,6 +23,7 @@ import {
 
 import { useCreateProvider, useProviderProfiles } from '../api/providers';
 import { useAlerts } from '../app/AlertContext';
+import { useSlots } from '../slots';
 import type { CredentialInputSlot } from '../types';
 
 type CreateProviderModalProps = {
@@ -38,6 +39,8 @@ type CreateProviderModalProps = {
 // generated from the selected profile's credentials[] schema. Credential
 // values are write-only: sent to the gateway, never displayed again.
 const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, isOpen, onClose, onSuccess, renderCredentialInput }) => {
+  const slots = useSlots();
+  const resolvedCredentialInput = renderCredentialInput ?? slots.credentialInput;
   const [name, setName] = useState('');
   const [profileId, setProfileId] = useState('');
   const [credentialValues, setCredentialValues] = useState<Record<string, string>>({});
@@ -150,8 +153,8 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
                 isRequired={credential.required}
                 fieldId={`credential-${credential.name}`}
               >
-                {renderCredentialInput ? (
-                  renderCredentialInput(
+                {resolvedCredentialInput ? (
+                  resolvedCredentialInput(
                     credential,
                     credentialValues[credential.name] ?? '',
                     (value) =>

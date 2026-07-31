@@ -43,6 +43,9 @@ export const useFeatureFlags = () => {
     credentialRefresh: true,
     services: true,
     draftPolicy: true,
+    deploymentContext: 'standalone',
+    workspaceBinding: false,
+    resourceLinks: false,
   };
   return data?.features ?? defaults;
 };

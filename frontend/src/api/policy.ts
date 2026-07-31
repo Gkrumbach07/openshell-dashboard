@@ -1,9 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch, del, get, post, put } from './client';
 import type {
   DraftHistoryEntry,
   DraftPolicy,
+  DraftSummary,
   NetworkPolicyRule,
   PolicyUpdateResult,
   SandboxPolicy,
@@ -81,6 +83,26 @@ export const useSandboxPolicy = (workspace: string, name: string) =>
     queryKey: ['sandbox-policy', workspace, name],
     queryFn: () => getSandboxPolicy(workspace, name),
   });
+
+export const useSandboxPolicies = (workspace: string, names: string[]) => {
+  const queries = useQueries({
+    queries: names.map((name) => ({
+      queryKey: ['sandbox-policy', workspace, name],
+      queryFn: () => getSandboxPolicy(workspace, name),
+    })),
+  });
+
+  const dataFingerprint = queries.map((q) => q.dataUpdatedAt).join(',');
+
+  return useMemo(() => {
+    const views: Record<string, SandboxPolicyView> = {};
+    queries.forEach((q, i) => {
+      if (q.data) views[names[i]] = q.data;
+    });
+    return views;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataFingerprint]);
+};
 
 export const useUpdateSandboxPolicy = (workspace: string, name: string) => {
   const queryClient = useQueryClient();
@@ -214,3 +236,23 @@ export const useDraftHistory = (workspace: string, name: string) =>
     queryKey: ['draft-history', workspace, name],
     queryFn: () => getDraftHistory(workspace, name),
   });
+
+const getDraftSummary = (workspace?: string): Promise<DraftSummary> =>
+  get<DraftSummary>(
+    `/api/v1/draft-summary${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ''}`,
+  );
+
+export const useDraftNotifications = () => {
+  const query = useQuery({
+    queryKey: ['draft-summary'],
+    queryFn: () => getDraftSummary(),
+    refetchInterval: 15_000,
+  });
+
+  return {
+    items: query.data?.sandboxes ?? [],
+    totalPending: query.data?.totalPending ?? 0,
+    isLoading: query.isLoading,
+  };
+};
+
