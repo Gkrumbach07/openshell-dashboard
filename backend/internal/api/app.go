@@ -9,15 +9,15 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	openshell "github.com/rhuss/openshell-sdk-go/openshell/v1"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/gateway"
 )
 
-// App wires the gateway client, auth middleware, and REST routes.
+// App wires the SDK client, auth middleware, and REST routes.
 type App struct {
-	gateway *gateway.Client
-	auth    *auth.Middleware
+	client openshell.ClientInterface
+	auth   *auth.Middleware
 	// staticDir is the frontend build output; empty disables static serving.
 	staticDir string
 	// allowedOrigins for CORS, e.g. the webpack dev server origin.
@@ -25,9 +25,9 @@ type App struct {
 }
 
 // NewApp builds the application.
-func NewApp(gw *gateway.Client, authMiddleware *auth.Middleware, staticDir string, allowedOrigins []string) *App {
+func NewApp(client openshell.ClientInterface, authMiddleware *auth.Middleware, staticDir string, allowedOrigins []string) *App {
 	return &App{
-		gateway:        gw,
+		client:         client,
 		auth:           authMiddleware,
 		staticDir:      staticDir,
 		allowedOrigins: allowedOrigins,
@@ -81,7 +81,6 @@ func (app *App) Routes() http.Handler {
 					r.Get("/sandboxes/{name}", app.GetSandbox)
 					r.Delete("/sandboxes/{name}", app.DeleteSandbox)
 					r.Get("/sandboxes/{name}/logs", app.GetSandboxLogs)
-					r.Get("/sandboxes/{name}/terminal", app.Terminal)
 					r.Get("/sandboxes/{name}/providers", app.ListSandboxProviders)
 					r.Post("/sandboxes/{name}/providers/{provider}", app.AttachSandboxProvider)
 					r.Delete("/sandboxes/{name}/providers/{provider}", app.DetachSandboxProvider)

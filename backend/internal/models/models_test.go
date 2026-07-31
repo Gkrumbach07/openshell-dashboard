@@ -5,20 +5,20 @@ import (
 	"strings"
 	"testing"
 
-	datamodelv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/datamodelv1"
-	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
+	openshell "github.com/rhuss/openshell-sdk-go/openshell/v1"
 )
 
-// Provider credentials are secret-marked in proto; the DTO must never carry
-// their values, only key names.
 func TestFromProviderStripsCredentialValues(t *testing.T) {
-	provider := &datamodelv1.Provider{
-		Metadata: &datamodelv1.ObjectMeta{Id: "p1", Name: "claude"},
-		Type:     "claude",
-		Credentials: map[string]string{
-			"api_key": "sk-super-secret",
+	provider := &openshell.Provider{
+		ID:   "p1",
+		Name: "claude",
+		Type: "claude",
+		Spec: openshell.ProviderSpec{
+			Credentials: map[string]string{
+				"api_key": "sk-super-secret",
+			},
+			Config: map[string]string{"region": "us"},
 		},
-		Config: map[string]string{"region": "us"},
 	}
 
 	dto := FromProvider(provider)
@@ -36,19 +36,18 @@ func TestFromProviderStripsCredentialValues(t *testing.T) {
 
 func TestSandboxPhaseMapping(t *testing.T) {
 	cases := []struct {
-		phase openshellv1.SandboxPhase
+		phase openshell.SandboxPhase
 		want  string
 	}{
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_PROVISIONING, "PROVISIONING"},
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_READY, "READY"},
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_ERROR, "ERROR"},
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_DELETING, "DELETING"},
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_UNKNOWN, "UNKNOWN"},
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_UNSPECIFIED, "UNSPECIFIED"},
+		{openshell.SandboxProvisioning, "PROVISIONING"},
+		{openshell.SandboxReady, "READY"},
+		{openshell.SandboxError, "ERROR"},
+		{openshell.SandboxDeleting, "DELETING"},
+		{openshell.SandboxUnknown, "UNKNOWN"},
 	}
 	for _, tc := range cases {
-		sandbox := &openshellv1.Sandbox{
-			Status: &openshellv1.SandboxStatus{Phase: tc.phase},
+		sandbox := &openshell.Sandbox{
+			Status: openshell.SandboxStatus{Phase: tc.phase},
 		}
 		if got := FromSandbox(sandbox).Status.Phase; got != tc.want {
 			t.Errorf("phase %v: got %q, want %q", tc.phase, got, tc.want)
@@ -58,13 +57,13 @@ func TestSandboxPhaseMapping(t *testing.T) {
 
 func TestParsePolicyRoundTrip(t *testing.T) {
 	raw := json.RawMessage(`{
-		"version": 1,
-		"filesystem": {"includeWorkdir": true, "readOnly": ["/usr"], "readWrite": ["/sandbox"]},
-		"landlock": {"compatibility": "best_effort"},
-		"process": {"runAsUser": "sandbox", "runAsGroup": "sandbox"},
-		"networkPolicies": {
+		"Version": 1,
+		"Filesystem": {"IncludeWorkdir": true, "ReadOnly": ["/usr"], "ReadWrite": ["/sandbox"]},
+		"Landlock": {"Compatibility": "best_effort"},
+		"Process": {"RunAsUser": "sandbox", "RunAsGroup": "sandbox"},
+		"NetworkPolicies": {
 			"anthropic": {
-				"endpoints": [{"host": "api.anthropic.com", "port": 443, "protocol": "rest", "enforcement": "enforce", "access": "read-write"}]
+				"Endpoints": [{"Host": "api.anthropic.com", "Port": 443, "Protocol": "rest", "Enforcement": "enforce", "Access": "read-write"}]
 			}
 		}
 	}`)
@@ -75,8 +74,8 @@ func TestParsePolicyRoundTrip(t *testing.T) {
 	if policy.Version != 1 {
 		t.Errorf("version: got %d", policy.Version)
 	}
-	if !policy.Filesystem.IncludeWorkdir {
-		t.Error("filesystem.includeWorkdir not parsed")
+	if policy.Filesystem == nil || !policy.Filesystem.IncludeWorkdir {
+		t.Error("filesystem.IncludeWorkdir not parsed")
 	}
 	rule, ok := policy.NetworkPolicies["anthropic"]
 	if !ok {

@@ -4,17 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
-	inferencev1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/inferencev1"
-	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
-	sandboxv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/sandboxv1"
+	openshell "github.com/rhuss/openshell-sdk-go/openshell/v1"
 )
 
-// LogLine mirrors openshell.v1.SandboxLogLine. The fields map carries
-// structured network-decision context (dst_host, action, …) — the dashboard's
-// only window into security decisions (there is no events API).
+// LogLine mirrors openshell.LogLine. The fields map carries structured
+// network-decision context (dst_host, action, ...).
 type LogLine struct {
-	SandboxID   string            `json:"sandboxId,omitempty"`
 	TimestampMs int64             `json:"timestampMs"`
 	Level       string            `json:"level,omitempty"`
 	Target      string            `json:"target,omitempty"`
@@ -23,18 +20,17 @@ type LogLine struct {
 	Fields      map[string]string `json:"fields,omitempty"`
 }
 
-// SandboxLogs mirrors GetSandboxLogsResponse.
+// SandboxLogs mirrors openshell.LogResult.
 type SandboxLogs struct {
 	Logs        []LogLine `json:"logs"`
 	BufferTotal uint32    `json:"bufferTotal"`
 }
 
-func FromSandboxLogs(resp *openshellv1.GetSandboxLogsResponse) SandboxLogs {
-	out := SandboxLogs{Logs: []LogLine{}, BufferTotal: resp.GetBufferTotal()}
-	for _, line := range resp.GetLogs() {
+func FromSandboxLogs(result *openshell.LogResult) SandboxLogs {
+	out := SandboxLogs{Logs: []LogLine{}, BufferTotal: result.BufferTotal}
+	for _, line := range result.Lines {
 		out.Logs = append(out.Logs, LogLine{
-			SandboxID:   line.SandboxId,
-			TimestampMs: line.TimestampMs,
+			TimestampMs: timeToMs(line.Timestamp),
 			Level:       line.Level,
 			Target:      line.Target,
 			Message:     line.Message,
@@ -45,48 +41,29 @@ func FromSandboxLogs(resp *openshellv1.GetSandboxLogsResponse) SandboxLogs {
 	return out
 }
 
-// PolicyRevision mirrors openshell.v1.SandboxPolicyRevision. Policy content
-// is protojson when the gateway populated it.
+// PolicyRevision mirrors openshell.SandboxPolicyRevision. Policy content
+// is camelCase JSON when the gateway populated it.
 type PolicyRevision struct {
-	Version    uint32 `json:"version"`
-	PolicyHash string `json:"policyHash,omitempty"`
-	// Status is PENDING, LOADED, FAILED, or SUPERSEDED.
-	Status      string            `json:"status"`
-	LoadError   string            `json:"loadError,omitempty"`
-	CreatedAtMs int64             `json:"createdAtMs"`
-	LoadedAtMs  int64             `json:"loadedAtMs,omitempty"`
-	Policy      json.RawMessage   `json:"policy,omitempty"`
-	Provenance  map[string]string `json:"provenance,omitempty"`
+	Version    uint32          `json:"version"`
+	PolicyHash string          `json:"policyHash,omitempty"`
+	Status     string          `json:"status"`
+	LoadError  string          `json:"loadError,omitempty"`
+	CreatedAtMs int64          `json:"createdAtMs"`
+	LoadedAtMs  int64          `json:"loadedAtMs,omitempty"`
+	Policy      json.RawMessage `json:"policy,omitempty"`
 }
 
-func policyStatusString(status openshellv1.PolicyStatus) string {
-	switch status {
-	case openshellv1.PolicyStatus_POLICY_STATUS_PENDING:
-		return "PENDING"
-	case openshellv1.PolicyStatus_POLICY_STATUS_LOADED:
-		return "LOADED"
-	case openshellv1.PolicyStatus_POLICY_STATUS_FAILED:
-		return "FAILED"
-	case openshellv1.PolicyStatus_POLICY_STATUS_SUPERSEDED:
-		return "SUPERSEDED"
-	}
-	return "UNSPECIFIED"
-}
-
-func FromPolicyRevision(revision *openshellv1.SandboxPolicyRevision) PolicyRevision {
+func FromPolicyRevision(revision *openshell.SandboxPolicyRevision) PolicyRevision {
 	out := PolicyRevision{
-		Version:     revision.GetVersion(),
-		PolicyHash:  revision.GetPolicyHash(),
-		Status:      policyStatusString(revision.GetStatus()),
-		LoadError:   revision.GetLoadError(),
-		CreatedAtMs: revision.GetCreatedAtMs(),
-		LoadedAtMs:  revision.GetLoadedAtMs(),
-		Provenance:  revision.GetProvenance(),
+		Version:     revision.Version,
+		PolicyHash:  revision.PolicyHash,
+		Status:      strings.ToUpper(revision.Status.String()),
+		LoadError:   revision.LoadError,
+		CreatedAtMs: timeToMs(revision.CreatedAt),
+		LoadedAtMs:  timeToMs(revision.LoadedAt),
 	}
-	if revision.GetPolicy() != nil {
-		if raw, err := policyMarshaler.Marshal(revision.GetPolicy()); err == nil {
-			out.Policy = raw
-		}
+	if revision.Policy != nil {
+		out.Policy = marshalPolicy(revision.Policy)
 	}
 	return out
 }
@@ -99,15 +76,13 @@ type SandboxPolicyView struct {
 	Revisions     []PolicyRevision `json:"revisions"`
 }
 
-// PolicyUpdateResult mirrors UpdateConfigResponse for policy updates.
+// PolicyUpdateResult mirrors ConfigUpdateResult for policy updates.
 type PolicyUpdateResult struct {
 	Version    uint32 `json:"version"`
 	PolicyHash string `json:"policyHash,omitempty"`
 }
 
-// PolicyChunk mirrors openshell.v1.PolicyChunk — one draft policy proposal.
-// ProposedRule is protojson of a NetworkPolicyRule. ValidationResult carries
-// the gateway prover verdict (there is no separate verify RPC).
+// PolicyChunk mirrors openshell.PolicyChunk.
 type PolicyChunk struct {
 	ID               string          `json:"id"`
 	Status           string          `json:"status"`
@@ -124,7 +99,7 @@ type PolicyChunk struct {
 	RejectionReason  string          `json:"rejectionReason,omitempty"`
 }
 
-// DraftPolicy mirrors GetDraftPolicyResponse.
+// DraftPolicy mirrors openshell.DraftPolicy.
 type DraftPolicy struct {
 	Chunks           []PolicyChunk `json:"chunks"`
 	RollingSummary   string        `json:"rollingSummary,omitempty"`
@@ -132,39 +107,35 @@ type DraftPolicy struct {
 	LastAnalyzedAtMs int64         `json:"lastAnalyzedAtMs,omitempty"`
 }
 
-func FromDraftPolicy(resp *openshellv1.GetDraftPolicyResponse) DraftPolicy {
+func FromDraftPolicy(draft *openshell.DraftPolicy) DraftPolicy {
 	out := DraftPolicy{
 		Chunks:           []PolicyChunk{},
-		RollingSummary:   resp.GetRollingSummary(),
-		DraftVersion:     resp.GetDraftVersion(),
-		LastAnalyzedAtMs: resp.GetLastAnalyzedAtMs(),
+		RollingSummary:   draft.RollingSummary,
+		DraftVersion:     draft.DraftVersion,
+		LastAnalyzedAtMs: timeToMs(draft.LastAnalyzedAt),
 	}
-	for _, chunk := range resp.GetChunks() {
+	for _, chunk := range draft.Chunks {
 		item := PolicyChunk{
-			ID:               chunk.Id,
+			ID:               chunk.ID,
 			Status:           chunk.Status,
 			RuleName:         chunk.RuleName,
 			Rationale:        chunk.Rationale,
 			SecurityNotes:    chunk.SecurityNotes,
 			Confidence:       chunk.Confidence,
-			CreatedAtMs:      chunk.CreatedAtMs,
-			DecidedAtMs:      chunk.DecidedAtMs,
+			CreatedAtMs:      timeToMs(chunk.CreatedAt),
+			DecidedAtMs:      timeToMs(chunk.DecidedAt),
 			HitCount:         chunk.HitCount,
 			Binary:           chunk.Binary,
 			ValidationResult: chunk.ValidationResult,
 			RejectionReason:  chunk.RejectionReason,
 		}
-		if chunk.ProposedRule != nil {
-			if raw, err := policyMarshaler.Marshal(chunk.ProposedRule); err == nil {
-				item.ProposedRule = raw
-			}
-		}
+		item.ProposedRule = MarshalNetworkPolicyRule(chunk.ProposedRule)
 		out.Chunks = append(out.Chunks, item)
 	}
 	return out
 }
 
-// DraftHistoryEntry mirrors openshell.v1.DraftHistoryEntry.
+// DraftHistoryEntry mirrors openshell.DraftHistoryEntry.
 type DraftHistoryEntry struct {
 	TimestampMs int64  `json:"timestampMs"`
 	EventType   string `json:"eventType"`
@@ -172,20 +143,20 @@ type DraftHistoryEntry struct {
 	ChunkID     string `json:"chunkId,omitempty"`
 }
 
-func FromDraftHistory(resp *openshellv1.GetDraftHistoryResponse) []DraftHistoryEntry {
-	out := make([]DraftHistoryEntry, 0, len(resp.GetEntries()))
-	for _, e := range resp.GetEntries() {
+func FromDraftHistory(entries []openshell.DraftHistoryEntry) []DraftHistoryEntry {
+	out := make([]DraftHistoryEntry, 0, len(entries))
+	for _, e := range entries {
 		out = append(out, DraftHistoryEntry{
-			TimestampMs: e.GetTimestampMs(),
-			EventType:   e.GetEventType(),
-			Description: e.GetDescription(),
-			ChunkID:     e.GetChunkId(),
+			TimestampMs: timeToMs(e.Timestamp),
+			EventType:   e.EventType,
+			Description: e.Description,
+			ChunkID:     e.ChunkID,
 		})
 	}
 	return out
 }
 
-// ServiceEndpoint mirrors openshell.v1.ServiceEndpointResponse.
+// ServiceEndpoint mirrors openshell.ServiceEndpoint.
 type ServiceEndpoint struct {
 	SandboxName string `json:"sandboxName"`
 	ServiceName string `json:"serviceName"`
@@ -194,14 +165,13 @@ type ServiceEndpoint struct {
 	URL         string `json:"url,omitempty"`
 }
 
-func FromServiceEndpointResponse(resp *openshellv1.ServiceEndpointResponse) ServiceEndpoint {
-	ep := resp.GetEndpoint()
+func FromServiceEndpoint(ep *openshell.ServiceEndpoint) ServiceEndpoint {
 	return ServiceEndpoint{
-		SandboxName: ep.GetSandboxName(),
-		ServiceName: ep.GetServiceName(),
-		TargetPort:  ep.GetTargetPort(),
-		Domain:      ep.GetDomain(),
-		URL:         resp.GetUrl(),
+		SandboxName: ep.SandboxName,
+		ServiceName: ep.ServiceName,
+		TargetPort:  ep.TargetPort,
+		Domain:      ep.Domain,
+		URL:         ep.URL,
 	}
 }
 
@@ -211,35 +181,32 @@ type SettingEntry struct {
 	Value string `json:"value"`
 }
 
-// GatewaySettings mirrors GetGatewayConfigResponse as a flat list.
+// GatewaySettings mirrors openshell.GatewayConfig as a flat list.
 type GatewaySettings struct {
 	Settings         []SettingEntry `json:"settings"`
 	SettingsRevision uint64         `json:"settingsRevision"`
 }
 
-func settingValueString(sv *sandboxv1.SettingValue) string {
-	if sv == nil {
-		return ""
-	}
-	switch v := sv.Value.(type) {
-	case *sandboxv1.SettingValue_StringValue:
-		return v.StringValue
-	case *sandboxv1.SettingValue_BoolValue:
-		return fmt.Sprintf("%t", v.BoolValue)
-	case *sandboxv1.SettingValue_IntValue:
-		return fmt.Sprintf("%d", v.IntValue)
-	case *sandboxv1.SettingValue_BytesValue:
-		return fmt.Sprintf("%x", v.BytesValue)
+func settingValueString(sv openshell.SettingValue) string {
+	switch sv.Type {
+	case "string":
+		return sv.StringVal
+	case "bool":
+		return fmt.Sprintf("%t", sv.BoolVal)
+	case "int":
+		return fmt.Sprintf("%d", sv.IntVal)
+	case "bytes":
+		return fmt.Sprintf("%x", sv.BytesVal)
 	}
 	return ""
 }
 
-func FromGatewaySettings(resp *sandboxv1.GetGatewayConfigResponse) GatewaySettings {
+func FromGatewaySettings(config *openshell.GatewayConfig) GatewaySettings {
 	out := GatewaySettings{
 		Settings:         []SettingEntry{},
-		SettingsRevision: resp.GetSettingsRevision(),
+		SettingsRevision: config.SettingsRevision,
 	}
-	for key, val := range resp.GetSettings() {
+	for key, val := range config.Settings {
 		out.Settings = append(out.Settings, SettingEntry{
 			Key:   key,
 			Value: settingValueString(val),
@@ -251,8 +218,7 @@ func FromGatewaySettings(resp *sandboxv1.GetGatewayConfigResponse) GatewaySettin
 	return out
 }
 
-// InferenceRoute mirrors GetInferenceRouteResponse. Route "" is the
-// user-facing inference.local route; "sandbox-system" is the system route.
+// InferenceRoute mirrors openshell.InferenceRoute.
 type InferenceRoute struct {
 	RouteName    string `json:"routeName"`
 	ProviderName string `json:"providerName"`
@@ -261,12 +227,12 @@ type InferenceRoute struct {
 	TimeoutSecs  uint64 `json:"timeoutSecs"`
 }
 
-func FromInferenceRoute(resp *inferencev1.GetInferenceRouteResponse) InferenceRoute {
+func FromInferenceRoute(route *openshell.InferenceRoute) InferenceRoute {
 	return InferenceRoute{
-		RouteName:    resp.GetRouteName(),
-		ProviderName: resp.GetProviderName(),
-		ModelID:      resp.GetModelId(),
-		Version:      resp.GetVersion(),
-		TimeoutSecs:  resp.GetTimeoutSecs(),
+		RouteName:    route.RouteName,
+		ProviderName: route.ProviderName,
+		ModelID:      route.ModelID,
+		Version:      route.Version,
+		TimeoutSecs:  route.TimeoutSecs,
 	}
 }

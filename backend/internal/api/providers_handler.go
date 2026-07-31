@@ -2,13 +2,13 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
+	openshell "github.com/rhuss/openshell-sdk-go/openshell/v1"
 
-	datamodelv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/datamodelv1"
-	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
 
 // CreateProviderRequest is the create-provider body. Credentials are
@@ -22,9 +22,9 @@ type CreateProviderRequest struct {
 }
 
 func (app *App) ListProviders(w http.ResponseWriter, r *http.Request) {
-	providers, err := app.gateway.ListProviders(r.Context(), chi.URLParam(r, "workspace"), 0, 0)
+	providers, err := app.client.Providers().List(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	out := make([]models.Provider, 0, len(providers))
@@ -43,39 +43,38 @@ func (app *App) CreateProvider(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_provider", "name and type are required")
 		return
 	}
-	provider := &datamodelv1.Provider{
-		Metadata: &datamodelv1.ObjectMeta{
-			Name:   body.Name,
-			Labels: body.Labels,
+	provider := &openshell.Provider{
+		Name:   body.Name,
+		Type:   body.Type,
+		Labels: body.Labels,
+		Spec: openshell.ProviderSpec{
+			Credentials: body.Credentials,
+			Config:      body.Config,
 		},
-		Type:        body.Type,
-		Credentials: body.Credentials,
-		Config:      body.Config,
 	}
-	created, err := app.gateway.CreateProvider(r.Context(), chi.URLParam(r, "workspace"), provider)
+	created, err := app.client.Providers().Create(r.Context(), chi.URLParam(r, "workspace"), provider)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, models.FromProvider(created))
 }
 
 func (app *App) GetProvider(w http.ResponseWriter, r *http.Request) {
-	provider, err := app.gateway.GetProvider(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	provider, err := app.client.Providers().Get(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.FromProvider(provider))
 }
 
 func (app *App) DeleteProvider(w http.ResponseWriter, r *http.Request) {
-	deleted, err := app.gateway.DeleteProvider(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
-	if err != nil {
-		writeGrpcError(w, err)
+	if err := app.client.Providers().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name")); err != nil {
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // UpdateProviderBody is the update-provider body. Only non-nil maps are
@@ -94,48 +93,54 @@ func (app *App) UpdateProvider(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	name := chi.URLParam(r, "name")
 
-	existing, err := app.gateway.GetProvider(r.Context(), workspace, name)
+	existing, err := app.client.Providers().Get(r.Context(), workspace, name)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 
 	provider := existing
 	if body.Credentials != nil {
-		provider.Credentials = body.Credentials
+		provider.Spec.Credentials = body.Credentials
 	}
 	if body.Config != nil {
-		provider.Config = body.Config
+		provider.Spec.Config = body.Config
+	}
+	if body.CredentialExpiresAtMs != nil {
+		expires := make(map[string]time.Time, len(body.CredentialExpiresAtMs))
+		for k, ms := range body.CredentialExpiresAtMs {
+			expires[k] = time.UnixMilli(ms)
+		}
+		provider.Spec.CredentialExpiresAt = expires
 	}
 
-	updated, err := app.gateway.UpdateProvider(r.Context(), workspace, provider, body.CredentialExpiresAtMs)
+	updated, err := app.client.Providers().Update(r.Context(), workspace, provider)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.FromProvider(updated))
 }
 
 func (app *App) GetProviderRefreshStatus(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.GetProviderRefreshStatus(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), "")
+	statuses, err := app.client.Providers().Refresh().GetStatus(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), "")
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	out := make([]models.CredentialRefreshStatus, 0, len(resp.GetCredentials()))
-	for _, cred := range resp.GetCredentials() {
-		out = append(out, models.FromCredentialRefreshStatus(cred))
+	out := make([]models.CredentialRefreshStatus, 0, len(statuses))
+	for _, s := range statuses {
+		out = append(out, models.FromCredentialRefreshStatus(s))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
-var refreshStrategyMap = map[string]openshellv1.ProviderCredentialRefreshStrategy{
-	"oauth2-refresh-token":       openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_REFRESH_TOKEN,
-	"oauth2-client-credentials":  openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_CLIENT_CREDENTIALS,
-	"google-service-account-jwt": openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_GOOGLE_SERVICE_ACCOUNT_JWT,
-	"aws-sts-assume-role":        openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_AWS_STS_ASSUME_ROLE,
-	"static":                     openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_STATIC,
-	"external":                   openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_EXTERNAL,
+var refreshStrategyMap = map[string]openshell.RefreshStrategy{
+	"oauth2-refresh-token":       openshell.RefreshStrategyOAuth2RefreshToken,
+	"oauth2-client-credentials":  openshell.RefreshStrategyOAuth2ClientCredentials,
+	"google-service-account-jwt": openshell.RefreshStrategyGoogleServiceAccountJWT,
+	"static":                     openshell.RefreshStrategyStatic,
+	"external":                   openshell.RefreshStrategyExternal,
 }
 
 type ConfigureProviderRefreshBody struct {
@@ -160,21 +165,23 @@ func (app *App) ConfigureProviderRefresh(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid_strategy", "unknown refresh strategy: "+body.Strategy)
 		return
 	}
-	resp, err := app.gateway.ConfigureProviderRefresh(
-		r.Context(),
-		chi.URLParam(r, "workspace"),
-		chi.URLParam(r, "name"),
-		body.CredentialKey,
-		strategy,
-		body.Material,
-		body.SecretMaterialKeys,
-		body.ExpiresAtMs,
-	)
+	cfg := &openshell.RefreshConfig{
+		Provider:           chi.URLParam(r, "name"),
+		CredentialKey:      body.CredentialKey,
+		Strategy:           strategy,
+		Material:           body.Material,
+		SecretMaterialKeys: body.SecretMaterialKeys,
+	}
+	if body.ExpiresAtMs != nil {
+		t := time.UnixMilli(*body.ExpiresAtMs)
+		cfg.ExpiresAt = &t
+	}
+	status, err := app.client.Providers().Refresh().Configure(r.Context(), chi.URLParam(r, "workspace"), cfg)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromCredentialRefreshStatus(resp.GetStatus()))
+	writeJSON(w, http.StatusOK, models.FromCredentialRefreshStatus(status))
 }
 
 type RotateProviderCredentialBody struct {
@@ -190,17 +197,17 @@ func (app *App) RotateProviderCredential(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid_request", "credentialKey is required")
 		return
 	}
-	resp, err := app.gateway.RotateProviderCredential(
+	status, err := app.client.Providers().Refresh().Rotate(
 		r.Context(),
 		chi.URLParam(r, "workspace"),
 		chi.URLParam(r, "name"),
 		body.CredentialKey,
 	)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromCredentialRefreshStatus(resp.GetStatus()))
+	writeJSON(w, http.StatusOK, models.FromCredentialRefreshStatus(status))
 }
 
 func (app *App) DeleteProviderRefresh(w http.ResponseWriter, r *http.Request) {
@@ -209,14 +216,14 @@ func (app *App) DeleteProviderRefresh(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "credentialKey query parameter is required")
 		return
 	}
-	deleted, err := app.gateway.DeleteProviderRefresh(
+	deleted, err := app.client.Providers().Refresh().Delete(
 		r.Context(),
 		chi.URLParam(r, "workspace"),
 		chi.URLParam(r, "name"),
 		credentialKey,
 	)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
@@ -225,9 +232,9 @@ func (app *App) DeleteProviderRefresh(w http.ResponseWriter, r *http.Request) {
 // ListProviderProfiles returns the provider type profiles whose credential
 // schemas drive the Add Provider form.
 func (app *App) ListProviderProfiles(w http.ResponseWriter, r *http.Request) {
-	profiles, err := app.gateway.ListProviderProfiles(r.Context(), chi.URLParam(r, "workspace"), 0, 0)
+	profiles, err := app.client.Providers().Profiles().List(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	out := make([]models.ProviderProfile, 0, len(profiles))

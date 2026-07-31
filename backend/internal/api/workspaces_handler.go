@@ -6,6 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	openshell "github.com/rhuss/openshell-sdk-go/openshell/v1"
+
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
 
@@ -16,9 +18,13 @@ type CreateWorkspaceRequest struct {
 }
 
 func (app *App) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
-	workspaces, err := app.gateway.ListWorkspaces(r.Context(), 0, 0, r.URL.Query().Get("labelSelector"))
+	var opts []openshell.ListOptions
+	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
+		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
+	}
+	workspaces, err := app.client.Workspaces().List(r.Context(), opts...)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	out := make([]models.Workspace, 0, len(workspaces))
@@ -37,30 +43,29 @@ func (app *App) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_name", "workspace name must be a valid DNS-1123 label")
 		return
 	}
-	workspace, err := app.gateway.CreateWorkspace(r.Context(), body.Name, body.Labels)
+	workspace, err := app.client.Workspaces().Create(r.Context(), body.Name, body.Labels)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, models.FromWorkspace(workspace))
 }
 
 func (app *App) GetWorkspace(w http.ResponseWriter, r *http.Request) {
-	workspace, err := app.gateway.GetWorkspace(r.Context(), chi.URLParam(r, "workspace"))
+	workspace, err := app.client.Workspaces().Get(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.FromWorkspace(workspace))
 }
 
 func (app *App) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
-	deleted, err := app.gateway.DeleteWorkspace(r.Context(), chi.URLParam(r, "workspace"))
-	if err != nil {
-		writeGrpcError(w, err)
+	if err := app.client.Workspaces().Delete(r.Context(), chi.URLParam(r, "workspace")); err != nil {
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // AddMemberRequest is the add-member body. Role is USER or ADMIN.
@@ -70,9 +75,9 @@ type AddMemberRequest struct {
 }
 
 func (app *App) ListMembers(w http.ResponseWriter, r *http.Request) {
-	members, err := app.gateway.ListWorkspaceMembers(r.Context(), chi.URLParam(r, "workspace"), 0, 0)
+	members, err := app.client.Workspaces().ListMembers(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	out := make([]models.WorkspaceMember, 0, len(members))
@@ -96,9 +101,9 @@ func (app *App) AddMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_role", "role must be USER or ADMIN")
 		return
 	}
-	member, err := app.gateway.AddWorkspaceMember(r.Context(), chi.URLParam(r, "workspace"), body.PrincipalSubject, role)
+	member, err := app.client.Workspaces().AddMember(r.Context(), chi.URLParam(r, "workspace"), body.PrincipalSubject, role)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, models.FromWorkspaceMember(member))
@@ -111,10 +116,9 @@ func (app *App) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_subject", "invalid member subject")
 		return
 	}
-	removed, err := app.gateway.RemoveWorkspaceMember(r.Context(), chi.URLParam(r, "workspace"), subject)
-	if err != nil {
-		writeGrpcError(w, err)
+	if err := app.client.Workspaces().RemoveMember(r.Context(), chi.URLParam(r, "workspace"), subject); err != nil {
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"removed": removed})
+	writeJSON(w, http.StatusOK, map[string]bool{"removed": true})
 }

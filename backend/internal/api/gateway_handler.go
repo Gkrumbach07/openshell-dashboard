@@ -15,9 +15,9 @@ func (app *App) GetHealthz(w http.ResponseWriter, r *http.Request) {
 // GetGateway returns gateway status, version, and compute drivers — the
 // complete set of gateway self-description the API offers.
 func (app *App) GetGateway(w http.ResponseWriter, r *http.Request) {
-	info, err := app.gateway.GetGatewayInfo(r.Context())
+	info, err := app.client.Health().GetGatewayInfo(r.Context())
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.FromGatewayInfo(info))
@@ -84,9 +84,9 @@ func (app *App) GetWhoAmI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := app.gateway.GetCurrentUser(r.Context())
+	user, err := app.client.Health().GetCurrentUser(r.Context())
 	if err == nil {
-		writeJSON(w, http.StatusOK, models.FromCurrentUser(resp))
+		writeJSON(w, http.StatusOK, models.FromCurrentUser(user))
 		return
 	}
 
@@ -102,5 +102,5 @@ func (app *App) GetWhoAmI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeGrpcError(w, err)
+	writeSDKError(w, err)
 }

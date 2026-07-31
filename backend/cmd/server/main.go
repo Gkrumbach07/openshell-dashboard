@@ -12,9 +12,11 @@ import (
 	"strings"
 	"time"
 
+	openshell "github.com/rhuss/openshell-sdk-go/openshell/v1"
+
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/api"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/gateway"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/sdkclient"
 )
 
 // envOr returns the environment variable value or a default.
@@ -74,14 +76,21 @@ func main() {
 		},
 	})
 
-	gatewayClient, err := gateway.New(*gatewayURL, *gatewayCACert)
+	cfg := openshell.Config{
+		Address: *gatewayURL,
+		Auth:    sdkclient.ContextAuthProvider{},
+	}
+	if *gatewayCACert != "" {
+		cfg.TLS = &openshell.TLSConfig{CAFile: *gatewayCACert}
+	}
+	sdkClient, err := openshell.NewClient(cfg)
 	if err != nil {
-		slog.Error("gateway client setup failed", "error", err)
+		slog.Error("SDK client setup failed", "error", err)
 		os.Exit(1)
 	}
-	defer gatewayClient.Close()
+	defer sdkClient.Close()
 
-	app := api.NewApp(gatewayClient, authMiddleware, *staticDir, strings.Split(*origins, ","))
+	app := api.NewApp(sdkClient, authMiddleware, *staticDir, strings.Split(*origins, ","))
 
 	addr := ":" + *port
 	slog.Info("openshell-dashboard BFF listening",

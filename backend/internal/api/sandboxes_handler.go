@@ -5,12 +5,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/structpb"
+
+	openshell "github.com/rhuss/openshell-sdk-go/openshell/v1"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
-
-	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
 )
 
 // CreateSandboxRequest is the create-sandbox body. Policy is required by the
@@ -34,9 +32,13 @@ type CreateSandboxRequest struct {
 }
 
 func (app *App) ListSandboxes(w http.ResponseWriter, r *http.Request) {
-	sandboxes, err := app.gateway.ListSandboxes(r.Context(), chi.URLParam(r, "workspace"), 0, 0, r.URL.Query().Get("labelSelector"))
+	var opts []openshell.ListOptions
+	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
+		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
+	}
+	sandboxes, err := app.client.Sandboxes().List(r.Context(), chi.URLParam(r, "workspace"), opts...)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	out := make([]models.Sandbox, 0, len(sandboxes))
@@ -69,57 +71,38 @@ func (app *App) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	template := &openshellv1.SandboxTemplate{Image: body.Image}
-	if body.Cpu != "" || body.Memory != "" {
-		limits := map[string]any{}
-		if body.Cpu != "" {
-			limits["cpu"] = body.Cpu
-		}
-		if body.Memory != "" {
-			limits["memory"] = body.Memory
-		}
-		resources, err := structpb.NewStruct(map[string]any{"limits": limits})
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_resources", "invalid cpu/memory values")
-			return
-		}
-		template.Resources = resources
-	}
-
-	spec := &openshellv1.SandboxSpec{
+	spec := &openshell.SandboxSpec{
 		LogLevel:    body.LogLevel,
 		Environment: body.Environment,
-		Template:    template,
+		Template:    &openshell.SandboxTemplate{Image: body.Image},
 		Policy:      policy,
 		Providers:   body.Providers,
 	}
 	if body.GpuCount > 0 {
-		spec.ResourceRequirements = &openshellv1.ResourceRequirements{
-			Gpu: &openshellv1.GpuResourceRequirements{Count: proto.Uint32(body.GpuCount)},
-		}
+		gpu := body.GpuCount
+		spec.GPUCount = &gpu
 	}
-	sandbox, err := app.gateway.CreateSandbox(r.Context(), chi.URLParam(r, "workspace"), body.Name, spec, body.Labels, body.Annotations)
+	sandbox, err := app.client.Sandboxes().Create(r.Context(), chi.URLParam(r, "workspace"), body.Name, spec, body.Labels)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, models.FromSandbox(sandbox))
 }
 
 func (app *App) GetSandbox(w http.ResponseWriter, r *http.Request) {
-	sandbox, err := app.gateway.GetSandbox(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	sandbox, err := app.client.Sandboxes().Get(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.FromSandbox(sandbox))
 }
 
 func (app *App) DeleteSandbox(w http.ResponseWriter, r *http.Request) {
-	deleted, err := app.gateway.DeleteSandbox(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
-	if err != nil {
-		writeGrpcError(w, err)
+	if err := app.client.Sandboxes().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name")); err != nil {
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }

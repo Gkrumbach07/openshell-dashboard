@@ -17,16 +17,9 @@ backend/
 │   │   ├── *_handler.go       # Per-resource handlers
 │   │   └── middleware.go      # Auth, CORS, logging
 │   ├── auth/                  # OIDC middleware
-│   ├── gateway/               # Thin gRPC wrapper
-│   │   ├── client.go          # Connection, per-RPC OIDC auth
-│   │   ├── sandboxes.go       # Sandbox CRUD + logs
-│   │   ├── workspaces.go      # Workspace + member CRUD
-│   │   ├── providers.go       # Provider + profile CRUD
-│   │   ├── policies.go        # Policy + draft policy
-│   │   └── inference.go       # Inference route CRUD
-│   └── models/                # Response DTOs
-├── proto/                     # Copied from NVIDIA/OpenShell/proto/
-├── gen/                       # protoc-generated Go stubs (committed)
+│   ├── sdkclient/             # SDK auth provider (per-request JWT forwarding)
+│   │   └── auth.go            # ContextAuthProvider
+│   └── models/                # Response DTOs and SDK type converters
 ├── go.mod
 └── go.sum
 ```
@@ -41,30 +34,22 @@ func (app *App) ListSandboxes(w http.ResponseWriter, r *http.Request)
 
 URL params via `chi.URLParam(r, "workspace")`.
 
-## Gateway client
+## SDK client
 
-The `internal/gateway/` package wraps protoc-generated gRPC stubs. Each method is 5-10 lines:
+The BFF uses `openshell-sdk-go` via a single shared `openshell.ClientInterface`. Handlers access sub-clients directly:
 
 ```go
-func (c *Client) ListSandboxes(ctx context.Context, workspace string) ([]*pb.Sandbox, error) {
-    resp, err := c.openshell.ListSandboxes(ctx, &pb.ListSandboxesRequest{
-        Workspace: workspace,
-    })
-    if err != nil {
-        return nil, err
-    }
-    return resp.Sandboxes, nil
-}
+sandboxes, err := app.client.Sandboxes().List(r.Context(), workspace)
 ```
 
-Only wrap user-facing RPCs (~30). Skip supervisor/internal RPCs.
+Per-request JWT forwarding is handled by `ContextAuthProvider` in `internal/sdkclient/auth.go`, which reads the token from the request context on every gRPC call.
 
 ## Auth
 
 OIDC via `go-oidc` v3. Per-request flow:
 1. Extract JWT from `Authorization: Bearer` header or HTTP-only cookie
 2. Validate against gateway's OIDC issuer JWKS
-3. Forward same JWT to gateway on every gRPC call via `grpc.PerRPCCredentials`
+3. Forward same JWT to gateway on every SDK call via `ContextAuthProvider`
 4. Gateway enforces RBAC (admin/user roles) and workspace membership
 
 ## Configuration
@@ -96,10 +81,6 @@ type ErrorResponse struct {
 - `httptest.NewRecorder()` + `http.NewRequest()` for handler tests
 - `slog` for structured logging
 
-## Proto regeneration
+## SDK dependency
 
-```bash
-make proto  # runs protoc on backend/proto/*.proto → backend/gen/
-```
-
-Proto files are copied from `NVIDIA/OpenShell/proto/`. Keep them in sync manually or via CI check.
+The BFF depends on `github.com/rhuss/openshell-sdk-go`. Update with `go get -u` in `backend/`.

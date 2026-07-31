@@ -178,7 +178,7 @@ generate_pki() {
         -subj "/CN=localhost" 2>/dev/null
     cat > "$PKI_DIR/server/san.cnf" <<EOF
 [v3_req]
-subjectAltName = DNS:localhost, IP:127.0.0.1
+subjectAltName = DNS:localhost, DNS:host.containers.internal, IP:127.0.0.1
 EOF
     openssl x509 -req -in "$PKI_DIR/server/tls.csr" \
         -CA "$PKI_DIR/ca.crt" -CAkey "$PKI_DIR/ca.key" -CAcreateserial \
@@ -443,6 +443,14 @@ generate_gateway_config() {
 
     ensure_podman_network
 
+    local jwt_dir="$STATE_DIR/jwt"
+    if [ ! -f "$jwt_dir/signing.pem" ]; then
+        mkdir -p "$jwt_dir"
+        (umask 077; openssl genpkey -algorithm Ed25519 -out "$jwt_dir/signing.pem" 2>/dev/null)
+        openssl pkey -in "$jwt_dir/signing.pem" -pubout -out "$jwt_dir/public.pem" 2>/dev/null
+        openssl rand -hex 16 > "$jwt_dir/kid"
+    fi
+
     cat > "$GATEWAY_CONFIG_FILE" <<EOF
 [openshell]
 version = 1
@@ -450,6 +458,11 @@ version = 1
 [openshell.gateway]
 bind_address = "0.0.0.0:${GATEWAY_GRPC_PORT}"
 compute_drivers = ["podman"]
+
+[openshell.gateway.gateway_jwt]
+signing_key_path = "$jwt_dir/signing.pem"
+public_key_path = "$jwt_dir/public.pem"
+kid_path = "$jwt_dir/kid"
 
 [openshell.drivers.podman]
 socket_path = "$podman_socket"
