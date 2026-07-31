@@ -18,7 +18,6 @@ import {
   useAttachProvider,
   useAttachedProviders,
   useDetachProvider,
-  useSandbox,
 } from '../api/sandboxes';
 
 type SandboxProvidersTabProps = {
@@ -30,7 +29,6 @@ type SandboxProvidersTabProps = {
 // current resource_version for optimistic concurrency.
 const SandboxProvidersTab: React.FC<SandboxProvidersTabProps> = ({ workspace, sandboxName }) => {
   const attached = useAttachedProviders(workspace, sandboxName);
-  const sandbox = useSandbox(workspace, sandboxName);
   const workspaceProviders = useProviders(workspace);
   const attach = useAttachProvider(workspace, sandboxName);
   const detach = useDetachProvider(workspace, sandboxName);

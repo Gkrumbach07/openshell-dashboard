@@ -25,6 +25,7 @@ import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/reac
 
 import { deleteProvider, useProviders } from '../api/providers';
 import { useAlerts } from '../app/AlertContext';
+import { useWorkspaceRole } from '../app/useWorkspaceRole';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CreateProviderModal from '../components/CreateProviderModal';
 import { useBulkDelete } from '../components/useBulkDelete';
@@ -40,6 +41,7 @@ type ProviderListPageProps = {
 const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect, renderCredentialInput }) => {
   const providers = useProviders(workspace);
   const { addSuccess } = useAlerts();
+  const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
@@ -101,13 +103,15 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
             Providers register inference endpoints and service credentials (Anthropic, NVIDIA NIM,
             GitLab, ...) that sandboxes can use.
           </EmptyStateBody>
-          <EmptyStateFooter>
-            <EmptyStateActions>
-              <Button onClick={() => setCreateOpen(true)} data-testid="create-provider-empty">
-                Add provider
-              </Button>
-            </EmptyStateActions>
-          </EmptyStateFooter>
+          {isWorkspaceAdmin && (
+            <EmptyStateFooter>
+              <EmptyStateActions>
+                <Button onClick={() => setCreateOpen(true)} data-testid="create-provider-empty">
+                  Add provider
+                </Button>
+              </EmptyStateActions>
+            </EmptyStateFooter>
+          )}
         </EmptyState>
         <CreateProviderModal
           workspace={workspace}
@@ -124,41 +128,45 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
     <>
       <Toolbar aria-label="Provider actions">
         <ToolbarContent>
-          <ToolbarItem>
-            <Button onClick={() => setCreateOpen(true)} data-testid="create-provider">
-              Add provider
-            </Button>
-          </ToolbarItem>
-          <ToolbarItem>
-            <Dropdown
-              isOpen={isActionsOpen}
-              onOpenChange={setActionsOpen}
-              onSelect={() => setActionsOpen(false)}
-              toggle={(toggleRef) => (
-                <MenuToggle
-                  ref={toggleRef}
-                  variant="plain"
-                  onClick={() => setActionsOpen((prev) => !prev)}
-                  isExpanded={isActionsOpen}
-                  aria-label="Actions"
-                  data-testid="provider-actions-kebab"
-                >
-                  <EllipsisVIcon />
-                </MenuToggle>
-              )}
-            >
-              <DropdownList>
-                <DropdownItem
-                  key="delete-selected"
-                  isDisabled={numSelected === 0}
-                  onClick={() => setDeleteTargets(selected)}
-                  data-testid="delete-selected-providers"
-                >
-                  Delete selected{numSelected > 0 ? ` (${numSelected})` : ''}
-                </DropdownItem>
-              </DropdownList>
-            </Dropdown>
-          </ToolbarItem>
+          {isWorkspaceAdmin && (
+            <ToolbarItem>
+              <Button onClick={() => setCreateOpen(true)} data-testid="create-provider">
+                Add provider
+              </Button>
+            </ToolbarItem>
+          )}
+          {isWorkspaceAdmin && (
+            <ToolbarItem>
+              <Dropdown
+                isOpen={isActionsOpen}
+                onOpenChange={setActionsOpen}
+                onSelect={() => setActionsOpen(false)}
+                toggle={(toggleRef) => (
+                  <MenuToggle
+                    ref={toggleRef}
+                    variant="plain"
+                    onClick={() => setActionsOpen((prev) => !prev)}
+                    isExpanded={isActionsOpen}
+                    aria-label="Actions"
+                    data-testid="provider-actions-kebab"
+                  >
+                    <EllipsisVIcon />
+                  </MenuToggle>
+                )}
+              >
+                <DropdownList>
+                  <DropdownItem
+                    key="delete-selected"
+                    isDisabled={numSelected === 0}
+                    onClick={() => setDeleteTargets(selected)}
+                    data-testid="delete-selected-providers"
+                  >
+                    Delete selected{numSelected > 0 ? ` (${numSelected})` : ''}
+                  </DropdownItem>
+                </DropdownList>
+              </Dropdown>
+            </ToolbarItem>
+          )}
           <ToolbarItem align={{ default: 'alignEnd' }}>
             <Pagination
               itemCount={totalCount}
@@ -177,35 +185,39 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
       <Table aria-label="Providers" data-testid="provider-table">
         <Thead>
           <Tr>
-            <Th
-              select={{
-                onSelect: (_event, isSelecting) => toggleAll(isSelecting),
-                isSelected: pageAllSelected,
-              }}
-              aria-label="Select all providers"
-            />
+            {isWorkspaceAdmin && (
+              <Th
+                select={{
+                  onSelect: (_event, isSelecting) => toggleAll(isSelecting),
+                  isSelected: pageAllSelected,
+                }}
+                aria-label="Select all providers"
+              />
+            )}
             <Th>Name</Th>
             <Th>Type</Th>
             <Th>Credentials</Th>
             <Th>Age</Th>
-            <Th screenReaderText="Actions" />
+            {isWorkspaceAdmin && <Th screenReaderText="Actions" />}
           </Tr>
         </Thead>
         <Tbody>
           {pageRows.map((provider, rowIndex) => (
             <Tr key={provider.metadata.name}>
-              <Td
-                select={{
-                  rowIndex,
-                  onSelect: (_event, isSelecting) =>
-                    setSelected((current) =>
-                      isSelecting
-                        ? [...current, provider.metadata.name]
-                        : current.filter((item) => item !== provider.metadata.name),
-                    ),
-                  isSelected: selected.includes(provider.metadata.name),
-                }}
-              />
+              {isWorkspaceAdmin && (
+                <Td
+                  select={{
+                    rowIndex,
+                    onSelect: (_event, isSelecting) =>
+                      setSelected((current) =>
+                        isSelecting
+                          ? [...current, provider.metadata.name]
+                          : current.filter((item) => item !== provider.metadata.name),
+                      ),
+                    isSelected: selected.includes(provider.metadata.name),
+                  }}
+                />
+              )}
               <Td dataLabel="Name" modifier="truncate">
                 <Tooltip content={provider.metadata.name}>
                   <Button
@@ -235,16 +247,18 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
                 )}
               </Td>
               <Td dataLabel="Age">{formatAge(provider.metadata.createdAtMs)}</Td>
-              <Td isActionCell>
-                <ActionsColumn
-                  items={[
-                    {
-                      title: 'Delete',
-                      onClick: () => setDeleteTargets([provider.metadata.name]),
-                    },
-                  ]}
-                />
-              </Td>
+              {isWorkspaceAdmin && (
+                <Td isActionCell>
+                  <ActionsColumn
+                    items={[
+                      {
+                        title: 'Delete',
+                        onClick: () => setDeleteTargets([provider.metadata.name]),
+                      },
+                    ]}
+                  />
+                </Td>
+              )}
             </Tr>
           ))}
         </Tbody>

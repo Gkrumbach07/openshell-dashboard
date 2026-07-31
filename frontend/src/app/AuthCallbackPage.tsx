@@ -3,7 +3,8 @@ import { Alert, Bullseye, Button, Spinner } from '@patternfly/react-core';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { getAuthConfig } from '../api/auth';
-import { clearToken, setRefreshToken, setToken } from './authStore';
+import { setRefreshToken, setToken } from './authStore';
+import { logout } from './logout';
 import { completeLogin } from './oidc';
 
 const AuthCallbackPage: React.FC = () => {
@@ -31,7 +32,7 @@ const AuthCallbackPage: React.FC = () => {
         if (result.refreshToken) {
           setRefreshToken(result.refreshToken);
         }
-        navigate('/gateway', { replace: true });
+        navigate('/workspaces', { replace: true });
       } catch (exchangeError) {
         setError((exchangeError as Error).message);
       }
@@ -47,10 +48,7 @@ const AuthCallbackPage: React.FC = () => {
           actionLinks={
             <Button
               variant="link"
-              onClick={() => {
-                clearToken();
-                window.location.assign('/login');
-              }}
+              onClick={() => logout()}
             >
               Try again
             </Button>

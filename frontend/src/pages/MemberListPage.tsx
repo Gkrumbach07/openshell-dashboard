@@ -17,6 +17,7 @@ import { UsersIcon } from '@patternfly/react-icons';
 import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
 import { useMembers, useRemoveMember } from '../api/workspaces';
+import { useWorkspaceRole } from '../app/useWorkspaceRole';
 import AddMemberModal from '../components/AddMemberModal';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { formatAge } from '../components/utils';
@@ -28,6 +29,7 @@ type MemberListPageProps = {
 // Workspace member list. Roles are USER or ADMIN; the API has no
 // role-update RPC, so a role change is remove + re-add.
 const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
+  const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const members = useMembers(workspace);
   const removeMember = useRemoveMember(workspace);
   const [isAddOpen, setAddOpen] = useState(false);
@@ -58,32 +60,36 @@ const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
           <EmptyStateBody>
             Add members by their OIDC subject to grant access to this workspace.
           </EmptyStateBody>
-          <EmptyStateFooter>
-            <EmptyStateActions>
-              <Button onClick={() => setAddOpen(true)} data-testid="add-member-empty">
-                Add member
-              </Button>
-            </EmptyStateActions>
-          </EmptyStateFooter>
+          {isWorkspaceAdmin && (
+            <EmptyStateFooter>
+              <EmptyStateActions>
+                <Button onClick={() => setAddOpen(true)} data-testid="add-member-empty">
+                  Add member
+                </Button>
+              </EmptyStateActions>
+            </EmptyStateFooter>
+          )}
         </EmptyState>
       ) : (
         <>
-          <Toolbar aria-label="Member actions">
-            <ToolbarContent>
-              <ToolbarItem>
-                <Button onClick={() => setAddOpen(true)} data-testid="add-member">
-                  Add member
-                </Button>
-              </ToolbarItem>
-            </ToolbarContent>
-          </Toolbar>
+          {isWorkspaceAdmin && (
+            <Toolbar aria-label="Member actions">
+              <ToolbarContent>
+                <ToolbarItem>
+                  <Button onClick={() => setAddOpen(true)} data-testid="add-member">
+                    Add member
+                  </Button>
+                </ToolbarItem>
+              </ToolbarContent>
+            </Toolbar>
+          )}
           <Table aria-label="Workspace members" data-testid="member-table">
             <Thead>
               <Tr>
                 <Th>Subject</Th>
                 <Th>Role</Th>
                 <Th>Added</Th>
-                <Th screenReaderText="Actions" />
+                {isWorkspaceAdmin && <Th screenReaderText="Actions" />}
               </Tr>
             </Thead>
             <Tbody>
@@ -94,16 +100,18 @@ const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
                     <Label color={member.role === 'ADMIN' ? 'yellow' : 'blue'}>{member.role}</Label>
                   </Td>
                   <Td dataLabel="Added">{formatAge(member.metadata.createdAtMs)}</Td>
-                  <Td isActionCell>
-                    <ActionsColumn
-                      items={[
-                        {
-                          title: 'Remove',
-                          onClick: () => setRemoveTarget(member.principalSubject),
-                        },
-                      ]}
-                    />
-                  </Td>
+                  {isWorkspaceAdmin && (
+                    <Td isActionCell>
+                      <ActionsColumn
+                        items={[
+                          {
+                            title: 'Remove',
+                            onClick: () => setRemoveTarget(member.principalSubject),
+                          },
+                        ]}
+                      />
+                    </Td>
+                  )}
                 </Tr>
               ))}
             </Tbody>

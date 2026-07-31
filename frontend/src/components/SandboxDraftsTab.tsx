@@ -46,6 +46,7 @@ import {
   useRejectDraftChunk,
   useUndoDraftChunk,
 } from '../api/policy';
+import { useWorkspaceRole } from '../app/useWorkspaceRole';
 import { formatTimestamp } from './utils';
 import type { ApiError } from '../api/client';
 import type { NetworkPolicyRule, PolicyChunk } from '../types';
@@ -82,6 +83,7 @@ const chunkStatusIcon = (status: string) => {
 };
 
 const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxName }) => {
+  const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const drafts = useDraftPolicy(workspace, sandboxName);
   const approve = useApproveDraftChunk(workspace, sandboxName);
   const reject = useRejectDraftChunk(workspace, sandboxName);
@@ -202,7 +204,7 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
                 {chunk.rejectionReason && <> · rejected: {chunk.rejectionReason}</>}
               </Content>
             </StackItem>
-            {chunk.status === 'pending' && (
+            {isWorkspaceAdmin && chunk.status === 'pending' && (
               <StackItem>
                 {rejecting === chunk.id ? (
                   <Stack hasGutter>
@@ -268,7 +270,7 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
                 )}
               </StackItem>
             )}
-            {chunk.status === 'approved' && (
+            {isWorkspaceAdmin && chunk.status === 'approved' && (
               <StackItem>
                 <Button
                   variant="warning"
@@ -304,40 +306,42 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
         </StackItem>
       )}
       <StackItem>
-        <Toolbar aria-label="Draft actions">
-          <ToolbarContent>
-            <ToolbarItem>
-              <Button
-                onClick={() => approveAll.mutate(includeFlagged)}
-                isDisabled={pending.length === 0 || approveAll.isPending}
-                isLoading={approveAll.isPending}
-                data-testid="approve-all-chunks"
-              >
-                Approve all pending ({pending.length})
-              </Button>
-            </ToolbarItem>
-            <ToolbarItem>
-              <Button
-                variant="secondary"
-                onClick={() => clear.mutate(undefined)}
-                isDisabled={pending.length === 0 || clear.isPending}
-                isLoading={clear.isPending}
-                data-testid="clear-all-chunks"
-              >
-                Clear all pending
-              </Button>
-            </ToolbarItem>
-            <ToolbarItem alignSelf="center">
-              <Checkbox
-                id="include-security-flagged"
-                data-testid="include-security-flagged"
-                label="Include security-flagged proposals"
-                isChecked={includeFlagged}
-                onChange={(_event, checked) => setIncludeFlagged(checked)}
-              />
-            </ToolbarItem>
-          </ToolbarContent>
-        </Toolbar>
+        {isWorkspaceAdmin && (
+          <Toolbar aria-label="Draft actions">
+            <ToolbarContent>
+              <ToolbarItem>
+                <Button
+                  onClick={() => approveAll.mutate(includeFlagged)}
+                  isDisabled={pending.length === 0 || approveAll.isPending}
+                  isLoading={approveAll.isPending}
+                  data-testid="approve-all-chunks"
+                >
+                  Approve all pending ({pending.length})
+                </Button>
+              </ToolbarItem>
+              <ToolbarItem>
+                <Button
+                  variant="secondary"
+                  onClick={() => clear.mutate(undefined)}
+                  isDisabled={pending.length === 0 || clear.isPending}
+                  isLoading={clear.isPending}
+                  data-testid="clear-all-chunks"
+                >
+                  Clear all pending
+                </Button>
+              </ToolbarItem>
+              <ToolbarItem alignSelf="center">
+                <Checkbox
+                  id="include-security-flagged"
+                  data-testid="include-security-flagged"
+                  label="Include security-flagged proposals"
+                  isChecked={includeFlagged}
+                  onChange={(_event, checked) => setIncludeFlagged(checked)}
+                />
+              </ToolbarItem>
+            </ToolbarContent>
+          </Toolbar>
+        )}
       </StackItem>
       {chunks.length === 0 ? (
         <StackItem>

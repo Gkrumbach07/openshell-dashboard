@@ -36,7 +36,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useGatewayInfo } from '../api/gateway';
 import { useCurrentUser, useFeatureFlags } from '../api/auth';
 import { useUserRole } from './useUserRole';
-import { clearToken } from './authStore';
+import { logout } from './logout';
 
 type AppLayoutProps = {
   children: React.ReactNode;
@@ -50,7 +50,7 @@ type NavEntry = {
 };
 
 const navEntries: NavEntry[] = [
-  { path: '/gateway', label: 'Gateway' },
+  { path: '/gateway', label: 'Gateway', adminOnly: true },
   { path: '/workspaces', label: 'Workspaces' },
   { path: '/global-policy', label: 'Global policy', adminOnly: true, featureKey: 'globalPolicy' },
   { path: '/settings', label: 'Settings', adminOnly: true, featureKey: 'settings' },
@@ -77,7 +77,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         <MastheadBrand>
           <MastheadLogo
             component={(props) => (
-              <Link {...props} to="/gateway" className="pf-v6-u-text-decoration-none" />
+              <Link {...props} to={isPlatformAdmin ? '/gateway' : '/workspaces'} className="pf-v6-u-text-decoration-none" />
             )}
           >
             <span className="pf-v6-u-font-weight-bold pf-v6-u-font-size-lg pf-v6-u-white-space-nowrap">
@@ -165,10 +165,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   <Divider key="divider" />
                   <DropdownItem
                     key="logout"
-                    onClick={() => {
-                      clearToken();
-                      window.location.assign('/login');
-                    }}
+                    onClick={() => logout()}
                     data-testid="logout"
                   >
                     Log out

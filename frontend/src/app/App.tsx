@@ -124,7 +124,7 @@ const AuthenticatedApp: React.FC = () => (
       <Route path="/workspaces/:workspace" element={<WorkspaceDetailRoute />} />
       <Route path="/workspaces/:workspace/sandboxes/:sandbox" element={<SandboxDetailRoute />} />
       <Route path="/workspaces/:workspace/providers/:provider" element={<ProviderDetailRoute />} />
-      <Route path="*" element={<Navigate to="/gateway" replace />} />
+      <Route path="*" element={<Navigate to="/workspaces" replace />} />
     </Routes>
   </AppLayout>
 );
@@ -139,7 +139,7 @@ const AppRoutes: React.FC = () => {
         path="/login"
         element={
           authenticated ? (
-            <Navigate to="/gateway" replace />
+            <Navigate to="/workspaces" replace />
           ) : (
             <LoginPage onAuthenticated={() => setAuthenticated(true)} />
           )

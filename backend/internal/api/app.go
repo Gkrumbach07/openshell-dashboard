@@ -46,6 +46,7 @@ func (app *App) Routes() http.Handler {
 		r.Get("/auth/config", app.GetAuthConfig)
 		r.Post("/auth/token-exchange", app.TokenExchange)
 		r.Post("/auth/refresh", app.Refresh)
+		r.Get("/auth/logout", app.Logout)
 		// BFF liveness (does not call the gateway).
 		r.Get("/healthz", app.GetHealthz)
 

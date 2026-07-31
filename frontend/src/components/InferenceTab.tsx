@@ -27,6 +27,7 @@ import {
 
 import { useDeleteInferenceRoute, useInferenceRoute, useSetInferenceRoute } from '../api/inference';
 import { useProviders } from '../api/providers';
+import { useWorkspaceRole } from '../app/useWorkspaceRole';
 import type { ApiError } from '../api/client';
 import type { ModelPickerSlot } from '../types';
 
@@ -37,11 +38,12 @@ type InferenceTabProps = {
 
 const SYSTEM_ROUTE = 'sandbox-system';
 
-const RouteCard: React.FC<{ workspace: string; route: string; title: string; note: string }> = ({
+const RouteCard: React.FC<{ workspace: string; route: string; title: string; note: string; isWorkspaceAdmin: boolean }> = ({
   workspace,
   route,
   title,
   note,
+  isWorkspaceAdmin,
 }) => {
   const query = useInferenceRoute(workspace, route);
   const deleteRoute = useDeleteInferenceRoute(workspace);
@@ -87,16 +89,18 @@ const RouteCard: React.FC<{ workspace: string; route: string; title: string; not
                 <DescriptionListDescription>{query.data?.version}</DescriptionListDescription>
               </DescriptionListGroup>
             </DescriptionList>
-            <Button
-              variant="link"
-              isDanger
-              isInline
-              onClick={() => deleteRoute.mutate(route)}
-              isDisabled={deleteRoute.isPending}
-              data-testid={`delete-route-${route || 'user'}`}
-            >
-              Delete route
-            </Button>
+            {isWorkspaceAdmin && (
+              <Button
+                variant="link"
+                isDanger
+                isInline
+                onClick={() => deleteRoute.mutate(route)}
+                isDisabled={deleteRoute.isPending}
+                data-testid={`delete-route-${route || 'user'}`}
+              >
+                Delete route
+              </Button>
+            )}
           </>
         )}
       </CardBody>
@@ -107,6 +111,7 @@ const RouteCard: React.FC<{ workspace: string; route: string; title: string; not
 // Inference routing: all sandboxes in the workspace reach inference.local,
 // and the gateway routes it to the configured provider/model.
 const InferenceTab: React.FC<InferenceTabProps> = ({ workspace, renderModelPicker }) => {
+  const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const providers = useProviders(workspace);
   const setRoute = useSetInferenceRoute(workspace);
   const [providerName, setProviderName] = useState('');
@@ -142,6 +147,7 @@ const InferenceTab: React.FC<InferenceTabProps> = ({ workspace, renderModelPicke
           route=""
           title="User route (inference.local)"
           note="Used by user code inside sandboxes."
+          isWorkspaceAdmin={isWorkspaceAdmin}
         />
       </GridItem>
       <GridItem md={6}>
@@ -150,8 +156,10 @@ const InferenceTab: React.FC<InferenceTabProps> = ({ workspace, renderModelPicke
           route={SYSTEM_ROUTE}
           title="System route (sandbox-system)"
           note="Used by platform functions (agent harness); not accessible to user code."
+          isWorkspaceAdmin={isWorkspaceAdmin}
         />
       </GridItem>
+      {isWorkspaceAdmin && (
       <GridItem span={12}>
         <Card>
           <CardTitle>Set route</CardTitle>
@@ -246,6 +254,7 @@ const InferenceTab: React.FC<InferenceTabProps> = ({ workspace, renderModelPicke
           </CardBody>
         </Card>
       </GridItem>
+      )}
     </Grid>
   );
 };

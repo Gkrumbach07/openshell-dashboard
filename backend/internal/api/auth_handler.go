@@ -109,6 +109,44 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Logout returns the OIDC end-session URL so the frontend can redirect the
+// browser to the IdP to clear the SSO session cookie.
+func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
+	if authConfig.Issuer == "" {
+		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
+		return
+	}
+
+	discoveryURL := strings.TrimSuffix(authConfig.Issuer, "/") + "/.well-known/openid-configuration"
+	discoveryResp, err := http.Get(discoveryURL)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
+		return
+	}
+	defer discoveryResp.Body.Close()
+
+	var discovery struct {
+		EndSessionEndpoint string `json:"end_session_endpoint"`
+	}
+	if err := json.NewDecoder(discoveryResp.Body).Decode(&discovery); err != nil || discovery.EndSessionEndpoint == "" {
+		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
+		return
+	}
+
+	postLogoutRedirect := r.URL.Query().Get("redirect")
+	if postLogoutRedirect == "" {
+		postLogoutRedirect = "/login"
+	}
+
+	logoutURL := fmt.Sprintf("%s?client_id=%s&post_logout_redirect_uri=%s",
+		discovery.EndSessionEndpoint,
+		url.QueryEscape(authConfig.ClientID),
+		url.QueryEscape(postLogoutRedirect),
+	)
+
+	writeJSON(w, http.StatusOK, map[string]string{"redirect": logoutURL})
+}
+
 // Refresh exchanges a refresh token for a new access token via the IdP.
 func (app *App) Refresh(w http.ResponseWriter, r *http.Request) {
 	if authConfig.Issuer == "" || authConfig.ClientID == "" {

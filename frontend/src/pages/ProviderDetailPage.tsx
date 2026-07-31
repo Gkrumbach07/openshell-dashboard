@@ -30,6 +30,7 @@ import {
   useRotateProviderCredential,
 } from '../api/providers';
 import { useAlerts } from '../app/AlertContext';
+import { useWorkspaceRole } from '../app/useWorkspaceRole';
 import ConfigureRefreshModal from '../components/ConfigureRefreshModal';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import EditProviderModal from '../components/EditProviderModal';
@@ -45,6 +46,7 @@ type ProviderDetailPageProps = {
 // Provider detail. Credential VALUES are secret and never leave the gateway —
 // only the credential key names and their expiry timestamps are shown.
 const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, providerName }) => {
+  const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const provider = useProvider(workspace, providerName);
   const refreshStatus = useProviderRefreshStatus(workspace, providerName);
   const configureMutation = useConfigureProviderRefresh(workspace, providerName);
@@ -94,16 +96,18 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
           <FlexItem>
             <Title headingLevel="h1">{data.metadata.name}</Title>
           </FlexItem>
-          <FlexItem>
-            <Button
-              variant="secondary"
-              icon={<PencilAltIcon />}
-              onClick={() => setIsEditOpen(true)}
-              data-testid="edit-provider-button"
-            >
-              Edit provider
-            </Button>
-          </FlexItem>
+          {isWorkspaceAdmin && (
+            <FlexItem>
+              <Button
+                variant="secondary"
+                icon={<PencilAltIcon />}
+                onClick={() => setIsEditOpen(true)}
+                data-testid="edit-provider-button"
+              >
+                Edit provider
+              </Button>
+            </FlexItem>
+          )}
         </Flex>
         <Label color="purple">{data.type}</Label>
       </PageSection>
@@ -186,7 +190,7 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
       <PageSection>
         <Card data-testid="provider-refresh-card">
           <CardHeader
-            actions={{
+            actions={isWorkspaceAdmin ? {
               actions: (
                 <Button
                   variant="secondary"
@@ -197,7 +201,7 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
                   Configure refresh
                 </Button>
               ),
-            }}
+            } : undefined}
           >
             <CardTitle>Credential refresh</CardTitle>
           </CardHeader>
@@ -215,7 +219,7 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
                     <Th>Next refresh</Th>
                     <Th>Last refresh</Th>
                     <Th>Last error</Th>
-                    <Th />
+                    {isWorkspaceAdmin && <Th />}
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -236,39 +240,41 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
                         {cred.lastRefreshAtMs ? formatTimestamp(cred.lastRefreshAtMs) : '-'}
                       </Td>
                       <Td dataLabel="Last error">{cred.lastError || '-'}</Td>
-                      <Td dataLabel="Actions" isActionCell>
-                        <Flex>
-                          <FlexItem>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              icon={<SyncAltIcon />}
-                              isLoading={rotateMutation.isPending}
-                              isDisabled={rotateMutation.isPending}
-                              onClick={() =>
-                                rotateMutation.mutate(cred.credentialKey, {
-                                  onSuccess: () => addSuccess(`Rotated credential "${cred.credentialKey}"`),
-                                  onError: (err) => addDanger(`Rotate failed: ${(err as Error).message}`),
-                                })
-                              }
-                              data-testid={`rotate-${cred.credentialKey}`}
-                            >
-                              Rotate now
-                            </Button>
-                          </FlexItem>
-                          <FlexItem>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              icon={<TrashIcon />}
-                              onClick={() => setDeleteRefreshKey(cred.credentialKey)}
-                              data-testid={`delete-refresh-${cred.credentialKey}`}
-                            >
-                              Delete
-                            </Button>
-                          </FlexItem>
-                        </Flex>
-                      </Td>
+                      {isWorkspaceAdmin && (
+                        <Td dataLabel="Actions" isActionCell>
+                          <Flex>
+                            <FlexItem>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                icon={<SyncAltIcon />}
+                                isLoading={rotateMutation.isPending}
+                                isDisabled={rotateMutation.isPending}
+                                onClick={() =>
+                                  rotateMutation.mutate(cred.credentialKey, {
+                                    onSuccess: () => addSuccess(`Rotated credential "${cred.credentialKey}"`),
+                                    onError: (err) => addDanger(`Rotate failed: ${(err as Error).message}`),
+                                  })
+                                }
+                                data-testid={`rotate-${cred.credentialKey}`}
+                              >
+                                Rotate now
+                              </Button>
+                            </FlexItem>
+                            <FlexItem>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                icon={<TrashIcon />}
+                                onClick={() => setDeleteRefreshKey(cred.credentialKey)}
+                                data-testid={`delete-refresh-${cred.credentialKey}`}
+                              >
+                                Delete
+                              </Button>
+                            </FlexItem>
+                          </Flex>
+                        </Td>
+                      )}
                     </Tr>
                   ))}
                 </Tbody>

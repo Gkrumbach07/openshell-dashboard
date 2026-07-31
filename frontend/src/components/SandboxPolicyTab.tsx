@@ -27,6 +27,7 @@ import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
 import { useSandbox } from '../api/sandboxes';
 import { useSandboxPolicy, useUpdateSandboxPolicy } from '../api/policy';
+import { useWorkspaceRole } from '../app/useWorkspaceRole';
 import { formatTimestamp } from './utils';
 import type { ApiError } from '../api/client';
 import type { PolicyStatus, SandboxPolicy } from '../types';
@@ -69,6 +70,7 @@ export const policyStatusIcon = (status: PolicyStatus) => {
 // create — filesystem/landlock/process are immutable, so the editor keeps
 // the static fields from the current policy and replaces networkPolicies.
 const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({ workspace, sandboxName }) => {
+  const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const policyView = useSandboxPolicy(workspace, sandboxName);
   const sandbox = useSandbox(workspace, sandboxName);
   const updatePolicy = useUpdateSandboxPolicy(workspace, sandboxName);
@@ -138,11 +140,13 @@ const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({ workspace, sandboxN
           <ToolbarItem>
             <Label color="blue">Active version: {policyView.data?.activeVersion ?? '-'}</Label>
           </ToolbarItem>
-          <ToolbarItem>
-            <Button onClick={openEditor} isDisabled={!currentPolicy} data-testid="edit-policy">
-              Edit network rules
-            </Button>
-          </ToolbarItem>
+          {isWorkspaceAdmin && (
+            <ToolbarItem>
+              <Button onClick={openEditor} isDisabled={!currentPolicy} data-testid="edit-policy">
+                Edit network rules
+              </Button>
+            </ToolbarItem>
+          )}
         </ToolbarContent>
       </Toolbar>
 

@@ -38,6 +38,7 @@ import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useSandbox } from '../api/sandboxes';
 import { useSandboxPolicy, useUpdateSandboxPolicy } from '../api/policy';
 import { useAlerts } from '../app/AlertContext';
+import { useWorkspaceRole } from '../app/useWorkspaceRole';
 import { policyStatusColor, policyStatusIcon } from './SandboxPolicyTab';
 import { formatTimestamp } from './utils';
 import type { ApiError } from '../api/client';
@@ -134,6 +135,7 @@ const endpointSummary = (ep: NetworkEndpoint): string => {
 };
 
 const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxName }) => {
+  const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const policyView = useSandboxPolicy(workspace, sandboxName);
   const sandbox = useSandbox(workspace, sandboxName);
   const updatePolicy = useUpdateSandboxPolicy(workspace, sandboxName);
@@ -308,19 +310,21 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
             <Card>
               <CardTitle>Network rules (editable)</CardTitle>
               <CardBody>
-                <Toolbar aria-label="Network rule actions">
-                  <ToolbarContent>
-                    <ToolbarItem>
-                      <Button
-                        icon={<PlusCircleIcon />}
-                        onClick={() => setAddOpen(true)}
-                        data-testid="add-endpoint-button"
-                      >
-                        Add endpoint
-                      </Button>
-                    </ToolbarItem>
-                  </ToolbarContent>
-                </Toolbar>
+                {isWorkspaceAdmin && (
+                  <Toolbar aria-label="Network rule actions">
+                    <ToolbarContent>
+                      <ToolbarItem>
+                        <Button
+                          icon={<PlusCircleIcon />}
+                          onClick={() => setAddOpen(true)}
+                          data-testid="add-endpoint-button"
+                        >
+                          Add endpoint
+                        </Button>
+                      </ToolbarItem>
+                    </ToolbarContent>
+                  </Toolbar>
+                )}
                 {Object.keys(networkRules).length === 0 ? (
                   <Alert variant="info" isInline title="No network rules">
                     This sandbox has no network egress. Add an endpoint to allow outbound connections.
@@ -332,7 +336,7 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                         <Th>Rule name</Th>
                         <Th>Endpoints</Th>
                         <Th>Binaries</Th>
-                        <Th screenReaderText="Actions" />
+                        {isWorkspaceAdmin && <Th screenReaderText="Actions" />}
                       </Tr>
                     </Thead>
                     <Tbody>
@@ -352,16 +356,18 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                           <Td dataLabel="Binaries">
                             {(rule.binaries ?? []).map((b) => b.path).join(', ') || '-'}
                           </Td>
-                          <Td isActionCell>
-                            <Button
-                              variant="plain"
-                              icon={<TrashIcon />}
-                              onClick={() => removeRule(name)}
-                              isDisabled={updatePolicy.isPending}
-                              aria-label={`Remove rule ${name}`}
-                              data-testid={`remove-rule-${name}`}
-                            />
-                          </Td>
+                          {isWorkspaceAdmin && (
+                            <Td isActionCell>
+                              <Button
+                                variant="plain"
+                                icon={<TrashIcon />}
+                                onClick={() => removeRule(name)}
+                                isDisabled={updatePolicy.isPending}
+                                aria-label={`Remove rule ${name}`}
+                                data-testid={`remove-rule-${name}`}
+                              />
+                            </Td>
+                          )}
                         </Tr>
                       ))}
                     </Tbody>
