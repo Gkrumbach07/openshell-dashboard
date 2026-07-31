@@ -17,6 +17,10 @@ PROTO_GRPC_OPTS := \
 	--go-grpc_opt=Minference.proto=$(GO_MODULE)/gen/inferencev1 \
 	--go-grpc_opt=Mopenshell.proto=$(GO_MODULE)/gen/openshellv1
 
+# Auto-source dev environment config if available (written by scripts/dev-env.sh)
+-include scripts/.env.dev
+export
+
 .PHONY: setup proto dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint typecheck clean
 
 setup: ## Install frontend deps and Go deps
@@ -32,7 +36,7 @@ proto: ## Regenerate Go stubs from backend/proto/*.proto into backend/gen/
 		$(addprefix $(PROTO_DIR)/,$(PROTO_FILES))
 	cd backend && go mod tidy
 
-dev-full: ## Start dev infrastructure (Keycloak + gateway) then frontend + BFF
+dev-full: ## Start Keycloak + gateway, then frontend + BFF (one command)
 	./scripts/dev-env.sh start
 	@$(MAKE) dev
 
@@ -40,7 +44,7 @@ dev: ## Start frontend dev server (:3000) and Go BFF (:8080)
 	@$(MAKE) -j2 dev-backend dev-frontend
 
 dev-backend:
-	cd backend && AUTH_DISABLED=$${AUTH_DISABLED:-true} go run ./cmd/server
+	cd backend && go run ./cmd/server
 
 dev-frontend:
 	cd frontend && npm start
