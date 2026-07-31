@@ -36,21 +36,13 @@ To test with real OIDC authentication against a local Keycloak and OpenShell gat
 
 ```bash
 make setup
-
-# Point at your OpenShell source checkout
-export OPENSHELL_DIR=~/path/to/openshell
-
-# Start the infrastructure (Keycloak + gateway)
-./scripts/dev-env.sh start
-
-# Run the dashboard with the printed env vars
-export OPENSHELL_GATEWAY_URL=grpcs://localhost:17670
-export OIDC_ISSUER=http://localhost:8180/realms/openshell
-export OIDC_CLIENT_ID=openshell-dashboard
-export GATEWAY_CA_CERT=$(pwd)/scripts/.pki/ca.crt
-export AUTH_DISABLED=false
-make dev
+export OPENSHELL_DIR=~/path/to/openshell    # your OpenShell checkout
+make dev-full                                # starts infra + dashboard
 ```
+
+That's it. `dev-full` starts Keycloak and the gateway (if not already running), writes a `scripts/.env.dev` config file, and launches the dashboard. On subsequent runs, `make dev` picks up the config automatically (no env vars needed).
+
+If `OPENSHELL_DIR` is not set, the script prompts interactively and offers to clone the repo for you. The chosen path is saved to `scripts/.env.dev` so you only configure it once.
 
 Open http://localhost:3000 and log in via Keycloak with one of the test users:
 
@@ -60,7 +52,22 @@ Open http://localhost:3000 and log in via Keycloak with one of the test users:
 | `user@test` | `user` | Workspace member |
 | `user-b@test` | `user-b` | Workspace member |
 
-The script is idempotent. Run `./scripts/dev-env.sh status` to check components, `stop` to tear down, or `rebuild-gateway` after pulling upstream changes.
+### What `dev-full` starts
+
+| Component | How | Lifecycle |
+|-----------|-----|-----------|
+| Keycloak | Podman container (`openshell-keycloak`) on port 8180 | Runs until `dev-env.sh stop` |
+| OpenShell gateway | Background process built from source, port 17670 (gRPCs) + 17671 (health) | Runs until `dev-env.sh stop` |
+| Dashboard BFF | `go run` on port 8080 | Runs with `make dev`, Ctrl+C to stop |
+| Dashboard frontend | Webpack dev server on port 3000 | Runs with `make dev`, Ctrl+C to stop |
+
+Keycloak and the gateway survive across `make dev` restarts. Stop them explicitly:
+
+```bash
+./scripts/dev-env.sh stop       # stops gateway + keycloak, cleans up orphans
+./scripts/dev-env.sh status     # check what's running
+./scripts/dev-env.sh rebuild-gateway  # rebuild after upstream changes
+```
 
 ## Configuration
 
