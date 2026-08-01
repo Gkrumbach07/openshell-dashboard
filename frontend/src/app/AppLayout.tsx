@@ -10,8 +10,6 @@ import {
   Dropdown,
   DropdownItem,
   DropdownList,
-  Label,
-  LabelGroup,
   Masthead,
   MastheadBrand,
   MastheadContent,
@@ -136,29 +134,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 popperProps={{ position: 'end' }}
               >
                 <DropdownList>
-                  {user.data?.email && (
-                    <DropdownItem key="email" isDisabled data-testid="user-email">
-                      {user.data.email}
-                    </DropdownItem>
-                  )}
-                  {(user.data?.roles?.length ?? 0) > 0 && (
-                    <DropdownItem key="roles" isDisabled data-testid="user-roles">
-                      <span className="pf-v6-u-font-size-sm pf-v6-u-color-200">Roles</span>
-                      <LabelGroup>
-                        {user.data!.roles.map((role) => (
-                          <Label key={role} isCompact>{role}</Label>
-                        ))}
-                      </LabelGroup>
-                    </DropdownItem>
-                  )}
-                  {user.data?.identityProvider && (
-                    <DropdownItem key="idp" isDisabled data-testid="user-idp">
-                      <DescriptionList isCompact isHorizontal>
-                        <DescriptionListGroup>
-                          <DescriptionListTerm>Identity provider</DescriptionListTerm>
-                          <DescriptionListDescription>{user.data.identityProvider}</DescriptionListDescription>
-                        </DescriptionListGroup>
-                      </DescriptionList>
+                  {user.data?.subject && (
+                    <DropdownItem
+                      key="copy-subject"
+                      onClick={() => {
+                        navigator.clipboard.writeText(user.data!.subject);
+                      }}
+                      data-testid="copy-subject"
+                    >
+                      Copy my subject ID
                     </DropdownItem>
                   )}
                   <Divider key="divider" />

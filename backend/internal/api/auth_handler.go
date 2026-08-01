@@ -98,13 +98,19 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if tokens.AccessToken == "" {
-		writeError(w, http.StatusBadGateway, "token_exchange_failed", "no access_token in response")
+	// Use id_token when it's a JWT (contains claims for gateway RBAC).
+	// Fall back to access_token for providers that use opaque id_tokens.
+	bearer := tokens.AccessToken
+	if tokens.IDToken != "" && strings.HasPrefix(tokens.IDToken, "eyJ") {
+		bearer = tokens.IDToken
+	}
+	if bearer == "" {
+		writeError(w, http.StatusBadGateway, "token_exchange_failed", "no token in response")
 		return
 	}
 
 	writeJSON(w, http.StatusOK, TokenExchangeResponse{
-		AccessToken:  tokens.AccessToken,
+		AccessToken:  bearer,
 		RefreshToken: tokens.RefreshToken,
 	})
 }

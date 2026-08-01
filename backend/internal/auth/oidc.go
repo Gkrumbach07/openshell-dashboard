@@ -29,7 +29,16 @@ type Claims struct {
 	Subject     string      `json:"sub"`
 	Email       string      `json:"email,omitempty"`
 	Name        string      `json:"name,omitempty"`
+	Groups      []string    `json:"groups,omitempty"`
 	RealmAccess RealmAccess `json:"realm_access,omitempty"`
+}
+
+// Roles returns the user's roles, preferring Dex-style groups over Keycloak realm_access.
+func (c *Claims) Roles() []string {
+	if len(c.Groups) > 0 {
+		return c.Groups
+	}
+	return c.RealmAccess.Roles
 }
 
 // Config holds OIDC settings.

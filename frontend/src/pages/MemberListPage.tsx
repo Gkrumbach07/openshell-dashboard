@@ -16,6 +16,7 @@ import {
 import { UsersIcon } from '@patternfly/react-icons';
 import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
+import { useCurrentUser } from '../api/auth';
 import { useMembers, useRemoveMember } from '../api/workspaces';
 import { useWorkspaceRole } from '../app/useWorkspaceRole';
 import AddMemberModal from '../components/AddMemberModal';
@@ -30,6 +31,7 @@ type MemberListPageProps = {
 // role-update RPC, so a role change is remove + re-add.
 const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
+  const { data: currentUser } = useCurrentUser();
   const members = useMembers(workspace);
   const removeMember = useRemoveMember(workspace);
   const [isAddOpen, setAddOpen] = useState(false);
@@ -93,9 +95,15 @@ const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
               </Tr>
             </Thead>
             <Tbody>
-              {rows.map((member) => (
+              {rows.map((member) => {
+                const isCurrentUser = member.principalSubject === currentUser?.subject;
+                return (
                 <Tr key={member.principalSubject}>
-                  <Td dataLabel="Subject">{member.principalSubject}</Td>
+                  <Td dataLabel="Subject">
+                    {isCurrentUser && currentUser?.displayName
+                      ? <>{currentUser.displayName} <Label isCompact color="blue">you</Label></>
+                      : member.principalSubject}
+                  </Td>
                   <Td dataLabel="Role">
                     <Label color={member.role === 'ADMIN' ? 'yellow' : 'blue'}>{member.role}</Label>
                   </Td>
@@ -113,7 +121,8 @@ const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
                     </Td>
                   )}
                 </Tr>
-              ))}
+                );
+              })}
             </Tbody>
           </Table>
         </>

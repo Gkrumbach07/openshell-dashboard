@@ -11,8 +11,9 @@ type DiscoveryDocument = {
   token_endpoint: string;
 };
 
-const discover = async (issuer: string): Promise<DiscoveryDocument> => {
-  const response = await fetch(`${issuer.replace(/\/$/, '')}/.well-known/openid-configuration`);
+const discover = async (): Promise<DiscoveryDocument> => {
+  // Proxy through the BFF to avoid CORS issues with external OIDC providers.
+  const response = await fetch(`/api/v1/auth/discovery`);
   if (!response.ok) {
     throw new Error(`OIDC discovery failed (${response.status})`);
   }
@@ -43,7 +44,7 @@ export const startLogin = async (config: AuthConfig): Promise<void> => {
   if (!config.issuer || !config.clientId) {
     throw new Error('OIDC issuer and client ID are not configured on the BFF');
   }
-  const discovery = await discover(config.issuer);
+  const discovery = await discover();
   const verifier = createVerifier();
   window.sessionStorage.setItem(VERIFIER_KEY, verifier);
   const challenge = await challengeFromVerifier(verifier);
@@ -52,10 +53,9 @@ export const startLogin = async (config: AuthConfig): Promise<void> => {
     response_type: 'code',
     client_id: config.clientId,
     redirect_uri: redirectUri(),
-    scope: 'openid profile email',
+    scope: 'openid profile email groups',
     code_challenge: challenge,
     code_challenge_method: 'S256',
-    prompt: 'login',
   });
   window.location.assign(`${discovery.authorization_endpoint}?${params.toString()}`);
 };
