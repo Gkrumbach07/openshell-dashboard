@@ -281,6 +281,8 @@ export type AuthConfig = {
   authDisabled: boolean;
   issuer?: string;
   clientId?: string;
+  adminRole?: string;
+  userRole?: string;
   features: FeatureFlags;
 };
 

@@ -1,7 +1,10 @@
 package api
 
 import (
+	"io"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
@@ -44,6 +47,8 @@ type AuthConfigResponse struct {
 	AuthDisabled bool         `json:"authDisabled"`
 	Issuer       string       `json:"issuer,omitempty"`
 	ClientID     string       `json:"clientId,omitempty"`
+	AdminRole    string       `json:"adminRole,omitempty"`
+	UserRole     string       `json:"userRole,omitempty"`
 	Features     FeatureFlags `json:"features"`
 }
 
@@ -57,6 +62,26 @@ func SetAuthConfig(cfg AuthConfigResponse) {
 // GetAuthConfig is public — the login page needs it before any token exists.
 func (app *App) GetAuthConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, authConfig)
+}
+
+// GetOIDCDiscovery proxies the OIDC discovery document from the issuer,
+// avoiding CORS issues when the frontend and IdP are on different origins.
+func (app *App) GetOIDCDiscovery(w http.ResponseWriter, r *http.Request) {
+	if authConfig.Issuer == "" {
+		writeError(w, http.StatusServiceUnavailable, "no_issuer", "OIDC issuer not configured")
+		return
+	}
+	issuer := strings.TrimRight(authConfig.Issuer, "/")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(issuer + "/.well-known/openid-configuration")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "discovery_failed", err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 // GetUserInfo returns the validated OIDC claims for the current user.
@@ -97,7 +122,7 @@ func (app *App) GetWhoAmI(w http.ResponseWriter, r *http.Request) {
 			Subject:     claims.Subject,
 			DisplayName: claims.Name,
 			Email:       claims.Email,
-			Roles:       claims.RealmAccess.Roles,
+			Roles:       claims.Roles(),
 		})
 		return
 	}

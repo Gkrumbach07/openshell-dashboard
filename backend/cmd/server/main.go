@@ -60,6 +60,8 @@ func main() {
 		AuthDisabled: *authDisabled,
 		Issuer:       *oidcIssuer,
 		ClientID:     *oidcClientID,
+		AdminRole:    envOr("OIDC_ADMIN_ROLE", "openshell-admin"),
+		UserRole:     envOr("OIDC_USER_ROLE", "openshell-user"),
 		Features: api.FeatureFlags{
 			Terminal:          envOr("FEATURE_TERMINAL", "true") == "true",
 			FileTransfer:      envOr("FEATURE_FILE_TRANSFER", "true") == "true",

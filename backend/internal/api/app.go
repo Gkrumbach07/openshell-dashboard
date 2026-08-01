@@ -44,6 +44,7 @@ func (app *App) Routes() http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public: frontend bootstrap config, no token needed.
 		r.Get("/auth/config", app.GetAuthConfig)
+		r.Get("/auth/discovery", app.GetOIDCDiscovery)
 		r.Post("/auth/token-exchange", app.TokenExchange)
 		r.Post("/auth/refresh", app.Refresh)
 		r.Get("/auth/logout", app.Logout)
