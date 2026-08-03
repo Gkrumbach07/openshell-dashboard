@@ -92,21 +92,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache gateway image
-        id: gateway-cache
+      - name: Cache Docker images
         uses: actions/cache@v4
         with:
-          path: /tmp/gateway-image.tar
-          key: gateway-image-${{ hashFiles('deploy/ci/gateway.e2e.toml') }}
+          path: /tmp/e2e-images
+          key: e2e-images-v1
 
-      - name: Load or pull gateway image
+      - name: Load or pull Docker images
         run: |
-          if [ -f /tmp/gateway-image.tar ]; then
-            docker load -i /tmp/gateway-image.tar
-          else
-            docker pull ghcr.io/nvidia/openshell/gateway:latest
-            docker save ghcr.io/nvidia/openshell/gateway:latest -o /tmp/gateway-image.tar
-          fi
+          mkdir -p /tmp/e2e-images
+          for img in ghcr.io/nvidia/openshell/gateway:latest ghcr.io/nvidia/openshell/supervisor:latest ghcr.io/nvidia/openshell-community/sandboxes/base:latest; do
+            slug=$(echo "$img" | tr '/:' '_')
+            if [ -f "/tmp/e2e-images/${slug}.tar" ]; then
+              echo "Loading cached $img"
+              docker load -i "/tmp/e2e-images/${slug}.tar"
+            else
+              echo "Pulling $img"
+              docker pull "$img"
+              docker save "$img" -o "/tmp/e2e-images/${slug}.tar"
+            fi
+          done
 
       - name: Generate gateway JWT keys
         run: |
