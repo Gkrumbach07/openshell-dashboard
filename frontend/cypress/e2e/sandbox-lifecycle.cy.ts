@@ -3,10 +3,6 @@ import { interceptAll } from '../support/intercepts';
 describe('Sandbox Lifecycle', () => {
   beforeEach(() => {
     interceptAll();
-    cy.intercept('GET', '/api/v1/workspaces/default/members', {
-      statusCode: 200,
-      body: [],
-    }).as('listMembers');
     cy.login();
     cy.visit('/workspaces/default');
     cy.wait('@authConfig');
@@ -21,9 +17,9 @@ describe('Sandbox Lifecycle', () => {
   });
 
   it('shows sandbox phase labels', () => {
-    cy.contains('Ready').should('be.visible');
-    cy.contains('Provisioning').should('be.visible');
-    cy.contains('Error').should('be.visible');
+    cy.contains('READY').should('be.visible');
+    cy.contains('PROVISIONING').should('be.visible');
+    cy.contains('ERROR').should('be.visible');
   });
 
   it('opens create sandbox modal', () => {
@@ -49,8 +45,8 @@ describe('Sandbox Lifecycle', () => {
     cy.url().should('include', '/workspaces/default/sandboxes/my-agent');
   });
 
-  it('deletes a sandbox', () => {
-    cy.get('[data-testid="sandbox-actions-my-agent"]').click();
+  it('deletes a sandbox via kebab menu', () => {
+    cy.get('[data-testid="sandbox-actions-kebab"]').first().click();
     cy.contains('Delete').click();
 
     cy.get('.pf-v6-c-modal-box').should('be.visible');
