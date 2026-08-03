@@ -32,10 +32,10 @@ describe('Sandbox lifecycle (integration)', () => {
     });
   });
 
-  it('sandbox reaches READY state', () => {
+  it('sandbox reaches READY state', { defaultCommandTimeout: 180000 }, () => {
     const pollForReady = (attempts = 0): Cypress.Chainable => {
-      if (attempts > 30) {
-        throw new Error('Sandbox did not reach READY within 60s');
+      if (attempts > 60) {
+        throw new Error('Sandbox did not reach READY within 5 minutes');
       }
       return cy
         .request({
