@@ -21,8 +21,8 @@ func TestTokenCredentialsGetRequestMetadata(t *testing.T) {
 		},
 		{
 			name:      "token present",
-			token:     "eyJhbGciOiJSUzI1NiJ9.test",
-			wantValue: "Bearer eyJhbGciOiJSUzI1NiJ9.test",
+			token:     "test-jwt-value", //nolint:gosec // test fixture, not a real credential
+			wantValue: "Bearer test-jwt-value",
 		},
 	}
 	for _, tc := range tests {
