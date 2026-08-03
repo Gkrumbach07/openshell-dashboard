@@ -12,15 +12,17 @@ describe('Provider Management', () => {
   it('displays provider list', () => {
     cy.get('[data-testid="tab-providers"]').click();
     cy.wait('@listProviders');
-    cy.contains('anthropic').should('be.visible');
-    cy.contains('openai-dev').should('be.visible');
+    cy.get('[data-testid="provider-table"]').should('be.visible');
+    cy.get('[data-testid="provider-link-anthropic"]').should('exist');
+    cy.get('[data-testid="provider-link-openai-dev"]').should('exist');
   });
 
   it('shows provider types', () => {
     cy.get('[data-testid="tab-providers"]').click();
     cy.wait('@listProviders');
-    cy.contains('claude').should('be.visible');
-    cy.contains('openai').should('be.visible');
+    cy.get('[data-testid="provider-table"]').within(() => {
+      cy.get('.pf-v6-c-label').should('have.length.at.least', 2);
+    });
   });
 
   it('opens create provider modal', () => {

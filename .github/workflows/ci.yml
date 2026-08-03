@@ -113,7 +113,11 @@ jobs:
           sudo mkdir -p /var/lib/openshell
           docker compose -f deploy/ci/docker-compose.e2e.yml up -d
           echo "Waiting for gateway to be healthy..."
-          timeout 300 bash -c 'until curl -sf http://localhost:50052/healthz; do sleep 3; done'
+          timeout 300 bash -c 'until curl -sf http://localhost:50052/healthz; do sleep 3; done' || {
+            echo "Gateway failed to start — dumping logs:"
+            docker compose -f deploy/ci/docker-compose.e2e.yml logs --tail=100
+            exit 1
+          }
           echo "Gateway is healthy"
 
       - uses: actions/setup-go@v5

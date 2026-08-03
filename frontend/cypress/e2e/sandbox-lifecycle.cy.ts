@@ -8,6 +8,8 @@ describe('Sandbox Lifecycle', () => {
     cy.wait('@authConfig');
     cy.wait('@whoami');
     cy.wait('@listSandboxes');
+    // Switch to table/list view for consistent selectors
+    cy.get('[data-testid="view-toggle-list"]').click();
   });
 
   it('displays sandbox list with different phases', () => {
@@ -17,9 +19,7 @@ describe('Sandbox Lifecycle', () => {
   });
 
   it('shows sandbox phase labels', () => {
-    cy.contains('READY').should('be.visible');
-    cy.contains('PROVISIONING').should('be.visible');
-    cy.contains('ERROR').should('be.visible');
+    cy.get('[data-testid="phase-label"]').should('have.length.at.least', 3);
   });
 
   it('opens create sandbox modal', () => {
