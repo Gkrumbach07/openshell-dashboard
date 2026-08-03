@@ -92,8 +92,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pull gateway image
-        run: docker pull ghcr.io/nvidia/openshell/gateway:latest
+      - name: Cache gateway image
+        id: gateway-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/gateway-image.tar
+          key: gateway-image-${{ hashFiles('deploy/ci/gateway.e2e.toml') }}
+
+      - name: Load or pull gateway image
+        run: |
+          if [ -f /tmp/gateway-image.tar ]; then
+            docker load -i /tmp/gateway-image.tar
+          else
+            docker pull ghcr.io/nvidia/openshell/gateway:latest
+            docker save ghcr.io/nvidia/openshell/gateway:latest -o /tmp/gateway-image.tar
+          fi
 
       - name: Start OpenShell gateway
         run: |
