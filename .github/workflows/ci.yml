@@ -108,6 +108,14 @@ jobs:
             docker save ghcr.io/nvidia/openshell/gateway:latest -o /tmp/gateway-image.tar
           fi
 
+      - name: Generate gateway JWT keys
+        run: |
+          sudo mkdir -p /var/lib/openshell/jwt
+          sudo openssl genpkey -algorithm Ed25519 -out /var/lib/openshell/jwt/signing.pem 2>/dev/null
+          sudo openssl pkey -in /var/lib/openshell/jwt/signing.pem -pubout -out /var/lib/openshell/jwt/public.pem 2>/dev/null
+          sudo openssl rand -hex 16 | sudo tee /var/lib/openshell/jwt/kid > /dev/null
+          sudo chmod -R 755 /var/lib/openshell/jwt
+
       - name: Start OpenShell gateway
         run: |
           sudo mkdir -p /var/lib/openshell
