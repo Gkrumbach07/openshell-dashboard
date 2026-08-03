@@ -4,7 +4,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
@@ -47,6 +46,7 @@ type AuthConfigResponse struct {
 	AuthDisabled bool         `json:"authDisabled"`
 	Issuer       string       `json:"issuer,omitempty"`
 	ClientID     string       `json:"clientId,omitempty"`
+	Scopes       string       `json:"scopes,omitempty"`
 	AdminRole    string       `json:"adminRole,omitempty"`
 	UserRole     string       `json:"userRole,omitempty"`
 	Features     FeatureFlags `json:"features"`
@@ -72,16 +72,19 @@ func (app *App) GetOIDCDiscovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	issuer := strings.TrimRight(authConfig.Issuer, "/")
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(issuer + "/.well-known/openid-configuration")
+	resp, err := oidcHTTPClient.Get(issuer + "/.well-known/openid-configuration")
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "discovery_failed", err.Error())
+		writeError(w, http.StatusBadGateway, "discovery_failed", "identity provider is unreachable")
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		writeError(w, http.StatusBadGateway, "discovery_failed", "identity provider returned an error")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, io.LimitReader(resp.Body, maxTokenResponseBytes))
 }
 
 // GetUserInfo returns the validated OIDC claims for the current user.

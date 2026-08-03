@@ -44,7 +44,7 @@ dev: ## Start frontend dev server (:3000) and Go BFF (:8080)
 	@$(MAKE) -j2 dev-backend dev-frontend
 
 dev-backend:
-	cd backend && go run ./cmd/server
+	cd backend && AUTH_DISABLED=$${AUTH_DISABLED:-true} go run ./cmd/server
 
 dev-frontend:
 	cd frontend && npm start

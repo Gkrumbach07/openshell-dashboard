@@ -60,6 +60,7 @@ func main() {
 		AuthDisabled: *authDisabled,
 		Issuer:       *oidcIssuer,
 		ClientID:     *oidcClientID,
+		Scopes:       envOr("OIDC_SCOPES", "openid profile email"),
 		AdminRole:    envOr("OIDC_ADMIN_ROLE", "openshell-admin"),
 		UserRole:     envOr("OIDC_USER_ROLE", "openshell-user"),
 		Features: api.FeatureFlags{
