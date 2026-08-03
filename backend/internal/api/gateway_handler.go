@@ -10,7 +10,7 @@ import (
 )
 
 // GetHealthz reports BFF liveness without touching the gateway.
-func (app *App) GetHealthz(w http.ResponseWriter, r *http.Request) {
+func (app *App) GetHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -28,6 +28,7 @@ func (app *App) GetGateway(w http.ResponseWriter, r *http.Request) {
 // FeatureFlags controls which optional features the frontend should render.
 // Parsed from FEATURE_* env vars in main.go.
 type FeatureFlags struct {
+	DeploymentContext string `json:"deploymentContext"`
 	Terminal          bool   `json:"terminal"`
 	FileTransfer      bool   `json:"fileTransfer"`
 	Settings          bool   `json:"settings"`
@@ -35,7 +36,6 @@ type FeatureFlags struct {
 	CredentialRefresh bool   `json:"credentialRefresh"`
 	Services          bool   `json:"services"`
 	DraftPolicy       bool   `json:"draftPolicy"`
-	DeploymentContext string `json:"deploymentContext"`
 	WorkspaceBinding  bool   `json:"workspaceBinding"`
 	ResourceLinks     bool   `json:"resourceLinks"`
 }
@@ -43,13 +43,13 @@ type FeatureFlags struct {
 // AuthConfigResponse tells the frontend how to authenticate and which
 // features are enabled.
 type AuthConfigResponse struct {
-	AuthDisabled bool         `json:"authDisabled"`
 	Issuer       string       `json:"issuer,omitempty"`
 	ClientID     string       `json:"clientId,omitempty"`
 	Scopes       string       `json:"scopes,omitempty"`
 	AdminRole    string       `json:"adminRole,omitempty"`
 	UserRole     string       `json:"userRole,omitempty"`
 	Features     FeatureFlags `json:"features"`
+	AuthDisabled bool         `json:"authDisabled"`
 }
 
 var authConfig AuthConfigResponse
@@ -60,13 +60,13 @@ func SetAuthConfig(cfg AuthConfigResponse) {
 }
 
 // GetAuthConfig is public — the login page needs it before any token exists.
-func (app *App) GetAuthConfig(w http.ResponseWriter, r *http.Request) {
+func (app *App) GetAuthConfig(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, authConfig)
 }
 
 // GetOIDCDiscovery proxies the OIDC discovery document from the issuer,
 // avoiding CORS issues when the frontend and IdP are on different origins.
-func (app *App) GetOIDCDiscovery(w http.ResponseWriter, r *http.Request) {
+func (app *App) GetOIDCDiscovery(w http.ResponseWriter, _ *http.Request) {
 	if authConfig.Issuer == "" {
 		writeError(w, http.StatusServiceUnavailable, "no_issuer", "OIDC issuer not configured")
 		return
@@ -84,7 +84,7 @@ func (app *App) GetOIDCDiscovery(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	io.Copy(w, io.LimitReader(resp.Body, maxTokenResponseBytes))
+	_, _ = io.Copy(w, io.LimitReader(resp.Body, maxTokenResponseBytes))
 }
 
 // GetUserInfo returns the validated OIDC claims for the current user.

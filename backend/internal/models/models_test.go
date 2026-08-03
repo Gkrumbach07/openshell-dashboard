@@ -36,15 +36,15 @@ func TestFromProviderStripsCredentialValues(t *testing.T) {
 
 func TestSandboxPhaseMapping(t *testing.T) {
 	cases := []struct {
-		phase openshellv1.SandboxPhase
 		want  string
+		phase openshellv1.SandboxPhase
 	}{
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_PROVISIONING, "PROVISIONING"},
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_READY, "READY"},
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_ERROR, "ERROR"},
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_DELETING, "DELETING"},
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_UNKNOWN, "UNKNOWN"},
-		{openshellv1.SandboxPhase_SANDBOX_PHASE_UNSPECIFIED, "UNSPECIFIED"},
+		{want: "PROVISIONING", phase: openshellv1.SandboxPhase_SANDBOX_PHASE_PROVISIONING},
+		{want: "READY", phase: openshellv1.SandboxPhase_SANDBOX_PHASE_READY},
+		{want: "ERROR", phase: openshellv1.SandboxPhase_SANDBOX_PHASE_ERROR},
+		{want: "DELETING", phase: openshellv1.SandboxPhase_SANDBOX_PHASE_DELETING},
+		{want: "UNKNOWN", phase: openshellv1.SandboxPhase_SANDBOX_PHASE_UNKNOWN},
+		{want: "UNSPECIFIED", phase: openshellv1.SandboxPhase_SANDBOX_PHASE_UNSPECIFIED},
 	}
 	for _, tc := range cases {
 		sandbox := &openshellv1.Sandbox{

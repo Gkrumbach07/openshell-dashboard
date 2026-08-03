@@ -40,7 +40,9 @@ func TestListProviders(t *testing.T) {
 	}
 
 	var body []map[string]any
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if len(body) != 1 {
 		t.Fatalf("got %d providers, want 1", len(body))
 	}
@@ -49,7 +51,10 @@ func TestListProviders(t *testing.T) {
 	if strings.Contains(string(raw), "secret") {
 		t.Errorf("response leaked credential value: %s", raw)
 	}
-	creds := body[0]["credentialNames"].([]any)
+	creds, ok := body[0]["credentialNames"].([]any)
+	if !ok {
+		t.Fatal("credentialNames is not an array")
+	}
 	if len(creds) != 1 || creds[0] != "api_key" {
 		t.Errorf("credentialNames = %v, want [api_key]", creds)
 	}
@@ -59,8 +64,8 @@ func TestCreateProvider(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
-		wantStatus int
 		wantCode   string
+		wantStatus int
 	}{
 		{
 			name:       "success",
@@ -107,7 +112,9 @@ func TestCreateProvider(t *testing.T) {
 			}
 			if tc.wantCode != "" {
 				var errResp ErrorResponse
-				json.NewDecoder(w.Body).Decode(&errResp)
+				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+					t.Fatalf("decode error response: %v", err)
+				}
 				if errResp.Code != tc.wantCode {
 					t.Errorf("code = %q, want %q", errResp.Code, tc.wantCode)
 				}
@@ -118,8 +125,8 @@ func TestCreateProvider(t *testing.T) {
 
 func TestGetProvider(t *testing.T) {
 	tests := []struct {
-		name       string
 		mockFn     func(ctx context.Context, workspace, name string) (*datamodelv1.Provider, error)
+		name       string
 		wantStatus int
 	}{
 		{

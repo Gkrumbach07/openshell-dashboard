@@ -18,16 +18,9 @@ linters:
     errcheck:
       check-type-assertions: true
     govet:
-      disable:
-        - fieldalignment
+      enable-all: true
     gocyclo:
-      min-complexity: 20
-    revive:
-      rules:
-        - name: unused-parameter
-          disabled: true
-        - name: var-naming
-          disabled: true
+      min-complexity: 15
   exclusions:
     presets:
       - comments
@@ -36,8 +29,3 @@ linters:
     paths:
       - gen/
       - third_party/
-    rules:
-      - linters: [errcheck]
-        path: _test\.go
-      - linters: [gosec]
-        rules: [G115]

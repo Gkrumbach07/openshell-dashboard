@@ -14,13 +14,46 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(_ *http.Request) bool { return true },
 }
 
 type resizeMessage struct {
 	Type string `json:"type"`
 	Cols uint32 `json:"cols"`
 	Rows uint32 `json:"rows"`
+}
+
+func parseDimensions(r *http.Request) (cols, rows uint32) {
+	cols = 80
+	rows = 24
+	if c, parseErr := strconv.ParseUint(r.URL.Query().Get("cols"), 10, 32); parseErr == nil {
+		cols = uint32(c)
+	}
+	if ro, parseErr := strconv.ParseUint(r.URL.Query().Get("rows"), 10, 32); parseErr == nil {
+		rows = uint32(ro)
+	}
+	return cols, rows
+}
+
+func relayGRPCToWS(ws *websocket.Conn, stream openshellv1.OpenShell_ExecSandboxInteractiveClient, cancel context.CancelFunc) {
+	defer cancel()
+	for {
+		event, recvErr := stream.Recv()
+		if recvErr != nil {
+			return
+		}
+		switch p := event.Payload.(type) {
+		case *openshellv1.ExecSandboxEvent_Stdout:
+			_ = ws.WriteMessage(websocket.BinaryMessage, p.Stdout.Data)
+		case *openshellv1.ExecSandboxEvent_Stderr:
+			_ = ws.WriteMessage(websocket.BinaryMessage, p.Stderr.Data)
+		case *openshellv1.ExecSandboxEvent_Exit:
+			msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure,
+				strconv.Itoa(int(p.Exit.ExitCode)))
+			_ = ws.WriteMessage(websocket.CloseMessage, msg)
+			return
+		}
+	}
 }
 
 func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
@@ -34,14 +67,7 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 	}
 	sandboxID := sandbox.GetMetadata().GetId()
 
-	cols := uint32(80)
-	rows := uint32(24)
-	if c, err := strconv.ParseUint(r.URL.Query().Get("cols"), 10, 32); err == nil {
-		cols = uint32(c)
-	}
-	if ro, err := strconv.ParseUint(r.URL.Query().Get("rows"), 10, 32); err == nil {
-		rows = uint32(ro)
-	}
+	cols, rows := parseDimensions(r)
 
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -57,7 +83,7 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 	stream, err := app.gateway.ExecSandboxInteractive(ctx)
 	if err != nil {
 		slog.Error("exec stream open failed", "error", err)
-		ws.WriteMessage(websocket.CloseMessage,
+		_ = ws.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "failed to open exec stream"))
 		return
 	}
@@ -75,45 +101,25 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 		},
 	}); err != nil {
 		slog.Error("exec start failed", "error", err)
-		ws.WriteMessage(websocket.CloseMessage,
+		_ = ws.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "failed to start exec"))
 		return
 	}
 	slog.Info("exec start sent, entering relay loop")
 
-	// gRPC -> WS
-	go func() {
-		defer cancel()
-		for {
-			event, err := stream.Recv()
-			if err != nil {
-				return
-			}
-			switch p := event.Payload.(type) {
-			case *openshellv1.ExecSandboxEvent_Stdout:
-				ws.WriteMessage(websocket.BinaryMessage, p.Stdout.Data)
-			case *openshellv1.ExecSandboxEvent_Stderr:
-				ws.WriteMessage(websocket.BinaryMessage, p.Stderr.Data)
-			case *openshellv1.ExecSandboxEvent_Exit:
-				msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure,
-					strconv.Itoa(int(p.Exit.ExitCode)))
-				ws.WriteMessage(websocket.CloseMessage, msg)
-				return
-			}
-		}
-	}()
+	go relayGRPCToWS(ws, stream, cancel)
 
 	// WS -> gRPC
 	for {
-		msgType, data, err := ws.ReadMessage()
-		if err != nil {
+		msgType, data, readErr := ws.ReadMessage()
+		if readErr != nil {
 			cancel()
 			return
 		}
 		if msgType == websocket.TextMessage {
 			var resize resizeMessage
 			if json.Unmarshal(data, &resize) == nil && resize.Type == "resize" {
-				stream.Send(&openshellv1.ExecSandboxInput{
+				_ = stream.Send(&openshellv1.ExecSandboxInput{
 					Payload: &openshellv1.ExecSandboxInput_Resize{
 						Resize: &openshellv1.ExecSandboxWindowResize{
 							Cols: resize.Cols,
@@ -124,7 +130,7 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		stream.Send(&openshellv1.ExecSandboxInput{
+		_ = stream.Send(&openshellv1.ExecSandboxInput{
 			Payload: &openshellv1.ExecSandboxInput_Stdin{
 				Stdin: data,
 			},

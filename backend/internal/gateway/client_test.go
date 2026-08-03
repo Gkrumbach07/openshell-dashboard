@@ -11,8 +11,8 @@ func TestTokenCredentialsGetRequestMetadata(t *testing.T) {
 	tests := []struct {
 		name      string
 		token     string
-		wantNil   bool
 		wantValue string
+		wantNil   bool
 	}{
 		{
 			name:    "no token in context",

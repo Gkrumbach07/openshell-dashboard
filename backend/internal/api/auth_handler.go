@@ -78,7 +78,7 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	var discovery struct {
 		TokenEndpoint string `json:"token_endpoint"`
 	}
-	if err := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); err != nil {
+	if decodeErr := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); decodeErr != nil {
 		writeError(w, http.StatusBadGateway, "discovery_failed", "failed to parse OIDC discovery")
 		return
 	}
@@ -145,7 +145,7 @@ func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
 	var discovery struct {
 		EndSessionEndpoint string `json:"end_session_endpoint"`
 	}
-	if err := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); err != nil || discovery.EndSessionEndpoint == "" {
+	if decodeErr := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); decodeErr != nil || discovery.EndSessionEndpoint == "" {
 		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
 		return
 	}
@@ -191,7 +191,7 @@ func (app *App) Refresh(w http.ResponseWriter, r *http.Request) {
 	var discovery struct {
 		TokenEndpoint string `json:"token_endpoint"`
 	}
-	if err := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); err != nil {
+	if decodeErr := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); decodeErr != nil {
 		writeError(w, http.StatusBadGateway, "discovery_failed", "failed to parse OIDC discovery")
 		return
 	}

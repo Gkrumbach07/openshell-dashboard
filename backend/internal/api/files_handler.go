@@ -21,7 +21,7 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	sandboxID := sandbox.GetMetadata().GetId()
 
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
+	if parseErr := r.ParseMultipartForm(64 << 20); parseErr != nil {
 		writeError(w, http.StatusBadRequest, "invalid_upload", "failed to parse multipart form")
 		return
 	}
@@ -93,5 +93,5 @@ func (app *App) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.Itoa(len(stdout)))
-	w.Write(stdout)
+	_, _ = w.Write(stdout)
 }

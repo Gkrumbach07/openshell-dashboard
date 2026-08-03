@@ -10,12 +10,12 @@ import (
 
 func TestFromWorkspacePhaseMapping(t *testing.T) {
 	tests := []struct {
-		phase datamodelv1.WorkspacePhase
 		want  string
+		phase datamodelv1.WorkspacePhase
 	}{
-		{datamodelv1.WorkspacePhase_WORKSPACE_PHASE_ACTIVE, "ACTIVE"},
-		{datamodelv1.WorkspacePhase_WORKSPACE_PHASE_TERMINATING, "TERMINATING"},
-		{datamodelv1.WorkspacePhase_WORKSPACE_PHASE_UNSPECIFIED, "UNSPECIFIED"},
+		{want: "ACTIVE", phase: datamodelv1.WorkspacePhase_WORKSPACE_PHASE_ACTIVE},
+		{want: "TERMINATING", phase: datamodelv1.WorkspacePhase_WORKSPACE_PHASE_TERMINATING},
+		{want: "UNSPECIFIED", phase: datamodelv1.WorkspacePhase_WORKSPACE_PHASE_UNSPECIFIED},
 	}
 	for _, tc := range tests {
 		t.Run(tc.want, func(t *testing.T) {
@@ -46,12 +46,12 @@ func TestFromWorkspaceNilStatus(t *testing.T) {
 
 func TestFromWorkspaceMemberRoleMapping(t *testing.T) {
 	tests := []struct {
-		role openshellv1.WorkspaceRole
 		want string
+		role openshellv1.WorkspaceRole
 	}{
-		{openshellv1.WorkspaceRole_WORKSPACE_ROLE_USER, "USER"},
-		{openshellv1.WorkspaceRole_WORKSPACE_ROLE_ADMIN, "ADMIN"},
-		{openshellv1.WorkspaceRole_WORKSPACE_ROLE_UNSPECIFIED, "UNSPECIFIED"},
+		{want: "USER", role: openshellv1.WorkspaceRole_WORKSPACE_ROLE_USER},
+		{want: "ADMIN", role: openshellv1.WorkspaceRole_WORKSPACE_ROLE_ADMIN},
+		{want: "UNSPECIFIED", role: openshellv1.WorkspaceRole_WORKSPACE_ROLE_UNSPECIFIED},
 	}
 	for _, tc := range tests {
 		t.Run(tc.want, func(t *testing.T) {
@@ -149,17 +149,17 @@ func TestFromProviderProfile(t *testing.T) {
 
 func TestFromProviderProfileCategoryMapping(t *testing.T) {
 	tests := []struct {
-		category openshellv1.ProviderProfileCategory
 		want     string
+		category openshellv1.ProviderProfileCategory
 	}{
-		{openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_OTHER, "OTHER"},
-		{openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_INFERENCE, "INFERENCE"},
-		{openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_AGENT, "AGENT"},
-		{openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_SOURCE_CONTROL, "SOURCE_CONTROL"},
-		{openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_MESSAGING, "MESSAGING"},
-		{openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_DATA, "DATA"},
-		{openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_KNOWLEDGE, "KNOWLEDGE"},
-		{openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_UNSPECIFIED, "UNSPECIFIED"},
+		{want: "OTHER", category: openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_OTHER},
+		{want: "INFERENCE", category: openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_INFERENCE},
+		{want: "AGENT", category: openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_AGENT},
+		{want: "SOURCE_CONTROL", category: openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_SOURCE_CONTROL},
+		{want: "MESSAGING", category: openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_MESSAGING},
+		{want: "DATA", category: openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_DATA},
+		{want: "KNOWLEDGE", category: openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_KNOWLEDGE},
+		{want: "UNSPECIFIED", category: openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_UNSPECIFIED},
 	}
 	for _, tc := range tests {
 		t.Run(tc.want, func(t *testing.T) {
@@ -173,13 +173,13 @@ func TestFromProviderProfileCategoryMapping(t *testing.T) {
 
 func TestFromGatewayInfo(t *testing.T) {
 	tests := []struct {
-		status openshellv1.ServiceStatus
 		want   string
+		status openshellv1.ServiceStatus
 	}{
-		{openshellv1.ServiceStatus_SERVICE_STATUS_HEALTHY, "HEALTHY"},
-		{openshellv1.ServiceStatus_SERVICE_STATUS_DEGRADED, "DEGRADED"},
-		{openshellv1.ServiceStatus_SERVICE_STATUS_UNHEALTHY, "UNHEALTHY"},
-		{openshellv1.ServiceStatus_SERVICE_STATUS_UNSPECIFIED, "UNSPECIFIED"},
+		{want: "HEALTHY", status: openshellv1.ServiceStatus_SERVICE_STATUS_HEALTHY},
+		{want: "DEGRADED", status: openshellv1.ServiceStatus_SERVICE_STATUS_DEGRADED},
+		{want: "UNHEALTHY", status: openshellv1.ServiceStatus_SERVICE_STATUS_UNHEALTHY},
+		{want: "UNSPECIFIED", status: openshellv1.ServiceStatus_SERVICE_STATUS_UNSPECIFIED},
 	}
 	for _, tc := range tests {
 		t.Run(tc.want, func(t *testing.T) {
@@ -226,16 +226,16 @@ func TestFromGatewayInfoEmptyDrivers(t *testing.T) {
 
 func TestFromCredentialRefreshStatus(t *testing.T) {
 	tests := []struct {
-		strategy openshellv1.ProviderCredentialRefreshStrategy
 		want     string
+		strategy openshellv1.ProviderCredentialRefreshStrategy
 	}{
-		{openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_STATIC, "STATIC"},
-		{openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_EXTERNAL, "EXTERNAL"},
-		{openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_REFRESH_TOKEN, "OAUTH2_REFRESH_TOKEN"},
-		{openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_CLIENT_CREDENTIALS, "OAUTH2_CLIENT_CREDENTIALS"},
-		{openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_GOOGLE_SERVICE_ACCOUNT_JWT, "GOOGLE_SERVICE_ACCOUNT_JWT"},
-		{openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_AWS_STS_ASSUME_ROLE, "AWS_STS_ASSUME_ROLE"},
-		{openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_UNSPECIFIED, "UNSPECIFIED"},
+		{want: "STATIC", strategy: openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_STATIC},
+		{want: "EXTERNAL", strategy: openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_EXTERNAL},
+		{want: "OAUTH2_REFRESH_TOKEN", strategy: openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_REFRESH_TOKEN},
+		{want: "OAUTH2_CLIENT_CREDENTIALS", strategy: openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_CLIENT_CREDENTIALS},
+		{want: "GOOGLE_SERVICE_ACCOUNT_JWT", strategy: openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_GOOGLE_SERVICE_ACCOUNT_JWT},
+		{want: "AWS_STS_ASSUME_ROLE", strategy: openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_AWS_STS_ASSUME_ROLE},
+		{want: "UNSPECIFIED", strategy: openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_UNSPECIFIED},
 	}
 	for _, tc := range tests {
 		t.Run(tc.want, func(t *testing.T) {

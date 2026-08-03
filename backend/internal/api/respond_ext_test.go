@@ -14,24 +14,24 @@ import (
 
 func TestWriteGrpcError(t *testing.T) {
 	tests := []struct {
-		grpcCode   codes.Code
-		wantHTTP   int
 		wantErrCode string
+		wantHTTP    int
+		grpcCode    codes.Code
 	}{
-		{codes.NotFound, http.StatusNotFound, "not_found"},
-		{codes.AlreadyExists, http.StatusConflict, "already_exists"},
-		{codes.InvalidArgument, http.StatusBadRequest, "invalid_argument"},
-		{codes.FailedPrecondition, http.StatusBadRequest, "invalid_argument"},
-		{codes.OutOfRange, http.StatusBadRequest, "invalid_argument"},
-		{codes.PermissionDenied, http.StatusForbidden, "permission_denied"},
-		{codes.Unauthenticated, http.StatusUnauthorized, "unauthenticated"},
-		{codes.Aborted, http.StatusConflict, "conflict"},
-		{codes.ResourceExhausted, http.StatusTooManyRequests, "resource_exhausted"},
-		{codes.Unavailable, http.StatusBadGateway, "gateway_unavailable"},
-		{codes.DeadlineExceeded, http.StatusBadGateway, "gateway_unavailable"},
-		{codes.Internal, http.StatusInternalServerError, "internal"},
-		{codes.DataLoss, http.StatusInternalServerError, "internal"},
-		{codes.Unknown, http.StatusInternalServerError, "internal"},
+		{wantErrCode: "not_found", wantHTTP: http.StatusNotFound, grpcCode: codes.NotFound},
+		{wantErrCode: "already_exists", wantHTTP: http.StatusConflict, grpcCode: codes.AlreadyExists},
+		{wantErrCode: "invalid_argument", wantHTTP: http.StatusBadRequest, grpcCode: codes.InvalidArgument},
+		{wantErrCode: "invalid_argument", wantHTTP: http.StatusBadRequest, grpcCode: codes.FailedPrecondition},
+		{wantErrCode: "invalid_argument", wantHTTP: http.StatusBadRequest, grpcCode: codes.OutOfRange},
+		{wantErrCode: "permission_denied", wantHTTP: http.StatusForbidden, grpcCode: codes.PermissionDenied},
+		{wantErrCode: "unauthenticated", wantHTTP: http.StatusUnauthorized, grpcCode: codes.Unauthenticated},
+		{wantErrCode: "conflict", wantHTTP: http.StatusConflict, grpcCode: codes.Aborted},
+		{wantErrCode: "resource_exhausted", wantHTTP: http.StatusTooManyRequests, grpcCode: codes.ResourceExhausted},
+		{wantErrCode: "gateway_unavailable", wantHTTP: http.StatusBadGateway, grpcCode: codes.Unavailable},
+		{wantErrCode: "gateway_unavailable", wantHTTP: http.StatusBadGateway, grpcCode: codes.DeadlineExceeded},
+		{wantErrCode: "internal", wantHTTP: http.StatusInternalServerError, grpcCode: codes.Internal},
+		{wantErrCode: "internal", wantHTTP: http.StatusInternalServerError, grpcCode: codes.DataLoss},
+		{wantErrCode: "internal", wantHTTP: http.StatusInternalServerError, grpcCode: codes.Unknown},
 	}
 	for _, tc := range tests {
 		t.Run(tc.grpcCode.String(), func(t *testing.T) {
@@ -42,7 +42,9 @@ func TestWriteGrpcError(t *testing.T) {
 				t.Errorf("HTTP status = %d, want %d", w.Code, tc.wantHTTP)
 			}
 			var body ErrorResponse
-			json.NewDecoder(w.Body).Decode(&body)
+			if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
 			if body.Code != tc.wantErrCode {
 				t.Errorf("error code = %q, want %q", body.Code, tc.wantErrCode)
 			}
@@ -58,7 +60,9 @@ func TestWriteGrpcErrorNonGRPC(t *testing.T) {
 		t.Errorf("status = %d, want 500", w.Code)
 	}
 	var body ErrorResponse
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if body.Code != "internal" {
 		t.Errorf("code = %q, want internal", body.Code)
 	}
@@ -71,12 +75,12 @@ func TestDecodeBody(t *testing.T) {
 	tests := []struct {
 		name    string
 		body    string
-		wantOK  bool
 		wantErr string
+		wantOK  bool
 	}{
-		{"valid JSON", `{"name":"ok"}`, true, ""},
-		{"invalid JSON", `{bad`, false, "invalid_body"},
-		{"unknown field", `{"name":"ok","bogus":1}`, false, "invalid_body"},
+		{name: "valid JSON", body: `{"name":"ok"}`, wantOK: true, wantErr: ""},
+		{name: "invalid JSON", body: `{bad`, wantOK: false, wantErr: "invalid_body"},
+		{name: "unknown field", body: `{"name":"ok","bogus":1}`, wantOK: false, wantErr: "invalid_body"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -91,7 +95,9 @@ func TestDecodeBody(t *testing.T) {
 			}
 			if !ok && tc.wantErr != "" {
 				var errResp ErrorResponse
-				json.NewDecoder(w.Body).Decode(&errResp)
+				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
 				if errResp.Code != tc.wantErr {
 					t.Errorf("code = %q, want %q", errResp.Code, tc.wantErr)
 				}
@@ -111,7 +117,9 @@ func TestWriteJSON(t *testing.T) {
 		t.Errorf("Content-Type = %q, want application/json", ct)
 	}
 	var body map[string]string
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if body["key"] != "value" {
 		t.Errorf("body = %v, want {key:value}", body)
 	}
@@ -125,7 +133,9 @@ func TestWriteError(t *testing.T) {
 		t.Errorf("status = %d, want 400", w.Code)
 	}
 	var body ErrorResponse
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if body.Code != "test_code" {
 		t.Errorf("code = %q, want test_code", body.Code)
 	}

@@ -24,7 +24,9 @@ func TestGetHealthz(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var body map[string]string
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if body["status"] != "ok" {
 		t.Errorf("status = %q, want ok", body["status"])
 	}
@@ -35,10 +37,10 @@ func TestGetHealthz(t *testing.T) {
 
 func TestGetGateway(t *testing.T) {
 	tests := []struct {
-		name       string
 		mockFn     func(ctx context.Context) (*openshellv1.GetGatewayInfoResponse, error)
-		wantStatus int
 		wantFields map[string]string
+		name       string
+		wantStatus int
 	}{
 		{
 			name: "success with compute drivers",
@@ -91,7 +93,9 @@ func TestGetGateway(t *testing.T) {
 			}
 			if tc.wantFields != nil {
 				var body map[string]any
-				json.NewDecoder(w.Body).Decode(&body)
+				if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
 				for k, want := range tc.wantFields {
 					if got, ok := body[k].(string); !ok || got != want {
 						t.Errorf("%s = %v, want %q", k, body[k], want)
@@ -135,12 +139,20 @@ func TestGetGatewayComputeDrivers(t *testing.T) {
 		t.Fatalf("status = %d", w.Code)
 	}
 	var body map[string]any
-	json.NewDecoder(w.Body).Decode(&body)
-	drivers := body["computeDrivers"].([]any)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	drivers, ok := body["computeDrivers"].([]any)
+	if !ok {
+		t.Fatal("computeDrivers is not an array")
+	}
 	if len(drivers) != 2 {
 		t.Fatalf("got %d drivers, want 2", len(drivers))
 	}
-	first := drivers[0].(map[string]any)
+	first, ok := drivers[0].(map[string]any)
+	if !ok {
+		t.Fatal("first driver is not a map")
+	}
 	if first["name"] != "podman" {
 		t.Errorf("first driver name = %v, want podman", first["name"])
 	}

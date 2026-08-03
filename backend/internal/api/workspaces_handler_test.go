@@ -18,8 +18,8 @@ import (
 
 func TestListWorkspaces(t *testing.T) {
 	tests := []struct {
-		name       string
 		mockFn     func(ctx context.Context, limit, offset uint32, labelSelector string) ([]*datamodelv1.Workspace, error)
+		name       string
 		wantStatus int
 		wantLen    int
 	}{
@@ -71,7 +71,9 @@ func TestListWorkspaces(t *testing.T) {
 			}
 			if tc.wantStatus == http.StatusOK {
 				var body []json.RawMessage
-				json.NewDecoder(w.Body).Decode(&body)
+				if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
 				if len(body) != tc.wantLen {
 					t.Errorf("got %d workspaces, want %d", len(body), tc.wantLen)
 				}
@@ -84,8 +86,8 @@ func TestCreateWorkspace(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
-		wantStatus int
 		wantCode   string
+		wantStatus int
 	}{
 		{
 			name:       "success",
@@ -141,7 +143,9 @@ func TestCreateWorkspace(t *testing.T) {
 			}
 			if tc.wantCode != "" {
 				var errResp ErrorResponse
-				json.NewDecoder(w.Body).Decode(&errResp)
+				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
 				if errResp.Code != tc.wantCode {
 					t.Errorf("code = %q, want %q", errResp.Code, tc.wantCode)
 				}
@@ -170,8 +174,13 @@ func TestGetWorkspace(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var body map[string]any
-	json.NewDecoder(w.Body).Decode(&body)
-	meta := body["metadata"].(map[string]any)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	meta, ok := body["metadata"].(map[string]any)
+	if !ok {
+		t.Fatal("metadata is not a map")
+	}
 	if meta["name"] != "team-a" {
 		t.Errorf("name = %v, want team-a", meta["name"])
 	}
@@ -197,7 +206,9 @@ func TestDeleteWorkspace(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var body map[string]bool
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if !body["deleted"] {
 		t.Error("expected deleted=true")
 	}
@@ -207,8 +218,8 @@ func TestAddMember(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
-		wantStatus int
 		wantCode   string
+		wantStatus int
 	}{
 		{
 			name:       "success",
@@ -236,7 +247,7 @@ func TestAddMember(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			mock := &mockGateway{
-				addWorkspaceMemberFn: func(_ context.Context, workspace, subject string, role openshellv1.WorkspaceRole) (*openshellv1.WorkspaceMember, error) {
+				addWorkspaceMemberFn: func(_ context.Context, _, subject string, role openshellv1.WorkspaceRole) (*openshellv1.WorkspaceMember, error) {
 					return &openshellv1.WorkspaceMember{
 						Metadata:         &datamodelv1.ObjectMeta{Name: subject},
 						PrincipalSubject: subject,
@@ -258,7 +269,9 @@ func TestAddMember(t *testing.T) {
 			}
 			if tc.wantCode != "" {
 				var errResp ErrorResponse
-				json.NewDecoder(w.Body).Decode(&errResp)
+				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
 				if errResp.Code != tc.wantCode {
 					t.Errorf("code = %q, want %q", errResp.Code, tc.wantCode)
 				}
@@ -308,7 +321,9 @@ func TestListMembers(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var body []map[string]any
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if len(body) != 1 {
 		t.Fatalf("got %d members, want 1", len(body))
 	}

@@ -17,11 +17,11 @@ import (
 
 // ObjectMeta mirrors openshell.datamodel.v1.ObjectMeta.
 type ObjectMeta struct {
+	Labels              map[string]string `json:"labels,omitempty"`
+	Annotations         map[string]string `json:"annotations,omitempty"`
 	ID                  string            `json:"id"`
 	Name                string            `json:"name"`
 	Workspace           string            `json:"workspace,omitempty"`
-	Labels              map[string]string `json:"labels,omitempty"`
-	Annotations         map[string]string `json:"annotations,omitempty"`
 	CreatedAtMs         int64             `json:"createdAtMs"`
 	ResourceVersion     uint64            `json:"resourceVersion"`
 	DeletionTimestampMs int64             `json:"deletionTimestampMs,omitempty"`
@@ -45,9 +45,8 @@ func FromObjectMeta(meta *datamodelv1.ObjectMeta) ObjectMeta {
 
 // Workspace mirrors openshell.datamodel.v1.Workspace.
 type Workspace struct {
+	Phase    string     `json:"phase"`
 	Metadata ObjectMeta `json:"metadata"`
-	// Phase is ACTIVE or TERMINATING.
-	Phase string `json:"phase"`
 }
 
 func FromWorkspace(ws *datamodelv1.Workspace) Workspace {
@@ -63,11 +62,9 @@ func FromWorkspace(ws *datamodelv1.Workspace) Workspace {
 
 // WorkspaceMember mirrors openshell.v1.WorkspaceMember.
 type WorkspaceMember struct {
-	Metadata         ObjectMeta `json:"metadata"`
 	PrincipalSubject string     `json:"principalSubject"`
-	// Role is USER or ADMIN. There is no role-update RPC — changing a role
-	// means remove + re-add.
-	Role string `json:"role"`
+	Role             string     `json:"role"`
+	Metadata         ObjectMeta `json:"metadata"`
 }
 
 func FromWorkspaceMember(member *openshellv1.WorkspaceMember) WorkspaceMember {
@@ -107,14 +104,11 @@ type SandboxCondition struct {
 
 // SandboxStatus mirrors openshell.v1.SandboxStatus.
 type SandboxStatus struct {
-	SandboxName string             `json:"sandboxName,omitempty"`
-	AgentPod    string             `json:"agentPod,omitempty"`
-	Conditions  []SandboxCondition `json:"conditions,omitempty"`
-	// Phase is PROVISIONING, READY, ERROR, DELETING, or UNKNOWN. The
-	// lifecycle is create → ready/error → delete; there is no stopped or
-	// suspended state in the gateway API.
-	Phase                string `json:"phase"`
-	CurrentPolicyVersion uint32 `json:"currentPolicyVersion"`
+	SandboxName          string             `json:"sandboxName,omitempty"`
+	AgentPod             string             `json:"agentPod,omitempty"`
+	Phase                string             `json:"phase"`
+	Conditions           []SandboxCondition `json:"conditions,omitempty"`
+	CurrentPolicyVersion uint32             `json:"currentPolicyVersion"`
 }
 
 // SandboxSpec is the dashboard view of openshell.v1.SandboxSpec. Policy is
@@ -130,9 +124,9 @@ type SandboxSpec struct {
 
 // Sandbox mirrors openshell.v1.Sandbox.
 type Sandbox struct {
-	Metadata ObjectMeta    `json:"metadata"`
 	Spec     SandboxSpec   `json:"spec"`
 	Status   SandboxStatus `json:"status"`
+	Metadata ObjectMeta    `json:"metadata"`
 }
 
 func sandboxPhaseString(phase openshellv1.SandboxPhase) string {
@@ -203,13 +197,12 @@ func ParsePolicy(raw json.RawMessage) (*sandboxv1.SandboxPolicy, error) {
 // credentials map is secret-marked in proto and is intentionally absent —
 // only the credential key names are surfaced.
 type Provider struct {
-	Metadata ObjectMeta `json:"metadata"`
-	Type     string     `json:"type"`
-	Config   map[string]string `json:"config,omitempty"`
-	// CredentialNames lists which credential keys are set, without values.
-	CredentialNames       []string         `json:"credentialNames,omitempty"`
-	CredentialExpiresAtMs map[string]int64 `json:"credentialExpiresAtMs,omitempty"`
-	ProfileWorkspace      string           `json:"profileWorkspace,omitempty"`
+	Config                map[string]string `json:"config,omitempty"`
+	CredentialExpiresAtMs map[string]int64  `json:"credentialExpiresAtMs,omitempty"`
+	Type                  string            `json:"type"`
+	ProfileWorkspace      string            `json:"profileWorkspace,omitempty"`
+	CredentialNames       []string          `json:"credentialNames,omitempty"`
+	Metadata              ObjectMeta        `json:"metadata"`
 }
 
 func FromProvider(provider *datamodelv1.Provider) Provider {
@@ -231,10 +224,10 @@ type CredentialRefreshStatus struct {
 	CredentialKey   string `json:"credentialKey"`
 	Strategy        string `json:"strategy"`
 	Status          string `json:"status"`
+	LastError       string `json:"lastError,omitempty"`
 	ExpiresAtMs     int64  `json:"expiresAtMs,omitempty"`
 	NextRefreshAtMs int64  `json:"nextRefreshAtMs,omitempty"`
 	LastRefreshAtMs int64  `json:"lastRefreshAtMs,omitempty"`
-	LastError       string `json:"lastError,omitempty"`
 }
 
 func refreshStrategyString(strategy openshellv1.ProviderCredentialRefreshStrategy) string {
@@ -272,9 +265,9 @@ func FromCredentialRefreshStatus(status *openshellv1.ProviderCredentialRefreshSt
 type ProfileCredential struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
+	AuthStyle   string   `json:"authStyle,omitempty"`
 	EnvVars     []string `json:"envVars,omitempty"`
 	Required    bool     `json:"required"`
-	AuthStyle   string   `json:"authStyle,omitempty"`
 }
 
 // ProviderProfile mirrors openshell.v1.ProviderProfile (schema-relevant subset).
@@ -283,12 +276,11 @@ type ProviderProfile struct {
 	DisplayName      string              `json:"displayName"`
 	Description      string              `json:"description,omitempty"`
 	Category         string              `json:"category"`
+	Source           string              `json:"source,omitempty"`
+	Scope            string              `json:"scope,omitempty"`
 	Credentials      []ProfileCredential `json:"credentials"`
-	// Endpoints summarizes the profile's NetworkEndpoints as host:port strings.
-	Endpoints        []string `json:"endpoints,omitempty"`
-	InferenceCapable bool     `json:"inferenceCapable"`
-	Source           string   `json:"source,omitempty"`
-	Scope            string   `json:"scope,omitempty"`
+	Endpoints        []string            `json:"endpoints,omitempty"`
+	InferenceCapable bool                `json:"inferenceCapable"`
 }
 
 func profileCategoryString(category openshellv1.ProviderProfileCategory) string {
@@ -351,9 +343,9 @@ type CurrentUser struct {
 	Subject          string   `json:"subject"`
 	DisplayName      string   `json:"displayName,omitempty"`
 	Email            string   `json:"email,omitempty"`
+	IdentityProvider string   `json:"identityProvider,omitempty"`
 	Roles            []string `json:"roles"`
 	Scopes           []string `json:"scopes,omitempty"`
-	IdentityProvider string   `json:"identityProvider,omitempty"`
 }
 
 func FromCurrentUser(resp *openshellv1.GetCurrentUserResponse) CurrentUser {

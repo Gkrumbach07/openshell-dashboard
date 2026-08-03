@@ -18,8 +18,8 @@ import (
 
 func TestListSandboxes(t *testing.T) {
 	tests := []struct {
-		name       string
 		mockFn     func(ctx context.Context, workspace string, limit, offset uint32, labelSelector string) ([]*openshellv1.Sandbox, error)
+		name       string
 		wantStatus int
 	}{
 		{
@@ -96,11 +96,17 @@ func TestListSandboxesBody(t *testing.T) {
 	if len(body) != 1 {
 		t.Fatalf("got %d sandboxes, want 1", len(body))
 	}
-	meta := body[0]["metadata"].(map[string]any)
+	meta, ok := body[0]["metadata"].(map[string]any)
+	if !ok {
+		t.Fatal("metadata is not a map")
+	}
 	if meta["name"] != "my-sandbox" {
 		t.Errorf("name = %v, want my-sandbox", meta["name"])
 	}
-	st := body[0]["status"].(map[string]any)
+	st, ok := body[0]["status"].(map[string]any)
+	if !ok {
+		t.Fatal("status is not a map")
+	}
 	if st["phase"] != "READY" {
 		t.Errorf("phase = %v, want READY", st["phase"])
 	}
@@ -108,11 +114,11 @@ func TestListSandboxesBody(t *testing.T) {
 
 func TestCreateSandbox(t *testing.T) {
 	tests := []struct {
+		mockFn     func(ctx context.Context, workspace, name string, spec *openshellv1.SandboxSpec, labels, annotations map[string]string) (*openshellv1.Sandbox, error)
 		name       string
 		body       string
-		mockFn     func(ctx context.Context, workspace, name string, spec *openshellv1.SandboxSpec, labels, annotations map[string]string) (*openshellv1.Sandbox, error)
-		wantStatus int
 		wantCode   string
+		wantStatus int
 	}{
 		{
 			name: "success",
@@ -194,7 +200,9 @@ func TestCreateSandbox(t *testing.T) {
 			}
 			if tc.wantCode != "" {
 				var errResp ErrorResponse
-				json.NewDecoder(w.Body).Decode(&errResp)
+				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
 				if errResp.Code != tc.wantCode {
 					t.Errorf("code = %q, want %q", errResp.Code, tc.wantCode)
 				}
@@ -205,8 +213,8 @@ func TestCreateSandbox(t *testing.T) {
 
 func TestGetSandbox(t *testing.T) {
 	tests := []struct {
-		name       string
 		mockFn     func(ctx context.Context, workspace, name string) (*openshellv1.Sandbox, error)
+		name       string
 		wantStatus int
 	}{
 		{
@@ -246,8 +254,8 @@ func TestGetSandbox(t *testing.T) {
 
 func TestDeleteSandbox(t *testing.T) {
 	tests := []struct {
-		name       string
 		mockFn     func(ctx context.Context, workspace, name string) (bool, error)
+		name       string
 		wantStatus int
 	}{
 		{
