@@ -26,6 +26,10 @@ linters:
       - comments
       - std-error-handling
       - common-false-positives
+    rules:
+      - linters: [gosec]
+        rules: [G101]
+        path: _test\.go
     paths:
       - gen/
       - third_party/
