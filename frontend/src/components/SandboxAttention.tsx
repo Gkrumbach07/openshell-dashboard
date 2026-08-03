@@ -31,6 +31,9 @@ type AttentionItem = {
   action?: { label: string; onClick: () => void };
 };
 
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
 export const buildAttentionItems = (
   sandbox: Sandbox,
   draftSummary: DraftSandboxSummary | undefined,
@@ -39,9 +42,11 @@ export const buildAttentionItems = (
     onReviewDrafts?: (name: string) => void;
     onViewLogs?: (name: string) => void;
   },
+  providerExpiry?: Record<string, number>,
 ): AttentionItem[] => {
   const items: AttentionItem[] = [];
   const { metadata, status } = sandbox;
+  const now = Date.now();
 
   if (status.phase === 'ERROR') {
     const condition = status.conditions?.find((c) => c.status === 'False' || c.reason);
@@ -60,18 +65,19 @@ export const buildAttentionItems = (
 
   if (policyView?.latest) {
     const rev = policyView.latest;
-    if (rev.status === 'PENDING' || rev.status === 'FAILED') {
+    if (rev.status === 'FAILED') {
       items.push({
         key: 'policy-status',
-        variant: rev.status === 'FAILED' ? 'danger' : 'warning',
-        title:
-          rev.status === 'FAILED'
-            ? `Policy v${rev.version} failed to load`
-            : 'Policy revision pending',
-        description:
-          rev.status === 'FAILED'
-            ? rev.loadError
-            : `v${rev.version} was submitted ${formatAge(rev.createdAtMs)} ago and is not loaded yet`,
+        variant: 'danger',
+        title: `Policy v${rev.version} failed to load`,
+        description: rev.loadError,
+      });
+    } else if (rev.status === 'PENDING' && now - rev.createdAtMs > FIVE_MINUTES_MS) {
+      items.push({
+        key: 'policy-status',
+        variant: 'warning',
+        title: 'Policy revision pending',
+        description: `v${rev.version} was submitted ${formatAge(rev.createdAtMs)} ago and is not loaded yet`,
       });
     }
   }
@@ -88,6 +94,32 @@ export const buildAttentionItems = (
         ? { label: 'Review', onClick: () => callbacks.onReviewDrafts!(metadata.name) }
         : undefined,
     });
+  }
+
+  if (providerExpiry) {
+    const attachedProviders = sandbox.spec.providers ?? [];
+    for (const name of attachedProviders) {
+      const expiresMs = providerExpiry[name];
+      if (expiresMs == null) continue;
+      const remaining = expiresMs - now;
+      if (remaining <= 0) {
+        items.push({
+          key: `provider-expired-${name}`,
+          variant: 'danger',
+          title: `Provider "${name}" credentials expired`,
+        });
+      } else if (remaining < ONE_DAY_MS) {
+        const hours = Math.floor(remaining / (60 * 60 * 1000));
+        const mins = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
+        const timeLeft = hours > 0 ? `${hours}h ${mins}m` : mins > 0 ? `${mins}m` : '<1m';
+        items.push({
+          key: `provider-expiring-${name}`,
+          variant: 'warning',
+          title: `Provider "${name}" credentials expiring soon`,
+          description: `Expires in ${timeLeft}`,
+        });
+      }
+    }
   }
 
   return items;
@@ -124,7 +156,9 @@ const renderAlert = (
 
 const CardAttention: React.FC<{ items: AttentionItem[] }> = ({ items }) => {
   const [page, setPage] = useState(0);
-  const current = items[page];
+  const clampedPage = Math.min(page, Math.max(0, items.length - 1));
+  if (clampedPage !== page) setPage(clampedPage);
+  const current = items[clampedPage];
   if (!current) return null;
 
   return (
@@ -194,6 +228,7 @@ type SandboxAttentionProps = {
   sandbox: Sandbox;
   draftSummary?: DraftSandboxSummary;
   policyView?: SandboxPolicyView;
+  providerExpiry?: Record<string, number>;
   onReviewDrafts?: (name: string) => void;
   onViewLogs?: (name: string) => void;
   mode?: 'card' | 'detail';
@@ -204,6 +239,7 @@ const SandboxAttention: React.FC<SandboxAttentionProps> = ({
   sandbox,
   draftSummary,
   policyView,
+  providerExpiry,
   onReviewDrafts,
   onViewLogs,
   mode = 'card',
@@ -212,7 +248,7 @@ const SandboxAttention: React.FC<SandboxAttentionProps> = ({
   const items = buildAttentionItems(sandbox, draftSummary, policyView, {
     onReviewDrafts,
     onViewLogs,
-  });
+  }, providerExpiry);
 
   if (items.length === 0) return null;
 

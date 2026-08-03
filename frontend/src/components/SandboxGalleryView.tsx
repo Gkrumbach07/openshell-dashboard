@@ -16,6 +16,7 @@ type SandboxGalleryViewProps = {
   sandboxes: Sandbox[];
   draftSummaries?: DraftSandboxSummary[];
   policyViews?: Record<string, SandboxPolicyView>;
+  providerExpiry?: Record<string, number>;
   onDelete: (name: string) => void;
   onSelect?: (name: string) => void;
   onViewLogs?: (name: string) => void;
@@ -28,6 +29,7 @@ const SandboxGalleryView: React.FC<SandboxGalleryViewProps> = ({
   sandboxes,
   draftSummaries,
   policyViews,
+  providerExpiry,
   onDelete,
   onSelect,
   onViewLogs,
@@ -59,7 +61,7 @@ const SandboxGalleryView: React.FC<SandboxGalleryViewProps> = ({
   }
 
   return (
-    <Gallery hasGutter minWidths={{ default: '400px' }} data-testid="sandbox-gallery">
+    <Gallery hasGutter minWidths={{ default: '320px' }} data-testid="sandbox-gallery">
       {sandboxes.map((sandbox) => (
         <GalleryItem key={sandbox.metadata.name}>
           <SandboxCard
@@ -68,6 +70,7 @@ const SandboxGalleryView: React.FC<SandboxGalleryViewProps> = ({
               (d) => d.sandboxName === sandbox.metadata.name,
             )}
             policyView={policyViews?.[sandbox.metadata.name]}
+            providerExpiry={providerExpiry}
             onDelete={onDelete}
             onSelect={onSelect}
             onViewLogs={onViewLogs}

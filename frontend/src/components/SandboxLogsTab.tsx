@@ -1,19 +1,16 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
-  Bullseye,
   Button,
   Checkbox,
-  Flex,
-  FlexItem,
   FormSelect,
   FormSelectOption,
-  Label,
-  Spinner,
   Toolbar,
   ToolbarContent,
+  ToolbarGroup,
   ToolbarItem,
 } from '@patternfly/react-core';
+import { LogViewer, LogViewerSearch } from '@patternfly/react-log-viewer';
 
 import { useSandboxLogs } from '../api/sandboxes';
 import type { LogLine } from '../types';
@@ -23,57 +20,21 @@ type SandboxLogsTabProps = {
   sandboxName: string;
 };
 
-const levelColor = (level?: string): 'red' | 'orange' | 'blue' | 'grey' => {
-  switch ((level ?? '').toUpperCase()) {
-    case 'ERROR':
-      return 'red';
-    case 'WARN':
-      return 'orange';
-    case 'INFO':
-      return 'blue';
-    default:
-      return 'grey';
-  }
+const formatLogLine = (line: LogLine): string => {
+  const ts = new Date(line.timestampMs).toLocaleTimeString();
+  const level = (line.level || 'LOG').toUpperCase();
+  const source = line.source ? ` [${line.source}]` : '';
+  const fields = Object.entries(line.fields ?? {})
+    .map(([k, v]) => ` ${k}=${v}`)
+    .join('');
+  return `${ts}  ${level}${source}  ${line.message}${fields}`;
 };
-
-const LogRow: React.FC<{ line: LogLine }> = ({ line }) => (
-  <Flex gap={{ default: 'gapSm' }} alignItems={{ default: 'alignItemsBaseline' }}>
-    <FlexItem>
-      <span className="pf-v6-u-white-space-nowrap pf-v6-u-color-200">
-        {new Date(line.timestampMs).toLocaleTimeString()}
-      </span>
-    </FlexItem>
-    <FlexItem>
-      <Label isCompact color={levelColor(line.level)}>
-        {(line.level || 'LOG').toUpperCase()}
-      </Label>
-    </FlexItem>
-    {line.source && (
-      <FlexItem>
-        <Label isCompact color="grey">
-          {line.source}
-        </Label>
-      </FlexItem>
-    )}
-    <FlexItem grow={{ default: 'grow' }}>
-      <span className="pf-v6-u-word-break-break-word">
-        {line.message}
-        {Object.entries(line.fields ?? {}).map(([key, value]) => (
-          <Label key={key} isCompact color="teal" className="pf-v6-u-ml-xs">
-            {key}={value}
-          </Label>
-        ))}
-      </span>
-    </FlexItem>
-  </Flex>
-);
 
 const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({ workspace, sandboxName }) => {
   const [level, setLevel] = useState('');
   const [source, setSource] = useState('');
   const [lines, setLines] = useState('200');
   const [autoRefresh, setAutoRefresh] = useState(true);
-
   const logs = useSandboxLogs(
     workspace,
     sandboxName,
@@ -85,10 +46,16 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({ workspace, sandboxName 
     autoRefresh,
   );
 
-  return (
-    <>
-      <Toolbar aria-label="Log filters">
-        <ToolbarContent>
+  const logText = useMemo(() => {
+    const logLines = logs.data?.logs ?? [];
+    if (logLines.length === 0) return 'No log lines match the current filters.';
+    return logLines.map(formatLogLine).join('\n');
+  }, [logs.data]);
+
+  const toolbar = (
+    <Toolbar aria-label="Log filters">
+      <ToolbarContent>
+        <ToolbarGroup>
           <ToolbarItem>
             <FormSelect
               aria-label="Minimum level"
@@ -152,34 +119,38 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({ workspace, sandboxName 
               </Button>
             </ToolbarItem>
           )}
-        </ToolbarContent>
-      </Toolbar>
-      {logs.isLoading ? (
-        <Bullseye>
-          <Spinner aria-label="Loading logs" />
-        </Bullseye>
-      ) : logs.isError ? (
-        <Alert
-          variant="danger"
-          title="Failed to load logs"
-          actionLinks={<Button variant="link" onClick={() => logs.refetch()}>Retry</Button>}
-        >
-          {(logs.error as Error).message}
-        </Alert>
-      ) : (
-        <div
-          data-testid="logs-output"
-          className="pf-v6-u-font-family-monospace pf-v6-u-font-size-sm"
-          style={{ maxHeight: '32rem', overflowY: 'auto', padding: 'var(--pf-t--global--spacer--sm)' }}
-        >
-          {(logs.data?.logs ?? []).length === 0 ? (
-            <span>No log lines match the current filters.</span>
-          ) : (
-            (logs.data?.logs ?? []).map((line, index) => <LogRow key={index} line={line} />)
-          )}
-        </div>
-      )}
-    </>
+        </ToolbarGroup>
+        <ToolbarGroup align={{ default: 'alignEnd' }}>
+          <ToolbarItem>
+            <LogViewerSearch placeholder="Search" minSearchChars={1} />
+          </ToolbarItem>
+        </ToolbarGroup>
+      </ToolbarContent>
+    </Toolbar>
+  );
+
+  if (logs.isError) {
+    return (
+      <Alert
+        variant="danger"
+        title="Failed to load logs"
+        actionLinks={<Button variant="link" onClick={() => logs.refetch()}>Retry</Button>}
+      >
+        {(logs.error as Error).message}
+      </Alert>
+    );
+  }
+
+  return (
+    <LogViewer
+      data={logs.isLoading ? 'Loading...' : logText}
+      theme="dark"
+      height={500}
+      toolbar={toolbar}
+      hasLineNumbers
+      isTextWrapped={false}
+      data-testid="logs-output"
+    />
   );
 };
 

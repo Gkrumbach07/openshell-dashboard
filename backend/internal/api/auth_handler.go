@@ -7,7 +7,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+var oidcHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
+const maxTokenResponseBytes = 1 << 20 // 1 MB
 
 // TokenExchangeRequest is the body from the frontend's PKCE callback.
 type TokenExchangeRequest struct {
@@ -25,6 +30,22 @@ type TokenExchangeResponse struct {
 // RefreshRequest carries the refresh token from the frontend.
 type RefreshRequest struct {
 	RefreshToken string `json:"refreshToken"`
+}
+
+// oidcTokenResponse is the subset of the IdP token response we parse.
+type oidcTokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	IDToken      string `json:"id_token"`
+}
+
+// selectBearer picks the best token for gateway auth: prefer id_token when
+// it's a JWT (carries claims for RBAC), fall back to access_token.
+func selectBearer(tokens oidcTokenResponse) string {
+	if tokens.IDToken != "" && strings.HasPrefix(tokens.IDToken, "eyJ") {
+		return tokens.IDToken
+	}
+	return tokens.AccessToken
 }
 
 // TokenExchange proxies the OIDC authorization-code-for-token exchange to the
@@ -47,9 +68,9 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 
 	// Discover the token endpoint
 	discoveryURL := strings.TrimSuffix(authConfig.Issuer, "/") + "/.well-known/openid-configuration"
-	discoveryResp, err := http.Get(discoveryURL)
+	discoveryResp, err := oidcHTTPClient.Get(discoveryURL)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "discovery_failed", fmt.Sprintf("OIDC discovery failed: %v", err))
+		writeError(w, http.StatusBadGateway, "discovery_failed", "identity provider is unreachable")
 		return
 	}
 	defer discoveryResp.Body.Close()
@@ -57,13 +78,13 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	var discovery struct {
 		TokenEndpoint string `json:"token_endpoint"`
 	}
-	if err := json.NewDecoder(discoveryResp.Body).Decode(&discovery); err != nil {
+	if err := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); err != nil {
 		writeError(w, http.StatusBadGateway, "discovery_failed", "failed to parse OIDC discovery")
 		return
 	}
 
 	// Exchange the code for tokens
-	tokenResp, err := http.PostForm(discovery.TokenEndpoint, url.Values{
+	tokenResp, err := oidcHTTPClient.PostForm(discovery.TokenEndpoint, url.Values{
 		"grant_type":    {"authorization_code"},
 		"client_id":     {authConfig.ClientID},
 		"code":          {body.Code},
@@ -71,39 +92,29 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 		"code_verifier": {body.CodeVerifier},
 	})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "token_exchange_failed", fmt.Sprintf("token request failed: %v", err))
+		writeError(w, http.StatusBadGateway, "token_exchange_failed", "token request failed")
 		return
 	}
 	defer tokenResp.Body.Close()
 
-	tokenBody, err := io.ReadAll(tokenResp.Body)
+	tokenBody, err := io.ReadAll(io.LimitReader(tokenResp.Body, maxTokenResponseBytes))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "token_exchange_failed", "failed to read token response")
 		return
 	}
 
 	if tokenResp.StatusCode != http.StatusOK {
-		writeError(w, http.StatusBadGateway, "token_exchange_failed",
-			fmt.Sprintf("IdP returned %d: %s", tokenResp.StatusCode, string(tokenBody)))
+		writeError(w, http.StatusBadGateway, "token_exchange_failed", "identity provider rejected the token exchange")
 		return
 	}
 
-	var tokens struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		IDToken      string `json:"id_token"`
-	}
+	var tokens oidcTokenResponse
 	if err := json.Unmarshal(tokenBody, &tokens); err != nil {
 		writeError(w, http.StatusBadGateway, "token_exchange_failed", "failed to parse token response")
 		return
 	}
 
-	// Use id_token when it's a JWT (contains claims for gateway RBAC).
-	// Fall back to access_token for providers that use opaque id_tokens.
-	bearer := tokens.AccessToken
-	if tokens.IDToken != "" && strings.HasPrefix(tokens.IDToken, "eyJ") {
-		bearer = tokens.IDToken
-	}
+	bearer := selectBearer(tokens)
 	if bearer == "" {
 		writeError(w, http.StatusBadGateway, "token_exchange_failed", "no token in response")
 		return
@@ -124,7 +135,7 @@ func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	discoveryURL := strings.TrimSuffix(authConfig.Issuer, "/") + "/.well-known/openid-configuration"
-	discoveryResp, err := http.Get(discoveryURL)
+	discoveryResp, err := oidcHTTPClient.Get(discoveryURL)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
 		return
@@ -134,7 +145,7 @@ func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
 	var discovery struct {
 		EndSessionEndpoint string `json:"end_session_endpoint"`
 	}
-	if err := json.NewDecoder(discoveryResp.Body).Decode(&discovery); err != nil || discovery.EndSessionEndpoint == "" {
+	if err := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); err != nil || discovery.EndSessionEndpoint == "" {
 		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
 		return
 	}
@@ -170,9 +181,9 @@ func (app *App) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	discoveryURL := strings.TrimSuffix(authConfig.Issuer, "/") + "/.well-known/openid-configuration"
-	discoveryResp, err := http.Get(discoveryURL)
+	discoveryResp, err := oidcHTTPClient.Get(discoveryURL)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "discovery_failed", fmt.Sprintf("OIDC discovery failed: %v", err))
+		writeError(w, http.StatusBadGateway, "discovery_failed", "identity provider is unreachable")
 		return
 	}
 	defer discoveryResp.Body.Close()
@@ -180,23 +191,23 @@ func (app *App) Refresh(w http.ResponseWriter, r *http.Request) {
 	var discovery struct {
 		TokenEndpoint string `json:"token_endpoint"`
 	}
-	if err := json.NewDecoder(discoveryResp.Body).Decode(&discovery); err != nil {
+	if err := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); err != nil {
 		writeError(w, http.StatusBadGateway, "discovery_failed", "failed to parse OIDC discovery")
 		return
 	}
 
-	tokenResp, err := http.PostForm(discovery.TokenEndpoint, url.Values{
+	tokenResp, err := oidcHTTPClient.PostForm(discovery.TokenEndpoint, url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {authConfig.ClientID},
 		"refresh_token": {body.RefreshToken},
 	})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "refresh_failed", fmt.Sprintf("refresh request failed: %v", err))
+		writeError(w, http.StatusBadGateway, "refresh_failed", "refresh request failed")
 		return
 	}
 	defer tokenResp.Body.Close()
 
-	tokenBody, err := io.ReadAll(tokenResp.Body)
+	tokenBody, err := io.ReadAll(io.LimitReader(tokenResp.Body, maxTokenResponseBytes))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "refresh_failed", "failed to read refresh response")
 		return
@@ -207,17 +218,20 @@ func (app *App) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var tokens struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-	}
+	var tokens oidcTokenResponse
 	if err := json.Unmarshal(tokenBody, &tokens); err != nil {
 		writeError(w, http.StatusBadGateway, "refresh_failed", "failed to parse refresh response")
 		return
 	}
 
+	bearer := selectBearer(tokens)
+	if bearer == "" {
+		writeError(w, http.StatusBadGateway, "refresh_failed", "no token in refresh response")
+		return
+	}
+
 	writeJSON(w, http.StatusOK, TokenExchangeResponse{
-		AccessToken:  tokens.AccessToken,
+		AccessToken:  bearer,
 		RefreshToken: tokens.RefreshToken,
 	})
 }

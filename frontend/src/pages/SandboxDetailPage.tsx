@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   Alert,
   Bullseye,
@@ -24,8 +24,10 @@ import {
   Title,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
+import { useSearchParams } from 'react-router-dom';
 import { useFeatureFlags } from '../api/auth';
 import { useDraftPolicy, useSandboxPolicy } from '../api/policy';
+import { useProviderExpiry } from '../api/providers';
 import { useSandbox } from '../api/sandboxes';
 import ConnectCard from '../components/ConnectCard';
 import LabelsList from '../components/LabelsList';
@@ -50,7 +52,12 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
   const features = useFeatureFlags();
   const policyQuery = useSandboxPolicy(workspace, sandboxName);
   const draftsQuery = useDraftPolicy(workspace, sandboxName);
-  const [activeTab, setActiveTab] = useState<string | number>('details');
+  const providerExpiry = useProviderExpiry(workspace);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'details';
+  const setActiveTab = (key: string | number) => {
+    setSearchParams(key === 'details' ? {} : { tab: String(key) }, { replace: true });
+  };
 
   const draftSummary = useMemo(() => {
     const chunks = draftsQuery.data?.chunks ?? [];
@@ -110,6 +117,7 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
         sandbox={data}
         draftSummary={draftSummary}
         policyView={policyQuery.data}
+        providerExpiry={providerExpiry}
         onReviewDrafts={() => setActiveTab('proposals')}
         onViewLogs={() => setActiveTab('logs')}
         mode="detail"

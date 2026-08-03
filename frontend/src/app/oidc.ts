@@ -53,7 +53,7 @@ export const startLogin = async (config: AuthConfig): Promise<void> => {
     response_type: 'code',
     client_id: config.clientId,
     redirect_uri: redirectUri(),
-    scope: 'openid profile email groups',
+    scope: config.scopes || 'openid profile email',
     code_challenge: challenge,
     code_challenge_method: 'S256',
   });

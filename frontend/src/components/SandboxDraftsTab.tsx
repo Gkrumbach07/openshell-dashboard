@@ -3,27 +3,24 @@ import {
   Alert,
   Bullseye,
   Button,
-  Card,
-  CardBody,
-  CardTitle,
   Checkbox,
   CodeBlock,
   CodeBlockCode,
   Content,
-  DescriptionList,
-  DescriptionListDescription,
-  DescriptionListGroup,
-  DescriptionListTerm,
   ExpandableSection,
+  Flex,
+  FlexItem,
   Label,
   Modal,
   ModalBody,
+  Popover,
   ModalFooter,
   ModalHeader,
   Spinner,
   Stack,
   StackItem,
   TextArea,
+  Timestamp,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
@@ -32,9 +29,10 @@ import {
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
-  HistoryIcon,
   InProgressIcon,
 } from '@patternfly/react-icons';
+
+import { ExpandableRowContent, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
 import {
   useApproveAllDraftChunks,
@@ -47,13 +45,22 @@ import {
   useUndoDraftChunk,
 } from '../api/policy';
 import { useWorkspaceRole } from '../app/useWorkspaceRole';
-import { formatTimestamp } from './utils';
+
 import type { ApiError } from '../api/client';
 import type { NetworkPolicyRule, PolicyChunk } from '../types';
 
 type SandboxDraftsTabProps = {
   workspace: string;
   sandboxName: string;
+};
+
+const eventColor = (eventType: string): 'green' | 'red' | 'blue' | 'orange' | 'grey' => {
+  const lower = eventType.toLowerCase();
+  if (lower.includes('approved') || lower.includes('approve')) return 'green';
+  if (lower.includes('rejected') || lower.includes('reject') || lower.includes('cleared')) return 'red';
+  if (lower.includes('proposed') || lower.includes('submit')) return 'blue';
+  if (lower.includes('undo')) return 'orange';
+  return 'grey';
 };
 
 const chunkStatusColor = (status: string): 'green' | 'red' | 'blue' | 'grey' => {
@@ -99,6 +106,23 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
   const [editJson, setEditJson] = useState('');
   const [editJsonError, setEditJsonError] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        if (rejecting === id) {
+          setRejecting(null);
+          setRejectReason('');
+        }
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   if (drafts.isLoading) {
     return (
@@ -154,139 +178,71 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
     );
   };
 
-  const renderChunk = (chunk: PolicyChunk) => (
-    <StackItem key={chunk.id}>
-      <Card data-testid={`draft-chunk-${chunk.id}`}>
-        <CardTitle>
-          <Label isCompact color={chunkStatusColor(chunk.status)} icon={chunkStatusIcon(chunk.status)}>
-            {chunk.status}
-          </Label>{' '}
-          {chunk.ruleName || chunk.id}
-          {chunk.securityNotes && (
-            <Label isCompact color="red" className="pf-v6-u-ml-sm">
-              security flagged
-            </Label>
-          )}
-        </CardTitle>
-        <CardBody>
+
+  const renderExpandedContent = (chunk: PolicyChunk) => (
+    <Stack hasGutter>
+      {isWorkspaceAdmin && chunk.status === 'pending' && rejecting === chunk.id && (
+        <StackItem>
           <Stack hasGutter>
-            {chunk.rationale && (
-              <StackItem>
-                <Content component="p">{chunk.rationale}</Content>
-              </StackItem>
-            )}
-            {chunk.securityNotes && (
-              <StackItem>
-                <Alert variant="warning" isInline title="Security notes">
-                  {chunk.securityNotes}
-                </Alert>
-              </StackItem>
-            )}
-            {chunk.validationResult && (
-              <StackItem>
-                <Alert variant="info" isInline title="Prover verdict">
-                  {chunk.validationResult}
-                </Alert>
-              </StackItem>
-            )}
-            {chunk.proposedRule && (
-              <StackItem>
-                <CodeBlock>
-                  <CodeBlockCode>{JSON.stringify(chunk.proposedRule, null, 2)}</CodeBlockCode>
-                </CodeBlock>
-              </StackItem>
-            )}
             <StackItem>
-              <Content component="small">
-                {chunk.binary && <>binary: {chunk.binary} · </>}
-                hits: {chunk.hitCount} · confidence: {chunk.confidence.toFixed(2)} · proposed{' '}
-                {formatTimestamp(chunk.createdAtMs)}
-                {chunk.rejectionReason && <> · rejected: {chunk.rejectionReason}</>}
-              </Content>
+              <TextArea
+                aria-label="Rejection reason"
+                data-testid="reject-reason-input"
+                value={rejectReason}
+                onChange={(_event, value) => setRejectReason(value)}
+                placeholder="Optional reason — fed back to the in-sandbox agent"
+                rows={2}
+              />
             </StackItem>
-            {isWorkspaceAdmin && chunk.status === 'pending' && (
-              <StackItem>
-                {rejecting === chunk.id ? (
-                  <Stack hasGutter>
-                    <StackItem>
-                      <TextArea
-                        aria-label="Rejection reason"
-                        data-testid="reject-reason-input"
-                        value={rejectReason}
-                        onChange={(_event, value) => setRejectReason(value)}
-                        placeholder="Optional reason — fed back to the in-sandbox agent"
-                        rows={2}
-                      />
-                    </StackItem>
-                    <StackItem>
-                      <Button
-                        variant="danger"
-                        onClick={() =>
-                          reject.mutate(
-                            { chunkId: chunk.id, reason: rejectReason || undefined },
-                            {
-                              onSuccess: () => {
-                                setRejecting(null);
-                                setRejectReason('');
-                              },
-                            },
-                          )
-                        }
-                        isLoading={reject.isPending}
-                        data-testid="confirm-reject-chunk"
-                      >
-                        Confirm reject
-                      </Button>{' '}
-                      <Button variant="link" onClick={() => setRejecting(null)}>
-                        Cancel
-                      </Button>
-                    </StackItem>
-                  </Stack>
-                ) : (
-                  <>
-                    <Button
-                      variant="primary"
-                      onClick={() => approve.mutate(chunk.id)}
-                      isDisabled={approve.isPending}
-                      data-testid={`approve-chunk-${chunk.id}`}
-                    >
-                      Approve
-                    </Button>{' '}
-                    <Button
-                      variant="secondary"
-                      onClick={() => openEditModal(chunk)}
-                      data-testid={`edit-chunk-${chunk.id}`}
-                    >
-                      Edit
-                    </Button>{' '}
-                    <Button
-                      variant="secondary"
-                      onClick={() => setRejecting(chunk.id)}
-                      data-testid={`reject-chunk-${chunk.id}`}
-                    >
-                      Reject
-                    </Button>
-                  </>
-                )}
-              </StackItem>
-            )}
-            {isWorkspaceAdmin && chunk.status === 'approved' && (
-              <StackItem>
-                <Button
-                  variant="warning"
-                  onClick={() => undo.mutate(chunk.id)}
-                  isDisabled={undo.isPending}
-                  isLoading={undo.isPending}
-                  data-testid={`undo-chunk-${chunk.id}`}
-                >
-                  Undo
-                </Button>
-              </StackItem>
-            )}
+            <StackItem>
+              <Button
+                variant="danger"
+                onClick={() =>
+                  reject.mutate(
+                    { chunkId: chunk.id, reason: rejectReason || undefined },
+                    {
+                      onSuccess: () => {
+                        setRejecting(null);
+                        setRejectReason('');
+                      },
+                    },
+                  )
+                }
+                isLoading={reject.isPending}
+                data-testid="confirm-reject-chunk"
+              >
+                Confirm reject
+              </Button>{' '}
+              <Button variant="link" onClick={() => setRejecting(null)}>
+                Cancel
+              </Button>
+            </StackItem>
           </Stack>
-        </CardBody>
-      </Card>
-    </StackItem>
+        </StackItem>
+      )}
+      {chunk.securityNotes && (
+        <StackItem>
+          <Alert variant="warning" isInline title="Security notes">
+            {chunk.securityNotes}
+          </Alert>
+        </StackItem>
+      )}
+      {chunk.proposedRule && (
+        <StackItem>
+          <CodeBlock>
+            <CodeBlockCode>{JSON.stringify(chunk.proposedRule, null, 2)}</CodeBlockCode>
+          </CodeBlock>
+        </StackItem>
+      )}
+      <StackItem>
+        <Content component="small">
+          {chunk.binary && <>binary: {chunk.binary} · </>}
+          hits: {chunk.hitCount}
+          {chunk.validationResult && <> · prover: {chunk.validationResult}</>}
+          {chunk.rejectionReason && <> · rejected: {chunk.rejectionReason}</>}
+        </Content>
+      </StackItem>
+    </Stack>
   );
 
   return (
@@ -351,7 +307,138 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
           </Content>
         </StackItem>
       ) : (
-        chunks.map(renderChunk)
+        <StackItem>
+          <Table aria-label="Policy proposals" variant="compact" data-testid="draft-chunks-table">
+            <Thead>
+              <Tr>
+                <Th screenReaderText="Expand" />
+                <Th>Rule</Th>
+                <Th>Status</Th>
+                <Th>Confidence</Th>
+                <Th>Proposed</Th>
+                {isWorkspaceAdmin && <Th screenReaderText="Actions" />}
+              </Tr>
+            </Thead>
+            {chunks.map((chunk, rowIndex) => {
+              const isOpen = expanded.has(chunk.id);
+              return (
+                <Tbody key={chunk.id} isExpanded={isOpen}>
+                  <Tr data-testid={`draft-chunk-${chunk.id}`}>
+                    <Td
+                      expand={{
+                        rowIndex,
+                        isExpanded: isOpen,
+                        onToggle: () => toggleExpand(chunk.id),
+                      }}
+                    />
+                    <Td dataLabel="Rule">
+                      <Stack>
+                        <StackItem>
+                          {chunk.ruleName || chunk.id}
+                          {chunk.securityNotes && (
+                            <Label isCompact color="red" className="pf-v6-u-ml-sm">
+                              flagged
+                            </Label>
+                          )}
+                        </StackItem>
+                        {chunk.rationale && (
+                          <StackItem>
+                            <Content component="small">{chunk.rationale}</Content>
+                          </StackItem>
+                        )}
+                      </Stack>
+                    </Td>
+                    <Td dataLabel="Status">
+                      {chunk.status === 'rejected' && chunk.rejectionReason ? (
+                        <Popover
+                          headerContent="Rejection reason"
+                          bodyContent={chunk.rejectionReason}
+                        >
+                          <Label isCompact color={chunkStatusColor(chunk.status)} icon={chunkStatusIcon(chunk.status)} style={{ cursor: 'pointer' }}>
+                            {chunk.status}
+                          </Label>
+                        </Popover>
+                      ) : (
+                        <Label isCompact color={chunkStatusColor(chunk.status)} icon={chunkStatusIcon(chunk.status)}>
+                          {chunk.status}
+                        </Label>
+                      )}
+                    </Td>
+                    <Td dataLabel="Confidence">{chunk.confidence.toFixed(2)}</Td>
+                    <Td dataLabel="Proposed">
+                      <Timestamp date={new Date(chunk.createdAtMs)} />
+                    </Td>
+                    {isWorkspaceAdmin && (
+                      <Td isActionCell>
+                        <Flex flexWrap={{ default: 'nowrap' }} gap={{ default: 'gapSm' }}>
+                          {chunk.status === 'pending' && (
+                            <>
+                              <FlexItem>
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={() => approve.mutate(chunk.id)}
+                                  isDisabled={approve.isPending}
+                                  data-testid={`approve-chunk-${chunk.id}`}
+                                >
+                                  Approve
+                                </Button>
+                              </FlexItem>
+                              <FlexItem>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => openEditModal(chunk)}
+                                  data-testid={`edit-chunk-${chunk.id}`}
+                                >
+                                  Edit
+                                </Button>
+                              </FlexItem>
+                              <FlexItem>
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => {
+                                    setRejecting(chunk.id);
+                                    if (!isOpen) toggleExpand(chunk.id);
+                                  }}
+                                  data-testid={`reject-chunk-${chunk.id}`}
+                                >
+                                  Reject
+                                </Button>
+                              </FlexItem>
+                            </>
+                          )}
+                          {chunk.status === 'approved' && (
+                            <FlexItem>
+                              <Button
+                                variant="warning"
+                                size="sm"
+                                onClick={() => undo.mutate(chunk.id)}
+                                isDisabled={undo.isPending}
+                                isLoading={undo.isPending}
+                                data-testid={`undo-chunk-${chunk.id}`}
+                              >
+                                Undo
+                              </Button>
+                            </FlexItem>
+                          )}
+                        </Flex>
+                      </Td>
+                    )}
+                  </Tr>
+                  <Tr isExpanded={isOpen}>
+                    <Td dataLabel="Details" colSpan={isWorkspaceAdmin ? 6 : 5}>
+                      <ExpandableRowContent>
+                        {renderExpandedContent(chunk)}
+                      </ExpandableRowContent>
+                    </Td>
+                  </Tr>
+                </Tbody>
+              );
+            })}
+          </Table>
+        </StackItem>
       )}
 
       <StackItem>
@@ -375,26 +462,32 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
             <Content component="p">No draft history entries yet.</Content>
           )}
           {history.data && history.data.length > 0 && (
-            <DescriptionList isHorizontal isCompact data-testid="draft-history-list">
-              {history.data.map((entry, idx) => (
-                <DescriptionListGroup key={idx}>
-                  <DescriptionListTerm>
-                    <Label isCompact icon={<HistoryIcon />}>
-                      {entry.eventType}
-                    </Label>{' '}
-                    {formatTimestamp(entry.timestampMs)}
-                  </DescriptionListTerm>
-                  <DescriptionListDescription>
-                    {entry.description}
-                    {entry.chunkId && (
-                      <Content component="small" className="pf-v6-u-ml-sm">
-                        chunk: {entry.chunkId}
-                      </Content>
-                    )}
-                  </DescriptionListDescription>
-                </DescriptionListGroup>
-              ))}
-            </DescriptionList>
+            <Table aria-label="Draft history" variant="compact" data-testid="draft-history-list">
+              <Thead>
+                <Tr>
+                  <Th>Event</Th>
+                  <Th>Description</Th>
+                  <Th>Time</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {history.data.map((entry, idx) => (
+                  <Tr key={idx}>
+                    <Td dataLabel="Event">
+                      <Label isCompact color={eventColor(entry.eventType)}>
+                        {entry.eventType}
+                      </Label>
+                    </Td>
+                    <Td dataLabel="Description">
+                      {entry.description}
+                    </Td>
+                    <Td dataLabel="Time">
+                      <Timestamp date={new Date(entry.timestampMs)} />
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
           )}
         </ExpandableSection>
       </StackItem>

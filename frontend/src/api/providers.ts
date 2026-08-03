@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch, del, get, post, put } from './client';
@@ -56,6 +57,20 @@ export const useProviderRefreshStatus = (workspace: string, name: string) =>
 
 export const useProviders = (workspace: string) =>
   useQuery({ queryKey: ['providers', workspace], queryFn: () => listProviders(workspace) });
+
+export const useProviderExpiry = (workspace: string): Record<string, number> => {
+  const providers = useProviders(workspace);
+  return useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of providers.data ?? []) {
+      const values = Object.values(p.credentialExpiresAtMs ?? {});
+      if (values.length === 0) continue;
+      const earliest = Math.min(...values);
+      if (earliest > 0) map[p.metadata.name] = earliest;
+    }
+    return map;
+  }, [providers.data]);
+};
 
 export const useProvider = (workspace: string, name: string) =>
   useQuery({

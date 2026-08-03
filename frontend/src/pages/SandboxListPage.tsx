@@ -39,6 +39,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { useFeatureFlags } from '../api/auth';
 import { useDraftNotifications, useSandboxPolicies } from '../api/policy';
+import { useProviderExpiry } from '../api/providers';
 import { deleteSandbox, useSandboxes } from '../api/sandboxes';
 import { useAlerts } from '../app/AlertContext';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
@@ -90,6 +91,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
     return all.slice(start, start + perPage).map((s) => s.metadata.name);
   }, [sandboxes.data, page, perPage]);
   const policyViews = useSandboxPolicies(workspace, visibleNames);
+  const providerExpiry = useProviderExpiry(workspace);
   const drafts = useDraftNotifications(features.draftPolicy);
   const { addSuccess } = useAlerts();
   const bulkDelete = useBulkDelete(
@@ -415,6 +417,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
           sandboxes={rows}
           draftSummaries={drafts.items.filter((d) => d.workspace === workspace)}
           policyViews={policyViews}
+          providerExpiry={providerExpiry}
           onDelete={(name) => setDeleteTargets([name])}
           onSelect={onSelect}
           onViewLogs={(name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=logs`)}

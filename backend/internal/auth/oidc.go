@@ -33,12 +33,31 @@ type Claims struct {
 	RealmAccess RealmAccess `json:"realm_access,omitempty"`
 }
 
-// Roles returns the user's roles, preferring Dex-style groups over Keycloak realm_access.
+// Roles returns the user's roles by merging Dex-style groups and Keycloak
+// realm_access.roles. Both can be present simultaneously and carry different
+// semantics (org membership vs role assignment).
 func (c *Claims) Roles() []string {
-	if len(c.Groups) > 0 {
+	if len(c.Groups) == 0 {
+		return c.RealmAccess.Roles
+	}
+	if len(c.RealmAccess.Roles) == 0 {
 		return c.Groups
 	}
-	return c.RealmAccess.Roles
+	seen := make(map[string]struct{}, len(c.Groups)+len(c.RealmAccess.Roles))
+	merged := make([]string, 0, len(c.Groups)+len(c.RealmAccess.Roles))
+	for _, r := range c.Groups {
+		if _, ok := seen[r]; !ok {
+			seen[r] = struct{}{}
+			merged = append(merged, r)
+		}
+	}
+	for _, r := range c.RealmAccess.Roles {
+		if _, ok := seen[r]; !ok {
+			seen[r] = struct{}{}
+			merged = append(merged, r)
+		}
+	}
+	return merged
 }
 
 // Config holds OIDC settings.
