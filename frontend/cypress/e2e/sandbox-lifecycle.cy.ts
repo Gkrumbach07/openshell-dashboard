@@ -51,8 +51,8 @@ describe('Sandbox Lifecycle', () => {
     cy.contains('.pf-v6-c-menu__item', 'Delete').click();
 
     cy.get('.pf-v6-c-modal-box').should('be.visible');
-    cy.get('[data-testid="confirm-delete-input"]').type('my-agent');
-    cy.get('[data-testid="confirm-delete-button"]').click();
+    cy.get('[data-testid="confirm-delete-name-input"]').type('my-agent');
+    cy.get('[data-testid="confirm-delete"]').click();
     cy.wait('@deleteSandbox');
   });
 });
