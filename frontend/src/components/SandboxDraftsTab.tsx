@@ -32,7 +32,15 @@ import {
   InProgressIcon,
 } from '@patternfly/react-icons';
 
-import { ExpandableRowContent, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
+import {
+  ExpandableRowContent,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from '@patternfly/react-table';
 
 import {
   useApproveAllDraftChunks,
@@ -54,16 +62,25 @@ type SandboxDraftsTabProps = {
   sandboxName: string;
 };
 
-const eventColor = (eventType: string): 'green' | 'red' | 'blue' | 'orange' | 'grey' => {
+const eventColor = (
+  eventType: string,
+): 'green' | 'red' | 'blue' | 'orange' | 'grey' => {
   const lower = eventType.toLowerCase();
   if (lower.includes('approved') || lower.includes('approve')) return 'green';
-  if (lower.includes('rejected') || lower.includes('reject') || lower.includes('cleared')) return 'red';
+  if (
+    lower.includes('rejected') ||
+    lower.includes('reject') ||
+    lower.includes('cleared')
+  )
+    return 'red';
   if (lower.includes('proposed') || lower.includes('submit')) return 'blue';
   if (lower.includes('undo')) return 'orange';
   return 'grey';
 };
 
-const chunkStatusColor = (status: string): 'green' | 'red' | 'blue' | 'grey' => {
+const chunkStatusColor = (
+  status: string,
+): 'green' | 'red' | 'blue' | 'grey' => {
   switch (status) {
     case 'approved':
       return 'green';
@@ -89,7 +106,10 @@ const chunkStatusIcon = (status: string) => {
   }
 };
 
-const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxName }) => {
+const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
+  workspace,
+  sandboxName,
+}) => {
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const drafts = useDraftPolicy(workspace, sandboxName);
   const approve = useApproveDraftChunk(workspace, sandboxName);
@@ -136,8 +156,9 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
     if ((drafts.error as ApiError).status === 401) {
       return (
         <Alert variant="info" title="Sign-in required for policy proposals">
-          Draft policy decisions are attributed to a reviewer, so the gateway requires an
-          authenticated principal. Run the gateway with OIDC (and sign in) to use this tab.
+          Draft policy decisions are attributed to a reviewer, so the gateway
+          requires an authenticated principal. Run the gateway with OIDC (and
+          sign in) to use this tab.
         </Alert>
       );
     }
@@ -145,7 +166,11 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
       <Alert
         variant="danger"
         title="Failed to load draft policy"
-        actionLinks={<Button variant="link" onClick={() => drafts.refetch()}>Retry</Button>}
+        actionLinks={
+          <Button variant="link" onClick={() => drafts.refetch()}>
+            Retry
+          </Button>
+        }
       >
         {(drafts.error as Error).message}
       </Alert>
@@ -155,7 +180,12 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
   const chunks = drafts.data?.chunks ?? [];
   const pending = chunks.filter((chunk) => chunk.status === 'pending');
   const mutationError =
-    approve.error || reject.error || approveAll.error || edit.error || undo.error || clear.error;
+    approve.error ||
+    reject.error ||
+    approveAll.error ||
+    edit.error ||
+    undo.error ||
+    clear.error;
 
   const openEditModal = (chunk: PolicyChunk) => {
     setEditingChunk(chunk);
@@ -178,48 +208,49 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
     );
   };
 
-
   const renderExpandedContent = (chunk: PolicyChunk) => (
     <Stack hasGutter>
-      {isWorkspaceAdmin && chunk.status === 'pending' && rejecting === chunk.id && (
-        <StackItem>
-          <Stack hasGutter>
-            <StackItem>
-              <TextArea
-                aria-label="Rejection reason"
-                data-testid="reject-reason-input"
-                value={rejectReason}
-                onChange={(_event, value) => setRejectReason(value)}
-                placeholder="Optional reason — fed back to the in-sandbox agent"
-                rows={2}
-              />
-            </StackItem>
-            <StackItem>
-              <Button
-                variant="danger"
-                onClick={() =>
-                  reject.mutate(
-                    { chunkId: chunk.id, reason: rejectReason || undefined },
-                    {
-                      onSuccess: () => {
-                        setRejecting(null);
-                        setRejectReason('');
+      {isWorkspaceAdmin &&
+        chunk.status === 'pending' &&
+        rejecting === chunk.id && (
+          <StackItem>
+            <Stack hasGutter>
+              <StackItem>
+                <TextArea
+                  aria-label="Rejection reason"
+                  data-testid="reject-reason-input"
+                  value={rejectReason}
+                  onChange={(_event, value) => setRejectReason(value)}
+                  placeholder="Optional reason — fed back to the in-sandbox agent"
+                  rows={2}
+                />
+              </StackItem>
+              <StackItem>
+                <Button
+                  variant="danger"
+                  onClick={() =>
+                    reject.mutate(
+                      { chunkId: chunk.id, reason: rejectReason || undefined },
+                      {
+                        onSuccess: () => {
+                          setRejecting(null);
+                          setRejectReason('');
+                        },
                       },
-                    },
-                  )
-                }
-                isLoading={reject.isPending}
-                data-testid="confirm-reject-chunk"
-              >
-                Confirm reject
-              </Button>{' '}
-              <Button variant="link" onClick={() => setRejecting(null)}>
-                Cancel
-              </Button>
-            </StackItem>
-          </Stack>
-        </StackItem>
-      )}
+                    )
+                  }
+                  isLoading={reject.isPending}
+                  data-testid="confirm-reject-chunk"
+                >
+                  Confirm reject
+                </Button>{' '}
+                <Button variant="link" onClick={() => setRejecting(null)}>
+                  Cancel
+                </Button>
+              </StackItem>
+            </Stack>
+          </StackItem>
+        )}
       {chunk.securityNotes && (
         <StackItem>
           <Alert variant="warning" isInline title="Security notes">
@@ -230,7 +261,9 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
       {chunk.proposedRule && (
         <StackItem>
           <CodeBlock>
-            <CodeBlockCode>{JSON.stringify(chunk.proposedRule, null, 2)}</CodeBlockCode>
+            <CodeBlockCode>
+              {JSON.stringify(chunk.proposedRule, null, 2)}
+            </CodeBlockCode>
           </CodeBlock>
         </StackItem>
       )}
@@ -302,13 +335,17 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
       {chunks.length === 0 ? (
         <StackItem>
           <Content component="p">
-            No policy proposals. Proposals appear here when the sandbox observes denied network
-            activity (or an in-sandbox agent submits one).
+            No policy proposals. Proposals appear here when the sandbox observes
+            denied network activity (or an in-sandbox agent submits one).
           </Content>
         </StackItem>
       ) : (
         <StackItem>
-          <Table aria-label="Policy proposals" variant="compact" data-testid="draft-chunks-table">
+          <Table
+            aria-label="Policy proposals"
+            variant="compact"
+            data-testid="draft-chunks-table"
+          >
             <Thead>
               <Tr>
                 <Th screenReaderText="Expand" />
@@ -336,14 +373,20 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
                         <StackItem>
                           {chunk.ruleName || chunk.id}
                           {chunk.securityNotes && (
-                            <Label isCompact color="red" className="pf-v6-u-ml-sm">
+                            <Label
+                              isCompact
+                              color="red"
+                              className="pf-v6-u-ml-sm"
+                            >
                               flagged
                             </Label>
                           )}
                         </StackItem>
                         {chunk.rationale && (
                           <StackItem>
-                            <Content component="small">{chunk.rationale}</Content>
+                            <Content component="small">
+                              {chunk.rationale}
+                            </Content>
                           </StackItem>
                         )}
                       </Stack>
@@ -354,23 +397,37 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
                           headerContent="Rejection reason"
                           bodyContent={chunk.rejectionReason}
                         >
-                          <Label isCompact color={chunkStatusColor(chunk.status)} icon={chunkStatusIcon(chunk.status)} style={{ cursor: 'pointer' }}>
+                          <Label
+                            isCompact
+                            color={chunkStatusColor(chunk.status)}
+                            icon={chunkStatusIcon(chunk.status)}
+                            style={{ cursor: 'pointer' }}
+                          >
                             {chunk.status}
                           </Label>
                         </Popover>
                       ) : (
-                        <Label isCompact color={chunkStatusColor(chunk.status)} icon={chunkStatusIcon(chunk.status)}>
+                        <Label
+                          isCompact
+                          color={chunkStatusColor(chunk.status)}
+                          icon={chunkStatusIcon(chunk.status)}
+                        >
                           {chunk.status}
                         </Label>
                       )}
                     </Td>
-                    <Td dataLabel="Confidence">{chunk.confidence.toFixed(2)}</Td>
+                    <Td dataLabel="Confidence">
+                      {chunk.confidence.toFixed(2)}
+                    </Td>
                     <Td dataLabel="Proposed">
                       <Timestamp date={new Date(chunk.createdAtMs)} />
                     </Td>
                     {isWorkspaceAdmin && (
                       <Td isActionCell>
-                        <Flex flexWrap={{ default: 'nowrap' }} gap={{ default: 'gapSm' }}>
+                        <Flex
+                          flexWrap={{ default: 'nowrap' }}
+                          gap={{ default: 'gapSm' }}
+                        >
                           {chunk.status === 'pending' && (
                             <>
                               <FlexItem>
@@ -462,7 +519,11 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
             <Content component="p">No draft history entries yet.</Content>
           )}
           {history.data && history.data.length > 0 && (
-            <Table aria-label="Draft history" variant="compact" data-testid="draft-history-list">
+            <Table
+              aria-label="Draft history"
+              variant="compact"
+              data-testid="draft-history-list"
+            >
               <Thead>
                 <Tr>
                   <Th>Event</Th>
@@ -478,9 +539,7 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
                         {entry.eventType}
                       </Label>
                     </Td>
-                    <Td dataLabel="Description">
-                      {entry.description}
-                    </Td>
+                    <Td dataLabel="Description">{entry.description}</Td>
                     <Td dataLabel="Time">
                       <Timestamp date={new Date(entry.timestampMs)} />
                     </Td>
@@ -500,7 +559,9 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
           variant="medium"
           data-testid="edit-chunk-modal"
         >
-          <ModalHeader title={`Edit proposed rule: ${editingChunk.ruleName || editingChunk.id}`} />
+          <ModalHeader
+            title={`Edit proposed rule: ${editingChunk.ruleName || editingChunk.id}`}
+          />
           <ModalBody>
             <Stack hasGutter>
               {editJsonError && (
@@ -518,7 +579,9 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({ workspace, sandboxN
                     setEditJsonError('');
                   }}
                   rows={16}
-                  style={{ fontFamily: 'var(--pf-t--global--font--family--mono)' }}
+                  style={{
+                    fontFamily: 'var(--pf-t--global--font--family--mono)',
+                  }}
                 />
               </StackItem>
             </Stack>

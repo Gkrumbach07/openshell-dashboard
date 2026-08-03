@@ -1,0 +1,31 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - gosec
+    - revive
+    - misspell
+    - unconvert
+    - gocyclo
+  settings:
+    errcheck:
+      check-type-assertions: true
+    govet:
+      enable-all: true
+    gocyclo:
+      min-complexity: 15
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+    paths:
+      - gen/
+      - third_party/

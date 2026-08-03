@@ -14,7 +14,10 @@ export type PolicyTemplate = {
   policy: SandboxPolicy;
 };
 
-const basePolicy: Pick<SandboxPolicy, 'version' | 'filesystem' | 'landlock' | 'process'> = {
+const basePolicy: Pick<
+  SandboxPolicy,
+  'version' | 'filesystem' | 'landlock' | 'process'
+> = {
   version: 1,
   filesystem: {
     includeWorkdir: true,
@@ -29,7 +32,8 @@ export const policyTemplates: PolicyTemplate[] = [
   {
     id: 'locked-down',
     name: 'Locked down (no network)',
-    description: 'Standard filesystem sandbox with no network egress. Good default for untrusted code.',
+    description:
+      'Standard filesystem sandbox with no network egress. Good default for untrusted code.',
     policy: {
       ...basePolicy,
       networkPolicies: {},
@@ -38,7 +42,8 @@ export const policyTemplates: PolicyTemplate[] = [
   {
     id: 'web-audit',
     name: 'Web egress (audit)',
-    description: 'Allows HTTPS to any host in audit mode — requests are logged, not blocked. Use to observe an agent before locking down.',
+    description:
+      'Allows HTTPS to any host in audit mode — requests are logged, not blocked. Use to observe an agent before locking down.',
     policy: {
       ...basePolicy,
       networkPolicies: {
@@ -80,7 +85,8 @@ export const policyTemplates: PolicyTemplate[] = [
   {
     id: 'github-readonly',
     name: 'GitHub read-only',
-    description: 'Enforced read-only access to the GitHub API, git binary allowed.',
+    description:
+      'Enforced read-only access to the GitHub API, git binary allowed.',
     policy: {
       ...basePolicy,
       networkPolicies: {

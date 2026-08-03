@@ -1,0 +1,89 @@
+[
+  {
+    "metadata": {
+      "id": "sbx-1-id",
+      "name": "my-agent",
+      "workspace": "default",
+      "labels": { "purpose": "agent" },
+      "createdAtMs": 1722700000000,
+      "resourceVersion": 3
+    },
+    "spec": {
+      "image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest",
+      "providers": ["anthropic"],
+      "policy": {
+        "filesystem": { "includeWorkdir": true },
+        "networkPolicies": {}
+      }
+    },
+    "status": {
+      "phase": "READY",
+      "currentPolicyVersion": 1
+    }
+  },
+  {
+    "metadata": {
+      "id": "sbx-2-id",
+      "name": "data-processor",
+      "workspace": "default",
+      "createdAtMs": 1722700100000,
+      "resourceVersion": 1
+    },
+    "spec": {
+      "image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest",
+      "policy": {
+        "filesystem": { "includeWorkdir": true }
+      }
+    },
+    "status": {
+      "phase": "PROVISIONING",
+      "currentPolicyVersion": 1
+    }
+  },
+  {
+    "metadata": {
+      "id": "sbx-3-id",
+      "name": "broken-sandbox",
+      "workspace": "default",
+      "createdAtMs": 1722700200000,
+      "resourceVersion": 2
+    },
+    "spec": {
+      "image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest",
+      "policy": {
+        "filesystem": { "includeWorkdir": true }
+      }
+    },
+    "status": {
+      "phase": "ERROR",
+      "currentPolicyVersion": 1,
+      "conditions": [
+        {
+          "type": "Ready",
+          "status": "False",
+          "reason": "ImagePullBackOff",
+          "message": "Failed to pull image"
+        }
+      ]
+    }
+  },
+  {
+    "metadata": {
+      "id": "sbx-4-id",
+      "name": "cleanup-target",
+      "workspace": "default",
+      "createdAtMs": 1722700300000,
+      "resourceVersion": 1
+    },
+    "spec": {
+      "image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest",
+      "policy": {
+        "filesystem": { "includeWorkdir": true }
+      }
+    },
+    "status": {
+      "phase": "DELETING",
+      "currentPolicyVersion": 1
+    }
+  }
+]

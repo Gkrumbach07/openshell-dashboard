@@ -14,7 +14,10 @@ import {
 } from '@patternfly/react-core';
 import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
 
-import type { ConfigureProviderRefreshRequest, RefreshStrategy } from '../types';
+import type {
+  ConfigureProviderRefreshRequest,
+  RefreshStrategy,
+} from '../types';
 
 type ConfigureRefreshModalProps = {
   isOpen: boolean;
@@ -43,8 +46,12 @@ const ConfigureRefreshModal: React.FC<ConfigureRefreshModalProps> = ({
   onClose,
 }) => {
   const [credentialKey, setCredentialKey] = useState('');
-  const [strategy, setStrategy] = useState<RefreshStrategy>('oauth2-refresh-token');
-  const [materialEntries, setMaterialEntries] = useState<{ key: string; value: string }[]>([]);
+  const [strategy, setStrategy] = useState<RefreshStrategy>(
+    'oauth2-refresh-token',
+  );
+  const [materialEntries, setMaterialEntries] = useState<
+    { key: string; value: string }[]
+  >([]);
   const [secretKeys, setSecretKeys] = useState<Set<string>>(new Set());
   const [expiresAt, setExpiresAt] = useState('');
 
@@ -75,11 +82,15 @@ const ConfigureRefreshModal: React.FC<ConfigureRefreshModalProps> = ({
   };
 
   const updateMaterialKey = (index: number, key: string) => {
-    setMaterialEntries((prev) => prev.map((e, i) => (i === index ? { ...e, key } : e)));
+    setMaterialEntries((prev) =>
+      prev.map((e, i) => (i === index ? { ...e, key } : e)),
+    );
   };
 
   const updateMaterialValue = (index: number, value: string) => {
-    setMaterialEntries((prev) => prev.map((e, i) => (i === index ? { ...e, value } : e)));
+    setMaterialEntries((prev) =>
+      prev.map((e, i) => (i === index ? { ...e, value } : e)),
+    );
   };
 
   const toggleSecretKey = (key: string, checked: boolean) => {
@@ -108,7 +119,9 @@ const ConfigureRefreshModal: React.FC<ConfigureRefreshModalProps> = ({
     if (Object.keys(material).length > 0) {
       body.material = material;
     }
-    const secretMaterialKeys = Array.from(secretKeys).filter((k) => k in material);
+    const secretMaterialKeys = Array.from(secretKeys).filter(
+      (k) => k in material,
+    );
     if (secretMaterialKeys.length > 0) {
       body.secretMaterialKeys = secretMaterialKeys;
     }
@@ -127,7 +140,11 @@ const ConfigureRefreshModal: React.FC<ConfigureRefreshModalProps> = ({
     >
       <ModalHeader title="Configure credential refresh" />
       <ModalBody>
-        <FormGroup label="Credential key" isRequired fieldId="refresh-credential-key">
+        <FormGroup
+          label="Credential key"
+          isRequired
+          fieldId="refresh-credential-key"
+        >
           <FormSelect
             id="refresh-credential-key"
             data-testid="refresh-credential-key"
@@ -152,11 +169,19 @@ const ConfigureRefreshModal: React.FC<ConfigureRefreshModalProps> = ({
             ))}
           </FormSelect>
         </FormGroup>
-        <FormGroup label="Material (key/value pairs)" fieldId="refresh-material">
+        <FormGroup
+          label="Material (key/value pairs)"
+          fieldId="refresh-material"
+        >
           {materialEntries.map((entry, index) => (
             <div
               key={index}
-              style={{ display: 'flex', gap: 'var(--pf-t--global--spacer--sm)', marginBottom: 'var(--pf-t--global--spacer--sm)', alignItems: 'center' }}
+              style={{
+                display: 'flex',
+                gap: 'var(--pf-t--global--spacer--sm)',
+                marginBottom: 'var(--pf-t--global--spacer--sm)',
+                alignItems: 'center',
+              }}
             >
               <TextInput
                 aria-label={`Material key ${index}`}
@@ -176,7 +201,9 @@ const ConfigureRefreshModal: React.FC<ConfigureRefreshModalProps> = ({
                 label="Secret"
                 isChecked={secretKeys.has(entry.key)}
                 isDisabled={!entry.key}
-                onChange={(_event, checked) => toggleSecretKey(entry.key, checked)}
+                onChange={(_event, checked) =>
+                  toggleSecretKey(entry.key, checked)
+                }
               />
               <Button
                 variant="plain"
@@ -205,7 +232,12 @@ const ConfigureRefreshModal: React.FC<ConfigureRefreshModalProps> = ({
           />
         </FormGroup>
         {error && (
-          <Alert variant="danger" isInline title="Failed to configure refresh" className="pf-v6-u-mt-md">
+          <Alert
+            variant="danger"
+            isInline
+            title="Failed to configure refresh"
+            className="pf-v6-u-mt-md"
+          >
             {error}
           </Alert>
         )}

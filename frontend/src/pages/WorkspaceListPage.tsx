@@ -16,7 +16,15 @@ import {
   ToolbarItem,
 } from '@patternfly/react-core';
 import { CubesIcon } from '@patternfly/react-icons';
-import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
+import {
+  ActionsColumn,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from '@patternfly/react-table';
 
 import { useDeleteWorkspace, useWorkspaces } from '../api/workspaces';
 import { useAlerts } from '../app/AlertContext';
@@ -32,7 +40,10 @@ type WorkspaceListPageProps = {
   renderWorkspaceHeader?: () => React.ReactNode;
 };
 
-const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({ onSelect, renderWorkspaceHeader }) => {
+const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
+  onSelect,
+  renderWorkspaceHeader,
+}) => {
   const workspaces = useWorkspaces();
   const deleteWorkspace = useDeleteWorkspace();
   const { addSuccess } = useAlerts();
@@ -79,17 +90,23 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({ onSelect, renderW
       <PageSection>
         <Title headingLevel="h1">Workspaces</Title>
       </PageSection>
-      {renderWorkspaceHeader && <PageSection>{renderWorkspaceHeader()}</PageSection>}
+      {renderWorkspaceHeader && (
+        <PageSection>{renderWorkspaceHeader()}</PageSection>
+      )}
       <PageSection>
         {allRows.length === 0 ? (
           <EmptyState titleText="No workspaces" icon={CubesIcon} variant="xl">
             <EmptyStateBody>
-              Workspaces are hard isolation boundaries for sandboxes, providers, and members.
+              Workspaces are hard isolation boundaries for sandboxes, providers,
+              and members.
             </EmptyStateBody>
             {isPlatformAdmin && (
               <EmptyStateFooter>
                 <EmptyStateActions>
-                  <Button onClick={() => setCreateOpen(true)} data-testid="create-workspace-empty">
+                  <Button
+                    onClick={() => setCreateOpen(true)}
+                    data-testid="create-workspace-empty"
+                  >
                     Create workspace
                   </Button>
                 </EmptyStateActions>
@@ -102,7 +119,10 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({ onSelect, renderW
               <ToolbarContent>
                 {isPlatformAdmin && (
                   <ToolbarItem>
-                    <Button onClick={() => setCreateOpen(true)} data-testid="create-workspace">
+                    <Button
+                      onClick={() => setCreateOpen(true)}
+                      data-testid="create-workspace"
+                    >
                       Create workspace
                     </Button>
                   </ToolbarItem>
@@ -151,14 +171,17 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({ onSelect, renderW
                     <Td dataLabel="Labels">
                       <LabelsList labels={workspace.metadata.labels} />
                     </Td>
-                    <Td dataLabel="Age">{formatAge(workspace.metadata.createdAtMs)}</Td>
+                    <Td dataLabel="Age">
+                      {formatAge(workspace.metadata.createdAtMs)}
+                    </Td>
                     {isPlatformAdmin && (
                       <Td isActionCell>
                         <ActionsColumn
                           items={[
                             {
                               title: 'Delete',
-                              onClick: () => setDeleteTarget(workspace.metadata.name),
+                              onClick: () =>
+                                setDeleteTarget(workspace.metadata.name),
                             },
                           ]}
                         />
@@ -171,14 +194,21 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({ onSelect, renderW
           </>
         )}
       </PageSection>
-      <CreateWorkspaceModal isOpen={isCreateOpen} onClose={() => setCreateOpen(false)} />
+      <CreateWorkspaceModal
+        isOpen={isCreateOpen}
+        onClose={() => setCreateOpen(false)}
+      />
       <ConfirmDeleteModal
         title="Delete workspace?"
         body={`Workspace "${deleteTarget ?? ''}" and everything in it (sandboxes, providers, members) will be deleted.`}
         confirmName={deleteTarget ?? undefined}
         isOpen={deleteTarget !== null}
         isDeleting={deleteWorkspace.isPending}
-        error={deleteWorkspace.isError ? (deleteWorkspace.error as Error).message : undefined}
+        error={
+          deleteWorkspace.isError
+            ? (deleteWorkspace.error as Error).message
+            : undefined
+        }
         onConfirm={() => {
           if (deleteTarget) {
             deleteWorkspace.mutate(deleteTarget, {

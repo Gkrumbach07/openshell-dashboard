@@ -47,7 +47,10 @@ type SandboxDetailPageProps = {
   sandboxName: string;
 };
 
-const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandboxName }) => {
+const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({
+  workspace,
+  sandboxName,
+}) => {
   const sandbox = useSandbox(workspace, sandboxName);
   const features = useFeatureFlags();
   const policyQuery = useSandboxPolicy(workspace, sandboxName);
@@ -56,7 +59,9 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'details';
   const setActiveTab = (key: string | number) => {
-    setSearchParams(key === 'details' ? {} : { tab: String(key) }, { replace: true });
+    setSearchParams(key === 'details' ? {} : { tab: String(key) }, {
+      replace: true,
+    });
   };
 
   const draftSummary = useMemo(() => {
@@ -88,7 +93,11 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
         <Alert
           variant="danger"
           title={`Failed to load sandbox ${sandboxName}`}
-          actionLinks={<Button variant="link" onClick={() => sandbox.refetch()}>Retry</Button>}
+          actionLinks={
+            <Button variant="link" onClick={() => sandbox.refetch()}>
+              Retry
+            </Button>
+          }
         >
           {(sandbox.error as Error).message}
         </Alert>
@@ -104,7 +113,10 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
   return (
     <>
       <PageSection>
-        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapMd' }}>
+        <Flex
+          alignItems={{ default: 'alignItemsCenter' }}
+          gap={{ default: 'gapMd' }}
+        >
           <FlexItem>
             <Title headingLevel="h1">{data.metadata.name}</Title>
           </FlexItem>
@@ -121,7 +133,9 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
         onReviewDrafts={() => setActiveTab('proposals')}
         onViewLogs={() => setActiveTab('logs')}
         mode="detail"
-        wrapper={(children) => <PageSection style={{ paddingTop: 0 }}>{children}</PageSection>}
+        wrapper={(children) => (
+          <PageSection style={{ paddingTop: 0 }}>{children}</PageSection>
+        )}
       />
       <PageSection>
         <Tabs
@@ -129,7 +143,11 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
           onSelect={(_event, key) => setActiveTab(key)}
           aria-label="Sandbox detail"
         >
-          <Tab eventKey="details" title={<TabTitleText>Details</TabTitleText>} data-testid="tab-details">
+          <Tab
+            eventKey="details"
+            title={<TabTitleText>Details</TabTitleText>}
+            data-testid="tab-details"
+          >
             <Stack hasGutter className="pf-v6-u-pt-lg">
               <StackItem>
                 <Card data-testid="sandbox-details-card">
@@ -138,7 +156,9 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
                     <DescriptionList isHorizontal>
                       <DescriptionListGroup>
                         <DescriptionListTerm>ID</DescriptionListTerm>
-                        <DescriptionListDescription>{data.metadata.id}</DescriptionListDescription>
+                        <DescriptionListDescription>
+                          {data.metadata.id}
+                        </DescriptionListDescription>
                       </DescriptionListGroup>
                       <DescriptionListGroup>
                         <DescriptionListTerm>Workspace</DescriptionListTerm>
@@ -148,7 +168,9 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
                       </DescriptionListGroup>
                       <DescriptionListGroup>
                         <DescriptionListTerm>Image</DescriptionListTerm>
-                        <DescriptionListDescription>{data.spec.image || '-'}</DescriptionListDescription>
+                        <DescriptionListDescription>
+                          {data.spec.image || '-'}
+                        </DescriptionListDescription>
                       </DescriptionListGroup>
                       <DescriptionListGroup>
                         <DescriptionListTerm>Created</DescriptionListTerm>
@@ -157,13 +179,17 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
                         </DescriptionListDescription>
                       </DescriptionListGroup>
                       <DescriptionListGroup>
-                        <DescriptionListTerm>Active policy version</DescriptionListTerm>
+                        <DescriptionListTerm>
+                          Active policy version
+                        </DescriptionListTerm>
                         <DescriptionListDescription>
                           {data.status.currentPolicyVersion || '-'}
                         </DescriptionListDescription>
                       </DescriptionListGroup>
                       <DescriptionListGroup>
-                        <DescriptionListTerm>Attached providers</DescriptionListTerm>
+                        <DescriptionListTerm>
+                          Attached providers
+                        </DescriptionListTerm>
                         <DescriptionListDescription>
                           {(data.spec.providers ?? []).length > 0 ? (
                             <LabelGroup>
@@ -207,9 +233,15 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
                           <Tr key={condition.type}>
                             <Td dataLabel="Type">{condition.type}</Td>
                             <Td dataLabel="Status">{condition.status}</Td>
-                            <Td dataLabel="Reason">{condition.reason || '-'}</Td>
-                            <Td dataLabel="Message">{condition.message || '-'}</Td>
-                            <Td dataLabel="Last transition">{condition.lastTransitionTime || '-'}</Td>
+                            <Td dataLabel="Reason">
+                              {condition.reason || '-'}
+                            </Td>
+                            <Td dataLabel="Message">
+                              {condition.message || '-'}
+                            </Td>
+                            <Td dataLabel="Last transition">
+                              {condition.lastTransitionTime || '-'}
+                            </Td>
                           </Tr>
                         ))}
                         {(data.status.conditions ?? []).length === 0 && (
@@ -227,46 +259,92 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({ workspace, sandbo
               </StackItem>
             </Stack>
           </Tab>
-          <Tab eventKey="logs" title={<TabTitleText>Logs</TabTitleText>} data-testid="tab-logs">
+          <Tab
+            eventKey="logs"
+            title={<TabTitleText>Logs</TabTitleText>}
+            data-testid="tab-logs"
+          >
             <div className="pf-v6-u-pt-lg">
               <SandboxLogsTab workspace={workspace} sandboxName={sandboxName} />
             </div>
           </Tab>
           {features.terminal && (
-            <Tab eventKey="terminal" title={<TabTitleText>Terminal</TabTitleText>} data-testid="tab-terminal">
+            <Tab
+              eventKey="terminal"
+              title={<TabTitleText>Terminal</TabTitleText>}
+              data-testid="tab-terminal"
+            >
               <div className="pf-v6-u-pt-lg">
-                <SandboxTerminalTab workspace={workspace} sandboxName={sandboxName} />
+                <SandboxTerminalTab
+                  workspace={workspace}
+                  sandboxName={sandboxName}
+                />
               </div>
             </Tab>
           )}
-          <Tab eventKey="providers" title={<TabTitleText>Providers</TabTitleText>} data-testid="tab-sandbox-providers">
+          <Tab
+            eventKey="providers"
+            title={<TabTitleText>Providers</TabTitleText>}
+            data-testid="tab-sandbox-providers"
+          >
             <div className="pf-v6-u-pt-lg">
-              <SandboxProvidersTab workspace={workspace} sandboxName={sandboxName} />
+              <SandboxProvidersTab
+                workspace={workspace}
+                sandboxName={sandboxName}
+              />
             </div>
           </Tab>
-          <Tab eventKey="policy" title={<TabTitleText>Policy</TabTitleText>} data-testid="tab-policy">
+          <Tab
+            eventKey="policy"
+            title={<TabTitleText>Policy</TabTitleText>}
+            data-testid="tab-policy"
+          >
             <div className="pf-v6-u-pt-lg">
-              <PolicyRuleEditor workspace={workspace} sandboxName={sandboxName} />
+              <PolicyRuleEditor
+                workspace={workspace}
+                sandboxName={sandboxName}
+              />
             </div>
           </Tab>
           {features.draftPolicy && (
-            <Tab eventKey="proposals" title={<TabTitleText>Proposals</TabTitleText>} data-testid="tab-proposals">
+            <Tab
+              eventKey="proposals"
+              title={<TabTitleText>Proposals</TabTitleText>}
+              data-testid="tab-proposals"
+            >
               <div className="pf-v6-u-pt-lg">
-                <SandboxDraftsTab workspace={workspace} sandboxName={sandboxName} />
+                <SandboxDraftsTab
+                  workspace={workspace}
+                  sandboxName={sandboxName}
+                />
               </div>
             </Tab>
           )}
           {features.services && (
-            <Tab eventKey="services" title={<TabTitleText>Services</TabTitleText>} data-testid="tab-services">
+            <Tab
+              eventKey="services"
+              title={<TabTitleText>Services</TabTitleText>}
+              data-testid="tab-services"
+            >
               <div className="pf-v6-u-pt-lg">
-                <SandboxServicesTab workspace={workspace} sandboxName={sandboxName} />
+                <SandboxServicesTab
+                  workspace={workspace}
+                  sandboxName={sandboxName}
+                />
               </div>
             </Tab>
           )}
           {features.fileTransfer && (
-            <Tab eventKey="files" title={<TabTitleText>Files</TabTitleText>} data-testid="tab-files">
+            <Tab
+              eventKey="files"
+              title={<TabTitleText>Files</TabTitleText>}
+              data-testid="tab-files"
+            >
               <div className="pf-v6-u-pt-lg">
-                <SandboxFilesTab workspace={workspace} sandboxName={sandboxName} />
+                <SandboxFilesTab
+                  workspace={workspace}
+                  sandboxName={sandboxName}
+                />
               </div>
             </Tab>
           )}

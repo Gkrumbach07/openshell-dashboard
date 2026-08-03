@@ -1,0 +1,26 @@
+[
+  {
+    "metadata": {
+      "id": "prov-1-id",
+      "name": "anthropic",
+      "workspace": "default",
+      "createdAtMs": 1722700000000,
+      "resourceVersion": 1
+    },
+    "type": "claude",
+    "credentialNames": ["api_key"],
+    "config": {}
+  },
+  {
+    "metadata": {
+      "id": "prov-2-id",
+      "name": "openai-dev",
+      "workspace": "default",
+      "createdAtMs": 1722700100000,
+      "resourceVersion": 1
+    },
+    "type": "openai",
+    "credentialNames": ["api_key"],
+    "config": {}
+  }
+]

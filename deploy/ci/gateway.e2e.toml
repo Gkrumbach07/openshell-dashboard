@@ -1,0 +1,20 @@
+# Gateway config for CI e2e tests — Docker compute driver, no auth.
+[openshell]
+version = 1
+
+[openshell.gateway]
+bind_address        = "127.0.0.1:8080"
+health_bind_address = "127.0.0.1:8081"
+log_level           = "info"
+compute_drivers     = ["docker"]
+disable_tls         = true
+
+[openshell.gateway.auth]
+allow_unauthenticated_users = true
+
+[openshell.drivers.docker]
+default_image     = "ghcr.io/nvidia/openshell-community/sandboxes/base:latest"
+supervisor_image  = "ghcr.io/nvidia/openshell/supervisor:latest"
+image_pull_policy = "IfNotPresent"
+sandbox_namespace = "openshell-e2e"
+grpc_endpoint     = "http://host.openshell.internal:8080"

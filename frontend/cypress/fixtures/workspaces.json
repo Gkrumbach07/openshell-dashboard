@@ -1,0 +1,30 @@
+[
+  {
+    "metadata": {
+      "id": "ws-default-id",
+      "name": "default",
+      "createdAtMs": 1722700000000,
+      "resourceVersion": 1
+    },
+    "phase": "ACTIVE"
+  },
+  {
+    "metadata": {
+      "id": "ws-dev-id",
+      "name": "dev-team",
+      "labels": { "env": "development" },
+      "createdAtMs": 1722700100000,
+      "resourceVersion": 2
+    },
+    "phase": "ACTIVE"
+  },
+  {
+    "metadata": {
+      "id": "ws-staging-id",
+      "name": "staging",
+      "createdAtMs": 1722700200000,
+      "resourceVersion": 1
+    },
+    "phase": "ACTIVE"
+  }
+]

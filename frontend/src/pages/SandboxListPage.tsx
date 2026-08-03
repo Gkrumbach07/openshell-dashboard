@@ -33,7 +33,15 @@ import {
   SecurityIcon,
   ThIcon,
 } from '@patternfly/react-icons';
-import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
+import {
+  ActionsColumn,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from '@patternfly/react-table';
 
 import { useNavigate } from 'react-router-dom';
 
@@ -74,7 +82,10 @@ type SandboxListPageProps = {
   onSelect?: (name: string) => void;
 };
 
-const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }) => {
+const SandboxListPage: React.FC<SandboxListPageProps> = ({
+  workspace,
+  onSelect,
+}) => {
   const navigate = useNavigate();
   const features = useFeatureFlags();
   const sandboxes = useSandboxes(workspace);
@@ -130,7 +141,8 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
   const pageNames = rows.map((sandbox) => sandbox.metadata.name);
 
   const numSelected = selected.length;
-  const pageAllSelected = pageNames.length > 0 && pageNames.every((n) => selected.includes(n));
+  const pageAllSelected =
+    pageNames.length > 0 && pageNames.every((n) => selected.includes(n));
 
   const toggleAll = (isSelecting: boolean) => {
     setSelected(isSelecting ? pageNames : []);
@@ -138,7 +150,9 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
 
   const toggleOne = (name: string, isSelecting: boolean) => {
     setSelected((current) =>
-      isSelecting ? [...current, name] : current.filter((item) => item !== name),
+      isSelecting
+        ? [...current, name]
+        : current.filter((item) => item !== name),
     );
   };
 
@@ -152,12 +166,15 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
       <>
         <EmptyState variant="lg" titleText="No sandboxes" icon={CubesIcon}>
           <EmptyStateBody>
-            Sandboxes are secure execution environments for agents and tools. Create one to get
-            started.
+            Sandboxes are secure execution environments for agents and tools.
+            Create one to get started.
           </EmptyStateBody>
           <EmptyStateFooter>
             <EmptyStateActions>
-              <Button onClick={() => setCreateOpen(true)} data-testid="create-sandbox-empty">
+              <Button
+                onClick={() => setCreateOpen(true)}
+                data-testid="create-sandbox-empty"
+              >
                 Create sandbox
               </Button>
             </EmptyStateActions>
@@ -177,7 +194,10 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
       <Toolbar aria-label="Sandbox actions">
         <ToolbarContent>
           <ToolbarItem>
-            <Button onClick={() => setCreateOpen(true)} data-testid="create-sandbox">
+            <Button
+              onClick={() => setCreateOpen(true)}
+              data-testid="create-sandbox"
+            >
               Create sandbox
             </Button>
           </ToolbarItem>
@@ -275,7 +295,11 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
           <Tbody>
             {rows.map((sandbox, rowIndex) => {
               const pv = policyViews[sandbox.metadata.name];
-              const pc = getPolicySummary(pv, sandbox.spec.policy, sandbox.status.currentPolicyVersion);
+              const pc = getPolicySummary(
+                pv,
+                sandbox.spec.policy,
+                sandbox.status.currentPolicyVersion,
+              );
               const providers = sandbox.spec.providers ?? [];
               const isReady = sandbox.status.phase === 'READY';
               const imageParts = (sandbox.spec.image || '').split('/');
@@ -305,7 +329,10 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
                       <StackItem>
                         <Content
                           component="small"
-                          style={{ fontFamily: 'var(--pf-t--global--font--family--mono)' }}
+                          style={{
+                            fontFamily:
+                              'var(--pf-t--global--font--family--mono)',
+                          }}
                         >
                           {imageShort}
                         </Content>
@@ -324,9 +351,10 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
                       <FlexItem>
                         <span
                           style={{
-                            color: sandbox.status.phase === 'ERROR'
-                              ? 'var(--pf-t--global--text--color--status--danger--default)'
-                              : undefined,
+                            color:
+                              sandbox.status.phase === 'ERROR'
+                                ? 'var(--pf-t--global--text--color--status--danger--default)'
+                                : undefined,
                           }}
                         >
                           {getStatusText(sandbox)}
@@ -371,9 +399,14 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
                     )}
                   </Td>
                   <Td dataLabel="Labels">
-                    <LabelsList labels={sandbox.metadata.labels} numLabels={2} />
+                    <LabelsList
+                      labels={sandbox.metadata.labels}
+                      numLabels={2}
+                    />
                   </Td>
-                  <Td dataLabel="Age">{formatAge(sandbox.metadata.createdAtMs)}</Td>
+                  <Td dataLabel="Age">
+                    {formatAge(sandbox.metadata.createdAtMs)}
+                  </Td>
                   <Td isActionCell>
                     <ActionsColumn
                       items={[
@@ -397,7 +430,8 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
                         },
                         {
                           title: 'Delete',
-                          onClick: () => setDeleteTargets([sandbox.metadata.name]),
+                          onClick: () =>
+                            setDeleteTargets([sandbox.metadata.name]),
                         },
                       ]}
                     />
@@ -420,9 +454,25 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
           providerExpiry={providerExpiry}
           onDelete={(name) => setDeleteTargets([name])}
           onSelect={onSelect}
-          onViewLogs={(name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=logs`)}
-          onOpenTerminal={features.terminal ? (name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=terminal`) : undefined}
-          onReviewDrafts={features.draftPolicy ? (name) => navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=proposals`) : undefined}
+          onViewLogs={(name) =>
+            navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=logs`)
+          }
+          onOpenTerminal={
+            features.terminal
+              ? (name) =>
+                  navigate(
+                    `/workspaces/${workspace}/sandboxes/${name}?tab=terminal`,
+                  )
+              : undefined
+          }
+          onReviewDrafts={
+            features.draftPolicy
+              ? (name) =>
+                  navigate(
+                    `/workspaces/${workspace}/sandboxes/${name}?tab=proposals`,
+                  )
+              : undefined
+          }
           onCreateClick={() => setCreateOpen(true)}
         />
       )}
@@ -432,7 +482,11 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }
         onClose={() => setCreateOpen(false)}
       />
       <ConfirmDeleteModal
-        title={deleteTargets && deleteTargets.length > 1 ? 'Delete sandboxes?' : 'Delete sandbox?'}
+        title={
+          deleteTargets && deleteTargets.length > 1
+            ? 'Delete sandboxes?'
+            : 'Delete sandbox?'
+        }
         body={
           deleteTargets && deleteTargets.length > 1
             ? `${deleteTargets.length} sandboxes will be permanently deleted. This is the only way to stop running sandboxes.`

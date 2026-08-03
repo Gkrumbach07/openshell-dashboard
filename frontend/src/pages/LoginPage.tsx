@@ -79,7 +79,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ onAuthenticated }) => {
             )}
             {authConfig.data?.authDisabled ? (
               <StackItem>
-                <Alert variant="warning" isInline title="Authentication is disabled (dev mode)" />
+                <Alert
+                  variant="warning"
+                  isInline
+                  title="Authentication is disabled (dev mode)"
+                />
                 <Button
                   className="pf-v6-u-mt-md"
                   onClick={() => {

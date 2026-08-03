@@ -1,0 +1,15 @@
+{
+  "authDisabled": true,
+  "features": {
+    "terminal": true,
+    "fileTransfer": true,
+    "settings": true,
+    "globalPolicy": true,
+    "credentialRefresh": true,
+    "services": true,
+    "draftPolicy": true,
+    "deploymentContext": "standalone",
+    "workspaceBinding": false,
+    "resourceLinks": false
+  }
+}

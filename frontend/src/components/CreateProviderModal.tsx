@@ -38,13 +38,24 @@ type CreateProviderModalProps = {
 // type slugs come from ListProviderProfiles, and the credential inputs are
 // generated from the selected profile's credentials[] schema. Credential
 // values are write-only: sent to the gateway, never displayed again.
-const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, isOpen, onClose, onSuccess, renderCredentialInput }) => {
+const CreateProviderModal: React.FC<CreateProviderModalProps> = ({
+  workspace,
+  isOpen,
+  onClose,
+  onSuccess,
+  renderCredentialInput,
+}) => {
   const slots = useSlots();
-  const resolvedCredentialInput = renderCredentialInput ?? slots.credentialInput;
+  const resolvedCredentialInput =
+    renderCredentialInput ?? slots.credentialInput;
   const [name, setName] = useState('');
   const [profileId, setProfileId] = useState('');
-  const [credentialValues, setCredentialValues] = useState<Record<string, string>>({});
-  const [configRows, setConfigRows] = useState<{ key: string; value: string }[]>([]);
+  const [credentialValues, setCredentialValues] = useState<
+    Record<string, string>
+  >({});
+  const [configRows, setConfigRows] = useState<
+    { key: string; value: string }[]
+  >([]);
   const profiles = useProviderProfiles(workspace);
   const createProvider = useCreateProvider(workspace);
   const { addSuccess } = useAlerts();
@@ -84,7 +95,8 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
       {
         name,
         type: profileId,
-        credentials: Object.keys(credentials).length > 0 ? credentials : undefined,
+        credentials:
+          Object.keys(credentials).length > 0 ? credentials : undefined,
         config: Object.keys(config).length > 0 ? config : undefined,
       },
       {
@@ -98,7 +110,12 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
   };
 
   return (
-    <Modal variant="medium" isOpen={isOpen} onClose={close} aria-label="Add provider">
+    <Modal
+      variant="medium"
+      isOpen={isOpen}
+      onClose={close}
+      aria-label="Add provider"
+    >
       <ModalHeader title="Add provider" />
       <ModalBody>
         {profiles.isLoading ? (
@@ -129,7 +146,11 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
                   setCredentialValues({});
                 }}
               >
-                <FormSelectOption value="" label="Select a provider type" isDisabled />
+                <FormSelectOption
+                  value=""
+                  label="Select a provider type"
+                  isDisabled
+                />
                 {(profiles.data ?? []).map((profile) => (
                   <FormSelectOption
                     key={profile.id}
@@ -141,7 +162,9 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
               {selectedProfile?.description && (
                 <FormHelperText>
                   <HelperText>
-                    <HelperTextItem>{selectedProfile.description}</HelperTextItem>
+                    <HelperTextItem>
+                      {selectedProfile.description}
+                    </HelperTextItem>
                   </HelperText>
                 </FormHelperText>
               )}
@@ -158,7 +181,10 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
                     credential,
                     credentialValues[credential.name] ?? '',
                     (value) =>
-                      setCredentialValues((current) => ({ ...current, [credential.name]: value })),
+                      setCredentialValues((current) => ({
+                        ...current,
+                        [credential.name]: value,
+                      })),
                   )
                 ) : (
                   <TextInput
@@ -168,7 +194,10 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
                     isRequired={credential.required}
                     value={credentialValues[credential.name] ?? ''}
                     onChange={(_event, value) =>
-                      setCredentialValues((current) => ({ ...current, [credential.name]: value }))
+                      setCredentialValues((current) => ({
+                        ...current,
+                        [credential.name]: value,
+                      }))
                     }
                   />
                 )}
@@ -184,7 +213,11 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
                 </FormHelperText>
               </FormGroup>
             ))}
-            <FormGroup label="Configuration" fieldId="provider-config" role="group">
+            <FormGroup
+              label="Configuration"
+              fieldId="provider-config"
+              role="group"
+            >
               {configRows.length > 0 && (
                 <Stack hasGutter>
                   {configRows.map((row, index) => (
@@ -197,7 +230,9 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
                             value={row.key}
                             onChange={(_event, value) =>
                               setConfigRows((rows) =>
-                                rows.map((r, i) => (i === index ? { ...r, key: value } : r)),
+                                rows.map((r, i) =>
+                                  i === index ? { ...r, key: value } : r,
+                                ),
                               )
                             }
                             placeholder="key"
@@ -211,7 +246,9 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
                             value={row.value}
                             onChange={(_event, value) =>
                               setConfigRows((rows) =>
-                                rows.map((r, i) => (i === index ? { ...r, value } : r)),
+                                rows.map((r, i) =>
+                                  i === index ? { ...r, value } : r,
+                                ),
                               )
                             }
                             placeholder="value"
@@ -221,7 +258,11 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
                         <GridItem span={2}>
                           <Button
                             variant="link"
-                            onClick={() => setConfigRows((rows) => rows.filter((_, i) => i !== index))}
+                            onClick={() =>
+                              setConfigRows((rows) =>
+                                rows.filter((_, i) => i !== index),
+                              )
+                            }
                             data-testid={`provider-config-remove-${index}`}
                           >
                             Remove
@@ -235,7 +276,9 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
               <Button
                 variant="link"
                 isInline
-                onClick={() => setConfigRows((rows) => [...rows, { key: '', value: '' }])}
+                onClick={() =>
+                  setConfigRows((rows) => [...rows, { key: '', value: '' }])
+                }
                 data-testid="provider-config-add"
               >
                 Add config entry
@@ -260,7 +303,9 @@ const CreateProviderModal: React.FC<CreateProviderModalProps> = ({ workspace, is
         <Button
           variant="primary"
           onClick={submit}
-          isDisabled={!name || !profileId || requiredMissing || createProvider.isPending}
+          isDisabled={
+            !name || !profileId || requiredMissing || createProvider.isPending
+          }
           isLoading={createProvider.isPending}
           data-testid="create-provider-submit"
         >

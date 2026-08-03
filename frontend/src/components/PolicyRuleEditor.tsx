@@ -29,10 +29,7 @@ import {
   ToolbarItem,
 } from '@patternfly/react-core';
 import { CodeEditor, Language } from '@patternfly/react-code-editor';
-import {
-  PlusCircleIcon,
-  TrashIcon,
-} from '@patternfly/react-icons';
+import { PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
 import { useSandbox } from '../api/sandboxes';
@@ -96,8 +93,10 @@ const policyToYaml = (policy: SandboxPolicy): string => {
   }
   if (policy.process) {
     lines.push('process:');
-    if (policy.process.runAsUser) lines.push(`  runAsUser: ${policy.process.runAsUser}`);
-    if (policy.process.runAsGroup) lines.push(`  runAsGroup: ${policy.process.runAsGroup}`);
+    if (policy.process.runAsUser)
+      lines.push(`  runAsUser: ${policy.process.runAsUser}`);
+    if (policy.process.runAsGroup)
+      lines.push(`  runAsGroup: ${policy.process.runAsGroup}`);
   }
   lines.push('networkPolicies:');
   const rules = policy.networkPolicies ?? {};
@@ -112,7 +111,8 @@ const policyToYaml = (policy: SandboxPolicy): string => {
           lines.push(`      - host: ${ep.host || '*'}`);
           if (ep.port) lines.push(`        port: ${ep.port}`);
           if (ep.protocol) lines.push(`        protocol: ${ep.protocol}`);
-          if (ep.enforcement) lines.push(`        enforcement: ${ep.enforcement}`);
+          if (ep.enforcement)
+            lines.push(`        enforcement: ${ep.enforcement}`);
           if (ep.access) lines.push(`        access: ${ep.access}`);
         });
       }
@@ -134,7 +134,10 @@ const endpointSummary = (ep: NetworkEndpoint): string => {
   return parts.join(':');
 };
 
-const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxName }) => {
+const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({
+  workspace,
+  sandboxName,
+}) => {
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const policyView = useSandboxPolicy(workspace, sandboxName);
   const sandbox = useSandbox(workspace, sandboxName);
@@ -144,7 +147,9 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
   const [viewMode, setViewMode] = useState<ViewMode>('form');
   const [yamlText, setYamlText] = useState('');
   const [isAddOpen, setAddOpen] = useState(false);
-  const [addForm, setAddForm] = useState<EndpointFormValues>({ ...emptyEndpoint });
+  const [addForm, setAddForm] = useState<EndpointFormValues>({
+    ...emptyEndpoint,
+  });
   const [addRuleName, setAddRuleName] = useState('');
 
   const currentPolicy: SandboxPolicy | undefined =
@@ -195,7 +200,10 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
     };
 
     updatePolicy.mutate(
-      { policy: updated, expectedResourceVersion: sandbox.data?.metadata.resourceVersion },
+      {
+        policy: updated,
+        expectedResourceVersion: sandbox.data?.metadata.resourceVersion,
+      },
       {
         onSuccess: () => {
           addSuccess(`Endpoint ${addForm.host}:${addForm.port} added`);
@@ -220,7 +228,8 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
     );
   };
 
-  const notFound = policyView.isError && (policyView.error as ApiError).status === 404;
+  const notFound =
+    policyView.isError && (policyView.error as ApiError).status === 404;
 
   return (
     <Stack hasGutter>
@@ -228,7 +237,9 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
         <Toolbar aria-label="Policy view controls">
           <ToolbarContent>
             <ToolbarItem>
-              <Label color="blue">Active version: {policyView.data?.activeVersion ?? '-'}</Label>
+              <Label color="blue">
+                Active version: {policyView.data?.activeVersion ?? '-'}
+              </Label>
             </ToolbarItem>
             <ToolbarItem>
               <ToggleGroup aria-label="View mode">
@@ -263,7 +274,12 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                 data-testid="policy-yaml-editor"
               />
               {yamlError && (
-                <Alert variant="warning" isInline title="Read-only" className="pf-v6-u-mt-sm">
+                <Alert
+                  variant="warning"
+                  isInline
+                  title="Read-only"
+                  className="pf-v6-u-mt-sm"
+                >
                   {yamlError}
                 </Alert>
               )}
@@ -274,19 +290,22 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
         <>
           <StackItem>
             <Card>
-              <CardTitle>
-                Static policy (immutable after create)
-              </CardTitle>
+              <CardTitle>Static policy (immutable after create)</CardTitle>
               <CardBody>
                 <Table aria-label="Static policy" variant="compact">
                   <Tbody>
                     <Tr>
                       <Td>Filesystem read-only</Td>
-                      <Td>{currentPolicy?.filesystem?.readOnly?.join(', ') || '-'}</Td>
+                      <Td>
+                        {currentPolicy?.filesystem?.readOnly?.join(', ') || '-'}
+                      </Td>
                     </Tr>
                     <Tr>
                       <Td>Filesystem read-write</Td>
-                      <Td>{currentPolicy?.filesystem?.readWrite?.join(', ') || '-'}</Td>
+                      <Td>
+                        {currentPolicy?.filesystem?.readWrite?.join(', ') ||
+                          '-'}
+                      </Td>
                     </Tr>
                     <Tr>
                       <Td>Landlock</Td>
@@ -327,10 +346,15 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                 )}
                 {Object.keys(networkRules).length === 0 ? (
                   <Alert variant="info" isInline title="No network rules">
-                    This sandbox has no network egress. Add an endpoint to allow outbound connections.
+                    This sandbox has no network egress. Add an endpoint to allow
+                    outbound connections.
                   </Alert>
                 ) : (
-                  <Table aria-label="Network rules" variant="compact" data-testid="network-rules-table">
+                  <Table
+                    aria-label="Network rules"
+                    variant="compact"
+                    data-testid="network-rules-table"
+                  >
                     <Thead>
                       <Tr>
                         <Th>Rule name</Th>
@@ -343,18 +367,27 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                       {Object.entries(networkRules).map(([name, rule]) => (
                         <Tr key={name}>
                           <Td dataLabel="Rule name">
-                            <Label isCompact color="blue">{name}</Label>
+                            <Label isCompact color="blue">
+                              {name}
+                            </Label>
                           </Td>
                           <Td dataLabel="Endpoints">
                             {(rule.endpoints ?? []).map((ep, i) => (
-                              <Label key={i} isCompact color="teal" className="pf-v6-u-mr-xs">
+                              <Label
+                                key={i}
+                                isCompact
+                                color="teal"
+                                className="pf-v6-u-mr-xs"
+                              >
                                 {endpointSummary(ep)}
                               </Label>
                             ))}
                             {(rule.endpoints ?? []).length === 0 && '-'}
                           </Td>
                           <Td dataLabel="Binaries">
-                            {(rule.binaries ?? []).map((b) => b.path).join(', ') || '-'}
+                            {(rule.binaries ?? [])
+                              .map((b) => b.path)
+                              .join(', ') || '-'}
                           </Td>
                           {isWorkspaceAdmin && (
                             <Td isActionCell>
@@ -382,7 +415,11 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
       {!notFound && (policyView.data?.revisions ?? []).length > 0 && (
         <StackItem>
           <Title headingLevel="h3">Revision history</Title>
-          <Table aria-label="Policy revisions" variant="compact" data-testid="policy-revisions-table">
+          <Table
+            aria-label="Policy revisions"
+            variant="compact"
+            data-testid="policy-revisions-table"
+          >
             <Thead>
               <Tr>
                 <Th>Version</Th>
@@ -405,9 +442,16 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                       {revision.status}
                     </Label>
                   </Td>
-                  <Td dataLabel="Created">{formatTimestamp(revision.createdAtMs)}</Td>
-                  <Td dataLabel="Loaded">{formatTimestamp(revision.loadedAtMs)}</Td>
-                  <Td dataLabel="Hash" className="pf-v6-u-font-family-monospace">
+                  <Td dataLabel="Created">
+                    {formatTimestamp(revision.createdAtMs)}
+                  </Td>
+                  <Td dataLabel="Loaded">
+                    {formatTimestamp(revision.loadedAtMs)}
+                  </Td>
+                  <Td
+                    dataLabel="Hash"
+                    className="pf-v6-u-font-family-monospace"
+                  >
                     {(revision.policyHash ?? '').slice(0, 12) || '-'}
                   </Td>
                 </Tr>
@@ -425,7 +469,12 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
         </StackItem>
       )}
 
-      <Modal variant="medium" isOpen={isAddOpen} onClose={() => setAddOpen(false)} aria-label="Add endpoint">
+      <Modal
+        variant="medium"
+        isOpen={isAddOpen}
+        onClose={() => setAddOpen(false)}
+        aria-label="Add endpoint"
+      >
         <ModalHeader
           title="Add network endpoint"
           description="Adds an endpoint to the sandbox's network policy. Maps to `policy update --add-endpoint host:port:access:protocol:enforcement`."
@@ -443,7 +492,8 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
               <FormHelperText>
                 <HelperText>
                   <HelperTextItem>
-                    The network_policies map key. Leave empty to derive from the hostname.
+                    The network_policies map key. Leave empty to derive from the
+                    hostname.
                   </HelperTextItem>
                 </HelperText>
               </FormHelperText>
@@ -454,7 +504,9 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                 data-testid="endpoint-host-input"
                 isRequired
                 value={addForm.host}
-                onChange={(_event, value) => setAddForm((f) => ({ ...f, host: value }))}
+                onChange={(_event, value) =>
+                  setAddForm((f) => ({ ...f, host: value }))
+                }
                 placeholder="api.anthropic.com"
               />
               <FormHelperText>
@@ -472,10 +524,19 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                 value={addForm.port}
                 min={1}
                 max={65535}
-                onMinus={() => setAddForm((f) => ({ ...f, port: Math.max(1, f.port - 1) }))}
-                onPlus={() => setAddForm((f) => ({ ...f, port: Math.min(65535, f.port + 1) }))}
+                onMinus={() =>
+                  setAddForm((f) => ({ ...f, port: Math.max(1, f.port - 1) }))
+                }
+                onPlus={() =>
+                  setAddForm((f) => ({
+                    ...f,
+                    port: Math.min(65535, f.port + 1),
+                  }))
+                }
                 onChange={(event) => {
-                  const value = Number((event.target as HTMLInputElement).value);
+                  const value = Number(
+                    (event.target as HTMLInputElement).value,
+                  );
                   if (!isNaN(value)) setAddForm((f) => ({ ...f, port: value }));
                 }}
               />
@@ -485,7 +546,9 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                 id="endpoint-access"
                 data-testid="endpoint-access-select"
                 value={addForm.access}
-                onChange={(_event, value) => setAddForm((f) => ({ ...f, access: value }))}
+                onChange={(_event, value) =>
+                  setAddForm((f) => ({ ...f, access: value }))
+                }
               >
                 <FormSelectOption value="read-only" label="Read-only" />
                 <FormSelectOption value="read-write" label="Read-write" />
@@ -497,7 +560,9 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                 id="endpoint-protocol"
                 data-testid="endpoint-protocol-select"
                 value={addForm.protocol}
-                onChange={(_event, value) => setAddForm((f) => ({ ...f, protocol: value }))}
+                onChange={(_event, value) =>
+                  setAddForm((f) => ({ ...f, protocol: value }))
+                }
               >
                 <FormSelectOption value="rest" label="REST" />
                 <FormSelectOption value="websocket" label="WebSocket" />
@@ -511,9 +576,14 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                 id="endpoint-enforcement"
                 data-testid="endpoint-enforcement-select"
                 value={addForm.enforcement}
-                onChange={(_event, value) => setAddForm((f) => ({ ...f, enforcement: value }))}
+                onChange={(_event, value) =>
+                  setAddForm((f) => ({ ...f, enforcement: value }))
+                }
               >
-                <FormSelectOption value="enforce" label="Enforce (block violations)" />
+                <FormSelectOption
+                  value="enforce"
+                  label="Enforce (block violations)"
+                />
                 <FormSelectOption value="audit" label="Audit (log only)" />
               </FormSelect>
             </FormGroup>
@@ -522,20 +592,28 @@ const PolicyRuleEditor: React.FC<PolicyRuleEditorProps> = ({ workspace, sandboxN
                 id="endpoint-binary"
                 data-testid="endpoint-binary-input"
                 value={addForm.binaryPath}
-                onChange={(_event, value) => setAddForm((f) => ({ ...f, binaryPath: value }))}
+                onChange={(_event, value) =>
+                  setAddForm((f) => ({ ...f, binaryPath: value }))
+                }
                 placeholder="/usr/bin/git (optional)"
               />
               <FormHelperText>
                 <HelperText>
                   <HelperTextItem>
-                    Restrict this endpoint to a specific binary. Leave empty to allow any process.
+                    Restrict this endpoint to a specific binary. Leave empty to
+                    allow any process.
                   </HelperTextItem>
                 </HelperText>
               </FormHelperText>
             </FormGroup>
           </Form>
           {updatePolicy.isError && (
-            <Alert variant="danger" isInline title="Failed to add endpoint" className="pf-v6-u-mt-md">
+            <Alert
+              variant="danger"
+              isInline
+              title="Failed to add endpoint"
+              className="pf-v6-u-mt-md"
+            >
               {(updatePolicy.error as Error).message}
             </Alert>
           )}
@@ -566,12 +644,10 @@ function existingRule(
   if (!existing) return incoming;
   return {
     endpoints: [...(existing.endpoints ?? []), ...(incoming.endpoints ?? [])],
-    binaries: [
-      ...(existing.binaries ?? []),
-      ...(incoming.binaries ?? []),
-    ].length > 0
-      ? [...(existing.binaries ?? []), ...(incoming.binaries ?? [])]
-      : undefined,
+    binaries:
+      [...(existing.binaries ?? []), ...(incoming.binaries ?? [])].length > 0
+        ? [...(existing.binaries ?? []), ...(incoming.binaries ?? [])]
+        : undefined,
   };
 }
 

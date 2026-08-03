@@ -1,4 +1,10 @@
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   AlertActionCloseButton,
@@ -26,7 +32,9 @@ const AlertContext = createContext<AlertContextValue>({
 
 export const useAlerts = () => useContext(AlertContext);
 
-export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [alerts, setAlerts] = useState<ToastAlert[]>([]);
   const counter = useRef(0);
 
@@ -34,11 +42,14 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setAlerts((current) => current.filter((a) => a.id !== id));
   }, []);
 
-  const addAlert = useCallback((title: string, variant: AlertVariant = AlertVariant.info) => {
-    const id = ++counter.current;
-    setAlerts((current) => [...current, { id, variant, title }]);
-    setTimeout(() => removeAlert(id), 6000);
-  }, [removeAlert]);
+  const addAlert = useCallback(
+    (title: string, variant: AlertVariant = AlertVariant.info) => {
+      const id = ++counter.current;
+      setAlerts((current) => [...current, { id, variant, title }]);
+      setTimeout(() => removeAlert(id), 6000);
+    },
+    [removeAlert],
+  );
 
   const addSuccess = useCallback(
     (title: string) => addAlert(title, AlertVariant.success),

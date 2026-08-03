@@ -16,6 +16,10 @@ scripts/.pki/
 scripts/.state/
 scripts/.env.dev
 
+# Cypress
+frontend/cypress/videos/
+frontend/cypress/screenshots/
+
 # Env files are never committed
 .env
 .env.*

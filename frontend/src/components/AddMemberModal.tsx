@@ -26,7 +26,11 @@ type AddMemberModalProps = {
   onClose: () => void;
 };
 
-const AddMemberModal: React.FC<AddMemberModalProps> = ({ workspace, isOpen, onClose }) => {
+const AddMemberModal: React.FC<AddMemberModalProps> = ({
+  workspace,
+  isOpen,
+  onClose,
+}) => {
   const [subject, setSubject] = useState('');
   const [role, setRole] = useState<WorkspaceRole>('USER');
   const addMember = useAddMember(workspace);
@@ -40,11 +44,24 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ workspace, isOpen, onCl
   };
 
   const submit = () => {
-    addMember.mutate({ principalSubject: subject, role }, { onSuccess: () => { addSuccess('Member added'); close(); } });
+    addMember.mutate(
+      { principalSubject: subject, role },
+      {
+        onSuccess: () => {
+          addSuccess('Member added');
+          close();
+        },
+      },
+    );
   };
 
   return (
-    <Modal variant="small" isOpen={isOpen} onClose={close} aria-label="Add member">
+    <Modal
+      variant="small"
+      isOpen={isOpen}
+      onClose={close}
+      aria-label="Add member"
+    >
       <ModalHeader title="Add workspace member" />
       <ModalBody>
         <Form
@@ -53,7 +70,11 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ workspace, isOpen, onCl
             submit();
           }}
         >
-          <FormGroup label="Principal subject" isRequired fieldId="member-subject">
+          <FormGroup
+            label="Principal subject"
+            isRequired
+            fieldId="member-subject"
+          >
             <TextInput
               id="member-subject"
               data-testid="member-subject-input"
@@ -83,8 +104,8 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ workspace, isOpen, onCl
             <FormHelperText>
               <HelperText>
                 <HelperTextItem>
-                  To change a role later, remove the member and re-add them — the API has no
-                  role-update operation.
+                  To change a role later, remove the member and re-add them —
+                  the API has no role-update operation.
                 </HelperTextItem>
               </HelperText>
             </FormHelperText>

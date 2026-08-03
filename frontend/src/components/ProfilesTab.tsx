@@ -1,6 +1,21 @@
 import { useState } from 'react';
-import { Alert, Bullseye, Button, Label, LabelGroup, Spinner } from '@patternfly/react-core';
-import { ExpandableRowContent, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
+import {
+  Alert,
+  Bullseye,
+  Button,
+  Label,
+  LabelGroup,
+  Spinner,
+} from '@patternfly/react-core';
+import {
+  ExpandableRowContent,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from '@patternfly/react-table';
 
 import { useProviderProfiles } from '../api/providers';
 
@@ -28,7 +43,11 @@ const ProfilesTab: React.FC<ProfilesTabProps> = ({ workspace }) => {
       <Alert
         variant="danger"
         title="Failed to load provider profiles"
-        actionLinks={<Button variant="link" onClick={() => profiles.refetch()}>Retry</Button>}
+        actionLinks={
+          <Button variant="link" onClick={() => profiles.refetch()}>
+            Retry
+          </Button>
+        }
       >
         {(profiles.error as Error).message}
       </Alert>
@@ -39,7 +58,9 @@ const ProfilesTab: React.FC<ProfilesTabProps> = ({ workspace }) => {
 
   const toggle = (id: string) => {
     setExpanded((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
     );
   };
 
@@ -76,7 +97,9 @@ const ProfilesTab: React.FC<ProfilesTabProps> = ({ workspace }) => {
               </Label>
             </Td>
             <Td dataLabel="Source">{profile.source || 'builtin'}</Td>
-            <Td dataLabel="Inference">{profile.inferenceCapable ? 'Yes' : '-'}</Td>
+            <Td dataLabel="Inference">
+              {profile.inferenceCapable ? 'Yes' : '-'}
+            </Td>
           </Tr>
           <Tr isExpanded={expanded.includes(profile.id)}>
             <Td />

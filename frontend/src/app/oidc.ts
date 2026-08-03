@@ -33,11 +33,15 @@ const createVerifier = (): string => {
 };
 
 const challengeFromVerifier = async (verifier: string): Promise<string> => {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(verifier),
+  );
   return base64UrlEncode(new Uint8Array(digest));
 };
 
-export const redirectUri = (): string => `${window.location.origin}/auth/callback`;
+export const redirectUri = (): string =>
+  `${window.location.origin}/auth/callback`;
 
 // Begin the PKCE flow by redirecting the browser to the IdP.
 export const startLogin = async (config: AuthConfig): Promise<void> => {
@@ -57,12 +61,17 @@ export const startLogin = async (config: AuthConfig): Promise<void> => {
     code_challenge: challenge,
     code_challenge_method: 'S256',
   });
-  window.location.assign(`${discovery.authorization_endpoint}?${params.toString()}`);
+  window.location.assign(
+    `${discovery.authorization_endpoint}?${params.toString()}`,
+  );
 };
 
 // Exchange the authorization code for tokens via the BFF proxy. The BFF
 // calls the IdP's token endpoint server-side, avoiding CORS issues.
-export const completeLogin = async (config: AuthConfig, code: string): Promise<{ accessToken: string; refreshToken?: string }> => {
+export const completeLogin = async (
+  config: AuthConfig,
+  code: string,
+): Promise<{ accessToken: string; refreshToken?: string }> => {
   if (!config.issuer || !config.clientId) {
     throw new Error('OIDC issuer and client ID are not configured on the BFF');
   }
@@ -82,11 +91,18 @@ export const completeLogin = async (config: AuthConfig, code: string): Promise<{
   });
 
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { message?: string };
-    throw new Error(body.message || `Token exchange failed (${response.status})`);
+    const body = (await response.json().catch(() => ({}))) as {
+      message?: string;
+    };
+    throw new Error(
+      body.message || `Token exchange failed (${response.status})`,
+    );
   }
 
-  const body = (await response.json()) as { accessToken: string; refreshToken?: string };
+  const body = (await response.json()) as {
+    accessToken: string;
+    refreshToken?: string;
+  };
   window.sessionStorage.removeItem(VERIFIER_KEY);
   if (!body.accessToken) {
     throw new Error('Token exchange did not return an access token');

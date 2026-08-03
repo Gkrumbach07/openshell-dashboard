@@ -1,0 +1,38 @@
+# Integration e2e stack: OpenShell gateway (Docker driver) + dashboard BFF.
+# Used by CI to run real e2e tests — actual sandbox creation, not mocked.
+#
+# The gateway creates real Docker containers as sandboxes via DooD
+# (Docker-outside-of-Docker) through the mounted Docker socket.
+services:
+  gateway:
+    image: ghcr.io/nvidia/openshell/gateway:latest
+    command: []
+    user: "0"
+    ports:
+      - "127.0.0.1:50051:8080"
+      - "127.0.0.1:50052:8081"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: /var/lib/openshell
+        target: /var/lib/openshell
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ./gateway.e2e.toml
+        target: /etc/openshell/gateway.toml
+        read_only: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "host.openshell.internal:host-gateway"
+    environment:
+      OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
+      OPENSHELL_DB_URL: "sqlite:/var/lib/openshell/gateway.db?mode=rwc"
+      XDG_DATA_HOME: /var/lib/openshell
+      HOME: /var/lib/openshell
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s

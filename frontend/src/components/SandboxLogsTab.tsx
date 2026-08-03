@@ -30,7 +30,10 @@ const formatLogLine = (line: LogLine): string => {
   return `${ts}  ${level}${source}  ${line.message}${fields}`;
 };
 
-const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({ workspace, sandboxName }) => {
+const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
+  workspace,
+  sandboxName,
+}) => {
   const [level, setLevel] = useState('');
   const [source, setSource] = useState('');
   const [lines, setLines] = useState('200');
@@ -134,7 +137,11 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({ workspace, sandboxName 
       <Alert
         variant="danger"
         title="Failed to load logs"
-        actionLinks={<Button variant="link" onClick={() => logs.refetch()}>Retry</Button>}
+        actionLinks={
+          <Button variant="link" onClick={() => logs.refetch()}>
+            Retry
+          </Button>
+        }
       >
         {(logs.error as Error).message}
       </Alert>

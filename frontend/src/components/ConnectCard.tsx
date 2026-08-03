@@ -21,8 +21,8 @@ const ConnectCard: React.FC<ConnectCardProps> = ({ sandboxName }) => (
       <Stack hasGutter>
         <StackItem>
           <Content component="p">
-            Interactive sessions run through the OpenShell CLI. With the CLI installed and this
-            gateway selected:
+            Interactive sessions run through the OpenShell CLI. With the CLI
+            installed and this gateway selected:
           </Content>
         </StackItem>
         <StackItem>
@@ -37,7 +37,9 @@ const ConnectCard: React.FC<ConnectCardProps> = ({ sandboxName }) => (
           </ClipboardCopy>
         </StackItem>
         <StackItem>
-          <Content component="p">SSH config for editors (VS Code Remote-SSH, Cursor):</Content>
+          <Content component="p">
+            SSH config for editors (VS Code Remote-SSH, Cursor):
+          </Content>
           <ClipboardCopy isReadOnly hoverTip="Copy" clickTip="Copied">
             {`openshell sandbox ssh-config ${sandboxName}`}
           </ClipboardCopy>

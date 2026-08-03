@@ -167,6 +167,13 @@ func TokenFromContext(ctx context.Context) string {
 	return token
 }
 
+// WithToken returns a context carrying the given bearer token. This is
+// primarily useful in tests; production code relies on the middleware to
+// populate the token via Handler.
+func WithToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, tokenContextKey, token)
+}
+
 // ClaimsFromContext returns the validated claims, or nil when absent.
 func ClaimsFromContext(ctx context.Context) *Claims {
 	claims, _ := ctx.Value(claimsContextKey).(*Claims)

@@ -16,7 +16,7 @@ import (
 
 // App wires the gateway client, auth middleware, and REST routes.
 type App struct {
-	gateway *gateway.Client
+	gateway gateway.Interface
 	auth    *auth.Middleware
 	// staticDir is the frontend build output; empty disables static serving.
 	staticDir string
@@ -25,7 +25,7 @@ type App struct {
 }
 
 // NewApp builds the application.
-func NewApp(gw *gateway.Client, authMiddleware *auth.Middleware, staticDir string, allowedOrigins []string) *App {
+func NewApp(gw gateway.Interface, authMiddleware *auth.Middleware, staticDir string, allowedOrigins []string) *App {
 	return &App{
 		gateway:        gw,
 		auth:           authMiddleware,

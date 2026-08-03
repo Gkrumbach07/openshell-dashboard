@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+      - run: cd frontend && npm run lint
+      - run: cd frontend && npm run format:check
+      - run: cd frontend && npm run typecheck
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+      - run: cd frontend && npm test -- --coverage --passWithNoTests
+
+  lint-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: backend
+          version: latest
+
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: cd backend && go test -race -count=1 -coverprofile=coverage.out ./...
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [lint-frontend, test-frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+      - uses: cypress-io/github-action@v6
+        with:
+          working-directory: frontend
+          build: npm run build
+          start: npm start
+          wait-on: 'http://localhost:3000'
+          browser: chrome
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-screenshots
+          path: frontend/cypress/screenshots
+          if-no-files-found: ignore
+
+  e2e-integration:
+    runs-on: ubuntu-latest
+    needs: [lint-frontend, test-frontend, lint-backend, test-backend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start OpenShell gateway
+        run: |
+          sudo mkdir -p /var/lib/openshell
+          docker compose -f deploy/ci/docker-compose.e2e.yml up -d
+          echo "Waiting for gateway to be healthy..."
+          timeout 120 bash -c 'until curl -sf http://localhost:50052/healthz; do sleep 2; done'
+          echo "Gateway is healthy"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build and start BFF
+        run: |
+          cd backend && go build -o ../bin/server ./cmd/server
+          cd ..
+          AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:50051 ./bin/server &
+          timeout 30 bash -c 'until curl -sf http://localhost:8080/api/v1/healthz; do sleep 1; done'
+          echo "BFF is healthy"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+
+      - uses: cypress-io/github-action@v6
+        with:
+          working-directory: frontend
+          config-file: cypress.config.integration.ts
+          start: npm start
+          wait-on: 'http://localhost:3000'
+          browser: chrome
+        env:
+          BFF_URL: http://localhost:8080
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-integration-screenshots
+          path: frontend/cypress/screenshots
+          if-no-files-found: ignore
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker compose -f deploy/ci/docker-compose.e2e.yml down -v
+          docker ps -aq --filter "name=openshell-e2e" | xargs -r docker rm -f
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: [lint-frontend, test-frontend, lint-backend, test-backend, e2e, e2e-integration]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_ROBOT_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: quay.io/gkrumbach07/openshell-dashboard
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+            type=sha,prefix=sha-
+            type=ref,event=pr,prefix=pr-
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

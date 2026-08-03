@@ -26,7 +26,9 @@ import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useGatewayInfo } from '../api/gateway';
 import type { ServiceStatus } from '../types';
 
-const statusColor = (status: ServiceStatus): 'green' | 'orange' | 'red' | 'grey' => {
+const statusColor = (
+  status: ServiceStatus,
+): 'green' | 'orange' | 'red' | 'grey' => {
   switch (status) {
     case 'HEALTHY':
       return 'green';
@@ -74,7 +76,11 @@ const GatewayOverviewPage: React.FC = () => {
         <Alert
           variant="danger"
           title="Cannot reach the OpenShell gateway"
-          actionLinks={<Button variant="link" onClick={() => gateway.refetch()}>Retry</Button>}
+          actionLinks={
+            <Button variant="link" onClick={() => gateway.refetch()}>
+              Retry
+            </Button>
+          }
         >
           {(gateway.error as Error).message}
         </Alert>
@@ -93,7 +99,10 @@ const GatewayOverviewPage: React.FC = () => {
           <Card data-testid="gateway-status-card">
             <CardTitle>Status</CardTitle>
             <CardBody>
-              <Label color={statusColor(info?.status ?? 'UNSPECIFIED')} icon={statusIcon(info?.status ?? 'UNSPECIFIED')}>
+              <Label
+                color={statusColor(info?.status ?? 'UNSPECIFIED')}
+                icon={statusIcon(info?.status ?? 'UNSPECIFIED')}
+              >
                 {info?.status ?? 'UNKNOWN'}
               </Label>
             </CardBody>
