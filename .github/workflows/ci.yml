@@ -41,10 +41,10 @@ jobs:
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
           working-directory: backend
-          version: latest
+          version: v2.12.2
 
   test-backend:
     runs-on: ubuntu-latest

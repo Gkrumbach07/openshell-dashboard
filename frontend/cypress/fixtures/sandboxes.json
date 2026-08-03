@@ -5,6 +5,7 @@
       "name": "my-agent",
       "workspace": "default",
       "labels": { "purpose": "agent" },
+      "annotations": {},
       "createdAtMs": 1722700000000,
       "resourceVersion": 3
     },
@@ -26,13 +27,16 @@
       "id": "sbx-2-id",
       "name": "data-processor",
       "workspace": "default",
+      "labels": {},
+      "annotations": {},
       "createdAtMs": 1722700100000,
       "resourceVersion": 1
     },
     "spec": {
       "image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest",
       "policy": {
-        "filesystem": { "includeWorkdir": true }
+        "filesystem": { "includeWorkdir": true },
+        "networkPolicies": {}
       }
     },
     "status": {
@@ -45,13 +49,16 @@
       "id": "sbx-3-id",
       "name": "broken-sandbox",
       "workspace": "default",
+      "labels": {},
+      "annotations": {},
       "createdAtMs": 1722700200000,
       "resourceVersion": 2
     },
     "spec": {
       "image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest",
       "policy": {
-        "filesystem": { "includeWorkdir": true }
+        "filesystem": { "includeWorkdir": true },
+        "networkPolicies": {}
       }
     },
     "status": {
@@ -72,13 +79,16 @@
       "id": "sbx-4-id",
       "name": "cleanup-target",
       "workspace": "default",
+      "labels": {},
+      "annotations": {},
       "createdAtMs": 1722700300000,
       "resourceVersion": 1
     },
     "spec": {
       "image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest",
       "policy": {
-        "filesystem": { "includeWorkdir": true }
+        "filesystem": { "includeWorkdir": true },
+        "networkPolicies": {}
       }
     },
     "status": {

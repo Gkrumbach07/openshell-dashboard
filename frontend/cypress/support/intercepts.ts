@@ -29,9 +29,34 @@ export const interceptWorkspaces = () => {
   }).as('listWorkspaces');
 
   cy.intercept('GET', '/api/v1/workspaces/default', {
-    fixture: 'workspaces.json',
-    headers: { 'content-type': 'application/json' },
+    statusCode: 200,
+    body: {
+      metadata: {
+        id: 'ws-default-id',
+        name: 'default',
+        labels: {},
+        annotations: {},
+        createdAtMs: 1722700000000,
+        resourceVersion: 1,
+      },
+      phase: 'ACTIVE',
+    },
   }).as('getWorkspaceDefault');
+
+  cy.intercept('GET', /\/api\/v1\/workspaces\/(?!default)[^/]+$/, {
+    statusCode: 200,
+    body: {
+      metadata: {
+        id: 'ws-other-id',
+        name: 'dev-team',
+        labels: {},
+        annotations: {},
+        createdAtMs: 1722700100000,
+        resourceVersion: 2,
+      },
+      phase: 'ACTIVE',
+    },
+  }).as('getWorkspace');
 
   cy.intercept('POST', '/api/v1/workspaces', {
     statusCode: 201,
@@ -48,22 +73,35 @@ export const interceptWorkspaces = () => {
 };
 
 export const interceptSandboxes = (workspace = 'default') => {
-  cy.intercept(
-    'GET',
-    `/api/v1/workspaces/${workspace}/sandboxes`,
-    { fixture: 'sandboxes.json' },
-  ).as('listSandboxes');
+  cy.intercept('GET', `/api/v1/workspaces/${workspace}/sandboxes`, {
+    fixture: 'sandboxes.json',
+  }).as('listSandboxes');
 
   cy.intercept(
     'GET',
-    `/api/v1/workspaces/${workspace}/sandboxes/*`,
-    (req) => {
-      const name = req.url.split('/').pop()?.split('?')[0];
-      req.reply({
-        statusCode: 200,
-        fixture: 'sandboxes.json',
-        headers: { 'content-type': 'application/json' },
-      });
+    new RegExp(`/api/v1/workspaces/${workspace}/sandboxes/[^/]+$`),
+    {
+      statusCode: 200,
+      body: {
+        metadata: {
+          id: 'sbx-1-id',
+          name: 'my-agent',
+          workspace,
+          labels: { purpose: 'agent' },
+          annotations: {},
+          createdAtMs: 1722700000000,
+          resourceVersion: 3,
+        },
+        spec: {
+          image: 'ghcr.io/nvidia/openshell-community/sandboxes/base:latest',
+          providers: ['anthropic'],
+          policy: {
+            filesystem: { includeWorkdir: true },
+            networkPolicies: {},
+          },
+        },
+        status: { phase: 'READY', currentPolicyVersion: 1 },
+      },
     },
   ).as('getSandbox');
 
@@ -85,49 +123,42 @@ export const interceptSandboxes = (workspace = 'default') => {
     },
   }).as('createSandbox');
 
-  cy.intercept(
-    'DELETE',
-    `/api/v1/workspaces/${workspace}/sandboxes/*`,
-    { statusCode: 200, body: { deleted: true } },
-  ).as('deleteSandbox');
+  cy.intercept('DELETE', `/api/v1/workspaces/${workspace}/sandboxes/*`, {
+    statusCode: 200,
+    body: { deleted: true },
+  }).as('deleteSandbox');
 };
 
 export const interceptProviders = (workspace = 'default') => {
-  cy.intercept(
-    'GET',
-    `/api/v1/workspaces/${workspace}/providers`,
-    { fixture: 'providers.json' },
-  ).as('listProviders');
+  cy.intercept('GET', `/api/v1/workspaces/${workspace}/providers`, {
+    fixture: 'providers.json',
+  }).as('listProviders');
 
-  cy.intercept(
-    'GET',
-    `/api/v1/workspaces/${workspace}/provider-profiles`,
-    {
-      statusCode: 200,
-      body: [
-        {
-          id: 'claude',
-          displayName: 'Anthropic Claude',
-          description: 'Anthropic Claude API',
-          category: 'INFERENCE',
-          credentials: [
-            { name: 'api_key', description: 'API key', required: true },
-          ],
-          inferenceCapable: true,
-        },
-        {
-          id: 'openai',
-          displayName: 'OpenAI',
-          description: 'OpenAI API',
-          category: 'INFERENCE',
-          credentials: [
-            { name: 'api_key', description: 'API key', required: true },
-          ],
-          inferenceCapable: true,
-        },
-      ],
-    },
-  ).as('listProviderProfiles');
+  cy.intercept('GET', `/api/v1/workspaces/${workspace}/provider-profiles`, {
+    statusCode: 200,
+    body: [
+      {
+        id: 'claude',
+        displayName: 'Anthropic Claude',
+        description: 'Anthropic Claude API',
+        category: 'INFERENCE',
+        credentials: [
+          { name: 'api_key', description: 'API key', required: true },
+        ],
+        inferenceCapable: true,
+      },
+      {
+        id: 'openai',
+        displayName: 'OpenAI',
+        description: 'OpenAI API',
+        category: 'INFERENCE',
+        credentials: [
+          { name: 'api_key', description: 'API key', required: true },
+        ],
+        inferenceCapable: true,
+      },
+    ],
+  }).as('listProviderProfiles');
 
   cy.intercept('POST', `/api/v1/workspaces/${workspace}/providers`, {
     statusCode: 201,
@@ -145,10 +176,71 @@ export const interceptProviders = (workspace = 'default') => {
   }).as('createProvider');
 };
 
+export const interceptPolicies = (workspace = 'default') => {
+  cy.intercept(
+    'GET',
+    new RegExp(`/api/v1/workspaces/${workspace}/sandboxes/[^/]+/policy`),
+    {
+      statusCode: 200,
+      body: {
+        version: 1,
+        filesystem: { includeWorkdir: true },
+        networkPolicies: {},
+      },
+    },
+  ).as('getSandboxPolicy');
+
+  cy.intercept(
+    'GET',
+    new RegExp(`/api/v1/workspaces/${workspace}/sandboxes/[^/]+/drafts$`),
+    { statusCode: 200, body: { chunks: [], version: 0 } },
+  ).as('getDraftPolicy');
+
+  cy.intercept(
+    'GET',
+    new RegExp(`/api/v1/workspaces/${workspace}/sandboxes/[^/]+/providers`),
+    { statusCode: 200, body: [] },
+  ).as('listSandboxProviders');
+
+  cy.intercept(
+    'GET',
+    new RegExp(`/api/v1/workspaces/${workspace}/sandboxes/[^/]+/services`),
+    { statusCode: 200, body: [] },
+  ).as('listServices');
+
+  cy.intercept('GET', `/api/v1/workspaces/${workspace}/inference`, {
+    statusCode: 404,
+    body: { code: 'not_found', message: 'no inference route' },
+  }).as('getInference');
+};
+
+export const interceptMembers = (workspace = 'default') => {
+  cy.intercept('GET', `/api/v1/workspaces/${workspace}/members`, {
+    statusCode: 200,
+    body: [
+      {
+        metadata: {
+          id: 'member-1',
+          name: 'test-user-id',
+          workspace,
+          labels: {},
+          annotations: {},
+          createdAtMs: 1722700000000,
+          resourceVersion: 1,
+        },
+        principalSubject: 'test-user-id',
+        role: 'ADMIN',
+      },
+    ],
+  }).as('listMembers');
+};
+
 export const interceptAll = (workspace = 'default') => {
   interceptAuth();
   interceptGateway();
   interceptWorkspaces();
   interceptSandboxes(workspace);
   interceptProviders(workspace);
+  interceptMembers(workspace);
+  interceptPolicies(workspace);
 };

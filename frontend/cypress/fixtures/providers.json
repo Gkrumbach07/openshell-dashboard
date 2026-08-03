@@ -4,6 +4,8 @@
       "id": "prov-1-id",
       "name": "anthropic",
       "workspace": "default",
+      "labels": {},
+      "annotations": {},
       "createdAtMs": 1722700000000,
       "resourceVersion": 1
     },
@@ -16,6 +18,8 @@
       "id": "prov-2-id",
       "name": "openai-dev",
       "workspace": "default",
+      "labels": {},
+      "annotations": {},
       "createdAtMs": 1722700100000,
       "resourceVersion": 1
     },
