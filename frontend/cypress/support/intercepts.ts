@@ -235,6 +235,28 @@ export const interceptMembers = (workspace = 'default') => {
   }).as('listMembers');
 };
 
+export const interceptMisc = () => {
+  cy.intercept('GET', '/api/v1/draft-summary', {
+    statusCode: 200,
+    body: { pending: 0 },
+  }).as('draftSummary');
+
+  cy.intercept('GET', /\/api\/v1\/workspaces\/[^/]+\/inference/, {
+    statusCode: 404,
+    body: { code: 'not_found', message: 'no inference route' },
+  }).as('inferenceRoute');
+
+  cy.intercept('GET', '/api/v1/global-policy', {
+    statusCode: 200,
+    body: {},
+  }).as('globalPolicy');
+
+  cy.intercept('GET', '/api/v1/settings/global', {
+    statusCode: 200,
+    body: {},
+  }).as('globalSettings');
+};
+
 export const interceptAll = (workspace = 'default') => {
   interceptAuth();
   interceptGateway();
@@ -243,4 +265,5 @@ export const interceptAll = (workspace = 'default') => {
   interceptProviders(workspace);
   interceptMembers(workspace);
   interceptPolicies(workspace);
+  interceptMisc();
 };

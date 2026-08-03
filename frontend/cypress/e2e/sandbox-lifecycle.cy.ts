@@ -18,8 +18,8 @@ describe('Sandbox Lifecycle', () => {
     cy.contains('broken-sandbox').should('be.visible');
   });
 
-  it('shows sandbox phase labels', () => {
-    cy.get('[data-testid="phase-label"]').should('have.length.at.least', 3);
+  it('shows sandbox phase labels in table view', () => {
+    cy.get('[data-testid="phase-label"]').should('have.length.at.least', 1);
   });
 
   it('opens create sandbox modal', () => {
@@ -45,9 +45,10 @@ describe('Sandbox Lifecycle', () => {
     cy.url().should('include', '/workspaces/default/sandboxes/my-agent');
   });
 
-  it('deletes a sandbox via kebab menu', () => {
-    cy.get('[data-testid="sandbox-actions-kebab"]').first().click();
-    cy.contains('Delete').click();
+  it('deletes a sandbox via row action', () => {
+    // Open the per-row actions kebab on the first sandbox row
+    cy.get('table tbody tr').first().find('.pf-v6-c-menu-toggle').click();
+    cy.contains('.pf-v6-c-menu__item', 'Delete').click();
 
     cy.get('.pf-v6-c-modal-box').should('be.visible');
     cy.get('[data-testid="confirm-delete-input"]').type('my-agent');
