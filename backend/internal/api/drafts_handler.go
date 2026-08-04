@@ -20,7 +20,7 @@ type draftSummaryResponse struct {
 // across all workspaces. TODO: No single gateway RPC provides a cross-workspace
 // draft summary. When one becomes available, aggregate real data here. For now,
 // return an empty response so the frontend route does not 404.
-func (app *App) GetDraftSummary(w http.ResponseWriter, r *http.Request) {
+func (app *App) GetDraftSummary(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, draftSummaryResponse{
 		Sandboxes:    []any{},
 		TotalPending: 0,
