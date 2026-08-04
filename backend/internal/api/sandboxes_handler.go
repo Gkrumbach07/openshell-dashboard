@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -40,7 +41,8 @@ func (app *App) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 	}
 	spec, err := models.BuildSandboxSpec(body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_policy", err.Error())
+		slog.Error("invalid sandbox specification", "error", err)
+		writeError(w, http.StatusBadRequest, "invalid_policy", "invalid sandbox specification")
 		return
 	}
 	sandbox, err := app.gateway.CreateSandbox(r.Context(), chi.URLParam(r, "workspace"), body.Name, spec, body.Labels, body.Annotations)

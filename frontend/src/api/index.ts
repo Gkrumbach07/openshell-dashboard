@@ -9,3 +9,4 @@ export * from './providers';
 export * from './policy';
 export * from './inference';
 export * from './rbac';
+export * from './settings';

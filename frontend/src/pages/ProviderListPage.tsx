@@ -290,7 +290,7 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
         workspace={workspace}
         isOpen={isCreateOpen}
         onClose={() => setCreateOpen(false)}
-        renderCredentialInput={renderCredentialInput}
+        renderCredentialInput={resolvedCredentialInput}
       />
       <ConfirmDeleteModal
         title={

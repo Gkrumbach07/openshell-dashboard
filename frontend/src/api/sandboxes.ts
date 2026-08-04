@@ -68,8 +68,6 @@ export const useCreateSandbox = (workspace: string) => {
   });
 };
 
-export type { LogFilters } from '../types';
-
 // One-shot log fetch; the UI polls this (no streaming through the BFF).
 export const getSandboxLogs = (
   workspace: string,
@@ -252,7 +250,7 @@ export type UploadResult = {
   path: string;
   size: number;
   stdout: string;
-  stderr: string;
+  success: boolean;
 };
 
 export const uploadFile = async (

@@ -63,6 +63,7 @@ func (app *App) Routes() http.Handler {
 
 			r.Get("/auth/whoami", app.GetWhoAmI)
 			r.Get("/gateway", app.GetGateway)
+			r.Get("/draft-summary", app.GetDraftSummary)
 
 			r.Get("/global-policy", app.GetGlobalPolicy)
 			r.Put("/global-policy", app.SetGlobalPolicy)

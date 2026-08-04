@@ -40,7 +40,7 @@ Requires a running OpenShell gateway: `openshell gateway start` (Podman) or poin
 - **Zero `@odh-dashboard/*` imports.** This repo has no knowledge of odh-dashboard. Downstream consumption happens via a separate package that imports our components.
 - **Proxy-delegated auth.** An external auth proxy (oauth2-proxy, kube-rbac-proxy, etc.) handles OIDC. The BFF reads the forwarded token from a configurable header and passes it to the gateway. No in-app OIDC, no token storage. Run unauthenticated for dev (`AUTH_DISABLED=true`) or put a proxy in front for production.
 - **gRPC via protoc-generated stubs**, not any SDK. The `internal/gateway/` package wraps ~30 user-facing RPCs. Skip internal/supervisor RPCs.
-- **No WebSockets.** Downstream federation proxy can't handle them. Use polling for status, polling for logs.
+- **WebSockets used only for terminal (ExecSandboxInteractive).** All other real-time data uses polling (logs, sandbox status, drafts).
 - **PatternFly 6 only.** No MUI, no custom design system.
 - **Page components must be self-contained and exportable.** Each page takes props and uses internal API hooks. No dashboard-specific wrappers baked in.
 

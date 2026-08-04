@@ -65,7 +65,6 @@ type mockGateway struct {
 	detachSandboxProviderFn     func(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshellv1.DetachSandboxProviderResponse, error)
 	exposeServiceFn             func(ctx context.Context, workspace, sandbox, service string, targetPort uint32, domain bool) (*openshellv1.ServiceEndpointResponse, error)
 	listServicesFn              func(ctx context.Context, workspace, sandbox string) ([]*openshellv1.ServiceEndpointResponse, error)
-	getServiceFn                func(ctx context.Context, workspace, sandbox, service string) (*openshellv1.ServiceEndpointResponse, error)
 	deleteServiceFn             func(ctx context.Context, workspace, sandbox, service string) (bool, error)
 	setInferenceRouteFn         func(ctx context.Context, workspace, routeName, providerName, modelID string, timeoutSecs uint64, noVerify bool) (*inferencev1.SetInferenceRouteResponse, error)
 	getInferenceRouteFn         func(ctx context.Context, workspace, routeName string) (*inferencev1.GetInferenceRouteResponse, error)
@@ -230,9 +229,6 @@ func (m *mockGateway) ExposeService(ctx context.Context, workspace, sandbox, ser
 }
 func (m *mockGateway) ListServices(ctx context.Context, workspace, sandbox string) ([]*openshellv1.ServiceEndpointResponse, error) {
 	return m.listServicesFn(ctx, workspace, sandbox)
-}
-func (m *mockGateway) GetService(ctx context.Context, workspace, sandbox, service string) (*openshellv1.ServiceEndpointResponse, error) {
-	return m.getServiceFn(ctx, workspace, sandbox, service)
 }
 func (m *mockGateway) DeleteService(ctx context.Context, workspace, sandbox, service string) (bool, error) {
 	return m.deleteServiceFn(ctx, workspace, sandbox, service)

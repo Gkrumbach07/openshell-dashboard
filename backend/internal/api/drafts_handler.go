@@ -2,12 +2,30 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
+
+// draftSummaryResponse matches the frontend DraftSummary type.
+type draftSummaryResponse struct {
+	Sandboxes    []any `json:"sandboxes"`
+	TotalPending int   `json:"totalPending"`
+}
+
+// GetDraftSummary returns an aggregated summary of pending draft policy chunks
+// across all workspaces. TODO: No single gateway RPC provides a cross-workspace
+// draft summary. When one becomes available, aggregate real data here. For now,
+// return an empty response so the frontend route does not 404.
+func (app *App) GetDraftSummary(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, draftSummaryResponse{
+		Sandboxes:    []any{},
+		TotalPending: 0,
+	})
+}
 
 // GetDraftPolicy returns the draft-policy inbox for a sandbox. Optional
 // ?status=pending|approved|rejected filter.
@@ -94,7 +112,8 @@ func (app *App) EditDraftChunk(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := models.ParseNetworkPolicyRule(body.ProposedRule)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_rule", "proposedRule does not match NetworkPolicyRule schema: "+err.Error())
+		slog.Error("invalid network policy rule", "error", err)
+		writeError(w, http.StatusBadRequest, "invalid_rule", "invalid network policy rule")
 		return
 	}
 	if err := app.gateway.EditDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"), rule); err != nil {

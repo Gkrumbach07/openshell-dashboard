@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -60,7 +61,8 @@ func (app *App) UpdateSandboxPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	policy, err := models.ParsePolicy(body.Policy)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_policy", "policy does not match the SandboxPolicy schema: "+err.Error())
+		slog.Error("invalid policy specification", "error", err)
+		writeError(w, http.StatusBadRequest, "invalid_policy", "invalid policy specification")
 		return
 	}
 	resp, err := app.gateway.UpdateSandboxPolicy(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), policy, body.ExpectedResourceVersion)
@@ -105,7 +107,8 @@ func (app *App) SetGlobalPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	policy, err := models.ParsePolicy(body.Policy)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_policy", "policy does not match the SandboxPolicy schema: "+err.Error())
+		slog.Error("invalid policy specification", "error", err)
+		writeError(w, http.StatusBadRequest, "invalid_policy", "invalid policy specification")
 		return
 	}
 	resp, err := app.gateway.SetGlobalPolicy(r.Context(), policy)
