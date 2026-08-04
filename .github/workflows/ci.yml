@@ -142,8 +142,8 @@ jobs:
         run: |
           cd backend && go build -o ../bin/server ./cmd/server
           cd ..
-          AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:50051 ./bin/server &
-          timeout 30 bash -c 'until curl -sf http://localhost:8080/api/v1/healthz; do sleep 1; done'
+          AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:8080 PORT=9080 ./bin/server &
+          timeout 30 bash -c 'until curl -sf http://localhost:9080/api/v1/healthz; do sleep 1; done'
           echo "BFF is healthy"
 
       - uses: actions/setup-node@v4
@@ -161,7 +161,7 @@ jobs:
           wait-on: 'http://localhost:3000'
           browser: chrome
         env:
-          BFF_URL: http://localhost:8080
+          BFF_URL: http://localhost:9080
 
       - uses: actions/upload-artifact@v4
         if: failure()
