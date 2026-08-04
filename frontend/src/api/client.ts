@@ -14,7 +14,12 @@ const buildError = (
   return error;
 };
 
+let apiBasePath = '';
 let onSessionExpired: (() => void) | null = null;
+
+export const setApiBasePath = (basePath: string): void => {
+  apiBasePath = basePath.replace(/\/+$/, '');
+};
 
 export const setSessionExpiredHandler = (handler: () => void): void => {
   onSessionExpired = handler;
@@ -29,7 +34,7 @@ export const apiFetch = async <T>(
     ...((init?.headers as Record<string, string>) ?? {}),
   };
 
-  const response = await fetch(path, { ...init, headers });
+  const response = await fetch(`${apiBasePath}${path}`, { ...init, headers });
   if (!response.ok) {
     let code: string | undefined;
     let message = `Request failed (${response.status})`;
