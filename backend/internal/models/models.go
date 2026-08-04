@@ -358,8 +358,8 @@ type ImportProviderProfilesResult struct {
 
 // UpdateProviderProfileResult mirrors openshell.v1.UpdateProviderProfilesResponse.
 type UpdateProviderProfileResult struct {
-	Diagnostics []ProviderProfileDiagnostic `json:"diagnostics,omitempty"`
 	Profile     *ProviderProfile            `json:"profile,omitempty"`
+	Diagnostics []ProviderProfileDiagnostic `json:"diagnostics,omitempty"`
 	Updated     bool                        `json:"updated"`
 }
 

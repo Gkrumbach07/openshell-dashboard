@@ -302,7 +302,13 @@ export const useUpdateProviderProfile = (workspace: string) => {
       profileId: string;
       profile: ImportProfileRequest;
       expectedResourceVersion?: number;
-    }) => updateProviderProfile(workspace, profileId, profile, expectedResourceVersion),
+    }) =>
+      updateProviderProfile(
+        workspace,
+        profileId,
+        profile,
+        expectedResourceVersion,
+      ),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: ['provider-profiles', workspace],

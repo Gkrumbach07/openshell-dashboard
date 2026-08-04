@@ -326,9 +326,7 @@ const CreateProfileModal: React.FC<CreateProfileModalProps> = ({
                   <Button
                     variant="link"
                     onClick={() =>
-                      setEndpoints((rows) =>
-                        rows.filter((_, i) => i !== index),
-                      )
+                      setEndpoints((rows) => rows.filter((_, i) => i !== index))
                     }
                     data-testid={`endpoint-remove-${index}`}
                   >
@@ -359,11 +357,7 @@ const CreateProfileModal: React.FC<CreateProfileModalProps> = ({
             </Alert>
           )}
           {diagnostics.length > 0 && (
-            <Alert
-              variant="warning"
-              isInline
-              title="Validation diagnostics"
-            >
+            <Alert variant="warning" isInline title="Validation diagnostics">
               <ul>
                 {diagnostics.map((d, i) => (
                   <li key={i}>
