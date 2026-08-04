@@ -269,3 +269,13 @@ func FromInferenceRoute(resp *inferencev1.GetInferenceRouteResponse) InferenceRo
 		TimeoutSecs:  resp.GetTimeoutSecs(),
 	}
 }
+
+func FromSetInferenceRoute(resp *inferencev1.SetInferenceRouteResponse) InferenceRoute {
+	return InferenceRoute{
+		RouteName:    resp.GetRouteName(),
+		ProviderName: resp.GetProviderName(),
+		ModelID:      resp.GetModelId(),
+		Version:      resp.GetVersion(),
+		TimeoutSecs:  resp.GetTimeoutSecs(),
+	}
+}

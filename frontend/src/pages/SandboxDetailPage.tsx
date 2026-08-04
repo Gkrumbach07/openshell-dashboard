@@ -32,15 +32,15 @@ import { useSandbox } from '../api/sandboxes';
 import ConnectCard from '../components/ConnectCard';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
-import SandboxAttention from '../components/SandboxAttention';
+import SandboxAttention from '../components/sandbox/SandboxAttention';
 import SandboxDraftsTab from '../components/SandboxDraftsTab';
-import SandboxFilesTab from '../components/SandboxFilesTab';
-import SandboxLogsTab from '../components/SandboxLogsTab';
-import SandboxTerminalTab from '../components/SandboxTerminalTab';
+import SandboxFilesTab from '../components/sandbox/SandboxFilesTab';
+import SandboxLogsTab from '../components/sandbox/SandboxLogsTab';
+import SandboxTerminalTab from '../components/sandbox/SandboxTerminalTab';
 import PolicyRuleEditor from '../components/PolicyRuleEditor';
-import SandboxProvidersTab from '../components/SandboxProvidersTab';
-import SandboxServicesTab from '../components/SandboxServicesTab';
-import { formatTimestamp } from '../components/utils';
+import SandboxProvidersTab from '../components/sandbox/SandboxProvidersTab';
+import SandboxServicesTab from '../components/sandbox/SandboxServicesTab';
+import { formatTimestamp } from '../utils/formatters';
 
 type SandboxDetailPageProps = {
   workspace: string;

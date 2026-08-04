@@ -6,7 +6,9 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import { DRAFT_POLL_MS, DRAFT_SUMMARY_POLL_MS } from '../constants';
 import { apiFetch, del, get, post, put } from './client';
+import { policyKeys, sandboxKeys } from './queryKeys';
 import type {
   DraftHistoryEntry,
   DraftPolicy,
@@ -90,14 +92,14 @@ export const approveAllDraftChunks = (
 
 export const useSandboxPolicy = (workspace: string, name: string) =>
   useQuery({
-    queryKey: ['sandbox-policy', workspace, name],
+    queryKey: policyKeys.sandbox(workspace, name),
     queryFn: () => getSandboxPolicy(workspace, name),
   });
 
 export const useSandboxPolicies = (workspace: string, names: string[]) => {
   const queries = useQueries({
     queries: names.map((name) => ({
-      queryKey: ['sandbox-policy', workspace, name],
+      queryKey: policyKeys.sandbox(workspace, name),
       queryFn: () => getSandboxPolicy(workspace, name),
     })),
   });
@@ -126,24 +128,24 @@ export const useUpdateSandboxPolicy = (workspace: string, name: string) => {
     }) => updateSandboxPolicy(workspace, name, policy, expectedResourceVersion),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['sandbox-policy', workspace, name],
+        queryKey: policyKeys.sandbox(workspace, name),
       });
       queryClient.invalidateQueries({
-        queryKey: ['sandboxes', workspace, name],
+        queryKey: sandboxKeys.detail(workspace, name),
       });
     },
   });
 };
 
 export const useGlobalPolicy = () =>
-  useQuery({ queryKey: ['global-policy'], queryFn: getGlobalPolicy });
+  useQuery({ queryKey: policyKeys.global, queryFn: getGlobalPolicy });
 
 export const useSetGlobalPolicy = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: setGlobalPolicy,
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['global-policy'] }),
+      queryClient.invalidateQueries({ queryKey: policyKeys.global }),
   });
 };
 
@@ -155,15 +157,15 @@ export const useDeleteGlobalPolicy = () => {
   return useMutation({
     mutationFn: deleteGlobalPolicy,
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['global-policy'] }),
+      queryClient.invalidateQueries({ queryKey: policyKeys.global }),
   });
 };
 
 export const useDraftPolicy = (workspace: string, name: string) =>
   useQuery({
-    queryKey: ['drafts', workspace, name],
+    queryKey: policyKeys.drafts(workspace, name),
     queryFn: () => getDraftPolicy(workspace, name),
-    refetchInterval: 10_000,
+    refetchInterval: DRAFT_POLL_MS,
   });
 
 // Draft decisions invalidate both the inbox and the policy view (approvals
@@ -177,9 +179,9 @@ const useDraftMutation = <TArgs, TResult>(
   return useMutation({
     mutationFn,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['drafts', workspace, name] });
+      queryClient.invalidateQueries({ queryKey: policyKeys.drafts(workspace, name) });
       queryClient.invalidateQueries({
-        queryKey: ['sandbox-policy', workspace, name],
+        queryKey: policyKeys.sandbox(workspace, name),
       });
     },
   });
@@ -262,7 +264,7 @@ export const useClearDraftChunks = (workspace: string, name: string) =>
 
 export const useDraftHistory = (workspace: string, name: string) =>
   useQuery({
-    queryKey: ['draft-history', workspace, name],
+    queryKey: policyKeys.draftHistory(workspace, name),
     queryFn: () => getDraftHistory(workspace, name),
   });
 
@@ -273,9 +275,9 @@ const getDraftSummary = (workspace?: string): Promise<DraftSummary> =>
 
 export const useDraftNotifications = (enabled = true) => {
   const query = useQuery({
-    queryKey: ['draft-summary'],
+    queryKey: policyKeys.draftSummary,
     queryFn: () => getDraftSummary(),
-    refetchInterval: 15_000,
+    refetchInterval: DRAFT_SUMMARY_POLL_MS,
     enabled,
   });
 

@@ -28,12 +28,12 @@ import {
 
 import { useDeleteWorkspace, useWorkspaces } from '../api/workspaces';
 import { useAlerts } from '../app/AlertContext';
-import { useUserRole } from '../app/useUserRole';
+import { useUserRole } from '../api/rbac';
 import CreateWorkspaceModal from '../components/CreateWorkspaceModal';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
-import { formatAge } from '../components/utils';
+import { formatAge } from '../utils/formatters';
 
 type WorkspaceListPageProps = {
   onSelect?: (name: string) => void;

@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { GATEWAY_POLL_MS } from '../constants';
 import { get } from './client';
+import { gatewayKeys } from './queryKeys';
 import type { GatewayInfo } from '../types';
 
 export const getGatewayInfo = (): Promise<GatewayInfo> =>
@@ -8,7 +10,7 @@ export const getGatewayInfo = (): Promise<GatewayInfo> =>
 
 export const useGatewayInfo = () =>
   useQuery({
-    queryKey: ['gateway'],
+    queryKey: gatewayKeys.info,
     queryFn: getGatewayInfo,
-    refetchInterval: 30_000,
+    refetchInterval: GATEWAY_POLL_MS,
   });

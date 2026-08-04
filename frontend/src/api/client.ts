@@ -1,10 +1,5 @@
-import {
-  clearToken,
-  getRefreshToken,
-  getToken,
-  setRefreshToken,
-  setToken,
-} from '../app/authStore';
+import { clearToken, getRefreshToken, getToken, setRefreshToken, setToken } from '../app/authStore';
+import { AUTH_REFRESH_PATH, ROUTES } from '../constants';
 
 export type ApiError = Error & {
   status: number;
@@ -39,7 +34,7 @@ const tryRefresh = async (): Promise<string | null> => {
 
   refreshPromise = (async () => {
     try {
-      const response = await fetch('/api/v1/auth/refresh', {
+      const response = await fetch(AUTH_REFRESH_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
@@ -79,7 +74,7 @@ const redirectToLogin = () => {
   }
   redirecting = true;
   clearToken();
-  window.location.assign('/login');
+  window.location.assign(ROUTES.LOGIN);
 };
 
 export const apiFetch = async <T>(

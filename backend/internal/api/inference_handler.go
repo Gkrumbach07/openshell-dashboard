@@ -44,13 +44,7 @@ func (app *App) SetInferenceRoute(w http.ResponseWriter, r *http.Request) {
 		writeGrpcError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.InferenceRoute{
-		RouteName:    resp.GetRouteName(),
-		ProviderName: resp.GetProviderName(),
-		ModelID:      resp.GetModelId(),
-		Version:      resp.GetVersion(),
-		TimeoutSecs:  resp.GetTimeoutSecs(),
-	})
+	writeJSON(w, http.StatusOK, models.FromSetInferenceRoute(resp))
 }
 
 // DeleteInferenceRoute removes the workspace inference route.

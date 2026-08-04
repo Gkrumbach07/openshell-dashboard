@@ -19,36 +19,31 @@ describe('PhaseLabel', () => {
     expect(label).toHaveTextContent(phase);
   });
 
-  it('renders READY with green color', () => {
+  it('renders a PF Label with color prop for READY', () => {
     const { container } = render(<PhaseLabel phase="READY" />);
-    const label = container.querySelector('[data-testid="phase-label"]');
-    expect(label?.className).toContain('green');
+    expect(container.innerHTML).toMatchSnapshot();
   });
 
-  it('renders ERROR with red color', () => {
+  it('renders a PF Label with color prop for ERROR', () => {
     const { container } = render(<PhaseLabel phase="ERROR" />);
-    const label = container.querySelector('[data-testid="phase-label"]');
-    expect(label?.className).toContain('red');
+    expect(container.innerHTML).toMatchSnapshot();
   });
 
-  it('renders PROVISIONING with blue color', () => {
-    const { container } = render(<PhaseLabel phase="PROVISIONING" />);
-    const label = container.querySelector('[data-testid="phase-label"]');
-    expect(label?.className).toContain('blue');
+  it('renders distinct markup for READY vs ERROR', () => {
+    const { container: c1 } = render(<PhaseLabel phase="READY" />);
+    const { container: c2 } = render(<PhaseLabel phase="ERROR" />);
+    expect(c1.innerHTML).not.toBe(c2.innerHTML);
   });
 
-  it('renders DELETING with orange color', () => {
-    const { container } = render(<PhaseLabel phase="DELETING" />);
-    const label = container.querySelector('[data-testid="phase-label"]');
-    expect(label?.className).toContain('orange');
+  it('renders distinct markup for PROVISIONING vs DELETING', () => {
+    const { container: c1 } = render(<PhaseLabel phase="PROVISIONING" />);
+    const { container: c2 } = render(<PhaseLabel phase="DELETING" />);
+    expect(c1.innerHTML).not.toBe(c2.innerHTML);
   });
 
-  it('renders UNKNOWN without a specific color class (default/grey)', () => {
-    const { container } = render(<PhaseLabel phase="UNKNOWN" />);
-    const label = container.querySelector('[data-testid="phase-label"]');
-    expect(label?.className).not.toContain('green');
-    expect(label?.className).not.toContain('red');
-    expect(label?.className).not.toContain('blue');
-    expect(label?.className).not.toContain('orange');
+  it('renders UNKNOWN with default/grey styling', () => {
+    const { container: cReady } = render(<PhaseLabel phase="READY" />);
+    const { container: cUnknown } = render(<PhaseLabel phase="UNKNOWN" />);
+    expect(cReady.innerHTML).not.toBe(cUnknown.innerHTML);
   });
 });

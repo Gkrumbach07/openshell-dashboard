@@ -1,4 +1,4 @@
-import { buildAttentionItems } from '../SandboxAttention';
+import { buildAttentionItems } from '../sandbox/SandboxAttention';
 import type {
   Sandbox,
   DraftSandboxSummary,

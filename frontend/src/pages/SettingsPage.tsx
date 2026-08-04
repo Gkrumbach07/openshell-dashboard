@@ -23,6 +23,7 @@ import {
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useAlerts } from '../app/AlertContext';
 import {
   useDeleteGlobalSetting,
@@ -317,45 +318,15 @@ const SettingsPage: React.FC = () => {
         </ModalFooter>
       </Modal>
 
-      {/* Delete confirmation modal */}
-      <Modal
-        variant="small"
+      <ConfirmDeleteModal
+        title="Delete setting?"
+        body={`Are you sure you want to delete the setting "${deleteKey}"?`}
         isOpen={deleteKey !== null}
-        onClose={() => setDeleteKey(null)}
-        aria-label="Delete setting"
-      >
-        <ModalHeader title="Delete setting?" />
-        <ModalBody>
-          <Content component="p">
-            Are you sure you want to delete the setting{' '}
-            <strong>{deleteKey}</strong>?
-          </Content>
-          {deleteSetting.isError && (
-            <Alert
-              variant="danger"
-              isInline
-              title="Failed to delete setting"
-              className="pf-v6-u-mt-md"
-            >
-              {(deleteSetting.error as Error).message}
-            </Alert>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Button
-            variant="danger"
-            onClick={confirmDelete}
-            isDisabled={deleteSetting.isPending}
-            isLoading={deleteSetting.isPending}
-            data-testid="confirm-delete-setting"
-          >
-            Delete
-          </Button>
-          <Button variant="link" onClick={() => setDeleteKey(null)}>
-            Cancel
-          </Button>
-        </ModalFooter>
-      </Modal>
+        isDeleting={deleteSetting.isPending}
+        error={deleteSetting.isError ? (deleteSetting.error as Error).message : undefined}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteKey(null)}
+      />
     </>
   );
 };

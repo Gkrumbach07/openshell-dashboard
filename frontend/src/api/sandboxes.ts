@@ -1,19 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { getToken } from '../app/authStore';
+import { SANDBOX_POLL_MS } from '../constants';
 import { del, get, post } from './client';
+import { sandboxKeys } from './queryKeys';
 import type {
   CreateSandboxRequest,
   ExposeServiceRequest,
+  LogFilters,
   Provider,
   Sandbox,
   SandboxLogs,
   ServiceEndpoint,
 } from '../types';
-
-// Live status is polling-based (no WebSockets): sandbox queries refetch on an
-// interval so phase transitions show up without a manual refresh.
-const POLL_INTERVAL_MS = 5_000;
 
 export const listSandboxes = (
   workspace: string,
@@ -49,16 +48,16 @@ export const deleteSandbox = (
 
 export const useSandboxes = (workspace: string, labelSelector?: string) =>
   useQuery({
-    queryKey: ['sandboxes', workspace, labelSelector ?? ''],
+    queryKey: sandboxKeys.list(workspace, labelSelector),
     queryFn: () => listSandboxes(workspace, labelSelector),
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: SANDBOX_POLL_MS,
   });
 
 export const useSandbox = (workspace: string, name: string) =>
   useQuery({
-    queryKey: ['sandboxes', workspace, name],
+    queryKey: sandboxKeys.detail(workspace, name),
     queryFn: () => getSandbox(workspace, name),
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: SANDBOX_POLL_MS,
   });
 
 export const useCreateSandbox = (workspace: string) => {
@@ -66,17 +65,11 @@ export const useCreateSandbox = (workspace: string) => {
   return useMutation({
     mutationFn: (body: CreateSandboxRequest) => createSandbox(workspace, body),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['sandboxes', workspace] }),
+      queryClient.invalidateQueries({ queryKey: sandboxKeys.scope(workspace) }),
   });
 };
 
-export type LogFilters = {
-  lines?: number;
-  sinceMs?: number;
-  // "gateway" and/or "sandbox".
-  sources?: string[];
-  level?: string;
-};
+export type { LogFilters } from '../types';
 
 // One-shot log fetch; the UI polls this (no streaming through the BFF).
 export const getSandboxLogs = (
@@ -110,9 +103,9 @@ export const useSandboxLogs = (
   autoRefresh: boolean,
 ) =>
   useQuery({
-    queryKey: ['sandbox-logs', workspace, name, filters],
+    queryKey: sandboxKeys.logs(workspace, name, filters),
     queryFn: () => getSandboxLogs(workspace, name, filters),
-    refetchInterval: autoRefresh ? POLL_INTERVAL_MS : false,
+    refetchInterval: autoRefresh ? SANDBOX_POLL_MS : false,
   });
 
 export const listAttachedProviders = (
@@ -145,7 +138,7 @@ export const detachProvider = (
 
 export const useAttachedProviders = (workspace: string, name: string) =>
   useQuery({
-    queryKey: ['sandbox-providers', workspace, name],
+    queryKey: sandboxKeys.providers(workspace, name),
     queryFn: () => listAttachedProviders(workspace, name),
   });
 
@@ -161,10 +154,10 @@ export const useAttachProvider = (workspace: string, name: string) => {
     }) => attachProvider(workspace, name, provider, expectedResourceVersion),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['sandbox-providers', workspace, name],
+        queryKey: sandboxKeys.providers(workspace, name),
       });
       queryClient.invalidateQueries({
-        queryKey: ['sandboxes', workspace, name],
+        queryKey: sandboxKeys.detail(workspace, name),
       });
     },
   });
@@ -176,10 +169,10 @@ export const useDetachProvider = (workspace: string, name: string) => {
     mutationFn: (provider: string) => detachProvider(workspace, name, provider),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['sandbox-providers', workspace, name],
+        queryKey: sandboxKeys.providers(workspace, name),
       });
       queryClient.invalidateQueries({
-        queryKey: ['sandboxes', workspace, name],
+        queryKey: sandboxKeys.detail(workspace, name),
       });
     },
   });
@@ -190,7 +183,7 @@ export const useDeleteSandbox = (workspace: string) => {
   return useMutation({
     mutationFn: (name: string) => deleteSandbox(workspace, name),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['sandboxes', workspace] }),
+      queryClient.invalidateQueries({ queryKey: sandboxKeys.scope(workspace) }),
   });
 };
 
@@ -225,9 +218,9 @@ export const deleteService = (
 
 export const useServices = (workspace: string, sandbox: string) =>
   useQuery({
-    queryKey: ['sandbox-services', workspace, sandbox],
+    queryKey: sandboxKeys.services(workspace, sandbox),
     queryFn: () => listServices(workspace, sandbox),
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: SANDBOX_POLL_MS,
   });
 
 export const useExposeService = (workspace: string, sandbox: string) => {
@@ -237,7 +230,7 @@ export const useExposeService = (workspace: string, sandbox: string) => {
       exposeService(workspace, sandbox, body),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['sandbox-services', workspace, sandbox],
+        queryKey: sandboxKeys.services(workspace, sandbox),
       }),
   });
 };
@@ -248,7 +241,7 @@ export const useDeleteService = (workspace: string, sandbox: string) => {
     mutationFn: (service: string) => deleteService(workspace, sandbox, service),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['sandbox-services', workspace, sandbox],
+        queryKey: sandboxKeys.services(workspace, sandbox),
       }),
   });
 };

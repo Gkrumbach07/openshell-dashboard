@@ -52,27 +52,20 @@ type AuthConfigResponse struct {
 	AuthDisabled bool         `json:"authDisabled"`
 }
 
-var authConfig AuthConfigResponse
-
-// SetAuthConfig stores the values served by GET /api/v1/auth/config.
-func SetAuthConfig(cfg AuthConfigResponse) {
-	authConfig = cfg
-}
-
 // GetAuthConfig is public — the login page needs it before any token exists.
 func (app *App) GetAuthConfig(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, authConfig)
+	writeJSON(w, http.StatusOK, app.authConfig)
 }
 
 // GetOIDCDiscovery proxies the OIDC discovery document from the issuer,
 // avoiding CORS issues when the frontend and IdP are on different origins.
 func (app *App) GetOIDCDiscovery(w http.ResponseWriter, _ *http.Request) {
-	if authConfig.Issuer == "" {
+	if app.authConfig.Issuer == "" {
 		writeError(w, http.StatusServiceUnavailable, "no_issuer", "OIDC issuer not configured")
 		return
 	}
-	issuer := strings.TrimRight(authConfig.Issuer, "/")
-	resp, err := oidcHTTPClient.Get(issuer + "/.well-known/openid-configuration")
+	issuer := strings.TrimRight(app.authConfig.Issuer, "/")
+	resp, err := oidcHTTPClient.Get(issuer + oidcDiscoveryPath)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "discovery_failed", "identity provider is unreachable")
 		return

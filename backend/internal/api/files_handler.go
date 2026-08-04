@@ -10,6 +10,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+const defaultUploadDir = "/sandbox"
+
 func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	name := chi.URLParam(r, "name")
@@ -21,9 +23,8 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	sandboxID := sandbox.GetMetadata().GetId()
 
-	const maxUploadBytes int64 = 64 << 20 // 64 MiB
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
-	if parseErr := r.ParseMultipartForm(maxUploadBytes); parseErr != nil { //nolint:gosec // bounded by MaxBytesReader
+	r.Body = http.MaxBytesReader(w, r.Body, app.maxUploadSize)
+	if parseErr := r.ParseMultipartForm(app.maxUploadSize); parseErr != nil { //nolint:gosec // bounded by MaxBytesReader
 		writeError(w, http.StatusBadRequest, "invalid_upload", "failed to parse multipart form")
 		return
 	}
@@ -42,13 +43,13 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	dest := r.URL.Query().Get("dest")
 	if dest == "" {
-		dest = "/sandbox"
+		dest = defaultUploadDir
 	}
 	destPath := filepath.Join(dest, filepath.Base(header.Filename))
 
 	stdout, stderr, exitCode, err := app.gateway.ExecSandbox(r.Context(), sandboxID,
 		[]string{"sh", "-c", fmt.Sprintf("cat > %q", destPath)},
-		fileBytes, "", 30)
+		fileBytes, "", uint32(app.execTimeout))
 	if err != nil {
 		writeGrpcError(w, err)
 		return
@@ -80,7 +81,7 @@ func (app *App) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	sandboxID := sandbox.GetMetadata().GetId()
 
 	stdout, stderr, exitCode, err := app.gateway.ExecSandbox(r.Context(), sandboxID,
-		[]string{"cat", filePath}, nil, "", 30)
+		[]string{"cat", filePath}, nil, "", uint32(app.execTimeout))
 	if err != nil {
 		writeGrpcError(w, err)
 		return

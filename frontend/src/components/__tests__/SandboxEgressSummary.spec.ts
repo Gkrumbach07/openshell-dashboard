@@ -1,4 +1,4 @@
-import { getPolicySummary } from '../SandboxEgressSummary';
+import { getPolicySummary } from '../sandbox/SandboxEgressSummary';
 import type { SandboxPolicy, SandboxPolicyView } from '../../types';
 
 describe('getPolicySummary', () => {

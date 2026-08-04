@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { APP_VERSION } from '../constants';
 import {
   AboutModal,
   Content,
@@ -34,7 +35,7 @@ import { Link, useLocation } from 'react-router-dom';
 import openshellLogo from '~/assets/openshell-logo.svg';
 import { useGatewayInfo } from '../api/gateway';
 import { useCurrentUser, useFeatureFlags } from '../api/auth';
-import { useUserRole } from './useUserRole';
+import { useUserRole } from '../api/rbac';
 import { logout } from './logout';
 
 type AppLayoutProps = {
@@ -226,7 +227,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <DescriptionList isCompact>
             <DescriptionListGroup>
               <DescriptionListTerm>Dashboard version</DescriptionListTerm>
-              <DescriptionListDescription>0.1.0</DescriptionListDescription>
+              <DescriptionListDescription>{APP_VERSION}</DescriptionListDescription>
             </DescriptionListGroup>
             <DescriptionListGroup>
               <DescriptionListTerm>Gateway version</DescriptionListTerm>

@@ -17,6 +17,13 @@ import (
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/gateway"
 )
 
+const (
+	defaultPort       = "8080"
+	defaultGatewayURL = "localhost:50051"
+	defaultCORSOrigin = "http://localhost:3000"
+	defaultOIDCScopes = "openid profile email"
+)
+
 // envOr returns the environment variable value or a default.
 func envOr(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
@@ -27,20 +34,27 @@ func envOr(key, fallback string) string {
 
 func main() {
 	var (
-		port         = flag.String("port", envOr("PORT", "8080"), "listen port (env PORT)")
-		gatewayURL    = flag.String("gateway-url", envOr("OPENSHELL_GATEWAY_URL", "localhost:50051"), "OpenShell gateway gRPC endpoint (env OPENSHELL_GATEWAY_URL)")
+		port         = flag.String("port", envOr("PORT", defaultPort), "listen port (env PORT)")
+		gatewayURL    = flag.String("gateway-url", envOr("OPENSHELL_GATEWAY_URL", defaultGatewayURL), "OpenShell gateway gRPC endpoint (env OPENSHELL_GATEWAY_URL)")
 		gatewayCACert = flag.String("gateway-ca-cert", envOr("GATEWAY_CA_CERT", ""), "path to CA cert for gateway TLS (env GATEWAY_CA_CERT)")
 		oidcIssuer    = flag.String("oidc-issuer", envOr("OIDC_ISSUER", ""), "OIDC issuer URL (env OIDC_ISSUER)")
 		oidcClientID = flag.String("oidc-client-id", envOr("OIDC_CLIENT_ID", ""), "OIDC client ID (env OIDC_CLIENT_ID)")
 		staticDir    = flag.String("static-dir", envOr("STATIC_DIR", ""), "frontend static assets directory (env STATIC_DIR)")
 		authDisabled = flag.Bool("auth-disabled", envOr("AUTH_DISABLED", "false") == "true", "skip OIDC validation — dev only (env AUTH_DISABLED)")
-		origins      = flag.String("allowed-origins", envOr("ALLOWED_ORIGINS", "http://localhost:3000"), "comma-separated CORS origins (env ALLOWED_ORIGINS)")
+		origins      = flag.String("allowed-origins", envOr("ALLOWED_ORIGINS", defaultCORSOrigin), "comma-separated CORS origins (env ALLOWED_ORIGINS)")
 	)
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	slog.SetDefault(logger)
 
+	if !*authDisabled && *oidcClientID == "" {
+		slog.Error("OIDC_CLIENT_ID is required when authentication is enabled (set AUTH_DISABLED=true to skip)")
+		os.Exit(1)
+	}
+	if *gatewayURL == defaultGatewayURL {
+		slog.Warn("gateway URL is the default — verify OPENSHELL_GATEWAY_URL is configured correctly", "url", *gatewayURL)
+	}
 	if *authDisabled {
 		slog.Warn("AUTH_DISABLED=true — OIDC validation is OFF; never use this outside local development")
 	}
@@ -56,11 +70,11 @@ func main() {
 		slog.Error("auth setup failed", "error", err)
 		os.Exit(1)
 	}
-	api.SetAuthConfig(api.AuthConfigResponse{
+	authCfg := api.AuthConfigResponse{
 		AuthDisabled: *authDisabled,
 		Issuer:       *oidcIssuer,
 		ClientID:     *oidcClientID,
-		Scopes:       envOr("OIDC_SCOPES", "openid profile email"),
+		Scopes:       envOr("OIDC_SCOPES", defaultOIDCScopes),
 		AdminRole:    envOr("OIDC_ADMIN_ROLE", "openshell-admin"),
 		UserRole:     envOr("OIDC_USER_ROLE", "openshell-user"),
 		Features: api.FeatureFlags{
@@ -75,7 +89,7 @@ func main() {
 			WorkspaceBinding:  envOr("FEATURE_WORKSPACE_BINDING", "false") == "true",
 			ResourceLinks:     envOr("FEATURE_RESOURCE_LINKS", "false") == "true",
 		},
-	})
+	}
 
 	gatewayClient, err := gateway.New(*gatewayURL, *gatewayCACert)
 	if err != nil {
@@ -84,7 +98,7 @@ func main() {
 	}
 	defer gatewayClient.Close()
 
-	app := api.NewApp(gatewayClient, authMiddleware, *staticDir, strings.Split(*origins, ","))
+	app := api.NewApp(gatewayClient, authMiddleware, *staticDir, strings.Split(*origins, ","), authCfg)
 
 	addr := ":" + *port
 	slog.Info("openshell-dashboard BFF listening",

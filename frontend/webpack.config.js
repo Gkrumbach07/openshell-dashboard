@@ -1,6 +1,8 @@
 const path = require('path');
+const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin');
+const packageJson = require('./package.json');
 
 module.exports = (env, argv) => {
   const isProd = argv.mode === 'production';
@@ -29,6 +31,9 @@ module.exports = (env, argv) => {
       ],
     },
     plugins: [
+      new webpack.DefinePlugin({
+        __APP_VERSION__: JSON.stringify(packageJson.version),
+      }),
       new HtmlWebpackPlugin({ template: './public/index.html' }),
       new MonacoWebpackPlugin({ languages: ['yaml', 'json'] }),
     ],

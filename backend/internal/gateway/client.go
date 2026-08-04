@@ -102,17 +102,29 @@ func (c *Client) Close() error {
 
 // Health checks gateway health (unauthenticated RPC).
 func (c *Client) Health(ctx context.Context) (*openshellv1.HealthResponse, error) {
-	return c.openshell.Health(ctx, &openshellv1.HealthRequest{})
+	resp, err := c.openshell.Health(ctx, &openshellv1.HealthRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("health check: %w", err)
+	}
+	return resp, nil
 }
 
 // GetGatewayInfo fetches gateway status, version, and compute drivers.
 func (c *Client) GetGatewayInfo(ctx context.Context) (*openshellv1.GetGatewayInfoResponse, error) {
-	return c.openshell.GetGatewayInfo(ctx, &openshellv1.GetGatewayInfoRequest{})
+	resp, err := c.openshell.GetGatewayInfo(ctx, &openshellv1.GetGatewayInfoRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("get gateway info: %w", err)
+	}
+	return resp, nil
 }
 
 // GetCurrentUser returns the authenticated user's identity from the gateway.
 func (c *Client) GetCurrentUser(ctx context.Context) (*openshellv1.GetCurrentUserResponse, error) {
-	return c.openshell.GetCurrentUser(ctx, &openshellv1.GetCurrentUserRequest{})
+	resp, err := c.openshell.GetCurrentUser(ctx, &openshellv1.GetCurrentUserRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("get current user: %w", err)
+	}
+	return resp, nil
 }
 
 func (c *Client) ExecSandboxInteractive(ctx context.Context) (openshellv1.OpenShell_ExecSandboxInteractiveClient, error) {

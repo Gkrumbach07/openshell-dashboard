@@ -16,22 +16,33 @@ import (
 
 // App wires the gateway client, auth middleware, and REST routes.
 type App struct {
-	gateway gateway.Interface
-	auth    *auth.Middleware
+	gateway    gateway.Interface
+	auth       *auth.Middleware
+	authConfig AuthConfigResponse
 	// staticDir is the frontend build output; empty disables static serving.
 	staticDir string
 	// allowedOrigins for CORS, e.g. the webpack dev server origin.
 	allowedOrigins []string
+	maxUploadSize  int64
+	execTimeout    int
 }
 
 // NewApp builds the application.
-func NewApp(gw gateway.Interface, authMiddleware *auth.Middleware, staticDir string, allowedOrigins []string) *App {
-	return &App{
+func NewApp(gw gateway.Interface, authMiddleware *auth.Middleware, staticDir string, allowedOrigins []string, authCfg AuthConfigResponse) *App {
+	app := &App{
 		gateway:        gw,
 		auth:           authMiddleware,
+		authConfig:     authCfg,
 		staticDir:      staticDir,
 		allowedOrigins: allowedOrigins,
 	}
+	if app.maxUploadSize == 0 {
+		app.maxUploadSize = 64 << 20 // 64 MiB
+	}
+	if app.execTimeout == 0 {
+		app.execTimeout = 30
+	}
+	return app
 }
 
 // Routes builds the chi router.
