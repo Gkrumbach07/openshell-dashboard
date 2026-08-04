@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { del, get, post } from './client';
+import { workspaceKeys } from './queryKeys';
 import type {
   AddMemberRequest,
   CreateWorkspaceRequest,
@@ -44,11 +45,11 @@ export const removeMember = (
   );
 
 export const useWorkspaces = () =>
-  useQuery({ queryKey: ['workspaces'], queryFn: listWorkspaces });
+  useQuery({ queryKey: workspaceKeys.all, queryFn: listWorkspaces });
 
 export const useWorkspace = (name: string) =>
   useQuery({
-    queryKey: ['workspaces', name],
+    queryKey: workspaceKeys.detail(name),
     queryFn: () => getWorkspace(name),
   });
 
@@ -57,7 +58,7 @@ export const useCreateWorkspace = () => {
   return useMutation({
     mutationFn: createWorkspace,
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.all }),
   });
 };
 
@@ -66,13 +67,13 @@ export const useDeleteWorkspace = () => {
   return useMutation({
     mutationFn: deleteWorkspace,
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.all }),
   });
 };
 
 export const useMembers = (workspace: string) =>
   useQuery({
-    queryKey: ['members', workspace],
+    queryKey: workspaceKeys.members(workspace),
     queryFn: () => listMembers(workspace),
   });
 
@@ -81,7 +82,9 @@ export const useAddMember = (workspace: string) => {
   return useMutation({
     mutationFn: (body: AddMemberRequest) => addMember(workspace, body),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['members', workspace] }),
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.members(workspace),
+      }),
   });
 };
 
@@ -90,6 +93,8 @@ export const useRemoveMember = (workspace: string) => {
   return useMutation({
     mutationFn: (subject: string) => removeMember(workspace, subject),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['members', workspace] }),
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.members(workspace),
+      }),
   });
 };

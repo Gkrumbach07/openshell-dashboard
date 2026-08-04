@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
@@ -17,7 +18,7 @@ func (c *Client) CreateSandbox(ctx context.Context, workspace, name string, spec
 		Workspace:   workspace,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create sandbox %q in workspace %q: %w", name, workspace, err)
 	}
 	return resp.Sandbox, nil
 }
@@ -29,7 +30,7 @@ func (c *Client) GetSandbox(ctx context.Context, workspace, name string) (*opens
 		Workspace: workspace,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get sandbox %q in workspace %q: %w", name, workspace, err)
 	}
 	return resp.Sandbox, nil
 }
@@ -43,7 +44,7 @@ func (c *Client) ListSandboxes(ctx context.Context, workspace string, limit, off
 		Workspace:     workspace,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list sandboxes in workspace %q: %w", workspace, err)
 	}
 	return resp.Sandboxes, nil
 }
@@ -59,7 +60,7 @@ func (c *Client) ExecSandbox(ctx context.Context, sandboxID string, command []st
 		TimeoutSeconds: timeoutSeconds,
 	})
 	if err != nil {
-		return nil, nil, -1, err
+		return nil, nil, -1, fmt.Errorf("exec sandbox %q: %w", sandboxID, err)
 	}
 
 	var stdout, stderr []byte
@@ -92,7 +93,7 @@ func (c *Client) DeleteSandbox(ctx context.Context, workspace, name string) (boo
 		Workspace: workspace,
 	})
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("delete sandbox %q in workspace %q: %w", name, workspace, err)
 	}
 	return resp.Deleted, nil
 }

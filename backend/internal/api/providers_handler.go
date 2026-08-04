@@ -7,20 +7,9 @@ import (
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 
-	datamodelv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/datamodelv1"
 	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
 	sandboxv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/sandboxv1"
 )
-
-// CreateProviderRequest is the create-provider body. Credentials are
-// write-only: accepted here, forwarded to the gateway, never returned.
-type CreateProviderRequest struct {
-	Credentials map[string]string `json:"credentials,omitempty"`
-	Config      map[string]string `json:"config,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Name        string            `json:"name"`
-	Type        string            `json:"type"`
-}
 
 func (app *App) ListProviders(w http.ResponseWriter, r *http.Request) {
 	providers, err := app.gateway.ListProviders(r.Context(), chi.URLParam(r, "workspace"), 0, 0)
@@ -36,7 +25,7 @@ func (app *App) ListProviders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) CreateProvider(w http.ResponseWriter, r *http.Request) {
-	var body CreateProviderRequest
+	var body models.CreateProviderRequest
 	if !decodeBody(w, r, &body) {
 		return
 	}
@@ -44,15 +33,7 @@ func (app *App) CreateProvider(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_provider", "name and type are required")
 		return
 	}
-	provider := &datamodelv1.Provider{
-		Metadata: &datamodelv1.ObjectMeta{
-			Name:   body.Name,
-			Labels: body.Labels,
-		},
-		Type:        body.Type,
-		Credentials: body.Credentials,
-		Config:      body.Config,
-	}
+	provider := models.ToProviderProto(body)
 	created, err := app.gateway.CreateProvider(r.Context(), chi.URLParam(r, "workspace"), provider)
 	if err != nil {
 		writeGrpcError(w, err)

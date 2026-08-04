@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { STALE_5_MIN } from '../constants';
 import { apiFetch, del, get, post, put } from './client';
+import { providerKeys } from './queryKeys';
 import type {
   ConfigureProviderRefreshRequest,
   CreateProviderRequest,
@@ -77,14 +79,14 @@ export const getProviderRefreshStatus = (
 
 export const useProviderRefreshStatus = (workspace: string, name: string) =>
   useQuery({
-    queryKey: ['provider-refresh', workspace, name],
+    queryKey: providerKeys.refresh(workspace, name),
     queryFn: () => getProviderRefreshStatus(workspace, name),
     retry: false,
   });
 
 export const useProviders = (workspace: string) =>
   useQuery({
-    queryKey: ['providers', workspace],
+    queryKey: providerKeys.all(workspace),
     queryFn: () => listProviders(workspace),
   });
 
@@ -106,15 +108,15 @@ export const useProviderExpiry = (
 
 export const useProvider = (workspace: string, name: string) =>
   useQuery({
-    queryKey: ['providers', workspace, name],
+    queryKey: providerKeys.detail(workspace, name),
     queryFn: () => getProvider(workspace, name),
   });
 
 export const useProviderProfiles = (workspace: string) =>
   useQuery({
-    queryKey: ['provider-profiles', workspace],
+    queryKey: providerKeys.profiles(workspace),
     queryFn: () => listProviderProfiles(workspace),
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_5_MIN,
   });
 
 export const useCreateProvider = (workspace: string) => {
@@ -123,7 +125,7 @@ export const useCreateProvider = (workspace: string) => {
     mutationFn: (body: CreateProviderRequest) =>
       createProvider(workspace, body),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['providers', workspace] }),
+      queryClient.invalidateQueries({ queryKey: providerKeys.all(workspace) }),
   });
 };
 
@@ -140,7 +142,7 @@ export const useUpdateProvider = (workspace: string) => {
       config?: Record<string, string>;
     }) => updateProvider(workspace, name, body),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['providers', workspace] }),
+      queryClient.invalidateQueries({ queryKey: providerKeys.all(workspace) }),
   });
 };
 
@@ -149,7 +151,7 @@ export const useDeleteProvider = (workspace: string) => {
   return useMutation({
     mutationFn: (name: string) => deleteProvider(workspace, name),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['providers', workspace] }),
+      queryClient.invalidateQueries({ queryKey: providerKeys.all(workspace) }),
   });
 };
 
@@ -193,7 +195,7 @@ export const useConfigureProviderRefresh = (
       configureProviderRefresh(workspace, name, body),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['provider-refresh', workspace, name],
+        queryKey: providerKeys.refresh(workspace, name),
       }),
   });
 };
@@ -208,7 +210,7 @@ export const useRotateProviderCredential = (
       rotateProviderCredential(workspace, name, credentialKey),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['provider-refresh', workspace, name],
+        queryKey: providerKeys.refresh(workspace, name),
       }),
   });
 };
@@ -220,7 +222,7 @@ export const useDeleteProviderRefresh = (workspace: string, name: string) => {
       deleteProviderRefresh(workspace, name, credentialKey),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['provider-refresh', workspace, name],
+        queryKey: providerKeys.refresh(workspace, name),
       }),
   });
 };
@@ -274,7 +276,7 @@ export const lintProviderProfiles = (
 
 export const useProviderProfile = (workspace: string, profileId: string) =>
   useQuery({
-    queryKey: ['provider-profiles', workspace, profileId],
+    queryKey: providerKeys.profileDetail(workspace, profileId),
     queryFn: () => getProviderProfile(workspace, profileId),
     enabled: !!profileId,
   });
@@ -286,7 +288,7 @@ export const useImportProviderProfiles = (workspace: string) => {
       importProviderProfiles(workspace, profiles),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['provider-profiles', workspace],
+        queryKey: providerKeys.profiles(workspace),
       }),
   });
 };
@@ -311,7 +313,7 @@ export const useUpdateProviderProfile = (workspace: string) => {
       ),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['provider-profiles', workspace],
+        queryKey: providerKeys.profiles(workspace),
       }),
   });
 };
@@ -323,7 +325,7 @@ export const useDeleteProviderProfile = (workspace: string) => {
       deleteProviderProfile(workspace, profileId),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['provider-profiles', workspace],
+        queryKey: providerKeys.profiles(workspace),
       }),
   });
 };

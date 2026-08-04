@@ -1,5 +1,15 @@
 import type { SandboxPhase } from '../types';
-import { getStatusDotColor } from './utils';
+
+const STATUS_DOT_COLORS: Partial<Record<SandboxPhase, string>> = {
+  READY: 'var(--pf-t--global--color--status--success--default)',
+  ERROR: 'var(--pf-t--global--color--status--danger--default)',
+  PROVISIONING: 'var(--pf-t--global--color--status--info--default)',
+  DELETING: 'var(--pf-t--global--color--status--warning--default)',
+};
+
+export const getStatusDotColor = (phase: SandboxPhase): string =>
+  STATUS_DOT_COLORS[phase] ??
+  'var(--pf-t--global--color--status--custom--default)';
 
 type StatusDotProps = {
   phase: SandboxPhase;

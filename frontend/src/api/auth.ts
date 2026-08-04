@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { STALE_5_MIN } from '../constants';
 import { get } from './client';
+import { authKeys } from './queryKeys';
 import type { AuthConfig, CurrentUser, UserInfo } from '../types';
 
 export const getAuthConfig = (): Promise<AuthConfig> =>
@@ -11,7 +13,7 @@ export const getUserInfo = (): Promise<UserInfo> =>
 
 export const useAuthConfig = () =>
   useQuery({
-    queryKey: ['auth', 'config'],
+    queryKey: authKeys.config,
     queryFn: getAuthConfig,
     staleTime: Infinity,
     retry: 1,
@@ -19,7 +21,7 @@ export const useAuthConfig = () =>
 
 export const useUserInfo = (enabled = true) =>
   useQuery({
-    queryKey: ['auth', 'userinfo'],
+    queryKey: authKeys.userInfo,
     queryFn: getUserInfo,
     enabled,
     retry: false,
@@ -30,9 +32,9 @@ export const getCurrentUser = (): Promise<CurrentUser> =>
 
 export const useCurrentUser = () =>
   useQuery({
-    queryKey: ['auth', 'whoami'],
+    queryKey: authKeys.whoami,
     queryFn: getCurrentUser,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_5_MIN,
     retry: false,
   });
 

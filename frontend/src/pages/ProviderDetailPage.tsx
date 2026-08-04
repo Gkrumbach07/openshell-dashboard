@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   CardBody,
-  CardHeader,
   CardTitle,
   DescriptionList,
   DescriptionListDescription,
@@ -19,7 +18,7 @@ import {
   Spinner,
   Title,
 } from '@patternfly/react-core';
-import { PencilAltIcon, SyncAltIcon, TrashIcon } from '@patternfly/react-icons';
+import { PencilAltIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
 import {
@@ -30,12 +29,13 @@ import {
   useRotateProviderCredential,
 } from '../api/providers';
 import { useAlerts } from '../app/AlertContext';
-import { useWorkspaceRole } from '../app/useWorkspaceRole';
-import ConfigureRefreshModal from '../components/ConfigureRefreshModal';
+import { useWorkspaceRole } from '../api/rbac';
+import ConfigureRefreshModal from '../components/provider/ConfigureRefreshModal';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-import EditProviderModal from '../components/EditProviderModal';
+import CredentialRefreshCard from '../components/provider/CredentialRefreshCard';
+import ProviderFormModal from '../components/provider/ProviderFormModal';
 import LabelsList from '../components/LabelsList';
-import { formatTimestamp } from '../components/utils';
+import { formatTimestamp } from '../utils/formatters';
 import type { ConfigureProviderRefreshRequest } from '../types';
 
 type ProviderDetailPageProps = {
@@ -204,121 +204,24 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({
         </Card>
       </PageSection>
       <PageSection>
-        <Card data-testid="provider-refresh-card">
-          <CardHeader
-            actions={
-              isWorkspaceAdmin
-                ? {
-                    actions: (
-                      <Button
-                        variant="secondary"
-                        onClick={() => setIsConfigureOpen(true)}
-                        isDisabled={(data.credentialNames ?? []).length === 0}
-                        data-testid="configure-refresh-button"
-                      >
-                        Configure refresh
-                      </Button>
-                    ),
-                  }
-                : undefined
-            }
-          >
-            <CardTitle>Credential refresh</CardTitle>
-          </CardHeader>
-          <CardBody>
-            {refreshStatus.isError ||
-            (refreshStatus.data ?? []).length === 0 ? (
-              'No credential refresh configured'
-            ) : (
-              <Table aria-label="Credential refresh status" variant="compact">
-                <Thead>
-                  <Tr>
-                    <Th>Credential key</Th>
-                    <Th>Strategy</Th>
-                    <Th>Status</Th>
-                    <Th>Expires</Th>
-                    <Th>Next refresh</Th>
-                    <Th>Last refresh</Th>
-                    <Th>Last error</Th>
-                    {isWorkspaceAdmin && <Th />}
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {(refreshStatus.data ?? []).map((cred) => (
-                    <Tr key={cred.credentialKey}>
-                      <Td dataLabel="Credential key">{cred.credentialKey}</Td>
-                      <Td dataLabel="Strategy">
-                        <Label isCompact color="blue">
-                          {cred.strategy}
-                        </Label>
-                      </Td>
-                      <Td dataLabel="Status">{cred.status}</Td>
-                      <Td dataLabel="Expires">
-                        {cred.expiresAtMs
-                          ? formatTimestamp(cred.expiresAtMs)
-                          : '-'}
-                      </Td>
-                      <Td dataLabel="Next refresh">
-                        {cred.nextRefreshAtMs
-                          ? formatTimestamp(cred.nextRefreshAtMs)
-                          : '-'}
-                      </Td>
-                      <Td dataLabel="Last refresh">
-                        {cred.lastRefreshAtMs
-                          ? formatTimestamp(cred.lastRefreshAtMs)
-                          : '-'}
-                      </Td>
-                      <Td dataLabel="Last error">{cred.lastError || '-'}</Td>
-                      {isWorkspaceAdmin && (
-                        <Td dataLabel="Actions" isActionCell>
-                          <Flex>
-                            <FlexItem>
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                icon={<SyncAltIcon />}
-                                isLoading={rotateMutation.isPending}
-                                isDisabled={rotateMutation.isPending}
-                                onClick={() =>
-                                  rotateMutation.mutate(cred.credentialKey, {
-                                    onSuccess: () =>
-                                      addSuccess(
-                                        `Rotated credential "${cred.credentialKey}"`,
-                                      ),
-                                    onError: (err) =>
-                                      addDanger(
-                                        `Rotate failed: ${(err as Error).message}`,
-                                      ),
-                                  })
-                                }
-                                data-testid={`rotate-${cred.credentialKey}`}
-                              >
-                                Rotate now
-                              </Button>
-                            </FlexItem>
-                            <FlexItem>
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                icon={<TrashIcon />}
-                                onClick={() =>
-                                  setDeleteRefreshKey(cred.credentialKey)
-                                }
-                                data-testid={`delete-refresh-${cred.credentialKey}`}
-                              >
-                                Delete
-                              </Button>
-                            </FlexItem>
-                          </Flex>
-                        </Td>
-                      )}
-                    </Tr>
-                  ))}
-                </Tbody>
-              </Table>
-            )}
-          </CardBody>
-        </Card>
+        <CredentialRefreshCard
+          refreshStatuses={
+            refreshStatus.isError ? [] : (refreshStatus.data ?? [])
+          }
+          isAdmin={isWorkspaceAdmin}
+          onConfigure={() => setIsConfigureOpen(true)}
+          hasCredentials={(data.credentialNames ?? []).length > 0}
+          onRotate={(credentialKey) =>
+            rotateMutation.mutate(credentialKey, {
+              onSuccess: () =>
+                addSuccess(`Rotated credential "${credentialKey}"`),
+              onError: (err) =>
+                addDanger(`Rotate failed: ${(err as Error).message}`),
+            })
+          }
+          isRotating={rotateMutation.isPending}
+          onDelete={(credentialKey) => setDeleteRefreshKey(credentialKey)}
+        />
       </PageSection>
       <PageSection>
         <Card data-testid="provider-config-card">
@@ -338,7 +241,8 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({
           </CardBody>
         </Card>
       </PageSection>
-      <EditProviderModal
+      <ProviderFormModal
+        mode="edit"
         workspace={workspace}
         provider={data}
         isOpen={isEditOpen}

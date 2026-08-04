@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch, del, get } from './client';
+import { settingsKeys } from './queryKeys';
 import type { GatewaySettings } from '../types';
 
 export const getGlobalSettings = (): Promise<GatewaySettings> =>
@@ -24,7 +25,7 @@ export const deleteGlobalSetting = (
 
 export const useGlobalSettings = () =>
   useQuery({
-    queryKey: ['global-settings'],
+    queryKey: settingsKeys.global,
     queryFn: getGlobalSettings,
   });
 
@@ -34,7 +35,7 @@ export const useSetGlobalSetting = () => {
     mutationFn: ({ key, value }: { key: string; value: string }) =>
       setGlobalSetting(key, value),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['global-settings'] }),
+      queryClient.invalidateQueries({ queryKey: settingsKeys.global }),
   });
 };
 
@@ -43,6 +44,6 @@ export const useDeleteGlobalSetting = () => {
   return useMutation({
     mutationFn: (key: string) => deleteGlobalSetting(key),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['global-settings'] }),
+      queryClient.invalidateQueries({ queryKey: settingsKeys.global }),
   });
 };

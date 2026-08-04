@@ -26,10 +26,10 @@ import {
 
 import { useCurrentUser } from '../api/auth';
 import { useMembers, useRemoveMember } from '../api/workspaces';
-import { useWorkspaceRole } from '../app/useWorkspaceRole';
+import { useWorkspaceRole } from '../api/rbac';
 import AddMemberModal from '../components/AddMemberModal';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-import { formatAge } from '../components/utils';
+import { formatAge } from '../utils/formatters';
 
 type MemberListPageProps = {
   workspace: string;

@@ -1,14 +1,15 @@
 import {
-  countEgressHosts,
   formatAge,
   formatTimestamp,
   formatUptime,
+} from '../../utils/formatters';
+import {
+  countEgressHosts,
   getEnforcementColor,
   getEnforcementLabel,
-  getStatusDotColor,
-  parseLabels,
-  resolveImage,
-} from '../utils';
+} from '../sandbox/SandboxEgressSummary';
+import { getStatusDotColor } from '../StatusDot';
+import { parseLabels, resolveImage } from '../../hooks/useCreateSandboxForm';
 import type { NetworkPolicyRule } from '../../types';
 
 describe('resolveImage', () => {
@@ -24,7 +25,7 @@ describe('resolveImage', () => {
     expect(resolveImage('registry.local/img')).toBe('registry.local/img');
   });
 });
-import { policyTemplates } from '../policyTemplates';
+import { policyTemplates } from '../policy/policyTemplates';
 
 describe('parseLabels', () => {
   it('parses comma-separated pairs', () => {

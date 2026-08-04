@@ -1,0 +1,14 @@
+.egress-rule {
+  padding: var(--pf-t--global--spacer--sm) 0;
+}
+
+.egress-rule__name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--pf-t--global--font--family--mono);
+}
+
+.egress-rule__count,
+.egress-rule__label {
+  flex-shrink: 0;
+}

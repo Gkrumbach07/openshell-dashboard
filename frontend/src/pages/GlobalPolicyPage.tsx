@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Bullseye,
@@ -6,7 +6,6 @@ import {
   CodeBlock,
   CodeBlockCode,
   Content,
-  Label,
   Modal,
   ModalBody,
   ModalFooter,
@@ -19,7 +18,6 @@ import {
   ToolbarItem,
 } from '@patternfly/react-core';
 import { CodeEditor, Language } from '@patternfly/react-code-editor';
-import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
 import { useAlerts } from '../app/AlertContext';
 import {
@@ -27,13 +25,10 @@ import {
   useGlobalPolicy,
   useSetGlobalPolicy,
 } from '../api/policy';
+import { useJsonValidation } from '../hooks/useJsonValidation';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-import {
-  policyStatusColor,
-  policyStatusIcon,
-} from '../components/SandboxPolicyTab';
-import { policyTemplates } from '../components/policyTemplates';
-import { formatTimestamp } from '../components/utils';
+import PolicyRevisionTable from '../components/policy/PolicyRevisionTable';
+import { policyTemplates } from '../components/policy/policyTemplates';
 import type { SandboxPolicy } from '../types';
 
 // Gateway-global policy (Platform Admin). Setting it applies the policy to
@@ -47,14 +42,9 @@ const GlobalPolicyPage: React.FC = () => {
   const [policyText, setPolicyText] = useState('');
   const [isDeleteOpen, setDeleteOpen] = useState(false);
 
-  const policyError = useMemo(() => {
-    try {
-      JSON.parse(policyText || '{}');
-      return null;
-    } catch (error) {
-      return (error as Error).message;
-    }
-  }, [policyText]);
+  const { error: policyError, parsed: parsedPolicy } = useJsonValidation(
+    policyText || '{}',
+  );
 
   if (globalPolicy.isLoading) {
     return (
@@ -94,10 +84,10 @@ const GlobalPolicyPage: React.FC = () => {
   };
 
   const submit = () => {
-    if (policyError) {
+    if (policyError || !parsedPolicy) {
       return;
     }
-    setGlobalPolicy.mutate(JSON.parse(policyText) as SandboxPolicy, {
+    setGlobalPolicy.mutate(parsedPolicy as SandboxPolicy, {
       onSuccess: () => setEditOpen(false),
     });
   };
@@ -143,45 +133,11 @@ const GlobalPolicyPage: React.FC = () => {
             No global policy set — sandboxes are governed by their own policies.
           </Content>
         ) : (
-          <Table
+          <PolicyRevisionTable
+            revisions={view?.revisions ?? []}
             aria-label="Global policy revisions"
-            variant="compact"
             data-testid="global-policy-table"
-          >
-            <Thead>
-              <Tr>
-                <Th>Version</Th>
-                <Th>Status</Th>
-                <Th>Created</Th>
-                <Th>Hash</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {(view?.revisions ?? []).map((revision) => (
-                <Tr key={revision.version}>
-                  <Td dataLabel="Version">{revision.version}</Td>
-                  <Td dataLabel="Status">
-                    <Label
-                      isCompact
-                      color={policyStatusColor(revision.status)}
-                      icon={policyStatusIcon(revision.status)}
-                    >
-                      {revision.status}
-                    </Label>
-                  </Td>
-                  <Td dataLabel="Created">
-                    {formatTimestamp(revision.createdAtMs)}
-                  </Td>
-                  <Td
-                    dataLabel="Hash"
-                    className="pf-v6-u-font-family-monospace"
-                  >
-                    {(revision.policyHash ?? '').slice(0, 12) || '-'}
-                  </Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
+          />
         )}
         {view?.latest?.policy && (
           <>

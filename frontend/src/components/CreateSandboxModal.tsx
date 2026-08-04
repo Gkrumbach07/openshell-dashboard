@@ -1,4 +1,3 @@
-import { useMemo, useState } from 'react';
 import {
   Alert,
   Button,
@@ -24,9 +23,8 @@ import {
 import { useProviders } from '../api/providers';
 import { useCreateSandbox } from '../api/sandboxes';
 import { useAlerts } from '../app/AlertContext';
-import { policyTemplates } from './policyTemplates';
-import { parseLabels, resolveImage } from './utils';
-import type { SandboxPolicy } from '../types';
+import { useCreateSandboxForm } from '../hooks/useCreateSandboxForm';
+import { policyTemplates } from './policy/policyTemplates';
 
 type CreateSandboxModalProps = {
   workspace: string;
@@ -34,100 +32,32 @@ type CreateSandboxModalProps = {
   onClose: () => void;
 };
 
-// Create sandbox form. spec.policy is REQUIRED by the gateway — the form
-// always submits a policy, seeded from a client-side starter template and
-// editable as JSON. (There is no server-side policy library to pick from.)
 const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
   workspace,
   isOpen,
   onClose,
 }) => {
-  const [name, setName] = useState('');
-  const [image, setImage] = useState('');
-  const [labelsText, setLabelsText] = useState('');
-  const [gpuCount, setGpuCount] = useState('');
-  const [cpu, setCpu] = useState('');
-  const [memory, setMemory] = useState('');
-  const [templateId, setTemplateId] = useState(policyTemplates[0].id);
-  const [policyText, setPolicyText] = useState(
-    JSON.stringify(policyTemplates[0].policy, null, 2),
-  );
-  const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
-  const [isPolicyExpanded, setPolicyExpanded] = useState(false);
+  const form = useCreateSandboxForm();
   const providers = useProviders(workspace);
   const createSandbox = useCreateSandbox(workspace);
   const { addSuccess } = useAlerts();
 
-  const policyError = useMemo(() => {
-    try {
-      JSON.parse(policyText);
-      return null;
-    } catch (error) {
-      return (error as Error).message;
-    }
-  }, [policyText]);
-
-  const labels = useMemo(() => parseLabels(labelsText), [labelsText]);
-  const gpuInvalid = gpuCount !== '' && !/^[0-9]+$/.test(gpuCount);
-
-  const applyTemplate = (id: string) => {
-    setTemplateId(id);
-    const template = policyTemplates.find((candidate) => candidate.id === id);
-    if (template) {
-      setPolicyText(JSON.stringify(template.policy, null, 2));
-    }
-  };
-
-  const toggleProvider = (providerName: string, checked: boolean) => {
-    setSelectedProviders((current) =>
-      checked
-        ? [...current, providerName]
-        : current.filter((item) => item !== providerName),
-    );
-  };
-
   const close = () => {
-    setName('');
-    setImage('');
-    setLabelsText('');
-    setGpuCount('');
-    setCpu('');
-    setMemory('');
-    setSelectedProviders([]);
-    setPolicyExpanded(false);
-    applyTemplate(policyTemplates[0].id);
+    form.reset();
     createSandbox.reset();
     onClose();
   };
 
   const submit = () => {
-    if (policyError || labels === null || gpuInvalid) {
-      return;
-    }
-    const policy = JSON.parse(policyText) as SandboxPolicy;
-    createSandbox.mutate(
-      {
-        name: name || undefined,
-        image: resolveImage(image),
-        policy,
-        labels: Object.keys(labels).length > 0 ? labels : undefined,
-        providers: selectedProviders.length > 0 ? selectedProviders : undefined,
-        gpuCount: gpuCount ? Number(gpuCount) : undefined,
-        cpu: cpu || undefined,
-        memory: memory || undefined,
+    const payload = form.buildPayload();
+    if (!payload) return;
+    createSandbox.mutate(payload, {
+      onSuccess: () => {
+        addSuccess('Sandbox created');
+        close();
       },
-      {
-        onSuccess: () => {
-          addSuccess('Sandbox created');
-          close();
-        },
-      },
-    );
+    });
   };
-
-  const activeTemplate = policyTemplates.find(
-    (candidate) => candidate.id === templateId,
-  );
 
   return (
     <Modal
@@ -151,8 +81,8 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
             <TextInput
               id="sandbox-name"
               data-testid="sandbox-name-input"
-              value={name}
-              onChange={(_event, value) => setName(value)}
+              value={form.name}
+              onChange={(_event, value) => form.setName(value)}
               placeholder="Leave empty for a generated name"
             />
           </FormGroup>
@@ -161,15 +91,15 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
               id="sandbox-image"
               data-testid="sandbox-image-input"
               isRequired
-              value={image}
-              onChange={(_event, value) => setImage(value)}
+              value={form.image}
+              onChange={(_event, value) => form.setImage(value)}
               placeholder="base, python, ollama — or a full OCI image reference"
             />
             <FormHelperText>
               <HelperText>
                 <HelperTextItem>
-                  {image && resolveImage(image) !== image.trim()
-                    ? `Community image — resolves to ${resolveImage(image)}`
+                  {form.isResolved
+                    ? `Community image — resolves to ${form.resolvedImage}`
                     : 'A community sandbox name (base, python, ollama, …) or a fully-qualified OCI image reference'}
                 </HelperTextItem>
               </HelperText>
@@ -179,15 +109,17 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
             <TextInput
               id="sandbox-labels"
               data-testid="sandbox-labels-input"
-              value={labelsText}
-              onChange={(_event, value) => setLabelsText(value)}
+              value={form.labelsText}
+              onChange={(_event, value) => form.setLabelsText(value)}
               placeholder="team=ml, kind=agent"
-              validated={labels === null ? 'error' : 'default'}
+              validated={form.labels === null ? 'error' : 'default'}
             />
             <FormHelperText>
               <HelperText>
-                <HelperTextItem variant={labels === null ? 'error' : 'default'}>
-                  {labels === null
+                <HelperTextItem
+                  variant={form.labels === null ? 'error' : 'default'}
+                >
+                  {form.labels === null
                     ? 'Labels must be comma-separated key=value pairs'
                     : 'Optional comma-separated key=value pairs, used for filtering'}
                 </HelperTextItem>
@@ -210,9 +142,11 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
                   id={`sandbox-provider-${provider.metadata.name}`}
                   data-testid={`sandbox-provider-${provider.metadata.name}`}
                   label={`${provider.metadata.name} (${provider.type})`}
-                  isChecked={selectedProviders.includes(provider.metadata.name)}
+                  isChecked={form.selectedProviders.includes(
+                    provider.metadata.name,
+                  )}
                   onChange={(_event, checked) =>
-                    toggleProvider(provider.metadata.name, checked)
+                    form.toggleProvider(provider.metadata.name, checked)
                   }
                 />
               ))
@@ -224,10 +158,10 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
                 <TextInput
                   id="sandbox-gpu"
                   data-testid="sandbox-gpu-input"
-                  value={gpuCount}
-                  onChange={(_event, value) => setGpuCount(value)}
+                  value={form.gpuCount}
+                  onChange={(_event, value) => form.setGpuCount(value)}
                   placeholder="GPUs (e.g. 1)"
-                  validated={gpuInvalid ? 'error' : 'default'}
+                  validated={form.gpuInvalid ? 'error' : 'default'}
                   aria-label="GPU count"
                 />
               </GridItem>
@@ -235,8 +169,8 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
                 <TextInput
                   id="sandbox-cpu"
                   data-testid="sandbox-cpu-input"
-                  value={cpu}
-                  onChange={(_event, value) => setCpu(value)}
+                  value={form.cpu}
+                  onChange={(_event, value) => form.setCpu(value)}
                   placeholder="CPU limit (e.g. 2, 500m)"
                   aria-label="CPU limit"
                 />
@@ -245,8 +179,8 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
                 <TextInput
                   id="sandbox-memory"
                   data-testid="sandbox-memory-input"
-                  value={memory}
-                  onChange={(_event, value) => setMemory(value)}
+                  value={form.memory}
+                  onChange={(_event, value) => form.setMemory(value)}
                   placeholder="Memory limit (e.g. 4Gi)"
                   aria-label="Memory limit"
                 />
@@ -254,8 +188,8 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
             </Grid>
             <FormHelperText>
               <HelperText>
-                <HelperTextItem variant={gpuInvalid ? 'error' : 'default'}>
-                  {gpuInvalid
+                <HelperTextItem variant={form.gpuInvalid ? 'error' : 'default'}>
+                  {form.gpuInvalid
                     ? 'GPU count must be a whole number'
                     : 'All optional. CPU/memory use Kubernetes quantities and apply as limits.'}
                 </HelperTextItem>
@@ -270,8 +204,8 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
             <FormSelect
               id="sandbox-policy-template"
               data-testid="sandbox-policy-template-select"
-              value={templateId}
-              onChange={(_event, value) => applyTemplate(value)}
+              value={form.templateId}
+              onChange={(_event, value) => form.applyTemplate(value)}
             >
               {policyTemplates.map((template) => (
                 <FormSelectOption
@@ -281,35 +215,39 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
                 />
               ))}
             </FormSelect>
-            {activeTemplate && (
+            {form.activeTemplate && (
               <FormHelperText>
                 <HelperText>
-                  <HelperTextItem>{activeTemplate.description}</HelperTextItem>
+                  <HelperTextItem>
+                    {form.activeTemplate.description}
+                  </HelperTextItem>
                 </HelperText>
               </FormHelperText>
             )}
           </FormGroup>
           <ExpandableSection
             toggleText="Customize policy (advanced)"
-            isExpanded={isPolicyExpanded || Boolean(policyError)}
-            onToggle={(_event, expanded) => setPolicyExpanded(expanded)}
+            isExpanded={form.isPolicyExpanded || Boolean(form.policyError)}
+            onToggle={(_event, expanded) => form.setPolicyExpanded(expanded)}
             data-testid="sandbox-policy-expand"
           >
             <FormGroup label="Policy JSON" isRequired fieldId="sandbox-policy">
               <TextArea
                 id="sandbox-policy"
                 data-testid="sandbox-policy-input"
-                value={policyText}
-                onChange={(_event, value) => setPolicyText(value)}
+                value={form.policyText}
+                onChange={(_event, value) => form.setPolicyText(value)}
                 rows={14}
                 className="pf-v6-u-font-family-monospace"
-                validated={policyError ? 'error' : 'default'}
+                validated={form.policyError ? 'error' : 'default'}
               />
               <FormHelperText>
                 <HelperText>
-                  <HelperTextItem variant={policyError ? 'error' : 'default'}>
-                    {policyError
-                      ? `Invalid JSON: ${policyError}`
+                  <HelperTextItem
+                    variant={form.policyError ? 'error' : 'default'}
+                  >
+                    {form.policyError
+                      ? `Invalid JSON: ${form.policyError}`
                       : 'SandboxPolicy as JSON. Network rules can be edited after create; filesystem, landlock, and process are immutable once created.'}
                   </HelperTextItem>
                 </HelperText>
@@ -327,13 +265,7 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
         <Button
           variant="primary"
           onClick={submit}
-          isDisabled={
-            !image ||
-            Boolean(policyError) ||
-            labels === null ||
-            gpuInvalid ||
-            createSandbox.isPending
-          }
+          isDisabled={!form.isValid || createSandbox.isPending}
           isLoading={createSandbox.isPending}
           data-testid="create-sandbox-submit"
         >

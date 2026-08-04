@@ -3,7 +3,6 @@ import {
   Alert,
   Bullseye,
   Button,
-  Content,
   Dropdown,
   DropdownItem,
   DropdownList,
@@ -11,15 +10,9 @@ import {
   EmptyStateActions,
   EmptyStateBody,
   EmptyStateFooter,
-  Flex,
-  FlexItem,
-  Label,
-  LabelGroup,
   MenuToggle,
   Pagination,
   Spinner,
-  Stack,
-  StackItem,
   ToggleGroup,
   ToggleGroupItem,
   Toolbar,
@@ -30,18 +23,9 @@ import {
   CubesIcon,
   EllipsisVIcon,
   ListIcon,
-  SecurityIcon,
   ThIcon,
 } from '@patternfly/react-icons';
-import {
-  ActionsColumn,
-  Table,
-  Tbody,
-  Td,
-  Th,
-  Thead,
-  Tr,
-} from '@patternfly/react-table';
+import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
 import { useNavigate } from 'react-router-dom';
 
@@ -52,21 +36,10 @@ import { deleteSandbox, useSandboxes } from '../api/sandboxes';
 import { useAlerts } from '../app/AlertContext';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CreateSandboxModal from '../components/CreateSandboxModal';
-import LabelsList from '../components/LabelsList';
-import SandboxGalleryView from '../components/SandboxGalleryView';
-import { useBulkDelete } from '../components/useBulkDelete';
-import { getPolicySummary } from '../components/SandboxEgressSummary';
-import StatusDot from '../components/StatusDot';
-import { formatAge } from '../components/utils';
-import type { Sandbox } from '../types';
-
-const getStatusText = (sandbox: Sandbox): string => {
-  if (sandbox.status.phase === 'READY') return 'Ready';
-  if (sandbox.status.phase === 'ERROR') {
-    return sandbox.status.conditions?.find((c) => c.reason)?.reason ?? 'Error';
-  }
-  return sandbox.status.phase;
-};
+import SandboxGalleryView from '../components/sandbox/SandboxGalleryView';
+import SandboxTableRow from '../components/sandbox/SandboxTableRow';
+import { useBulkDelete } from '../hooks/useBulkDelete';
+import { useListPage } from '../hooks/useListPage';
 
 type ViewMode = 'list' | 'cards';
 
@@ -90,12 +63,25 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
   const features = useFeatureFlags();
   const sandboxes = useSandboxes(workspace);
   const [isCreateOpen, setCreateOpen] = useState(false);
-  const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [isActionsOpen, setActionsOpen] = useState(false);
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
   const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
+  const {
+    page,
+    setPage,
+    perPage,
+    onPerPageSelect,
+    selected,
+    numSelected,
+    toggleAll,
+    toggleOne,
+    pageAllSelected,
+    clearSelection,
+    isActionsOpen,
+    setActionsOpen,
+    deleteTargets,
+    setDeleteTargets,
+    closeDeleteModal,
+    deleteSelectedLabel,
+  } = useListPage();
   const visibleNames = useMemo(() => {
     const all = sandboxes.data ?? [];
     const start = (page - 1) * perPage;
@@ -139,27 +125,6 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
   const startIndex = (page - 1) * perPage;
   const rows = allRows.slice(startIndex, startIndex + perPage);
   const pageNames = rows.map((sandbox) => sandbox.metadata.name);
-
-  const numSelected = selected.length;
-  const pageAllSelected =
-    pageNames.length > 0 && pageNames.every((n) => selected.includes(n));
-
-  const toggleAll = (isSelecting: boolean) => {
-    setSelected(isSelecting ? pageNames : []);
-  };
-
-  const toggleOne = (name: string, isSelecting: boolean) => {
-    setSelected((current) =>
-      isSelecting
-        ? [...current, name]
-        : current.filter((item) => item !== name),
-    );
-  };
-
-  const closeDeleteModal = () => {
-    bulkDelete.clearError();
-    setDeleteTargets(null);
-  };
 
   if (allRows.length === 0) {
     return (
@@ -226,7 +191,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
                   onClick={() => setDeleteTargets(selected)}
                   data-testid="delete-selected-sandboxes"
                 >
-                  Delete selected{numSelected > 0 ? ` (${numSelected})` : ''}
+                  {deleteSelectedLabel}
                 </DropdownItem>
               </DropdownList>
             </Dropdown>
@@ -263,10 +228,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
               perPage={perPage}
               page={page}
               onSetPage={(_event, p) => setPage(p)}
-              onPerPageSelect={(_event, pp) => {
-                setPerPage(pp);
-                setPage(1);
-              }}
+              onPerPageSelect={(_event, pp) => onPerPageSelect(pp)}
               isCompact
             />
           </ToolbarItem>
@@ -278,8 +240,9 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
             <Tr>
               <Th
                 select={{
-                  onSelect: (_event, isSelecting) => toggleAll(isSelecting),
-                  isSelected: pageAllSelected,
+                  onSelect: (_event, isSelecting) =>
+                    toggleAll(pageNames, isSelecting),
+                  isSelected: pageAllSelected(pageNames),
                 }}
                 aria-label="Select all sandboxes"
               />
@@ -293,152 +256,33 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
             </Tr>
           </Thead>
           <Tbody>
-            {rows.map((sandbox, rowIndex) => {
-              const pv = policyViews[sandbox.metadata.name];
-              const pc = getPolicySummary(
-                pv,
-                sandbox.spec.policy,
-                sandbox.status.currentPolicyVersion,
-              );
-              const providers = sandbox.spec.providers ?? [];
-              const isReady = sandbox.status.phase === 'READY';
-              const imageParts = (sandbox.spec.image || '').split('/');
-              const imageShort = imageParts[imageParts.length - 1] || '-';
-              return (
-                <Tr key={sandbox.metadata.name}>
-                  <Td
-                    select={{
-                      rowIndex,
-                      onSelect: (_event, isSelecting) =>
-                        toggleOne(sandbox.metadata.name, isSelecting),
-                      isSelected: selected.includes(sandbox.metadata.name),
-                    }}
-                  />
-                  <Td dataLabel="Name">
-                    <Stack>
-                      <StackItem>
-                        <Button
-                          variant="link"
-                          isInline
-                          onClick={() => onSelect?.(sandbox.metadata.name)}
-                          data-testid={`sandbox-link-${sandbox.metadata.name}`}
-                        >
-                          {sandbox.metadata.name}
-                        </Button>
-                      </StackItem>
-                      <StackItem>
-                        <Content
-                          component="small"
-                          style={{
-                            fontFamily:
-                              'var(--pf-t--global--font--family--mono)',
-                          }}
-                        >
-                          {imageShort}
-                        </Content>
-                      </StackItem>
-                    </Stack>
-                  </Td>
-                  <Td dataLabel="Status">
-                    <Flex
-                      alignItems={{ default: 'alignItemsCenter' }}
-                      gap={{ default: 'gapSm' }}
-                      flexWrap={{ default: 'nowrap' }}
-                    >
-                      <FlexItem>
-                        <StatusDot phase={sandbox.status.phase} />
-                      </FlexItem>
-                      <FlexItem>
-                        <span
-                          style={{
-                            color:
-                              sandbox.status.phase === 'ERROR'
-                                ? 'var(--pf-t--global--text--color--status--danger--default)'
-                                : undefined,
-                          }}
-                        >
-                          {getStatusText(sandbox)}
-                        </span>
-                      </FlexItem>
-                    </Flex>
-                  </Td>
-                  <Td dataLabel="Policy">
-                    <Stack>
-                      <StackItem>
-                        <Flex
-                          alignItems={{ default: 'alignItemsCenter' }}
-                          gap={{ default: 'gapSm' }}
-                          flexWrap={{ default: 'nowrap' }}
-                        >
-                          <FlexItem>
-                            <SecurityIcon style={{ color: pc.iconColor }} />
-                          </FlexItem>
-                          <FlexItem>
-                            <strong>{pc.title}</strong>
-                          </FlexItem>
-                        </Flex>
-                      </StackItem>
-                      {pc.subtitle && (
-                        <StackItem>
-                          <Content component="small">{pc.subtitle}</Content>
-                        </StackItem>
-                      )}
-                    </Stack>
-                  </Td>
-                  <Td dataLabel="Providers">
-                    {providers.length > 0 ? (
-                      <LabelGroup numLabels={2}>
-                        {providers.map((p) => (
-                          <Label key={p} color="teal" isCompact>
-                            {p}
-                          </Label>
-                        ))}
-                      </LabelGroup>
-                    ) : (
-                      <Content component="small">—</Content>
-                    )}
-                  </Td>
-                  <Td dataLabel="Labels">
-                    <LabelsList
-                      labels={sandbox.metadata.labels}
-                      numLabels={2}
-                    />
-                  </Td>
-                  <Td dataLabel="Age">
-                    {formatAge(sandbox.metadata.createdAtMs)}
-                  </Td>
-                  <Td isActionCell>
-                    <ActionsColumn
-                      items={[
-                        ...(isReady && features.terminal
-                          ? [
-                              {
-                                title: 'Terminal',
-                                onClick: () =>
-                                  navigate(
-                                    `/workspaces/${workspace}/sandboxes/${sandbox.metadata.name}?tab=terminal`,
-                                  ),
-                              },
-                            ]
-                          : []),
-                        {
-                          title: 'Logs',
-                          onClick: () =>
-                            navigate(
-                              `/workspaces/${workspace}/sandboxes/${sandbox.metadata.name}?tab=logs`,
-                            ),
-                        },
-                        {
-                          title: 'Delete',
-                          onClick: () =>
-                            setDeleteTargets([sandbox.metadata.name]),
-                        },
-                      ]}
-                    />
-                  </Td>
-                </Tr>
-              );
-            })}
+            {rows.map((sandbox, rowIndex) => (
+              <SandboxTableRow
+                key={sandbox.metadata.name}
+                sandbox={sandbox}
+                rowIndex={rowIndex}
+                isSelected={selected.includes(sandbox.metadata.name)}
+                onSelect={(isSelecting) =>
+                  toggleOne(sandbox.metadata.name, isSelecting)
+                }
+                onNameClick={() => onSelect?.(sandbox.metadata.name)}
+                onDelete={() => setDeleteTargets([sandbox.metadata.name])}
+                onViewLogs={() =>
+                  navigate(
+                    `/workspaces/${workspace}/sandboxes/${sandbox.metadata.name}?tab=logs`,
+                  )
+                }
+                onOpenTerminal={
+                  sandbox.status.phase === 'READY' && features.terminal
+                    ? () =>
+                        navigate(
+                          `/workspaces/${workspace}/sandboxes/${sandbox.metadata.name}?tab=terminal`,
+                        )
+                    : undefined
+                }
+                policyView={policyViews[sandbox.metadata.name]}
+              />
+            ))}
             {rows.length === 0 && (
               <Tr>
                 <Td colSpan={7}>No sandboxes match this filter.</Td>
@@ -504,12 +348,15 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
                   ? `${deleteTargets.length} sandboxes deleted`
                   : `Sandbox "${deleteTargets[0]}" deleted`,
               );
-              setSelected([]);
+              clearSelection();
               closeDeleteModal();
             });
           }
         }}
-        onCancel={closeDeleteModal}
+        onCancel={() => {
+          bulkDelete.clearError();
+          closeDeleteModal();
+        }}
       />
     </>
   );

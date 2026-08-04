@@ -1,0 +1,7 @@
+.sandbox-card__name-button {
+  font-size: var(--pf-t--global--font--size--heading--xs);
+}
+
+.sandbox-card__image {
+  display: block;
+}

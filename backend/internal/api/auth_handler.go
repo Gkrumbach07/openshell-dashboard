@@ -12,7 +12,34 @@ import (
 
 var oidcHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
-const maxTokenResponseBytes = 1 << 20 // 1 MB
+const (
+	maxTokenResponseBytes = 1 << 20 // 1 MB
+	oidcDiscoveryPath     = "/.well-known/openid-configuration"
+)
+
+type oidcDiscovery struct {
+	TokenEndpoint      string `json:"token_endpoint"`
+	EndSessionEndpoint string `json:"end_session_endpoint"`
+}
+
+func discoverOIDCEndpoints(issuerURL string) (tokenEndpoint, endSessionEndpoint string, err error) {
+	discoveryURL := strings.TrimSuffix(issuerURL, "/") + oidcDiscoveryPath
+	resp, err := oidcHTTPClient.Get(discoveryURL)
+	if err != nil {
+		return "", "", fmt.Errorf("OIDC discovery fetch: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("OIDC discovery returned HTTP %d", resp.StatusCode)
+	}
+
+	var disc oidcDiscovery
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxTokenResponseBytes)).Decode(&disc); err != nil {
+		return "", "", fmt.Errorf("OIDC discovery parse: %w", err)
+	}
+	return disc.TokenEndpoint, disc.EndSessionEndpoint, nil
+}
 
 // TokenExchangeRequest is the body from the frontend's PKCE callback.
 type TokenExchangeRequest struct {
@@ -39,10 +66,13 @@ type oidcTokenResponse struct {
 	IDToken      string `json:"id_token"`
 }
 
+// base64url-encoded '{"' prefix of a JWT header
+const jwtHeaderPrefix = "eyJ"
+
 // selectBearer picks the best token for gateway auth: prefer id_token when
 // it's a JWT (carries claims for RBAC), fall back to access_token.
 func selectBearer(tokens oidcTokenResponse) string {
-	if tokens.IDToken != "" && strings.HasPrefix(tokens.IDToken, "eyJ") {
+	if tokens.IDToken != "" && strings.HasPrefix(tokens.IDToken, jwtHeaderPrefix) {
 		return tokens.IDToken
 	}
 	return tokens.AccessToken
@@ -52,7 +82,7 @@ func selectBearer(tokens oidcTokenResponse) string {
 // IdP's token endpoint server-side, avoiding CORS issues when the browser
 // calls the IdP directly.
 func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
-	if authConfig.Issuer == "" || authConfig.ClientID == "" {
+	if app.authConfig.Issuer == "" || app.authConfig.ClientID == "" {
 		writeError(w, http.StatusBadRequest, "not_configured", "OIDC is not configured")
 		return
 	}
@@ -67,26 +97,16 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Discover the token endpoint
-	discoveryURL := strings.TrimSuffix(authConfig.Issuer, "/") + "/.well-known/openid-configuration"
-	discoveryResp, err := oidcHTTPClient.Get(discoveryURL)
+	tokenEndpoint, _, err := discoverOIDCEndpoints(app.authConfig.Issuer)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "discovery_failed", "identity provider is unreachable")
 		return
 	}
-	defer discoveryResp.Body.Close()
-
-	var discovery struct {
-		TokenEndpoint string `json:"token_endpoint"`
-	}
-	if decodeErr := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); decodeErr != nil {
-		writeError(w, http.StatusBadGateway, "discovery_failed", "failed to parse OIDC discovery")
-		return
-	}
 
 	// Exchange the code for tokens
-	tokenResp, err := oidcHTTPClient.PostForm(discovery.TokenEndpoint, url.Values{
+	tokenResp, err := oidcHTTPClient.PostForm(tokenEndpoint, url.Values{
 		"grant_type":    {"authorization_code"},
-		"client_id":     {authConfig.ClientID},
+		"client_id":     {app.authConfig.ClientID},
 		"code":          {body.Code},
 		"redirect_uri":  {body.RedirectURI},
 		"code_verifier": {body.CodeVerifier},
@@ -129,23 +149,13 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 // Logout returns the OIDC end-session URL so the frontend can redirect the
 // browser to the IdP to clear the SSO session cookie.
 func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
-	if authConfig.Issuer == "" {
+	if app.authConfig.Issuer == "" {
 		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
 		return
 	}
 
-	discoveryURL := strings.TrimSuffix(authConfig.Issuer, "/") + "/.well-known/openid-configuration"
-	discoveryResp, err := oidcHTTPClient.Get(discoveryURL)
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
-		return
-	}
-	defer discoveryResp.Body.Close()
-
-	var discovery struct {
-		EndSessionEndpoint string `json:"end_session_endpoint"`
-	}
-	if decodeErr := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); decodeErr != nil || discovery.EndSessionEndpoint == "" {
+	_, endSessionEndpoint, err := discoverOIDCEndpoints(app.authConfig.Issuer)
+	if err != nil || endSessionEndpoint == "" {
 		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
 		return
 	}
@@ -156,8 +166,8 @@ func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logoutURL := fmt.Sprintf("%s?client_id=%s&post_logout_redirect_uri=%s",
-		discovery.EndSessionEndpoint,
-		url.QueryEscape(authConfig.ClientID),
+		endSessionEndpoint,
+		url.QueryEscape(app.authConfig.ClientID),
 		url.QueryEscape(postLogoutRedirect),
 	)
 
@@ -166,7 +176,7 @@ func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
 
 // Refresh exchanges a refresh token for a new access token via the IdP.
 func (app *App) Refresh(w http.ResponseWriter, r *http.Request) {
-	if authConfig.Issuer == "" || authConfig.ClientID == "" {
+	if app.authConfig.Issuer == "" || app.authConfig.ClientID == "" {
 		writeError(w, http.StatusBadRequest, "not_configured", "OIDC is not configured")
 		return
 	}
@@ -180,25 +190,15 @@ func (app *App) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	discoveryURL := strings.TrimSuffix(authConfig.Issuer, "/") + "/.well-known/openid-configuration"
-	discoveryResp, err := oidcHTTPClient.Get(discoveryURL)
+	tokenEndpoint, _, err := discoverOIDCEndpoints(app.authConfig.Issuer)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "discovery_failed", "identity provider is unreachable")
 		return
 	}
-	defer discoveryResp.Body.Close()
 
-	var discovery struct {
-		TokenEndpoint string `json:"token_endpoint"`
-	}
-	if decodeErr := json.NewDecoder(io.LimitReader(discoveryResp.Body, maxTokenResponseBytes)).Decode(&discovery); decodeErr != nil {
-		writeError(w, http.StatusBadGateway, "discovery_failed", "failed to parse OIDC discovery")
-		return
-	}
-
-	tokenResp, err := oidcHTTPClient.PostForm(discovery.TokenEndpoint, url.Values{
+	tokenResp, err := oidcHTTPClient.PostForm(tokenEndpoint, url.Values{
 		"grant_type":    {"refresh_token"},
-		"client_id":     {authConfig.ClientID},
+		"client_id":     {app.authConfig.ClientID},
 		"refresh_token": {body.RefreshToken},
 	})
 	if err != nil {

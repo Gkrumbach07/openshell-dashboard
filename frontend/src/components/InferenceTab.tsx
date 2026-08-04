@@ -31,7 +31,7 @@ import {
   useSetInferenceRoute,
 } from '../api/inference';
 import { useProviders } from '../api/providers';
-import { useWorkspaceRole } from '../app/useWorkspaceRole';
+import { useWorkspaceRole } from '../api/rbac';
 import { useSlots } from '../slots';
 import type { ApiError } from '../api/client';
 import type { ModelPickerSlot } from '../types';

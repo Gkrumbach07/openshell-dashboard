@@ -13,8 +13,24 @@ import (
 	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(_ *http.Request) bool { return true },
+const (
+	defaultTerminalCols uint32 = 80
+	defaultTerminalRows uint32 = 24
+	defaultShell               = "/bin/bash"
+)
+
+func (app *App) newUpgrader() *websocket.Upgrader {
+	return &websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			for _, allowed := range app.allowedOrigins {
+				if origin == allowed {
+					return true
+				}
+			}
+			return false
+		},
+	}
 }
 
 type resizeMessage struct {
@@ -24,8 +40,8 @@ type resizeMessage struct {
 }
 
 func parseDimensions(r *http.Request) (cols, rows uint32) {
-	cols = 80
-	rows = 24
+	cols = defaultTerminalCols
+	rows = defaultTerminalRows
 	if c, parseErr := strconv.ParseUint(r.URL.Query().Get("cols"), 10, 32); parseErr == nil {
 		cols = uint32(c)
 	}
@@ -69,7 +85,7 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 
 	cols, rows := parseDimensions(r)
 
-	ws, err := upgrader.Upgrade(w, r, nil)
+	ws, err := app.newUpgrader().Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("websocket upgrade failed", "error", err)
 		return
@@ -93,7 +109,7 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 		Payload: &openshellv1.ExecSandboxInput_Start{
 			Start: &openshellv1.ExecSandboxRequest{
 				SandboxId: sandboxID,
-				Command:   []string{"/bin/bash"},
+				Command:   []string{defaultShell},
 				Tty:       true,
 				Cols:      cols,
 				Rows:      rows,

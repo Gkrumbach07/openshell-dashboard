@@ -33,12 +33,13 @@ import {
 
 import { deleteProvider, useProviders } from '../api/providers';
 import { useAlerts } from '../app/AlertContext';
-import { useWorkspaceRole } from '../app/useWorkspaceRole';
+import { useWorkspaceRole } from '../api/rbac';
 import { useSlots } from '../slots';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-import CreateProviderModal from '../components/CreateProviderModal';
-import { useBulkDelete } from '../components/useBulkDelete';
-import { formatAge } from '../components/utils';
+import ProviderFormModal from '../components/provider/ProviderFormModal';
+import { useBulkDelete } from '../hooks/useBulkDelete';
+import { useListPage } from '../hooks/useListPage';
+import { formatAge } from '../utils/formatters';
 import type { CredentialInputSlot } from '../types';
 
 type ProviderListPageProps = {
@@ -59,11 +60,24 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
   const { addSuccess } = useAlerts();
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const [isCreateOpen, setCreateOpen] = useState(false);
-  const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [isActionsOpen, setActionsOpen] = useState(false);
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const {
+    page,
+    setPage,
+    perPage,
+    onPerPageSelect,
+    selected,
+    numSelected,
+    toggleAll,
+    toggleOne,
+    pageAllSelected,
+    clearSelection,
+    isActionsOpen,
+    setActionsOpen,
+    deleteTargets,
+    setDeleteTargets,
+    closeDeleteModal,
+    deleteSelectedLabel,
+  } = useListPage();
 
   const bulkDelete = useBulkDelete(
     (name) => deleteProvider(workspace, name),
@@ -99,18 +113,6 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
   const startIndex = (page - 1) * perPage;
   const pageRows = allRows.slice(startIndex, startIndex + perPage);
   const pageNames = pageRows.map((p) => p.metadata.name);
-  const numSelected = selected.length;
-  const pageAllSelected =
-    pageNames.length > 0 && pageNames.every((n) => selected.includes(n));
-
-  const toggleAll = (isSelecting: boolean) => {
-    setSelected(isSelecting ? pageNames : []);
-  };
-
-  const closeDeleteModal = () => {
-    bulkDelete.clearError();
-    setDeleteTargets(null);
-  };
 
   if (totalCount === 0) {
     return (
@@ -133,11 +135,11 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
             </EmptyStateFooter>
           )}
         </EmptyState>
-        <CreateProviderModal
+        <ProviderFormModal
+          mode="create"
           workspace={workspace}
           isOpen={isCreateOpen}
           onClose={() => setCreateOpen(false)}
-          onSuccess={() => addSuccess('Provider created')}
           renderCredentialInput={resolvedCredentialInput}
         />
       </>
@@ -184,7 +186,7 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
                     onClick={() => setDeleteTargets(selected)}
                     data-testid="delete-selected-providers"
                   >
-                    Delete selected{numSelected > 0 ? ` (${numSelected})` : ''}
+                    {deleteSelectedLabel}
                   </DropdownItem>
                 </DropdownList>
               </Dropdown>
@@ -196,10 +198,7 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
               perPage={perPage}
               page={page}
               onSetPage={(_event, p) => setPage(p)}
-              onPerPageSelect={(_event, pp) => {
-                setPerPage(pp);
-                setPage(1);
-              }}
+              onPerPageSelect={(_event, pp) => onPerPageSelect(pp)}
               isCompact
             />
           </ToolbarItem>
@@ -211,8 +210,9 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
             {isWorkspaceAdmin && (
               <Th
                 select={{
-                  onSelect: (_event, isSelecting) => toggleAll(isSelecting),
-                  isSelected: pageAllSelected,
+                  onSelect: (_event, isSelecting) =>
+                    toggleAll(pageNames, isSelecting),
+                  isSelected: pageAllSelected(pageNames),
                 }}
                 aria-label="Select all providers"
               />
@@ -232,13 +232,7 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
                   select={{
                     rowIndex,
                     onSelect: (_event, isSelecting) =>
-                      setSelected((current) =>
-                        isSelecting
-                          ? [...current, provider.metadata.name]
-                          : current.filter(
-                              (item) => item !== provider.metadata.name,
-                            ),
-                      ),
+                      toggleOne(provider.metadata.name, isSelecting),
                     isSelected: selected.includes(provider.metadata.name),
                   }}
                 />
@@ -291,11 +285,11 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
           ))}
         </Tbody>
       </Table>
-      <CreateProviderModal
+      <ProviderFormModal
+        mode="create"
         workspace={workspace}
         isOpen={isCreateOpen}
         onClose={() => setCreateOpen(false)}
-        onSuccess={() => addSuccess('Provider created')}
         renderCredentialInput={renderCredentialInput}
       />
       <ConfirmDeleteModal
@@ -321,14 +315,15 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
                   ? `${deleteTargets.length} providers deleted`
                   : `Provider "${deleteTargets[0]}" deleted`,
               );
-              setSelected((current) =>
-                current.filter((name) => !deleteTargets.includes(name)),
-              );
+              clearSelection();
               closeDeleteModal();
             });
           }
         }}
-        onCancel={closeDeleteModal}
+        onCancel={() => {
+          bulkDelete.clearError();
+          closeDeleteModal();
+        }}
       />
     </>
   );

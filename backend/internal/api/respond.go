@@ -71,8 +71,10 @@ func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 
 var dns1123Label = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
+const maxDNS1123LabelLength = 63
+
 // validDNS1123 reports whether name is a valid DNS-1123 label (workspace and
 // sandbox names).
 func validDNS1123(name string) bool {
-	return len(name) <= 63 && dns1123Label.MatchString(name)
+	return len(name) <= maxDNS1123LabelLength && dns1123Label.MatchString(name)
 }

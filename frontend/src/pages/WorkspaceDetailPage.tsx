@@ -20,7 +20,7 @@ import { useMembers, useWorkspace } from '../api/workspaces';
 import InferenceTab from '../components/InferenceTab';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
-import ProfilesTab from '../components/ProfilesTab';
+import ProfilesTab from '../components/provider/ProfilesTab';
 import { useSlots } from '../slots';
 import MemberListPage from './MemberListPage';
 import ProviderListPage from './ProviderListPage';

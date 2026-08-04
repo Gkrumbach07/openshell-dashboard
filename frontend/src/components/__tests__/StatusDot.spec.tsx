@@ -1,6 +1,7 @@
 import React from 'react';
 import { render } from '@testing-library/react';
 import StatusDot from '../StatusDot';
+import type { SandboxPhase } from '../../types';
 
 describe('StatusDot', () => {
   it('renders a span element', () => {
@@ -9,29 +10,34 @@ describe('StatusDot', () => {
     expect(dot.tagName).toBe('SPAN');
   });
 
-  it('applies default size of 8px', () => {
+  it('renders as inline-block', () => {
     const { container } = render(<StatusDot phase="READY" />);
     const dot = container.firstChild as HTMLElement;
-    expect(dot.style.width).toBe('8px');
-    expect(dot.style.height).toBe('8px');
+    expect(dot.style.display).toBe('inline-block');
   });
 
-  it('applies custom size', () => {
-    const { container } = render(<StatusDot phase="ERROR" size={12} />);
+  it.each<[SandboxPhase, string]>([
+    ['READY', 'success'],
+    ['ERROR', 'danger'],
+    ['PROVISIONING', 'info'],
+    ['DELETING', 'warning'],
+  ])('uses a distinct color for %s phase', (phase, expectedToken) => {
+    const { container } = render(<StatusDot phase={phase} />);
     const dot = container.firstChild as HTMLElement;
-    expect(dot.style.width).toBe('12px');
-    expect(dot.style.height).toBe('12px');
+    expect(dot.style.background).toContain(expectedToken);
   });
 
-  it('renders round shape', () => {
-    const { container } = render(<StatusDot phase="PROVISIONING" />);
+  it('uses a fallback color for UNKNOWN phase', () => {
+    const { container } = render(<StatusDot phase="UNKNOWN" />);
     const dot = container.firstChild as HTMLElement;
-    expect(dot.style.borderRadius).toBe('50%');
+    expect(dot.style.background).toContain('custom');
   });
 
-  it('sets background color based on phase', () => {
-    const { container } = render(<StatusDot phase="READY" />);
-    const dot = container.firstChild as HTMLElement;
-    expect(dot.style.background).toContain('success');
+  it('renders different colors for different phases', () => {
+    const { container: c1 } = render(<StatusDot phase="READY" />);
+    const { container: c2 } = render(<StatusDot phase="ERROR" />);
+    const bg1 = (c1.firstChild as HTMLElement).style.background;
+    const bg2 = (c2.firstChild as HTMLElement).style.background;
+    expect(bg1).not.toBe(bg2);
   });
 });

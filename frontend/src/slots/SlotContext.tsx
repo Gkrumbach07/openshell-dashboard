@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { CredentialInputSlot, ModelPickerSlot } from '../types';
+import type { CredentialInputSlot, ModelPickerSlot } from './types';
 
 export type SlotDefinitions = {
   credentialInput?: CredentialInputSlot;

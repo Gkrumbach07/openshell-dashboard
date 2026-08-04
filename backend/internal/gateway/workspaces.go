@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 
 	datamodelv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/datamodelv1"
 	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
@@ -14,7 +15,7 @@ func (c *Client) CreateWorkspace(ctx context.Context, name string, labels map[st
 		Labels: labels,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create workspace %q: %w", name, err)
 	}
 	return resp.Workspace, nil
 }
@@ -23,7 +24,7 @@ func (c *Client) CreateWorkspace(ctx context.Context, name string, labels map[st
 func (c *Client) GetWorkspace(ctx context.Context, name string) (*datamodelv1.Workspace, error) {
 	resp, err := c.openshell.GetWorkspace(ctx, &openshellv1.GetWorkspaceRequest{Name: name})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get workspace %q: %w", name, err)
 	}
 	return resp.Workspace, nil
 }
@@ -36,7 +37,7 @@ func (c *Client) ListWorkspaces(ctx context.Context, limit, offset uint32, label
 		LabelSelector: labelSelector,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list workspaces: %w", err)
 	}
 	return resp.Workspaces, nil
 }
@@ -45,7 +46,7 @@ func (c *Client) ListWorkspaces(ctx context.Context, limit, offset uint32, label
 func (c *Client) DeleteWorkspace(ctx context.Context, name string) (bool, error) {
 	resp, err := c.openshell.DeleteWorkspace(ctx, &openshellv1.DeleteWorkspaceRequest{Name: name})
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("delete workspace %q: %w", name, err)
 	}
 	return resp.Deleted, nil
 }
@@ -59,7 +60,7 @@ func (c *Client) AddWorkspaceMember(ctx context.Context, workspace, principalSub
 		Role:             role,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("add member %q to workspace %q: %w", principalSubject, workspace, err)
 	}
 	return resp.Member, nil
 }
@@ -71,7 +72,7 @@ func (c *Client) RemoveWorkspaceMember(ctx context.Context, workspace, principal
 		PrincipalSubject: principalSubject,
 	})
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("remove member %q from workspace %q: %w", principalSubject, workspace, err)
 	}
 	return resp.Removed, nil
 }
@@ -84,7 +85,7 @@ func (c *Client) ListWorkspaceMembers(ctx context.Context, workspace string, lim
 		Offset:    offset,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list members in workspace %q: %w", workspace, err)
 	}
 	return resp.Members, nil
 }

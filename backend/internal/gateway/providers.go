@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 
 	datamodelv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/datamodelv1"
 	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
@@ -15,7 +16,7 @@ func (c *Client) CreateProvider(ctx context.Context, workspace string, provider 
 		Workspace: workspace,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create provider in workspace %q: %w", workspace, err)
 	}
 	return resp.Provider, nil
 }
@@ -27,7 +28,7 @@ func (c *Client) GetProvider(ctx context.Context, workspace, name string) (*data
 		Workspace: workspace,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get provider %q in workspace %q: %w", name, workspace, err)
 	}
 	return resp.Provider, nil
 }
@@ -40,7 +41,7 @@ func (c *Client) ListProviders(ctx context.Context, workspace string, limit, off
 		Workspace: workspace,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list providers in workspace %q: %w", workspace, err)
 	}
 	return resp.Providers, nil
 }
@@ -52,7 +53,7 @@ func (c *Client) DeleteProvider(ctx context.Context, workspace, name string) (bo
 		Workspace: workspace,
 	})
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("delete provider %q in workspace %q: %w", name, workspace, err)
 	}
 	return resp.Deleted, nil
 }
@@ -65,18 +66,22 @@ func (c *Client) UpdateProvider(ctx context.Context, workspace string, provider 
 		Workspace:            workspace,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("update provider in workspace %q: %w", workspace, err)
 	}
 	return resp.Provider, nil
 }
 
 // GetProviderRefreshStatus returns credential refresh status for a provider.
 func (c *Client) GetProviderRefreshStatus(ctx context.Context, workspace, provider, credentialKey string) (*openshellv1.GetProviderRefreshStatusResponse, error) {
-	return c.openshell.GetProviderRefreshStatus(ctx, &openshellv1.GetProviderRefreshStatusRequest{
+	resp, err := c.openshell.GetProviderRefreshStatus(ctx, &openshellv1.GetProviderRefreshStatusRequest{
 		Provider:      provider,
 		CredentialKey: credentialKey,
 		Workspace:     workspace,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("get provider refresh status %q in workspace %q: %w", provider, workspace, err)
+	}
+	return resp, nil
 }
 
 // ConfigureProviderRefresh sets up automatic credential refresh for a provider.
@@ -92,16 +97,24 @@ func (c *Client) ConfigureProviderRefresh(ctx context.Context, workspace, provid
 	if expiresAtMs != nil {
 		req.ExpiresAtMs = expiresAtMs
 	}
-	return c.openshell.ConfigureProviderRefresh(ctx, req)
+	resp, err := c.openshell.ConfigureProviderRefresh(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("configure provider refresh %q in workspace %q: %w", provider, workspace, err)
+	}
+	return resp, nil
 }
 
 // RotateProviderCredential triggers an immediate credential rotation.
 func (c *Client) RotateProviderCredential(ctx context.Context, workspace, provider, credentialKey string) (*openshellv1.RotateProviderCredentialResponse, error) {
-	return c.openshell.RotateProviderCredential(ctx, &openshellv1.RotateProviderCredentialRequest{
+	resp, err := c.openshell.RotateProviderCredential(ctx, &openshellv1.RotateProviderCredentialRequest{
 		Provider:      provider,
 		CredentialKey: credentialKey,
 		Workspace:     workspace,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("rotate provider credential %q in workspace %q: %w", provider, workspace, err)
+	}
+	return resp, nil
 }
 
 // DeleteProviderRefresh removes credential refresh configuration.
@@ -112,7 +125,7 @@ func (c *Client) DeleteProviderRefresh(ctx context.Context, workspace, provider,
 		Workspace:     workspace,
 	})
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("delete provider refresh %q in workspace %q: %w", provider, workspace, err)
 	}
 	return resp.Deleted, nil
 }
@@ -127,7 +140,7 @@ func (c *Client) ListProviderProfiles(ctx context.Context, workspace string, lim
 		Workspace: workspace,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list provider profiles in workspace %q: %w", workspace, err)
 	}
 	return resp.Profiles, nil
 }
@@ -140,27 +153,35 @@ func (c *Client) GetProviderProfile(ctx context.Context, id, workspace string) (
 		Workspace: workspace,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get provider profile %q in workspace %q: %w", id, workspace, err)
 	}
 	return resp.Profile, nil
 }
 
 // ImportProviderProfiles batch-imports custom profiles (admin only).
 func (c *Client) ImportProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.ImportProviderProfilesResponse, error) {
-	return c.openshell.ImportProviderProfiles(ctx, &openshellv1.ImportProviderProfilesRequest{
+	resp, err := c.openshell.ImportProviderProfiles(ctx, &openshellv1.ImportProviderProfilesRequest{
 		Profiles:  profiles,
 		Workspace: workspace,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("import provider profiles in workspace %q: %w", workspace, err)
+	}
+	return resp, nil
 }
 
 // UpdateProviderProfile updates a single custom profile with optimistic concurrency.
 func (c *Client) UpdateProviderProfile(ctx context.Context, workspace, id string, profile *openshellv1.ProviderProfileImportItem, expectedResourceVersion uint64) (*openshellv1.UpdateProviderProfilesResponse, error) {
-	return c.openshell.UpdateProviderProfiles(ctx, &openshellv1.UpdateProviderProfilesRequest{
+	resp, err := c.openshell.UpdateProviderProfiles(ctx, &openshellv1.UpdateProviderProfilesRequest{
 		Profile:                 profile,
 		ExpectedResourceVersion: expectedResourceVersion,
 		Id:                      id,
 		Workspace:               workspace,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("update provider profile %q in workspace %q: %w", id, workspace, err)
+	}
+	return resp, nil
 }
 
 // DeleteProviderProfile deletes a custom profile by id.
@@ -170,15 +191,19 @@ func (c *Client) DeleteProviderProfile(ctx context.Context, id, workspace string
 		Workspace: workspace,
 	})
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("delete provider profile %q in workspace %q: %w", id, workspace, err)
 	}
 	return resp.Deleted, nil
 }
 
 // LintProviderProfiles validates profiles without persisting.
 func (c *Client) LintProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.LintProviderProfilesResponse, error) {
-	return c.openshell.LintProviderProfiles(ctx, &openshellv1.LintProviderProfilesRequest{
+	resp, err := c.openshell.LintProviderProfiles(ctx, &openshellv1.LintProviderProfilesRequest{
 		Profiles:  profiles,
 		Workspace: workspace,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("lint provider profiles in workspace %q: %w", workspace, err)
+	}
+	return resp, nil
 }

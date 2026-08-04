@@ -496,18 +496,11 @@ export type GatewaySettings = {
   settingsRevision: number;
 };
 
-// Pluggable component slots for downstream integration.
-// Upstream renders sensible defaults; downstream can replace specific pieces
-// (e.g., MaaS key browser instead of a plain password field) without forking
-// the page components.
+export type LogFilters = {
+  lines?: number;
+  sinceMs?: number;
+  sources?: string[];
+  level?: string;
+};
 
-export type CredentialInputSlot = (
-  credential: ProfileCredential,
-  value: string,
-  onChange: (value: string) => void,
-) => React.ReactNode;
-
-export type ModelPickerSlot = (
-  value: string,
-  onChange: (value: string) => void,
-) => React.ReactNode;
+export type { CredentialInputSlot, ModelPickerSlot } from '../slots/types';
