@@ -27,6 +27,7 @@ import SettingsPage from '../pages/SettingsPage';
 import { AlertProvider } from './AlertContext';
 import AppLayout from './AppLayout';
 import { useAuthConfig } from '../api/auth';
+import { useUserRole } from './useUserRole';
 import { isDevSession } from './authStore';
 
 const queryClient = new QueryClient({
@@ -127,12 +128,20 @@ const ProviderDetailRoute: React.FC = () => {
   );
 };
 
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isPlatformAdmin } = useUserRole();
+  if (!isPlatformAdmin) {
+    return <Navigate to="/workspaces" replace />;
+  }
+  return <>{children}</>;
+};
+
 const AuthenticatedApp: React.FC = () => (
   <AppLayout>
     <Routes>
-      <Route path="/gateway" element={<GatewayOverviewPage />} />
-      <Route path="/global-policy" element={<GlobalPolicyPage />} />
-      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/gateway" element={<AdminRoute><GatewayOverviewPage /></AdminRoute>} />
+      <Route path="/global-policy" element={<AdminRoute><GlobalPolicyPage /></AdminRoute>} />
+      <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
       <Route path="/workspaces" element={<WorkspaceListRoute />} />
       <Route path="/workspaces/:workspace" element={<WorkspaceDetailRoute />} />
       <Route
