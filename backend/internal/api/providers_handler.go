@@ -248,10 +248,10 @@ func (app *App) GetProviderProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 type ImportProfileCredentialBody struct {
-	EnvVars     []string `json:"envVars,omitempty"`
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
 	AuthStyle   string   `json:"authStyle,omitempty"`
+	EnvVars     []string `json:"envVars,omitempty"`
 	Required    bool     `json:"required"`
 }
 
@@ -260,7 +260,7 @@ type ImportProfileBody struct {
 	DisplayName      string                        `json:"displayName"`
 	Description      string                        `json:"description,omitempty"`
 	Category         string                        `json:"category"`
-	Credentials      []ImportProfileCredentialBody  `json:"credentials,omitempty"`
+	Credentials      []ImportProfileCredentialBody `json:"credentials,omitempty"`
 	Endpoints        []EndpointBody                `json:"endpoints,omitempty"`
 	InferenceCapable bool                          `json:"inferenceCapable"`
 	ResourceVersion  uint64                        `json:"resourceVersion,omitempty"`
