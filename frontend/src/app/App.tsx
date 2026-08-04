@@ -29,7 +29,7 @@ import AppLayout from './AppLayout';
 import AuthCallbackPage from './AuthCallbackPage';
 import { useAuthConfig } from '../api/auth';
 import { useUserRole } from '../api/rbac';
-import { hasSession, isDevSession } from './authStore';
+import { hasSession } from './authStore';
 
 const queryClient = new QueryClient({
   defaultOptions: {
