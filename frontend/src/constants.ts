@@ -20,10 +20,6 @@ export const ROUTES = {
   AUTH_CALLBACK: '/auth/callback',
 } as const;
 
-// API paths.
-export const API_PREFIX = '/api/v1';
-export const AUTH_REFRESH_PATH = `${API_PREFIX}/auth/refresh`;
-
 // Container image registry.
 export const COMMUNITY_REGISTRY =
   'ghcr.io/nvidia/openshell-community/sandboxes';

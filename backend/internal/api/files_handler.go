@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -78,12 +79,15 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(stderr) > 0 {
+		slog.Warn("file upload stderr", "path", destPath, "stderr", string(stderr))
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"exitCode": exitCode,
 		"path":     destPath,
 		"size":     len(fileBytes),
 		"stdout":   string(stdout),
-		"stderr":   string(stderr),
+		"success":  exitCode == 0,
 	})
 }
 
@@ -111,8 +115,8 @@ func (app *App) DownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if exitCode != 0 {
-		writeError(w, http.StatusNotFound, "file_not_found",
-			fmt.Sprintf("cat exited %d: %s", exitCode, string(stderr)))
+		slog.Error("file download failed", "path", filePath, "exitCode", exitCode, "stderr", string(stderr))
+		writeError(w, http.StatusNotFound, "file_not_found", "file download failed")
 		return
 	}
 

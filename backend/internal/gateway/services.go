@@ -32,18 +32,6 @@ func (c *Client) ListServices(ctx context.Context, workspace, sandbox string) ([
 	return resp.Services, nil
 }
 
-func (c *Client) GetService(ctx context.Context, workspace, sandbox, service string) (*openshellv1.ServiceEndpointResponse, error) {
-	resp, err := c.openshell.GetService(ctx, &openshellv1.GetServiceRequest{
-		Sandbox:   sandbox,
-		Service:   service,
-		Workspace: workspace,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("get service %q on sandbox %q in workspace %q: %w", service, sandbox, workspace, err)
-	}
-	return resp, nil
-}
-
 func (c *Client) DeleteService(ctx context.Context, workspace, sandbox, service string) (bool, error) {
 	resp, err := c.openshell.DeleteService(ctx, &openshellv1.DeleteServiceRequest{
 		Sandbox:   sandbox,

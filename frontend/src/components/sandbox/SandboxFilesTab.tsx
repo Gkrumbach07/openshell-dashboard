@@ -146,7 +146,9 @@ const SandboxFilesTab: React.FC<SandboxFilesTabProps> = ({
                 className="pf-v6-u-mt-md"
                 data-testid="file-upload-result"
               >
-                {uploadResult.stderr && <pre>{uploadResult.stderr}</pre>}
+                {!uploadResult.success && (
+                  <pre>Upload failed (exit code {uploadResult.exitCode})</pre>
+                )}
               </Alert>
             )}
           </CardBody>

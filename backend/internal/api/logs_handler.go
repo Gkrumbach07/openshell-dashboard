@@ -90,7 +90,11 @@ func (app *App) AttachSandboxProvider(w http.ResponseWriter, r *http.Request) {
 
 // DetachSandboxProvider detaches a provider from a sandbox.
 func (app *App) DetachSandboxProvider(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.DetachSandboxProvider(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "provider"), 0)
+	var body attachDetachRequest
+	if r.ContentLength > 0 && !decodeBody(w, r, &body) {
+		return
+	}
+	resp, err := app.gateway.DetachSandboxProvider(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "provider"), body.ExpectedResourceVersion)
 	if err != nil {
 		writeGrpcError(w, err)
 		return

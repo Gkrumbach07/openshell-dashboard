@@ -37,6 +37,6 @@ Skip `GatewayInterceptor`, `SupervisorMiddleware`, `ComputeDriver` — internal/
 
 User-facing RPCs require `Bearer` (OIDC JWT). `Health` is unauthenticated. Sandbox-only RPCs (ReportPolicyStatus, PushSandboxLogs, GetSandboxProviderEnvironment, SubmitPolicyAnalysis, ConnectSupervisor, RelayStream, GetInferenceBundle, IssueSandboxToken, RefreshSandboxToken) reject user principals — never wrap them.
 
-## Streaming RPCs (deferred)
+## Streaming RPCs
 
-`ExecSandboxInteractive` (bidi), `WatchSandbox` (server-stream), `ForwardTcp` (bidi) — all deferred; no WebSockets through the federated proxy. Use `GetSandboxLogs` + `GetSandbox` polling.
+`ExecSandboxInteractive` (bidi) — implemented via WebSocket relay in `terminal_handler.go`. `WatchSandbox` (server-stream) and `ForwardTcp` (bidi) — deferred; use `GetSandboxLogs` + `GetSandbox` polling instead.

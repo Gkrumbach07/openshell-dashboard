@@ -77,7 +77,6 @@ type Interface interface {
 	// Services
 	ExposeService(ctx context.Context, workspace, sandbox, service string, targetPort uint32, domain bool) (*openshellv1.ServiceEndpointResponse, error)
 	ListServices(ctx context.Context, workspace, sandbox string) ([]*openshellv1.ServiceEndpointResponse, error)
-	GetService(ctx context.Context, workspace, sandbox, service string) (*openshellv1.ServiceEndpointResponse, error)
 	DeleteService(ctx context.Context, workspace, sandbox, service string) (bool, error)
 
 	// Inference

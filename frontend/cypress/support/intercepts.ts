@@ -272,7 +272,7 @@ export const interceptMembers = (workspace = 'default') => {
 export const interceptMisc = () => {
   cy.intercept('GET', '/api/v1/draft-summary', {
     statusCode: 200,
-    body: { pending: 0 },
+    body: { sandboxes: [], totalPending: 0 },
   }).as('draftSummary');
 
   cy.intercept('GET', /\/api\/v1\/workspaces\/[^/]+\/inference/, {

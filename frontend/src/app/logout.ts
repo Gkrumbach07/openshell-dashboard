@@ -1,13 +1,8 @@
 import { getAuthConfig } from '../api/auth';
-import { clearDevSession, isDevSession } from './authStore';
+import { clearDevSession } from './authStore';
 
 export const logout = async (): Promise<void> => {
   clearDevSession();
-
-  if (isDevSession()) {
-    window.location.assign('/');
-    return;
-  }
 
   try {
     const config = await getAuthConfig();
