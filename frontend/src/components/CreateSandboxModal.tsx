@@ -188,9 +188,7 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
             </Grid>
             <FormHelperText>
               <HelperText>
-                <HelperTextItem
-                  variant={form.gpuInvalid ? 'error' : 'default'}
-                >
+                <HelperTextItem variant={form.gpuInvalid ? 'error' : 'default'}>
                   {form.gpuInvalid
                     ? 'GPU count must be a whole number'
                     : 'All optional. CPU/memory use Kubernetes quantities and apply as limits.'}

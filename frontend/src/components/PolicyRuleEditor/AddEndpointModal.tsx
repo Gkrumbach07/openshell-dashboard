@@ -118,9 +118,7 @@ const AddEndpointModal: React.FC<AddEndpointModalProps> = ({
                 }))
               }
               onChange={(event) => {
-                const value = Number(
-                  (event.target as HTMLInputElement).value,
-                );
+                const value = Number((event.target as HTMLInputElement).value);
                 if (!isNaN(value)) setAddForm((f) => ({ ...f, port: value }));
               }}
             />

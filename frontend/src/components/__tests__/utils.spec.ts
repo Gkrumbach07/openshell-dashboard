@@ -1,4 +1,8 @@
-import { formatAge, formatTimestamp, formatUptime } from '../../utils/formatters';
+import {
+  formatAge,
+  formatTimestamp,
+  formatUptime,
+} from '../../utils/formatters';
 import {
   countEgressHosts,
   getEnforcementColor,

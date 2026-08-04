@@ -52,12 +52,7 @@ const NetworkRulesTable: React.FC<NetworkRulesTableProps> = ({
             </Td>
             <Td dataLabel="Endpoints">
               {(rule.endpoints ?? []).map((ep, i) => (
-                <Label
-                  key={i}
-                  isCompact
-                  color="teal"
-                  className="pf-v6-u-mr-xs"
-                >
+                <Label key={i} isCompact color="teal" className="pf-v6-u-mr-xs">
                   {endpointSummary(ep)}
                 </Label>
               ))}

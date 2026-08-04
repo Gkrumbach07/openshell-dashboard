@@ -82,9 +82,7 @@ const CredentialRefreshCard: React.FC<CredentialRefreshCardProps> = ({
                 </Td>
                 <Td dataLabel="Status">{cred.status}</Td>
                 <Td dataLabel="Expires">
-                  {cred.expiresAtMs
-                    ? formatTimestamp(cred.expiresAtMs)
-                    : '-'}
+                  {cred.expiresAtMs ? formatTimestamp(cred.expiresAtMs) : '-'}
                 </Td>
                 <Td dataLabel="Next refresh">
                   {cred.nextRefreshAtMs

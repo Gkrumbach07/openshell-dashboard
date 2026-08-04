@@ -11,7 +11,11 @@ import {
 } from '@patternfly/react-core';
 import { AngleLeftIcon, AngleRightIcon } from '@patternfly/react-icons';
 
-import type { DraftSandboxSummary, Sandbox, SandboxPolicyView } from '../../types';
+import type {
+  DraftSandboxSummary,
+  Sandbox,
+  SandboxPolicyView,
+} from '../../types';
 import { formatAge } from '../../utils/formatters';
 
 type AlertVariant = 'danger' | 'warning' | 'info';

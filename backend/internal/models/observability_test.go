@@ -66,7 +66,7 @@ func TestFromLogLine(t *testing.T) {
 		t.Errorf("fields.action = %q", line.Fields["action"])
 	}
 
-	if result.Logs[1].Fields != nil && len(result.Logs[1].Fields) > 0 {
+	if len(result.Logs[1].Fields) > 0 {
 		t.Errorf("expected nil/empty fields on line 2, got %v", result.Logs[1].Fields)
 	}
 }
@@ -297,9 +297,9 @@ func TestFromServiceEndpointResponse(t *testing.T) {
 
 func TestSettingValueString(t *testing.T) {
 	tests := []struct {
+		value *sandboxv1.SettingValue
 		name  string
 		want  string
-		value *sandboxv1.SettingValue
 	}{
 		{
 			name:  "string value",

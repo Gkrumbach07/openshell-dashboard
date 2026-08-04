@@ -323,7 +323,11 @@ const SettingsPage: React.FC = () => {
         body={`Are you sure you want to delete the setting "${deleteKey}"?`}
         isOpen={deleteKey !== null}
         isDeleting={deleteSetting.isPending}
-        error={deleteSetting.isError ? (deleteSetting.error as Error).message : undefined}
+        error={
+          deleteSetting.isError
+            ? (deleteSetting.error as Error).message
+            : undefined
+        }
         onConfirm={confirmDelete}
         onCancel={() => setDeleteKey(null)}
       />

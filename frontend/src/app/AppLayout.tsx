@@ -227,7 +227,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <DescriptionList isCompact>
             <DescriptionListGroup>
               <DescriptionListTerm>Dashboard version</DescriptionListTerm>
-              <DescriptionListDescription>{APP_VERSION}</DescriptionListDescription>
+              <DescriptionListDescription>
+                {APP_VERSION}
+              </DescriptionListDescription>
             </DescriptionListGroup>
             <DescriptionListGroup>
               <DescriptionListTerm>Gateway version</DescriptionListTerm>

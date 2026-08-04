@@ -81,7 +81,7 @@ func TestGetGlobalSettingsBody(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body["settingsRevision"].(float64) != 7 {
+	if v, ok := body["settingsRevision"].(float64); !ok || v != 7 {
 		t.Errorf("settingsRevision = %v, want 7", body["settingsRevision"])
 	}
 	settings, ok := body["settings"].([]any)
@@ -91,7 +91,10 @@ func TestGetGlobalSettingsBody(t *testing.T) {
 	if len(settings) != 2 {
 		t.Fatalf("got %d settings, want 2", len(settings))
 	}
-	first := settings[0].(map[string]any)
+	first, ok := settings[0].(map[string]any)
+	if !ok {
+		t.Fatal("first setting is not a map")
+	}
 	if first["key"] != "debug" {
 		t.Errorf("first key = %v, want debug (sorted)", first["key"])
 	}

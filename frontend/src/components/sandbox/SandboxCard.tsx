@@ -22,7 +22,11 @@ import {
 } from '@patternfly/react-core';
 import { EllipsisVIcon, ScreenIcon } from '@patternfly/react-icons';
 
-import type { DraftSandboxSummary, Sandbox, SandboxPolicyView } from '../../types';
+import type {
+  DraftSandboxSummary,
+  Sandbox,
+  SandboxPolicyView,
+} from '../../types';
 import LabelsList from '../LabelsList';
 import SandboxAttention from './SandboxAttention';
 import SandboxEgressSummary from './SandboxEgressSummary';

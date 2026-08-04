@@ -47,7 +47,9 @@ export const useSetInferenceRoute = (workspace: string) => {
     mutationFn: (body: SetInferenceRouteRequest) =>
       setInferenceRoute(workspace, body),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: inferenceKeys.scope(workspace) }),
+      queryClient.invalidateQueries({
+        queryKey: inferenceKeys.scope(workspace),
+      }),
   });
 };
 
@@ -56,6 +58,8 @@ export const useDeleteInferenceRoute = (workspace: string) => {
   return useMutation({
     mutationFn: (route: string) => deleteInferenceRoute(workspace, route),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: inferenceKeys.scope(workspace) }),
+      queryClient.invalidateQueries({
+        queryKey: inferenceKeys.scope(workspace),
+      }),
   });
 };

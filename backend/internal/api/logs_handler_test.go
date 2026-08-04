@@ -154,14 +154,17 @@ func TestGetSandboxLogsBody(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body["bufferTotal"].(float64) != 42 {
+	if v, ok := body["bufferTotal"].(float64); !ok || v != 42 {
 		t.Errorf("bufferTotal = %v, want 42", body["bufferTotal"])
 	}
 	logs, ok := body["logs"].([]any)
 	if !ok || len(logs) != 1 {
 		t.Fatalf("logs length = %d, want 1", len(logs))
 	}
-	line := logs[0].(map[string]any)
+	line, ok := logs[0].(map[string]any)
+	if !ok {
+		t.Fatal("log entry is not a map")
+	}
 	if line["message"] != "network decision" {
 		t.Errorf("message = %v", line["message"])
 	}

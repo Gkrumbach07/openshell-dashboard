@@ -25,8 +25,7 @@ export const providerKeys = {
   all: (workspace: string) => ['providers', workspace] as const,
   detail: (workspace: string, name: string) =>
     ['providers', workspace, name] as const,
-  profiles: (workspace: string) =>
-    ['provider-profiles', workspace] as const,
+  profiles: (workspace: string) => ['provider-profiles', workspace] as const,
   refresh: (workspace: string, name: string) =>
     ['provider-refresh', workspace, name] as const,
 };

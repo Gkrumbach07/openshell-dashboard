@@ -48,13 +48,9 @@ const PolicyRevisionTable: React.FC<PolicyRevisionTableProps> = ({
                 {revision.status}
               </Label>
             </Td>
-            <Td dataLabel="Created">
-              {formatTimestamp(revision.createdAtMs)}
-            </Td>
+            <Td dataLabel="Created">{formatTimestamp(revision.createdAtMs)}</Td>
             {showLoaded && (
-              <Td dataLabel="Loaded">
-                {formatTimestamp(revision.loadedAtMs)}
-              </Td>
+              <Td dataLabel="Loaded">{formatTimestamp(revision.loadedAtMs)}</Td>
             )}
             <Td dataLabel="Hash" className="pf-v6-u-font-family-monospace">
               {(revision.policyHash ?? '').slice(0, 12) || '-'}

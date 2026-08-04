@@ -108,7 +108,7 @@ func TestGetSandboxPolicyBody(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body["activeVersion"].(float64) != 3 {
+	if v, ok := body["activeVersion"].(float64); !ok || v != 3 {
 		t.Errorf("activeVersion = %v, want 3", body["activeVersion"])
 	}
 	latest, ok := body["latest"].(map[string]any)
@@ -498,10 +498,10 @@ func TestApproveAllDraftChunksBody(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body["chunksApproved"].(float64) != 3 {
+	if v, ok := body["chunksApproved"].(float64); !ok || v != 3 {
 		t.Errorf("chunksApproved = %v, want 3", body["chunksApproved"])
 	}
-	if body["chunksSkipped"].(float64) != 1 {
+	if v, ok := body["chunksSkipped"].(float64); !ok || v != 1 {
 		t.Errorf("chunksSkipped = %v, want 1", body["chunksSkipped"])
 	}
 }

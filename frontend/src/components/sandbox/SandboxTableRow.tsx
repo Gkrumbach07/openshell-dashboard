@@ -61,9 +61,7 @@ const SandboxTableRow: React.FC<SandboxTableRowProps> = ({
   const imageShort = imageParts[imageParts.length - 1] || '-';
 
   const actionItems = [
-    ...(onOpenTerminal
-      ? [{ title: 'Terminal', onClick: onOpenTerminal }]
-      : []),
+    ...(onOpenTerminal ? [{ title: 'Terminal', onClick: onOpenTerminal }] : []),
     { title: 'Logs', onClick: onViewLogs },
     { title: 'Delete', onClick: onDelete },
   ];

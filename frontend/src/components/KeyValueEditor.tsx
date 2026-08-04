@@ -30,9 +30,7 @@ const KeyValueEditor: React.FC<KeyValueEditorProps> = ({
   addLabel = 'Add entry',
 }) => {
   const updateRow = (index: number, field: 'key' | 'value', val: string) => {
-    onChange(
-      rows.map((r, i) => (i === index ? { ...r, [field]: val } : r)),
-    );
+    onChange(rows.map((r, i) => (i === index ? { ...r, [field]: val } : r)));
   };
 
   const removeRow = (index: number) => {

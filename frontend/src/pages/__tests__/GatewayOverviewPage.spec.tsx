@@ -96,8 +96,6 @@ describe('GatewayOverviewPage', () => {
       data: info,
     });
     render(<GatewayOverviewPage />);
-    expect(
-      screen.getByText('No compute drivers reported'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('No compute drivers reported')).toBeInTheDocument();
   });
 });

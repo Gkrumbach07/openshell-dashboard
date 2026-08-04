@@ -179,7 +179,9 @@ const useDraftMutation = <TArgs, TResult>(
   return useMutation({
     mutationFn,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: policyKeys.drafts(workspace, name) });
+      queryClient.invalidateQueries({
+        queryKey: policyKeys.drafts(workspace, name),
+      });
       queryClient.invalidateQueries({
         queryKey: policyKeys.sandbox(workspace, name),
       });

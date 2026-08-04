@@ -49,7 +49,7 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	stdout, stderr, exitCode, err := app.gateway.ExecSandbox(r.Context(), sandboxID,
 		[]string{"sh", "-c", fmt.Sprintf("cat > %q", destPath)},
-		fileBytes, "", uint32(app.execTimeout))
+		fileBytes, "", app.execTimeout)
 	if err != nil {
 		writeGrpcError(w, err)
 		return
@@ -81,7 +81,7 @@ func (app *App) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	sandboxID := sandbox.GetMetadata().GetId()
 
 	stdout, stderr, exitCode, err := app.gateway.ExecSandbox(r.Context(), sandboxID,
-		[]string{"cat", filePath}, nil, "", uint32(app.execTimeout))
+		[]string{"cat", filePath}, nil, "", app.execTimeout)
 	if err != nil {
 		writeGrpcError(w, err)
 		return

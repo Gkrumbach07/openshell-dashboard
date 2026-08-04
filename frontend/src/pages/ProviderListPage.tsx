@@ -210,7 +210,8 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({
             {isWorkspaceAdmin && (
               <Th
                 select={{
-                  onSelect: (_event, isSelecting) => toggleAll(pageNames, isSelecting),
+                  onSelect: (_event, isSelecting) =>
+                    toggleAll(pageNames, isSelecting),
                   isSelected: pageAllSelected(pageNames),
                 }}
                 aria-label="Select all providers"

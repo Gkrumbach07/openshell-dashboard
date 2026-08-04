@@ -1,4 +1,10 @@
-import { clearToken, getRefreshToken, getToken, setRefreshToken, setToken } from '../app/authStore';
+import {
+  clearToken,
+  getRefreshToken,
+  getToken,
+  setRefreshToken,
+  setToken,
+} from '../app/authStore';
 import { AUTH_REFRESH_PATH, ROUTES } from '../constants';
 
 export type ApiError = Error & {

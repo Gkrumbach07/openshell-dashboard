@@ -110,7 +110,7 @@ func TestGetInferenceRouteBody(t *testing.T) {
 	if body["modelId"] != "claude-sonnet-5" {
 		t.Errorf("modelId = %v", body["modelId"])
 	}
-	if body["version"].(float64) != 2 {
+	if v, ok := body["version"].(float64); !ok || v != 2 {
 		t.Errorf("version = %v, want 2", body["version"])
 	}
 }

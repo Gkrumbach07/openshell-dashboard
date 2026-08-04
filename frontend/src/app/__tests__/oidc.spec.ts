@@ -150,8 +150,7 @@ describe('completeLogin', () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 400,
-      json: () =>
-        Promise.resolve({ message: 'Invalid authorization code' }),
+      json: () => Promise.resolve({ message: 'Invalid authorization code' }),
     });
 
     await expect(completeLogin(baseConfig, 'bad-code')).rejects.toThrow(

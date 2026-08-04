@@ -82,7 +82,9 @@ export const useAddMember = (workspace: string) => {
   return useMutation({
     mutationFn: (body: AddMemberRequest) => addMember(workspace, body),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: workspaceKeys.members(workspace) }),
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.members(workspace),
+      }),
   });
 };
 
@@ -91,6 +93,8 @@ export const useRemoveMember = (workspace: string) => {
   return useMutation({
     mutationFn: (subject: string) => removeMember(workspace, subject),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: workspaceKeys.members(workspace) }),
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.members(workspace),
+      }),
   });
 };

@@ -9,7 +9,11 @@ import {
 } from '@patternfly/react-core';
 import { CubesIcon } from '@patternfly/react-icons';
 
-import type { DraftSandboxSummary, Sandbox, SandboxPolicyView } from '../../types';
+import type {
+  DraftSandboxSummary,
+  Sandbox,
+  SandboxPolicyView,
+} from '../../types';
 import SandboxCard from './SandboxCard';
 
 type SandboxGalleryViewProps = {

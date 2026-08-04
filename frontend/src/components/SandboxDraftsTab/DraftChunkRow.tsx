@@ -107,10 +107,7 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
         </Td>
         {isWorkspaceAdmin && (
           <Td isActionCell>
-            <Flex
-              flexWrap={{ default: 'nowrap' }}
-              gap={{ default: 'gapSm' }}
-            >
+            <Flex flexWrap={{ default: 'nowrap' }} gap={{ default: 'gapSm' }}>
               {chunk.status === 'pending' && (
                 <>
                   <FlexItem>
@@ -181,9 +178,7 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
                           aria-label="Rejection reason"
                           data-testid="reject-reason-input"
                           value={rejectReason}
-                          onChange={(_event, value) =>
-                            onSetRejectReason(value)
-                          }
+                          onChange={(_event, value) => onSetRejectReason(value)}
                           placeholder="Optional reason — fed back to the in-sandbox agent"
                           rows={2}
                         />
