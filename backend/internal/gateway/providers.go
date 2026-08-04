@@ -153,27 +153,35 @@ func (c *Client) GetProviderProfile(ctx context.Context, id, workspace string) (
 		Workspace: workspace,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get provider profile %q in workspace %q: %w", id, workspace, err)
 	}
 	return resp.Profile, nil
 }
 
 // ImportProviderProfiles batch-imports custom profiles (admin only).
 func (c *Client) ImportProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.ImportProviderProfilesResponse, error) {
-	return c.openshell.ImportProviderProfiles(ctx, &openshellv1.ImportProviderProfilesRequest{
+	resp, err := c.openshell.ImportProviderProfiles(ctx, &openshellv1.ImportProviderProfilesRequest{
 		Profiles:  profiles,
 		Workspace: workspace,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("import provider profiles in workspace %q: %w", workspace, err)
+	}
+	return resp, nil
 }
 
 // UpdateProviderProfile updates a single custom profile with optimistic concurrency.
 func (c *Client) UpdateProviderProfile(ctx context.Context, workspace, id string, profile *openshellv1.ProviderProfileImportItem, expectedResourceVersion uint64) (*openshellv1.UpdateProviderProfilesResponse, error) {
-	return c.openshell.UpdateProviderProfiles(ctx, &openshellv1.UpdateProviderProfilesRequest{
+	resp, err := c.openshell.UpdateProviderProfiles(ctx, &openshellv1.UpdateProviderProfilesRequest{
 		Profile:                 profile,
 		ExpectedResourceVersion: expectedResourceVersion,
 		Id:                      id,
 		Workspace:               workspace,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("update provider profile %q in workspace %q: %w", id, workspace, err)
+	}
+	return resp, nil
 }
 
 // DeleteProviderProfile deletes a custom profile by id.
@@ -183,15 +191,19 @@ func (c *Client) DeleteProviderProfile(ctx context.Context, id, workspace string
 		Workspace: workspace,
 	})
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("delete provider profile %q in workspace %q: %w", id, workspace, err)
 	}
 	return resp.Deleted, nil
 }
 
 // LintProviderProfiles validates profiles without persisting.
 func (c *Client) LintProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.LintProviderProfilesResponse, error) {
-	return c.openshell.LintProviderProfiles(ctx, &openshellv1.LintProviderProfilesRequest{
+	resp, err := c.openshell.LintProviderProfiles(ctx, &openshellv1.LintProviderProfilesRequest{
 		Profiles:  profiles,
 		Workspace: workspace,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("lint provider profiles in workspace %q: %w", workspace, err)
+	}
+	return resp, nil
 }

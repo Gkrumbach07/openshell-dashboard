@@ -171,7 +171,7 @@ func TestCreateSandbox(t *testing.T) {
 			name:       "invalid policy schema",
 			body:       `{"name":"ok","image":"img","policy":{"notAField":true}}`,
 			wantStatus: http.StatusBadRequest,
-			wantCode:   "invalid_spec",
+			wantCode:   "invalid_policy",
 		},
 		{
 			name: "gateway already exists",

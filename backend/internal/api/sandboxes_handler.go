@@ -40,7 +40,7 @@ func (app *App) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 	}
 	spec, err := models.BuildSandboxSpec(body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_spec", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_policy", err.Error())
 		return
 	}
 	sandbox, err := app.gateway.CreateSandbox(r.Context(), chi.URLParam(r, "workspace"), body.Name, spec, body.Labels, body.Annotations)

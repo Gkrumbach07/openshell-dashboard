@@ -24,10 +24,6 @@ export const ROUTES = {
 export const API_PREFIX = '/api/v1';
 export const AUTH_REFRESH_PATH = `${API_PREFIX}/auth/refresh`;
 
-// OIDC role names — must match the BFF's auth config values.
-export const OIDC_ADMIN_ROLE = 'openshell-admin';
-export const OIDC_USER_ROLE = 'openshell-user';
-
 // Container image registry.
 export const COMMUNITY_REGISTRY =
   'ghcr.io/nvidia/openshell-community/sandboxes';

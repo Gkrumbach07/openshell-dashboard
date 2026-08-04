@@ -276,7 +276,7 @@ export const lintProviderProfiles = (
 
 export const useProviderProfile = (workspace: string, profileId: string) =>
   useQuery({
-    queryKey: ['provider-profiles', workspace, profileId],
+    queryKey: providerKeys.profileDetail(workspace, profileId),
     queryFn: () => getProviderProfile(workspace, profileId),
     enabled: !!profileId,
   });
@@ -288,7 +288,7 @@ export const useImportProviderProfiles = (workspace: string) => {
       importProviderProfiles(workspace, profiles),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['provider-profiles', workspace],
+        queryKey: providerKeys.profiles(workspace),
       }),
   });
 };
@@ -313,7 +313,7 @@ export const useUpdateProviderProfile = (workspace: string) => {
       ),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['provider-profiles', workspace],
+        queryKey: providerKeys.profiles(workspace),
       }),
   });
 };
@@ -325,7 +325,7 @@ export const useDeleteProviderProfile = (workspace: string) => {
       deleteProviderProfile(workspace, profileId),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['provider-profiles', workspace],
+        queryKey: providerKeys.profiles(workspace),
       }),
   });
 };

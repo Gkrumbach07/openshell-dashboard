@@ -33,7 +33,7 @@ func (app *App) CreateProvider(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_provider", "name and type are required")
 		return
 	}
-	provider := models.ToProviderProto(body, chi.URLParam(r, "workspace"))
+	provider := models.ToProviderProto(body)
 	created, err := app.gateway.CreateProvider(r.Context(), chi.URLParam(r, "workspace"), provider)
 	if err != nil {
 		writeGrpcError(w, err)

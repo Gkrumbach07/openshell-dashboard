@@ -79,8 +79,7 @@ func BuildSandboxSpec(req CreateSandboxRequest) (*openshellv1.SandboxSpec, error
 }
 
 // ToProviderProto builds the proto Provider from a create request.
-func ToProviderProto(req CreateProviderRequest, workspace string) *datamodelv1.Provider {
-	_ = workspace
+func ToProviderProto(req CreateProviderRequest) *datamodelv1.Provider {
 	return &datamodelv1.Provider{
 		Metadata: &datamodelv1.ObjectMeta{
 			Name:   req.Name,

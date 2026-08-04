@@ -30,6 +30,10 @@ func discoverOIDCEndpoints(issuerURL string) (tokenEndpoint, endSessionEndpoint 
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("OIDC discovery returned HTTP %d", resp.StatusCode)
+	}
+
 	var disc oidcDiscovery
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxTokenResponseBytes)).Decode(&disc); err != nil {
 		return "", "", fmt.Errorf("OIDC discovery parse: %w", err)
