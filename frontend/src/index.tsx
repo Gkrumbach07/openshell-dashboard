@@ -9,6 +9,9 @@ import '@patternfly/react-styles/css/utilities/Flex/flex.css';
 import '@patternfly/react-styles/css/utilities/BackgroundColor/background-color.css';
 
 import App from './app/App';
+import { initTheme } from './app/theme';
+
+initTheme();
 
 const container = document.getElementById('root');
 if (!container) {
