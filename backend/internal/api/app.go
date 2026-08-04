@@ -15,7 +15,7 @@ import (
 )
 
 // App wires the gateway client, auth middleware, and REST routes.
-type App struct {
+type App struct { //nolint:govet // fieldalignment: readability over padding
 	gateway        gateway.Interface
 	auth           *auth.Middleware
 	authConfig     AuthConfigResponse

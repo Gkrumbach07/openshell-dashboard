@@ -142,9 +142,30 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const AuthenticatedApp: React.FC = () => (
   <AppLayout>
     <Routes>
-      <Route path="/gateway" element={<AdminRoute><GatewayOverviewPage /></AdminRoute>} />
-      <Route path="/global-policy" element={<AdminRoute><GlobalPolicyPage /></AdminRoute>} />
-      <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
+      <Route
+        path="/gateway"
+        element={
+          <AdminRoute>
+            <GatewayOverviewPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/global-policy"
+        element={
+          <AdminRoute>
+            <GlobalPolicyPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <AdminRoute>
+            <SettingsPage />
+          </AdminRoute>
+        }
+      />
       <Route path="/workspaces" element={<WorkspaceListRoute />} />
       <Route path="/workspaces/:workspace" element={<WorkspaceDetailRoute />} />
       <Route

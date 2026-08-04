@@ -20,9 +20,9 @@ const (
 
 // Config holds proxy-auth settings.
 type Config struct {
-	Disabled    bool
 	TokenHeader string
 	UserHeader  string
+	Disabled    bool
 }
 
 // Middleware reads auth headers injected by a reverse proxy.

@@ -6,7 +6,7 @@ import (
 )
 
 func TestCheckWebSocketOrigin(t *testing.T) {
-	tests := []struct {
+	tests := []struct { //nolint:govet // fieldalignment: test readability
 		name           string
 		allowedOrigins []string
 		origin         string
