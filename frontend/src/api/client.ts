@@ -74,13 +74,24 @@ const tryRefresh = async (): Promise<string | null> => {
 // components from each triggering a redirect.
 let redirecting = false;
 
+let onSessionExpired: (() => void) | null = null;
+
+export const setSessionExpiredHandler = (handler: () => void): void => {
+  onSessionExpired = handler;
+};
+
 const redirectToLogin = () => {
   if (redirecting) {
     return;
   }
   redirecting = true;
   clearToken();
-  window.location.assign(ROUTES.LOGIN);
+  if (onSessionExpired) {
+    onSessionExpired();
+    redirecting = false;
+  } else {
+    window.location.assign(ROUTES.LOGIN);
+  }
 };
 
 export const apiFetch = async <T>(

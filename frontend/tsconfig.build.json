@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "moduleResolution": "node",
+    "types": []
+  },
+  "include": [
+    "src/pages",
+    "src/components",
+    "src/api",
+    "src/types",
+    "src/slots",
+    "src/app/AlertContext.tsx",
+    "src/app/authStore.ts"
+  ],
+  "exclude": [
+    "src/**/*.spec.*",
+    "src/**/*.test.*",
+    "src/**/__tests__",
+    "src/**/__mocks__"
+  ]
+}

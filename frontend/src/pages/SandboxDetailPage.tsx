@@ -45,23 +45,26 @@ import { formatTimestamp } from '../utils/formatters';
 type SandboxDetailPageProps = {
   workspace: string;
   sandboxName: string;
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
 };
 
-const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({
-  workspace,
-  sandboxName,
-}) => {
+const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
+  const { workspace, sandboxName } = props;
   const sandbox = useSandbox(workspace, sandboxName);
   const features = useFeatureFlags();
   const policyQuery = useSandboxPolicy(workspace, sandboxName);
   const draftsQuery = useDraftPolicy(workspace, sandboxName);
   const providerExpiry = useProviderExpiry(workspace);
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'details';
+  const resolvedTab = props.activeTab ?? (searchParams.get('tab') || 'details');
   const setActiveTab = (key: string | number) => {
-    setSearchParams(key === 'details' ? {} : { tab: String(key) }, {
-      replace: true,
-    });
+    const tab = String(key);
+    if (props.onTabChange) {
+      props.onTabChange(tab);
+    } else {
+      setSearchParams(tab === 'details' ? {} : { tab }, { replace: true });
+    }
   };
 
   const draftSummary = useMemo(() => {
@@ -139,7 +142,7 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = ({
       />
       <PageSection>
         <Tabs
-          activeKey={activeTab}
+          activeKey={resolvedTab}
           onSelect={(_event, key) => setActiveTab(key)}
           aria-label="Sandbox detail"
         >

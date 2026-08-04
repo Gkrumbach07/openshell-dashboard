@@ -7,12 +7,38 @@
     "type": "git",
     "url": "https://github.com/Gkrumbach07/openshell-dashboard"
   },
+  "main": "dist/pages/index.js",
+  "module": "dist/pages/index.js",
+  "types": "dist/types/index.d.ts",
   "exports": {
-    "./pages": "./src/pages/index.ts",
-    "./components": "./src/components/index.ts",
-    "./api": "./src/api/index.ts",
-    "./types": "./src/types/index.ts",
-    "./slots": "./src/slots/index.ts"
+    "./pages": {
+      "types": "./dist/pages/index.d.ts",
+      "default": "./dist/pages/index.js"
+    },
+    "./components": {
+      "types": "./dist/components/index.d.ts",
+      "default": "./dist/components/index.js"
+    },
+    "./api": {
+      "types": "./dist/api/index.d.ts",
+      "default": "./dist/api/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/types/index.js"
+    },
+    "./slots": {
+      "types": "./dist/slots/index.d.ts",
+      "default": "./dist/slots/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "start": "webpack serve --mode development",
@@ -26,7 +52,19 @@
     "e2e": "cypress run",
     "e2e:open": "cypress open",
     "e2e:integration": "cypress run --config-file cypress.config.integration.ts",
-    "e2e:integration:open": "cypress open --config-file cypress.config.integration.ts"
+    "e2e:integration:open": "cypress open --config-file cypress.config.integration.ts",
+    "build:lib": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json"
+  },
+  "peerDependencies": {
+    "@patternfly/react-code-editor": "^6.6.0",
+    "@patternfly/react-core": "^6.2.0",
+    "@patternfly/react-icons": "^6.2.0",
+    "@patternfly/react-log-viewer": "^6.5.0",
+    "@patternfly/react-table": "^6.2.0",
+    "@tanstack/react-query": "^5.59.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.0"
   },
   "dependencies": {
     "@patternfly/react-code-editor": "^6.6.0",
@@ -69,6 +107,7 @@
     "style-loader": "^4.0.0",
     "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.1",
+    "tsc-alias": "^1.8.15",
     "typescript": "^5.6.3",
     "webpack": "^5.95.0",
     "webpack-cli": "^5.1.4",
