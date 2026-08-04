@@ -27,7 +27,7 @@ import SettingsPage from '../pages/SettingsPage';
 import { AlertProvider } from './AlertContext';
 import AppLayout from './AppLayout';
 import { useAuthConfig } from '../api/auth';
-import { useUserRole } from './useUserRole';
+import { useUserRole } from '../api/rbac';
 import { isDevSession } from './authStore';
 
 const queryClient = new QueryClient({
@@ -129,7 +129,10 @@ const ProviderDetailRoute: React.FC = () => {
 };
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isPlatformAdmin } = useUserRole();
+  const { isPlatformAdmin, isLoading } = useUserRole();
+  if (isLoading) {
+    return null;
+  }
   if (!isPlatformAdmin) {
     return <Navigate to="/workspaces" replace />;
   }

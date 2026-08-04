@@ -1,12 +1,15 @@
-import { useCurrentUser } from './auth';
+import { useAuthConfig, useCurrentUser } from './auth';
 import { useMembers } from './workspaces';
 
 export const useUserRole = () => {
-  const { data: user } = useCurrentUser();
+  const { data: config } = useAuthConfig();
+  const { data: user, isLoading } = useCurrentUser();
   const roles = user?.roles ?? [];
+  const adminRole = config?.adminRole ?? 'admin';
   return {
-    isPlatformAdmin: roles.some((r) => r.toLowerCase().includes('admin')),
+    isPlatformAdmin: roles.includes(adminRole),
     isUser: roles.length > 0,
+    isLoading,
     roles,
     subject: user?.subject,
   };
