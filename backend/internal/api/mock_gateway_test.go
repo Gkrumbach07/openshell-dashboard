@@ -38,6 +38,11 @@ type mockGateway struct {
 	rotateProviderCredentialFn  func(ctx context.Context, workspace, provider, credentialKey string) (*openshellv1.RotateProviderCredentialResponse, error)
 	deleteProviderRefreshFn     func(ctx context.Context, workspace, provider, credentialKey string) (bool, error)
 	listProviderProfilesFn      func(ctx context.Context, workspace string, limit, offset uint32) ([]*openshellv1.ProviderProfile, error)
+	getProviderProfileFn        func(ctx context.Context, id, workspace string) (*openshellv1.ProviderProfile, error)
+	importProviderProfilesFn    func(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.ImportProviderProfilesResponse, error)
+	updateProviderProfileFn     func(ctx context.Context, workspace, id string, profile *openshellv1.ProviderProfileImportItem, expectedResourceVersion uint64) (*openshellv1.UpdateProviderProfilesResponse, error)
+	deleteProviderProfileFn     func(ctx context.Context, id, workspace string) (bool, error)
+	lintProviderProfilesFn      func(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.LintProviderProfilesResponse, error)
 	updateSandboxPolicyFn       func(ctx context.Context, workspace, name string, policy *sandboxv1.SandboxPolicy, expectedResourceVersion uint64) (*openshellv1.UpdateConfigResponse, error)
 	setGlobalPolicyFn           func(ctx context.Context, policy *sandboxv1.SandboxPolicy) (*openshellv1.UpdateConfigResponse, error)
 	deleteGlobalPolicyFn        func(ctx context.Context) error
@@ -144,6 +149,21 @@ func (m *mockGateway) DeleteProviderRefresh(ctx context.Context, workspace, prov
 }
 func (m *mockGateway) ListProviderProfiles(ctx context.Context, workspace string, limit, offset uint32) ([]*openshellv1.ProviderProfile, error) {
 	return m.listProviderProfilesFn(ctx, workspace, limit, offset)
+}
+func (m *mockGateway) GetProviderProfile(ctx context.Context, id, workspace string) (*openshellv1.ProviderProfile, error) {
+	return m.getProviderProfileFn(ctx, id, workspace)
+}
+func (m *mockGateway) ImportProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.ImportProviderProfilesResponse, error) {
+	return m.importProviderProfilesFn(ctx, workspace, profiles)
+}
+func (m *mockGateway) UpdateProviderProfile(ctx context.Context, workspace, id string, profile *openshellv1.ProviderProfileImportItem, expectedResourceVersion uint64) (*openshellv1.UpdateProviderProfilesResponse, error) {
+	return m.updateProviderProfileFn(ctx, workspace, id, profile, expectedResourceVersion)
+}
+func (m *mockGateway) DeleteProviderProfile(ctx context.Context, id, workspace string) (bool, error) {
+	return m.deleteProviderProfileFn(ctx, id, workspace)
+}
+func (m *mockGateway) LintProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.LintProviderProfilesResponse, error) {
+	return m.lintProviderProfilesFn(ctx, workspace, profiles)
 }
 func (m *mockGateway) UpdateSandboxPolicy(ctx context.Context, workspace, name string, policy *sandboxv1.SandboxPolicy, expectedResourceVersion uint64) (*openshellv1.UpdateConfigResponse, error) {
 	return m.updateSandboxPolicyFn(ctx, workspace, name, policy, expectedResourceVersion)

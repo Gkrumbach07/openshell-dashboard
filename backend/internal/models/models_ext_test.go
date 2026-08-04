@@ -323,3 +323,71 @@ func TestFromCurrentUser(t *testing.T) {
 		t.Errorf("idp = %q", got.IdentityProvider)
 	}
 }
+
+func TestFromProviderProfileResourceVersion(t *testing.T) {
+	profile := &openshellv1.ProviderProfile{
+		Id:              "custom-llm",
+		DisplayName:     "Custom LLM",
+		Category:        openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_INFERENCE,
+		ResourceVersion: 42,
+		Source:          "user",
+		Scope:           "workspace",
+	}
+	got := FromProviderProfile(profile)
+	if got.ResourceVersion != 42 {
+		t.Errorf("resourceVersion = %d, want 42", got.ResourceVersion)
+	}
+	if got.Source != "user" {
+		t.Errorf("source = %q, want user", got.Source)
+	}
+	if got.Scope != "workspace" {
+		t.Errorf("scope = %q, want workspace", got.Scope)
+	}
+}
+
+func TestFromDiagnostics(t *testing.T) {
+	diagnostics := []*openshellv1.ProviderProfileDiagnostic{
+		{
+			Source:    "import",
+			ProfileId: "custom-llm",
+			Field:     "credentials[0].name",
+			Message:   "name is required",
+			Severity:  "error",
+		},
+		{
+			ProfileId: "custom-llm",
+			Message:   "consider adding endpoints",
+			Severity:  "warning",
+		},
+	}
+
+	got := FromDiagnostics(diagnostics)
+	if len(got) != 2 {
+		t.Fatalf("got %d diagnostics, want 2", len(got))
+	}
+	if got[0].Source != "import" {
+		t.Errorf("diagnostics[0].source = %q, want import", got[0].Source)
+	}
+	if got[0].ProfileID != "custom-llm" {
+		t.Errorf("diagnostics[0].profileId = %q", got[0].ProfileID)
+	}
+	if got[0].Field != "credentials[0].name" {
+		t.Errorf("diagnostics[0].field = %q", got[0].Field)
+	}
+	if got[0].Message != "name is required" {
+		t.Errorf("diagnostics[0].message = %q", got[0].Message)
+	}
+	if got[0].Severity != "error" {
+		t.Errorf("diagnostics[0].severity = %q", got[0].Severity)
+	}
+	if got[1].Source != "" {
+		t.Errorf("diagnostics[1].source should be empty, got %q", got[1].Source)
+	}
+}
+
+func TestFromDiagnosticsEmpty(t *testing.T) {
+	got := FromDiagnostics(nil)
+	if len(got) != 0 {
+		t.Errorf("expected empty slice, got %d items", len(got))
+	}
+}

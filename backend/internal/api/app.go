@@ -118,6 +118,11 @@ func (app *App) Routes() http.Handler {
 					r.Delete("/providers/{name}/refresh", app.DeleteProviderRefresh)
 
 					r.Get("/provider-profiles", app.ListProviderProfiles)
+					r.Post("/provider-profiles", app.ImportProviderProfiles)
+					r.Post("/provider-profiles/lint", app.LintProviderProfiles)
+					r.Get("/provider-profiles/{profileId}", app.GetProviderProfile)
+					r.Put("/provider-profiles/{profileId}", app.UpdateProviderProfile)
+					r.Delete("/provider-profiles/{profileId}", app.DeleteProviderProfile)
 				})
 			})
 		})

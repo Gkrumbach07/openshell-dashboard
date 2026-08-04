@@ -22,6 +22,11 @@ import {
   updateProvider,
   deleteProvider,
   listProviderProfiles,
+  getProviderProfile,
+  importProviderProfiles,
+  updateProviderProfile,
+  deleteProviderProfile,
+  lintProviderProfiles,
 } from '../providers';
 import { getGatewayInfo } from '../gateway';
 import { getAuthConfig, getUserInfo, getCurrentUser } from '../auth';
@@ -222,6 +227,73 @@ describe('providers API', () => {
     await listProviderProfiles('default');
     expect(mockGet).toHaveBeenCalledWith(
       '/api/v1/workspaces/default/provider-profiles',
+    );
+  });
+
+  it('getProviderProfile calls correct path', async () => {
+    await getProviderProfile('default', 'claude');
+    expect(mockGet).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/provider-profiles/claude',
+    );
+  });
+
+  it('importProviderProfiles posts to correct path', async () => {
+    const profiles = [
+      {
+        id: 'custom-llm',
+        displayName: 'Custom LLM',
+        category: 'INFERENCE' as const,
+        inferenceCapable: true,
+      },
+    ];
+    await importProviderProfiles('default', profiles);
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/provider-profiles',
+      { profiles },
+    );
+  });
+
+  it('updateProviderProfile puts to correct path', async () => {
+    const profile = {
+      id: 'custom-llm',
+      displayName: 'Updated',
+      category: 'INFERENCE' as const,
+      inferenceCapable: true,
+    };
+    await updateProviderProfile('default', 'custom-llm', profile, 1);
+    expect(mockPut).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/provider-profiles/custom-llm',
+      { profile, expectedResourceVersion: 1 },
+    );
+  });
+
+  it('deleteProviderProfile calls correct path', async () => {
+    await deleteProviderProfile('default', 'custom-llm');
+    expect(mockDel).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/provider-profiles/custom-llm',
+    );
+  });
+
+  it('lintProviderProfiles posts to lint path', async () => {
+    const profiles = [
+      {
+        id: 'test',
+        displayName: 'Test',
+        category: 'OTHER' as const,
+        inferenceCapable: false,
+      },
+    ];
+    await lintProviderProfiles('default', profiles);
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/provider-profiles/lint',
+      { profiles },
+    );
+  });
+
+  it('encodes special characters in profile id', async () => {
+    await getProviderProfile('my workspace', 'my/profile');
+    expect(mockGet).toHaveBeenCalledWith(
+      '/api/v1/workspaces/my%20workspace/provider-profiles/my%2Fprofile',
     );
   });
 });

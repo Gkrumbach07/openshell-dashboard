@@ -9,6 +9,7 @@ import (
 
 	datamodelv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/datamodelv1"
 	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
+	sandboxv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/sandboxv1"
 )
 
 // CreateProviderRequest is the create-provider body. Credentials are
@@ -235,4 +236,187 @@ func (app *App) ListProviderProfiles(w http.ResponseWriter, r *http.Request) {
 		out = append(out, models.FromProviderProfile(profile))
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (app *App) GetProviderProfile(w http.ResponseWriter, r *http.Request) {
+	profile, err := app.gateway.GetProviderProfile(r.Context(), chi.URLParam(r, "profileId"), chi.URLParam(r, "workspace"))
+	if err != nil {
+		writeGrpcError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, models.FromProviderProfile(profile))
+}
+
+type ImportProfileCredentialBody struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	EnvVars     []string `json:"envVars,omitempty"`
+	Required    bool     `json:"required"`
+	AuthStyle   string   `json:"authStyle,omitempty"`
+}
+
+type ImportProfileBody struct {
+	ID               string                        `json:"id"`
+	DisplayName      string                        `json:"displayName"`
+	Description      string                        `json:"description,omitempty"`
+	Category         string                        `json:"category"`
+	Credentials      []ImportProfileCredentialBody  `json:"credentials,omitempty"`
+	Endpoints        []EndpointBody                `json:"endpoints,omitempty"`
+	InferenceCapable bool                          `json:"inferenceCapable"`
+	ResourceVersion  uint64                        `json:"resourceVersion,omitempty"`
+}
+
+type EndpointBody struct {
+	Host string `json:"host"`
+	Port uint32 `json:"port,omitempty"`
+}
+
+type ImportProviderProfilesBody struct {
+	Profiles []ImportProfileBody `json:"profiles"`
+}
+
+var profileCategoryMap = map[string]openshellv1.ProviderProfileCategory{
+	"OTHER":          openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_OTHER,
+	"INFERENCE":      openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_INFERENCE,
+	"AGENT":          openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_AGENT,
+	"SOURCE_CONTROL": openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_SOURCE_CONTROL,
+	"MESSAGING":      openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_MESSAGING,
+	"DATA":           openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_DATA,
+	"KNOWLEDGE":      openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_KNOWLEDGE,
+}
+
+func toProfileImportItem(body ImportProfileBody) *openshellv1.ProviderProfileImportItem {
+	creds := make([]*openshellv1.ProviderProfileCredential, 0, len(body.Credentials))
+	for _, c := range body.Credentials {
+		creds = append(creds, &openshellv1.ProviderProfileCredential{
+			Name:        c.Name,
+			Description: c.Description,
+			EnvVars:     c.EnvVars,
+			Required:    c.Required,
+			AuthStyle:   c.AuthStyle,
+		})
+	}
+	endpoints := make([]*sandboxv1.NetworkEndpoint, 0, len(body.Endpoints))
+	for _, e := range body.Endpoints {
+		endpoints = append(endpoints, &sandboxv1.NetworkEndpoint{
+			Host: e.Host,
+			Port: e.Port,
+		})
+	}
+	cat := openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_OTHER
+	if c, ok := profileCategoryMap[body.Category]; ok {
+		cat = c
+	}
+	return &openshellv1.ProviderProfileImportItem{
+		Profile: &openshellv1.ProviderProfile{
+			Id:               body.ID,
+			DisplayName:      body.DisplayName,
+			Description:      body.Description,
+			Category:         cat,
+			Credentials:      creds,
+			Endpoints:        endpoints,
+			InferenceCapable: body.InferenceCapable,
+			ResourceVersion:  body.ResourceVersion,
+		},
+	}
+}
+
+func (app *App) ImportProviderProfiles(w http.ResponseWriter, r *http.Request) {
+	var body ImportProviderProfilesBody
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	if len(body.Profiles) == 0 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "at least one profile is required")
+		return
+	}
+	items := make([]*openshellv1.ProviderProfileImportItem, 0, len(body.Profiles))
+	for _, p := range body.Profiles {
+		if p.ID == "" || p.DisplayName == "" {
+			writeError(w, http.StatusBadRequest, "invalid_profile", "id and displayName are required")
+			return
+		}
+		items = append(items, toProfileImportItem(p))
+	}
+	resp, err := app.gateway.ImportProviderProfiles(r.Context(), chi.URLParam(r, "workspace"), items)
+	if err != nil {
+		writeGrpcError(w, err)
+		return
+	}
+	profiles := make([]models.ProviderProfile, 0, len(resp.GetProfiles()))
+	for _, p := range resp.GetProfiles() {
+		profiles = append(profiles, models.FromProviderProfile(p))
+	}
+	writeJSON(w, http.StatusCreated, models.ImportProviderProfilesResult{
+		Diagnostics: models.FromDiagnostics(resp.GetDiagnostics()),
+		Profiles:    profiles,
+		Imported:    resp.GetImported(),
+	})
+}
+
+type UpdateProviderProfileBody struct {
+	Profile                 ImportProfileBody `json:"profile"`
+	ExpectedResourceVersion uint64            `json:"expectedResourceVersion,omitempty"`
+}
+
+func (app *App) UpdateProviderProfile(w http.ResponseWriter, r *http.Request) {
+	var body UpdateProviderProfileBody
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	profileID := chi.URLParam(r, "profileId")
+	if body.Profile.ID != "" && body.Profile.ID != profileID {
+		writeError(w, http.StatusBadRequest, "id_mismatch", "profile id in body must match URL")
+		return
+	}
+	body.Profile.ID = profileID
+	item := toProfileImportItem(body.Profile)
+	resp, err := app.gateway.UpdateProviderProfile(r.Context(), chi.URLParam(r, "workspace"), profileID, item, body.ExpectedResourceVersion)
+	if err != nil {
+		writeGrpcError(w, err)
+		return
+	}
+	var profile *models.ProviderProfile
+	if resp.GetProfile() != nil {
+		p := models.FromProviderProfile(resp.GetProfile())
+		profile = &p
+	}
+	writeJSON(w, http.StatusOK, models.UpdateProviderProfileResult{
+		Diagnostics: models.FromDiagnostics(resp.GetDiagnostics()),
+		Profile:     profile,
+		Updated:     resp.GetUpdated(),
+	})
+}
+
+func (app *App) DeleteProviderProfile(w http.ResponseWriter, r *http.Request) {
+	deleted, err := app.gateway.DeleteProviderProfile(r.Context(), chi.URLParam(r, "profileId"), chi.URLParam(r, "workspace"))
+	if err != nil {
+		writeGrpcError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+}
+
+type LintProviderProfilesBody struct {
+	Profiles []ImportProfileBody `json:"profiles"`
+}
+
+func (app *App) LintProviderProfiles(w http.ResponseWriter, r *http.Request) {
+	var body LintProviderProfilesBody
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	items := make([]*openshellv1.ProviderProfileImportItem, 0, len(body.Profiles))
+	for _, p := range body.Profiles {
+		items = append(items, toProfileImportItem(p))
+	}
+	resp, err := app.gateway.LintProviderProfiles(r.Context(), chi.URLParam(r, "workspace"), items)
+	if err != nil {
+		writeGrpcError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, models.LintProviderProfilesResult{
+		Diagnostics: models.FromDiagnostics(resp.GetDiagnostics()),
+		Valid:       resp.GetValid(),
+	})
 }
