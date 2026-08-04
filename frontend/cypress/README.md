@@ -13,3 +13,4 @@ Hits the real BFF and gateway â€” no mocks. Verifies the full request path (UI â
 Run: `npx cypress run --config-file cypress.config.integration.ts`
 
 Requires a running BFF + gateway (`make dev` or `OPENSHELL_GATEWAY_URL` pointing at a live gateway).
+
