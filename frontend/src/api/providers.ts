@@ -6,8 +6,12 @@ import type {
   ConfigureProviderRefreshRequest,
   CreateProviderRequest,
   CredentialRefreshStatus,
+  ImportProfileRequest,
+  ImportProfilesResponse,
+  LintProfilesResponse,
   Provider,
   ProviderProfile,
+  UpdateProfileResponse,
 } from '../types';
 
 export const listProviders = (workspace: string): Promise<Provider[]> =>
@@ -217,6 +221,109 @@ export const useDeleteProviderRefresh = (workspace: string, name: string) => {
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: ['provider-refresh', workspace, name],
+      }),
+  });
+};
+
+// --- Provider profile CRUD ---
+
+export const getProviderProfile = (
+  workspace: string,
+  profileId: string,
+): Promise<ProviderProfile> =>
+  get<ProviderProfile>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/provider-profiles/${encodeURIComponent(profileId)}`,
+  );
+
+export const importProviderProfiles = (
+  workspace: string,
+  profiles: ImportProfileRequest[],
+): Promise<ImportProfilesResponse> =>
+  post<ImportProfilesResponse>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/provider-profiles`,
+    { profiles },
+  );
+
+export const updateProviderProfile = (
+  workspace: string,
+  profileId: string,
+  profile: ImportProfileRequest,
+  expectedResourceVersion?: number,
+): Promise<UpdateProfileResponse> =>
+  put<UpdateProfileResponse>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/provider-profiles/${encodeURIComponent(profileId)}`,
+    { profile, expectedResourceVersion },
+  );
+
+export const deleteProviderProfile = (
+  workspace: string,
+  profileId: string,
+): Promise<{ deleted: boolean }> =>
+  del<{ deleted: boolean }>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/provider-profiles/${encodeURIComponent(profileId)}`,
+  );
+
+export const lintProviderProfiles = (
+  workspace: string,
+  profiles: ImportProfileRequest[],
+): Promise<LintProfilesResponse> =>
+  post<LintProfilesResponse>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/provider-profiles/lint`,
+    { profiles },
+  );
+
+export const useProviderProfile = (workspace: string, profileId: string) =>
+  useQuery({
+    queryKey: ['provider-profiles', workspace, profileId],
+    queryFn: () => getProviderProfile(workspace, profileId),
+    enabled: !!profileId,
+  });
+
+export const useImportProviderProfiles = (workspace: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (profiles: ImportProfileRequest[]) =>
+      importProviderProfiles(workspace, profiles),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['provider-profiles', workspace],
+      }),
+  });
+};
+
+export const useUpdateProviderProfile = (workspace: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      profileId,
+      profile,
+      expectedResourceVersion,
+    }: {
+      profileId: string;
+      profile: ImportProfileRequest;
+      expectedResourceVersion?: number;
+    }) =>
+      updateProviderProfile(
+        workspace,
+        profileId,
+        profile,
+        expectedResourceVersion,
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['provider-profiles', workspace],
+      }),
+  });
+};
+
+export const useDeleteProviderProfile = (workspace: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (profileId: string) =>
+      deleteProviderProfile(workspace, profileId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['provider-profiles', workspace],
       }),
   });
 };

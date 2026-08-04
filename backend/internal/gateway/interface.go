@@ -44,6 +44,11 @@ type Interface interface {
 	RotateProviderCredential(ctx context.Context, workspace, provider, credentialKey string) (*openshellv1.RotateProviderCredentialResponse, error)
 	DeleteProviderRefresh(ctx context.Context, workspace, provider, credentialKey string) (bool, error)
 	ListProviderProfiles(ctx context.Context, workspace string, limit, offset uint32) ([]*openshellv1.ProviderProfile, error)
+	GetProviderProfile(ctx context.Context, id, workspace string) (*openshellv1.ProviderProfile, error)
+	ImportProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.ImportProviderProfilesResponse, error)
+	UpdateProviderProfile(ctx context.Context, workspace, id string, profile *openshellv1.ProviderProfileImportItem, expectedResourceVersion uint64) (*openshellv1.UpdateProviderProfilesResponse, error)
+	DeleteProviderProfile(ctx context.Context, id, workspace string) (bool, error)
+	LintProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.LintProviderProfilesResponse, error)
 
 	// Policies
 	UpdateSandboxPolicy(ctx context.Context, workspace, name string, policy *sandboxv1.SandboxPolicy, expectedResourceVersion uint64) (*openshellv1.UpdateConfigResponse, error)

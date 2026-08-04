@@ -281,6 +281,7 @@ type ProviderProfile struct {
 	Credentials      []ProfileCredential `json:"credentials"`
 	Endpoints        []string            `json:"endpoints,omitempty"`
 	InferenceCapable bool                `json:"inferenceCapable"`
+	ResourceVersion  uint64              `json:"resourceVersion"`
 }
 
 func profileCategoryString(category openshellv1.ProviderProfileCategory) string {
@@ -313,6 +314,7 @@ func FromProviderProfile(profile *openshellv1.ProviderProfile) ProviderProfile {
 		InferenceCapable: profile.GetInferenceCapable(),
 		Source:           profile.GetSource(),
 		Scope:            profile.GetScope(),
+		ResourceVersion:  profile.GetResourceVersion(),
 	}
 	for _, cred := range profile.GetCredentials() {
 		out.Credentials = append(out.Credentials, ProfileCredential{
@@ -334,6 +336,49 @@ func FromProviderProfile(profile *openshellv1.ProviderProfile) ProviderProfile {
 		} else if host != "" {
 			out.Endpoints = append(out.Endpoints, host)
 		}
+	}
+	return out
+}
+
+// ProviderProfileDiagnostic mirrors openshell.v1.ProviderProfileDiagnostic.
+type ProviderProfileDiagnostic struct {
+	Source    string `json:"source,omitempty"`
+	ProfileID string `json:"profileId,omitempty"`
+	Field     string `json:"field,omitempty"`
+	Message   string `json:"message"`
+	Severity  string `json:"severity,omitempty"`
+}
+
+// ImportProviderProfilesResult mirrors openshell.v1.ImportProviderProfilesResponse.
+type ImportProviderProfilesResult struct {
+	Diagnostics []ProviderProfileDiagnostic `json:"diagnostics,omitempty"`
+	Profiles    []ProviderProfile           `json:"profiles"`
+	Imported    bool                        `json:"imported"`
+}
+
+// UpdateProviderProfileResult mirrors openshell.v1.UpdateProviderProfilesResponse.
+type UpdateProviderProfileResult struct {
+	Profile     *ProviderProfile            `json:"profile,omitempty"`
+	Diagnostics []ProviderProfileDiagnostic `json:"diagnostics,omitempty"`
+	Updated     bool                        `json:"updated"`
+}
+
+// LintProviderProfilesResult mirrors openshell.v1.LintProviderProfilesResponse.
+type LintProviderProfilesResult struct {
+	Diagnostics []ProviderProfileDiagnostic `json:"diagnostics,omitempty"`
+	Valid       bool                        `json:"valid"`
+}
+
+func FromDiagnostics(diagnostics []*openshellv1.ProviderProfileDiagnostic) []ProviderProfileDiagnostic {
+	out := make([]ProviderProfileDiagnostic, 0, len(diagnostics))
+	for _, d := range diagnostics {
+		out = append(out, ProviderProfileDiagnostic{
+			Source:    d.GetSource(),
+			ProfileID: d.GetProfileId(),
+			Field:     d.GetField(),
+			Message:   d.GetMessage(),
+			Severity:  d.GetSeverity(),
+		})
 	}
 	return out
 }

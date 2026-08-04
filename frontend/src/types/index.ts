@@ -207,6 +207,56 @@ export type ProviderProfile = {
   inferenceCapable: boolean;
   source?: string;
   scope?: string;
+  resourceVersion: number;
+};
+
+export type ProfileEndpoint = {
+  host: string;
+  port?: number;
+};
+
+export type ImportProfileRequest = {
+  id: string;
+  displayName: string;
+  description?: string;
+  category: ProviderProfileCategory;
+  credentials?: ProfileCredentialInput[];
+  endpoints?: ProfileEndpoint[];
+  inferenceCapable: boolean;
+  resourceVersion?: number;
+};
+
+export type ProfileCredentialInput = {
+  name: string;
+  description?: string;
+  envVars?: string[];
+  required: boolean;
+  authStyle?: string;
+};
+
+export type ProfileDiagnostic = {
+  source?: string;
+  profileId?: string;
+  field?: string;
+  message: string;
+  severity?: string;
+};
+
+export type ImportProfilesResponse = {
+  diagnostics?: ProfileDiagnostic[];
+  profiles: ProviderProfile[];
+  imported: boolean;
+};
+
+export type UpdateProfileResponse = {
+  diagnostics?: ProfileDiagnostic[];
+  profile?: ProviderProfile;
+  updated: boolean;
+};
+
+export type LintProfilesResponse = {
+  diagnostics?: ProfileDiagnostic[];
+  valid: boolean;
 };
 
 // --- Credential refresh ---

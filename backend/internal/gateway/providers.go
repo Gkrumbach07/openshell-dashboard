@@ -131,3 +131,54 @@ func (c *Client) ListProviderProfiles(ctx context.Context, workspace string, lim
 	}
 	return resp.Profiles, nil
 }
+
+// GetProviderProfile fetches a single profile with two-tier resolution
+// (workspace → platform → built-in).
+func (c *Client) GetProviderProfile(ctx context.Context, id, workspace string) (*openshellv1.ProviderProfile, error) {
+	resp, err := c.openshell.GetProviderProfile(ctx, &openshellv1.GetProviderProfileRequest{
+		Id:        id,
+		Workspace: workspace,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Profile, nil
+}
+
+// ImportProviderProfiles batch-imports custom profiles (admin only).
+func (c *Client) ImportProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.ImportProviderProfilesResponse, error) {
+	return c.openshell.ImportProviderProfiles(ctx, &openshellv1.ImportProviderProfilesRequest{
+		Profiles:  profiles,
+		Workspace: workspace,
+	})
+}
+
+// UpdateProviderProfile updates a single custom profile with optimistic concurrency.
+func (c *Client) UpdateProviderProfile(ctx context.Context, workspace, id string, profile *openshellv1.ProviderProfileImportItem, expectedResourceVersion uint64) (*openshellv1.UpdateProviderProfilesResponse, error) {
+	return c.openshell.UpdateProviderProfiles(ctx, &openshellv1.UpdateProviderProfilesRequest{
+		Profile:                 profile,
+		ExpectedResourceVersion: expectedResourceVersion,
+		Id:                      id,
+		Workspace:               workspace,
+	})
+}
+
+// DeleteProviderProfile deletes a custom profile by id.
+func (c *Client) DeleteProviderProfile(ctx context.Context, id, workspace string) (bool, error) {
+	resp, err := c.openshell.DeleteProviderProfile(ctx, &openshellv1.DeleteProviderProfileRequest{
+		Id:        id,
+		Workspace: workspace,
+	})
+	if err != nil {
+		return false, err
+	}
+	return resp.Deleted, nil
+}
+
+// LintProviderProfiles validates profiles without persisting.
+func (c *Client) LintProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.LintProviderProfilesResponse, error) {
+	return c.openshell.LintProviderProfiles(ctx, &openshellv1.LintProviderProfilesRequest{
+		Profiles:  profiles,
+		Workspace: workspace,
+	})
+}

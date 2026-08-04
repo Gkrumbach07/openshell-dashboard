@@ -146,6 +146,8 @@ export const interceptProviders = (workspace = 'default') => {
           { name: 'api_key', description: 'API key', required: true },
         ],
         inferenceCapable: true,
+        source: 'builtin',
+        resourceVersion: 0,
       },
       {
         id: 'openai',
@@ -156,9 +158,50 @@ export const interceptProviders = (workspace = 'default') => {
           { name: 'api_key', description: 'API key', required: true },
         ],
         inferenceCapable: true,
+        source: 'builtin',
+        resourceVersion: 0,
+      },
+      {
+        id: 'custom-llm',
+        displayName: 'Custom LLM',
+        description: 'A custom inference provider',
+        category: 'INFERENCE',
+        credentials: [
+          { name: 'token', description: 'Auth token', required: true },
+        ],
+        inferenceCapable: true,
+        source: 'user',
+        resourceVersion: 1,
       },
     ],
   }).as('listProviderProfiles');
+
+  cy.intercept('POST', `/api/v1/workspaces/${workspace}/provider-profiles`, {
+    statusCode: 201,
+    body: {
+      diagnostics: [],
+      profiles: [
+        {
+          id: 'new-profile',
+          displayName: 'New Profile',
+          category: 'OTHER',
+          credentials: [],
+          inferenceCapable: false,
+          source: 'user',
+          resourceVersion: 1,
+        },
+      ],
+      imported: true,
+    },
+  }).as('importProviderProfiles');
+
+  cy.intercept(
+    'DELETE',
+    new RegExp(
+      `/api/v1/workspaces/${workspace}/provider-profiles/[^/]+$`,
+    ),
+    { statusCode: 200, body: { deleted: true } },
+  ).as('deleteProviderProfile');
 
   cy.intercept('POST', `/api/v1/workspaces/${workspace}/providers`, {
     statusCode: 201,
