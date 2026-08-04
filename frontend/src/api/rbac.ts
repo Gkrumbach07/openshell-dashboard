@@ -1,27 +1,21 @@
-import { useAuthConfig, useCurrentUser } from './auth';
+import { useCurrentUser } from './auth';
 import { useMembers } from './workspaces';
 
 export const useUserRole = () => {
-  const { data: config } = useAuthConfig();
   const { data: user } = useCurrentUser();
   const roles = user?.roles ?? [];
-  const adminRole = config?.adminRole ?? 'openshell-admin';
-  const userRole = config?.userRole ?? 'openshell-user';
   return {
-    isPlatformAdmin: roles.includes(adminRole),
-    isUser: roles.includes(userRole) || roles.includes(adminRole),
+    isPlatformAdmin: roles.some((r) => r.toLowerCase().includes('admin')),
+    isUser: roles.length > 0,
     roles,
     subject: user?.subject,
   };
 };
 
 export const useWorkspaceRole = (workspace: string) => {
-  const { data: config } = useAuthConfig();
   const { data: user } = useCurrentUser();
   const members = useMembers(workspace);
-  const adminRole = config?.adminRole ?? 'openshell-admin';
-
-  const isPlatformAdmin = (user?.roles ?? []).includes(adminRole);
+  const { isPlatformAdmin } = useUserRole();
 
   if (isPlatformAdmin) {
     return { isWorkspaceAdmin: true, isLoading: false };

@@ -8,7 +8,6 @@ import {
   Stack,
   StackItem,
 } from '@patternfly/react-core';
-import { getToken } from '../../app/authStore';
 import { TAB_CONTENT_HEIGHT, TERMINAL_FONT_SIZE } from '../../constants';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -60,9 +59,7 @@ const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({
     terminalRef.current = terminal;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = getToken();
-    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandboxName)}/terminal?cols=${terminal.cols}&rows=${terminal.rows}${tokenParam}`;
+    const wsUrl = `${protocol}//${window.location.host}/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandboxName)}/terminal?cols=${terminal.cols}&rows=${terminal.rows}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;

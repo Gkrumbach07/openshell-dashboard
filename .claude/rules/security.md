@@ -8,10 +8,11 @@ alwaysApply: false
 
 ## Auth
 
-- OIDC tokens stored in HTTP-only secure cookies, never in localStorage
-- BFF validates JWT on every request before forwarding to gateway
+- Authentication is delegated to an external auth proxy (oauth2-proxy, kube-rbac-proxy, etc.)
+- The BFF reads the bearer token from a configurable header (default `x-forwarded-access-token`) and forwards it to the gateway
+- The BFF does NOT perform OIDC validation — the auth proxy handles that
 - Never expose raw gRPC errors to the frontend — map to safe HTTP status codes
-- CORS configured explicitly — no wildcard origins in production
+- CORS configured explicitly — no wildcard origins, empty default
 
 ## Secrets
 
@@ -28,5 +29,5 @@ alwaysApply: false
 
 ## No inline credentials
 
-- Gateway URL, OIDC issuer, client ID — all from env vars or flags, never hardcoded
+- Gateway URL, auth header names — all from env vars or flags, never hardcoded
 - No `.env` files committed

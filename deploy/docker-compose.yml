@@ -1,28 +1,27 @@
-# Local dev stack: the dashboard container plus a Keycloak IdP for OIDC.
+# Local dev stack — unauthenticated mode (default).
 #
 #   docker compose -f deploy/docker-compose.yml up
 #
+# For auth-enabled mode with Keycloak + oauth2-proxy, use:
+#
+#   docker compose -f deploy/docker-compose.yml --profile auth up
+#
 # Keycloak dev credentials: admin/admin at http://localhost:8081
 # Create a realm "openshell" with a public client "openshell-dashboard"
-# (redirect URI http://localhost:8080/auth/callback), then restart the
-# dashboard service with AUTH_DISABLED=false to exercise real OIDC.
+# (redirect URI http://localhost:4180/oauth2/callback).
 services:
   dashboard:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
     ports:
-      - "8080:8080"
+      - "${DASHBOARD_PORT:-8080}:8080"
     environment:
       PORT: "8080"
-      # host.docker.internal reaches an `openshell gateway start` on the host.
       OPENSHELL_GATEWAY_URL: "host.docker.internal:50051"
-      OIDC_ISSUER: "http://keycloak:8080/realms/openshell"
-      OIDC_CLIENT_ID: "openshell-dashboard"
-      # Flip to "false" once the Keycloak realm/client exist.
       AUTH_DISABLED: "true"
-    depends_on:
-      - keycloak
+
+  # --- Auth-enabled profile: Keycloak + oauth2-proxy ---
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
@@ -32,3 +31,42 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
     ports:
       - "8081:8080"
+    profiles:
+      - auth
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.9.0
+    command:
+      - --provider=keycloak-oidc
+      - --oidc-issuer-url=http://keycloak:8080/realms/openshell
+      - --client-id=openshell-dashboard
+      - --client-secret=${OIDC_CLIENT_SECRET:-changeme}
+      - --upstream=http://dashboard-auth:8080
+      - --http-address=0.0.0.0:4180
+      - --cookie-secret=${COOKIE_SECRET:-0123456789abcdef0123456789abcdef}
+      - --cookie-secure=false
+      - --redirect-url=http://localhost:4180/oauth2/callback
+      - --pass-access-token=true
+      - --set-xauthrequest=true
+      - --skip-provider-button=true
+      - --email-domain=*
+    ports:
+      - "4180:4180"
+    depends_on:
+      - keycloak
+      - dashboard-auth
+    profiles:
+      - auth
+
+  dashboard-auth:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      PORT: "8080"
+      OPENSHELL_GATEWAY_URL: "host.docker.internal:50051"
+      AUTH_DISABLED: "false"
+      AUTH_TOKEN_HEADER: "x-forwarded-access-token"
+      AUTH_USER_HEADER: "x-auth-request-user"
+    profiles:
+      - auth

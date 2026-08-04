@@ -19,20 +19,6 @@ const (
 	defaultShell               = "/bin/bash"
 )
 
-func (app *App) newUpgrader() *websocket.Upgrader {
-	return &websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
-			origin := r.Header.Get("Origin")
-			for _, allowed := range app.allowedOrigins {
-				if origin == allowed {
-					return true
-				}
-			}
-			return false
-		},
-	}
-}
-
 type resizeMessage struct {
 	Type string `json:"type"`
 	Cols uint32 `json:"cols"`
@@ -85,7 +71,11 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 
 	cols, rows := parseDimensions(r)
 
-	ws, err := app.newUpgrader().Upgrade(w, r, nil)
+	upgrader := websocket.Upgrader{
+		CheckOrigin: app.checkWebSocketOrigin,
+	}
+
+	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("websocket upgrade failed", "error", err)
 		return
@@ -152,4 +142,23 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	}
+}
+
+// checkWebSocketOrigin validates the Origin header against the configured
+// allowed origins. When no origins are configured (e.g. same-origin
+// deployment behind a proxy), it falls back to same-origin matching.
+func (app *App) checkWebSocketOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	for _, allowed := range app.allowedOrigins {
+		if origin == allowed {
+			return true
+		}
+	}
+	if len(app.allowedOrigins) == 0 {
+		return origin == "http://"+r.Host || origin == "https://"+r.Host
+	}
+	return false
 }

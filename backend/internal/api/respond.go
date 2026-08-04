@@ -59,11 +59,15 @@ func writeGrpcError(w http.ResponseWriter, err error) {
 	}
 }
 
+const maxJSONBodyBytes int64 = 1 << 20 // 1 MB
+
 func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dst); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "invalid request body: "+err.Error())
+		slog.Debug("request body decode failed", "error", err)
+		writeError(w, http.StatusBadRequest, "invalid_body", "invalid request body")
 		return false
 	}
 	return true
