@@ -325,7 +325,11 @@ export type FeatureFlags = {
 
 export type AuthConfig = {
   authDisabled: boolean;
+  issuer?: string;
+  clientId?: string;
+  scopes?: string;
   adminRole?: string;
+  userRole?: string;
   logoutUrl?: string;
   features: FeatureFlags;
 };

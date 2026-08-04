@@ -26,9 +26,10 @@ import GlobalPolicyPage from '../pages/GlobalPolicyPage';
 import SettingsPage from '../pages/SettingsPage';
 import { AlertProvider } from './AlertContext';
 import AppLayout from './AppLayout';
+import AuthCallbackPage from './AuthCallbackPage';
 import { useAuthConfig } from '../api/auth';
 import { useUserRole } from '../api/rbac';
-import { isDevSession } from './authStore';
+import { hasSession, isDevSession } from './authStore';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -183,16 +184,15 @@ const AuthenticatedApp: React.FC = () => (
 
 const AppRoutes: React.FC = () => {
   const { data: config, isLoading } = useAuthConfig();
-  const [devAuthenticated, setDevAuthenticated] = useState(isDevSession());
+  const [authenticated, setAuthenticated] = useState(hasSession());
 
   if (isLoading) {
     return null;
   }
 
-  // In dev mode (AUTH_DISABLED=true), show the login page for the "Continue
-  // as developer" button. Once clicked, render the authenticated app.
+  // Dev mode (AUTH_DISABLED=true): show login page for "Continue as developer".
   if (config?.authDisabled) {
-    if (devAuthenticated) {
+    if (authenticated) {
       return <AuthenticatedApp />;
     }
     return (
@@ -200,15 +200,49 @@ const AppRoutes: React.FC = () => {
         <Route
           path="*"
           element={
-            <LoginPage onAuthenticated={() => setDevAuthenticated(true)} />
+            <LoginPage
+              config={config}
+              onAuthenticated={() => setAuthenticated(true)}
+            />
           }
         />
       </Routes>
     );
   }
 
-  // In production, the auth proxy handles login before requests reach us.
-  // If the user got here, they're authenticated.
+  // Standalone OIDC mode: issuer/clientId configured, frontend handles login.
+  if (config?.issuer && config?.clientId) {
+    return (
+      <Routes>
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route
+          path="/login"
+          element={
+            authenticated ? (
+              <Navigate to="/workspaces" replace />
+            ) : (
+              <LoginPage
+                config={config}
+                onAuthenticated={() => setAuthenticated(true)}
+              />
+            )
+          }
+        />
+        <Route
+          path="*"
+          element={
+            authenticated ? (
+              <AuthenticatedApp />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+      </Routes>
+    );
+  }
+
+  // Proxy-delegated mode: no issuer configured, auth proxy handles login.
   return <AuthenticatedApp />;
 };
 

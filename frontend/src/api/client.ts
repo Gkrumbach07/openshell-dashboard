@@ -1,3 +1,5 @@
+import { getToken, clearToken } from '../app/authStore';
+
 export type ApiError = Error & {
   status: number;
   code?: string;
@@ -33,6 +35,10 @@ export const apiFetch = async <T>(
     ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
     ...((init?.headers as Record<string, string>) ?? {}),
   };
+  const token = getToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   const response = await fetch(`${apiBasePath}${path}`, { ...init, headers });
   if (!response.ok) {
@@ -52,10 +58,11 @@ export const apiFetch = async <T>(
     }
 
     if (response.status === 401) {
+      clearToken();
       if (onSessionExpired) {
         onSessionExpired();
       } else {
-        window.location.reload();
+        window.location.assign('/login');
       }
       throw buildError(401, code, 'Session expired');
     }
