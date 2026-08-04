@@ -65,7 +65,11 @@ func main() {
 
 	authCfg := api.AuthConfigResponse{
 		AuthDisabled: *authDisabled,
+		Issuer:       envOr("OIDC_ISSUER", ""),
+		ClientID:     envOr("OIDC_CLIENT_ID", ""),
+		Scopes:       envOr("OIDC_SCOPES", "openid profile email groups"),
 		AdminRole:    *adminRole,
+		UserRole:     envOr("OIDC_USER_ROLE", ""),
 		LogoutURL:    *logoutURL,
 		Features: api.FeatureFlags{
 			Terminal:          envOr("FEATURE_TERMINAL", "true") == "true",

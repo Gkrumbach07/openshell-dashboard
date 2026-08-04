@@ -39,7 +39,11 @@ type FeatureFlags struct {
 // AuthConfigResponse tells the frontend whether auth is enabled and which
 // features are available.
 type AuthConfigResponse struct {
+	Issuer       string       `json:"issuer,omitempty"`
+	ClientID     string       `json:"clientId,omitempty"`
+	Scopes       string       `json:"scopes,omitempty"`
 	AdminRole    string       `json:"adminRole,omitempty"`
+	UserRole     string       `json:"userRole,omitempty"`
 	LogoutURL    string       `json:"logoutUrl,omitempty"`
 	Features     FeatureFlags `json:"features"`
 	AuthDisabled bool         `json:"authDisabled"`
