@@ -38,7 +38,7 @@ Requires a running OpenShell gateway: `openshell gateway start` (Podman) or poin
 
 - **Proto is source of truth.** `backend/proto/` defines what exists. Before implementing anything API-adjacent, read the actual proto definitions. Never invent RPCs, fields, or lifecycle states (see `.claude/rules/openshell-api.md` for the list of things that famously don't exist: sandbox stop/start, workspace policy library, OCSF events API, member role update).
 - **Zero `@odh-dashboard/*` imports.** This repo has no knowledge of odh-dashboard. Downstream consumption happens via a separate package that imports our components.
-- **OIDC only for auth.** No mTLS, no OpenShift OAuth, no edge tokens.
+- **Proxy-delegated auth.** An external auth proxy (oauth2-proxy, kube-rbac-proxy, etc.) handles OIDC. The BFF reads the forwarded token from a configurable header and passes it to the gateway. No in-app OIDC, no token storage. Run unauthenticated for dev (`AUTH_DISABLED=true`) or put a proxy in front for production.
 - **gRPC via protoc-generated stubs**, not any SDK. The `internal/gateway/` package wraps ~30 user-facing RPCs. Skip internal/supervisor RPCs.
 - **No WebSockets.** Downstream federation proxy can't handle them. Use polling for status, polling for logs.
 - **PatternFly 6 only.** No MUI, no custom design system.

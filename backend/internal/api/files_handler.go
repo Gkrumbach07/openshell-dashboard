@@ -6,11 +6,20 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
 
 const defaultUploadDir = "/sandbox"
+
+func validateFilePath(p string) bool {
+	if p == "" || strings.Contains(p, "\x00") || strings.Contains(p, "..") {
+		return false
+	}
+	cleaned := filepath.Clean(p)
+	return filepath.IsAbs(cleaned)
+}
 
 func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
@@ -35,9 +44,9 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	fileBytes, err := io.ReadAll(file)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "read_error", "failed to read uploaded file")
+	filename := filepath.Base(header.Filename)
+	if filename == "." || filename == ".." || filename == "/" {
+		writeError(w, http.StatusBadRequest, "invalid_filename", "invalid filename")
 		return
 	}
 
@@ -45,10 +54,24 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	if dest == "" {
 		dest = defaultUploadDir
 	}
-	destPath := filepath.Join(dest, filepath.Base(header.Filename))
+	if !validateFilePath(dest) {
+		writeError(w, http.StatusBadRequest, "invalid_path", "invalid destination directory")
+		return
+	}
+	destPath := filepath.Join(dest, filename)
+	if !validateFilePath(destPath) {
+		writeError(w, http.StatusBadRequest, "invalid_path", "invalid destination path")
+		return
+	}
+
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read_error", "failed to read uploaded file")
+		return
+	}
 
 	stdout, stderr, exitCode, err := app.gateway.ExecSandbox(r.Context(), sandboxID,
-		[]string{"sh", "-c", fmt.Sprintf("cat > %q", destPath)},
+		[]string{"dd", "of=" + destPath, "bs=4096"},
 		fileBytes, "", app.execTimeout)
 	if err != nil {
 		writeGrpcError(w, err)
@@ -68,8 +91,9 @@ func (app *App) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	name := chi.URLParam(r, "name")
 	filePath := r.URL.Query().Get("path")
-	if filePath == "" {
-		writeError(w, http.StatusBadRequest, "missing_path", "path query parameter is required")
+
+	if !validateFilePath(filePath) {
+		writeError(w, http.StatusBadRequest, "invalid_path", "path must be an absolute path without traversal")
 		return
 	}
 

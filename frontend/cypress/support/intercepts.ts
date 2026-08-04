@@ -6,15 +6,6 @@ export const interceptAuth = () => {
   cy.intercept('GET', '/api/v1/auth/whoami', {
     fixture: 'whoami.json',
   }).as('whoami');
-
-  cy.intercept('GET', '/api/v1/auth/userinfo', {
-    statusCode: 200,
-    body: {
-      sub: 'test-user-id',
-      email: 'testuser@example.com',
-      name: 'Test User',
-    },
-  }).as('userinfo');
 };
 
 export const interceptGateway = () => {

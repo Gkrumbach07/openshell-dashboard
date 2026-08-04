@@ -1,19 +1,6 @@
 import { apiFetch, get, post, put, del } from '../client';
 import type { ApiError } from '../client';
 
-jest.mock('../../app/authStore', () => ({
-  getToken: jest.fn(),
-  getRefreshToken: jest.fn(),
-  setToken: jest.fn(),
-  setRefreshToken: jest.fn(),
-  clearToken: jest.fn(),
-}));
-
-import { getToken, getRefreshToken } from '../../app/authStore';
-
-const mockGetToken = getToken as jest.Mock;
-const mockGetRefreshToken = getRefreshToken as jest.Mock;
-
 const mockFetch = jest.fn();
 
 beforeAll(() => {
@@ -22,34 +9,9 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockGetToken.mockReturnValue(null);
-  mockGetRefreshToken.mockReturnValue(null);
 });
 
 describe('apiFetch', () => {
-  it('adds Authorization header when token exists', async () => {
-    mockGetToken.mockReturnValue('my-jwt');
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ data: 'ok' }),
-    });
-
-    await apiFetch('/api/v1/test');
-    const [, init] = mockFetch.mock.calls[0];
-    expect(init.headers.Authorization).toBe('Bearer my-jwt');
-  });
-
-  it('does not add Authorization header when no token', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({}),
-    });
-
-    await apiFetch('/api/v1/test');
-    const [, init] = mockFetch.mock.calls[0];
-    expect(init.headers.Authorization).toBeUndefined();
-  });
-
   it('returns parsed JSON on success', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -94,37 +56,6 @@ describe('apiFetch', () => {
       expect(err.status).toBe(502);
       expect(err.message).toBe('Request failed (502)');
     }
-  });
-
-  it('attempts refresh on 401 unauthorized', async () => {
-    mockGetToken.mockReturnValue('expired-token');
-    mockGetRefreshToken.mockReturnValue('my-refresh');
-
-    // First call: 401
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      json: () =>
-        Promise.resolve({ code: 'unauthorized', message: 'Token expired' }),
-    });
-    // Refresh call: success
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          accessToken: 'new-token',
-          refreshToken: 'new-refresh',
-        }),
-    });
-    // Retry original call: success
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ retried: true }),
-    });
-
-    const result = await apiFetch<{ retried: boolean }>('/api/v1/data');
-    expect(result).toEqual({ retried: true });
-    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   it('sets Content-Type when body is provided', async () => {

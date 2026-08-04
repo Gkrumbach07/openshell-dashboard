@@ -61,11 +61,13 @@ Only wrap user-facing RPCs (~30). Skip supervisor/internal RPCs.
 
 ## Auth
 
-OIDC via `go-oidc` v3. Per-request flow:
-1. Extract JWT from `Authorization: Bearer` header or HTTP-only cookie
-2. Validate against gateway's OIDC issuer JWKS
-3. Forward same JWT to gateway on every gRPC call via `grpc.PerRPCCredentials`
+Proxy-delegated authentication. An external auth proxy (oauth2-proxy, kube-rbac-proxy, etc.) sits in front of the BFF and handles OIDC. Per-request flow:
+1. Auth proxy validates the user's token and injects it as an HTTP header
+2. BFF middleware reads the token from the configured header (default `x-forwarded-access-token`)
+3. Forward same token to gateway on every gRPC call via `grpc.PerRPCCredentials`
 4. Gateway enforces RBAC (admin/user roles) and workspace membership
+
+The BFF does NOT perform OIDC validation, token exchange, or refresh. Those are the auth proxy's job.
 
 ## Configuration
 
@@ -75,9 +77,12 @@ CLI flags with env var fallbacks:
 |------|---------|-------------|
 | `-port` | `PORT` | Listen port (default 8080) |
 | `-gateway-url` | `OPENSHELL_GATEWAY_URL` | Gateway gRPC endpoint |
-| `-oidc-issuer` | `OIDC_ISSUER` | OIDC issuer URL |
-| `-oidc-client-id` | `OIDC_CLIENT_ID` | OIDC client ID |
+| `-gateway-ca-cert` | `GATEWAY_CA_CERT` | CA cert for gateway TLS |
 | `-static-dir` | `STATIC_DIR` | Frontend static assets directory |
+| `-auth-disabled` | `AUTH_DISABLED` | Skip auth — dev only (default false) |
+| `-auth-token-header` | `AUTH_TOKEN_HEADER` | Auth proxy token header (default x-forwarded-access-token) |
+| `-auth-user-header` | `AUTH_USER_HEADER` | Auth proxy user header (default x-auth-request-user) |
+| `-allowed-origins` | `ALLOWED_ORIGINS` | Comma-separated CORS origins (default empty) |
 
 ## Error handling
 

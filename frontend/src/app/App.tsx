@@ -26,8 +26,9 @@ import GlobalPolicyPage from '../pages/GlobalPolicyPage';
 import SettingsPage from '../pages/SettingsPage';
 import { AlertProvider } from './AlertContext';
 import AppLayout from './AppLayout';
-import AuthCallbackPage from './AuthCallbackPage';
-import { hasSession } from './authStore';
+import { useAuthConfig } from '../api/auth';
+import { useUserRole } from '../api/rbac';
+import { isDevSession } from './authStore';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,8 +36,6 @@ const queryClient = new QueryClient({
   },
 });
 
-// Route wrappers: pages are self-contained (props in), the router supplies
-// the props from URL params here in the standalone app shell.
 const WorkspaceListRoute: React.FC = () => {
   const navigate = useNavigate();
   return (
@@ -44,8 +43,6 @@ const WorkspaceListRoute: React.FC = () => {
   );
 };
 
-// Breadcrumbs live in the standalone shell, not in the self-contained pages —
-// downstream consumers wrap pages with their own navigation chrome.
 const WorkspaceCrumbs: React.FC<{ workspace: string; leaf?: string }> = ({
   workspace,
   leaf,
@@ -131,12 +128,44 @@ const ProviderDetailRoute: React.FC = () => {
   );
 };
 
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isPlatformAdmin, isLoading } = useUserRole();
+  if (isLoading) {
+    return null;
+  }
+  if (!isPlatformAdmin) {
+    return <Navigate to="/workspaces" replace />;
+  }
+  return <>{children}</>;
+};
+
 const AuthenticatedApp: React.FC = () => (
   <AppLayout>
     <Routes>
-      <Route path="/gateway" element={<GatewayOverviewPage />} />
-      <Route path="/global-policy" element={<GlobalPolicyPage />} />
-      <Route path="/settings" element={<SettingsPage />} />
+      <Route
+        path="/gateway"
+        element={
+          <AdminRoute>
+            <GatewayOverviewPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/global-policy"
+        element={
+          <AdminRoute>
+            <GlobalPolicyPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <AdminRoute>
+            <SettingsPage />
+          </AdminRoute>
+        }
+      />
       <Route path="/workspaces" element={<WorkspaceListRoute />} />
       <Route path="/workspaces/:workspace" element={<WorkspaceDetailRoute />} />
       <Route
@@ -153,33 +182,34 @@ const AuthenticatedApp: React.FC = () => (
 );
 
 const AppRoutes: React.FC = () => {
-  const [authenticated, setAuthenticated] = useState(hasSession());
+  const { data: config, isLoading } = useAuthConfig();
+  const [devAuthenticated, setDevAuthenticated] = useState(isDevSession());
 
-  return (
-    <Routes>
-      <Route path="/auth/callback" element={<AuthCallbackPage />} />
-      <Route
-        path="/login"
-        element={
-          authenticated ? (
-            <Navigate to="/workspaces" replace />
-          ) : (
-            <LoginPage onAuthenticated={() => setAuthenticated(true)} />
-          )
-        }
-      />
-      <Route
-        path="*"
-        element={
-          authenticated ? (
-            <AuthenticatedApp />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-    </Routes>
-  );
+  if (isLoading) {
+    return null;
+  }
+
+  // In dev mode (AUTH_DISABLED=true), show the login page for the "Continue
+  // as developer" button. Once clicked, render the authenticated app.
+  if (config?.authDisabled) {
+    if (devAuthenticated) {
+      return <AuthenticatedApp />;
+    }
+    return (
+      <Routes>
+        <Route
+          path="*"
+          element={
+            <LoginPage onAuthenticated={() => setDevAuthenticated(true)} />
+          }
+        />
+      </Routes>
+    );
+  }
+
+  // In production, the auth proxy handles login before requests reach us.
+  // If the user got here, they're authenticated.
+  return <AuthenticatedApp />;
 };
 
 const App: React.FC = () => (

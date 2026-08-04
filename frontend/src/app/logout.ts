@@ -1,22 +1,18 @@
-import { clearToken } from './authStore';
+import { getAuthConfig } from '../api/auth';
+import { clearDevSession, isDevSession } from './authStore';
 
 export const logout = async (): Promise<void> => {
-  const postLogoutRedirect = `${window.location.origin}/login`;
+  clearDevSession();
 
-  try {
-    const response = await fetch(
-      `/api/v1/auth/logout?redirect=${encodeURIComponent(postLogoutRedirect)}`,
-    );
-    if (response.ok) {
-      const body = (await response.json()) as { redirect: string };
-      clearToken();
-      window.location.assign(body.redirect);
-      return;
-    }
-  } catch {
-    // BFF unreachable — fall through.
+  if (isDevSession()) {
+    window.location.assign('/');
+    return;
   }
 
-  clearToken();
-  window.location.assign('/login');
+  try {
+    const config = await getAuthConfig();
+    window.location.assign(config.logoutUrl ?? '/oauth2/sign_out');
+  } catch {
+    window.location.assign('/oauth2/sign_out');
+  }
 };

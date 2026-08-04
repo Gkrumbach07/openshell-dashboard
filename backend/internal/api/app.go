@@ -16,12 +16,10 @@ import (
 
 // App wires the gateway client, auth middleware, and REST routes.
 type App struct { //nolint:govet // fieldalignment: readability over padding
-	gateway    gateway.Interface
-	auth       *auth.Middleware
-	authConfig AuthConfigResponse
-	// staticDir is the frontend build output; empty disables static serving.
-	staticDir string
-	// allowedOrigins for CORS, e.g. the webpack dev server origin.
+	gateway        gateway.Interface
+	auth           *auth.Middleware
+	authConfig     AuthConfigResponse
+	staticDir      string
 	allowedOrigins []string
 	maxUploadSize  int64
 	execTimeout    uint32
@@ -48,6 +46,7 @@ func NewApp(gw gateway.Interface, authMiddleware *auth.Middleware, staticDir str
 // Routes builds the chi router.
 func (app *App) Routes() http.Handler {
 	r := chi.NewRouter()
+	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(app.corsMiddleware)
@@ -55,10 +54,6 @@ func (app *App) Routes() http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public: frontend bootstrap config, no token needed.
 		r.Get("/auth/config", app.GetAuthConfig)
-		r.Get("/auth/discovery", app.GetOIDCDiscovery)
-		r.Post("/auth/token-exchange", app.TokenExchange)
-		r.Post("/auth/refresh", app.Refresh)
-		r.Get("/auth/logout", app.Logout)
 		// BFF liveness (does not call the gateway).
 		r.Get("/healthz", app.GetHealthz)
 		r.Get("/readyz", app.GetReadyz)
@@ -66,7 +61,6 @@ func (app *App) Routes() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(app.auth.Handler)
 
-			r.Get("/auth/userinfo", app.GetUserInfo)
 			r.Get("/auth/whoami", app.GetWhoAmI)
 			r.Get("/gateway", app.GetGateway)
 

@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { getToken } from '../app/authStore';
 import { SANDBOX_POLL_MS } from '../constants';
 import { del, get, post } from './client';
 import { sandboxKeys } from './queryKeys';
@@ -265,13 +264,11 @@ export const uploadFile = async (
   const formData = new FormData();
   formData.append('file', file);
   const params = dest ? `?dest=${encodeURIComponent(dest)}` : '';
-  const token = getToken();
   const response = await fetch(
     `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/files${params}`,
     {
       method: 'POST',
       body: formData,
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
     },
   );
   if (!response.ok) {
@@ -289,10 +286,8 @@ export const downloadFile = async (
   name: string,
   path: string,
 ): Promise<void> => {
-  const token = getToken();
   const response = await fetch(
     `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/files?path=${encodeURIComponent(path)}`,
-    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
   );
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

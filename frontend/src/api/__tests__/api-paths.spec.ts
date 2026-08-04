@@ -29,7 +29,7 @@ import {
   lintProviderProfiles,
 } from '../providers';
 import { getGatewayInfo } from '../gateway';
-import { getAuthConfig, getUserInfo, getCurrentUser } from '../auth';
+import { getAuthConfig, getCurrentUser } from '../auth';
 import {
   getInferenceRoute,
   setInferenceRoute,
@@ -309,11 +309,6 @@ describe('auth API', () => {
   it('getAuthConfig calls correct path', async () => {
     await getAuthConfig();
     expect(mockGet).toHaveBeenCalledWith('/api/v1/auth/config');
-  });
-
-  it('getUserInfo calls correct path', async () => {
-    await getUserInfo();
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/auth/userinfo');
   });
 
   it('getCurrentUser calls correct path', async () => {

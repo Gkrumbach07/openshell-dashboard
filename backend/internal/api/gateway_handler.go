@@ -1,9 +1,7 @@
 package api
 
 import (
-	"io"
 	"net/http"
-	"strings"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
@@ -14,8 +12,7 @@ func (app *App) GetHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// GetGateway returns gateway status, version, and compute drivers — the
-// complete set of gateway self-description the API offers.
+// GetGateway returns gateway status, version, and compute drivers.
 func (app *App) GetGateway(w http.ResponseWriter, r *http.Request) {
 	info, err := app.gateway.GetGatewayInfo(r.Context())
 	if err != nil {
@@ -26,7 +23,6 @@ func (app *App) GetGateway(w http.ResponseWriter, r *http.Request) {
 }
 
 // FeatureFlags controls which optional features the frontend should render.
-// Parsed from FEATURE_* env vars in main.go.
 type FeatureFlags struct {
 	DeploymentContext string `json:"deploymentContext"`
 	Terminal          bool   `json:"terminal"`
@@ -40,14 +36,11 @@ type FeatureFlags struct {
 	ResourceLinks     bool   `json:"resourceLinks"`
 }
 
-// AuthConfigResponse tells the frontend how to authenticate and which
-// features are enabled.
+// AuthConfigResponse tells the frontend whether auth is enabled and which
+// features are available.
 type AuthConfigResponse struct {
-	Issuer       string       `json:"issuer,omitempty"`
-	ClientID     string       `json:"clientId,omitempty"`
-	Scopes       string       `json:"scopes,omitempty"`
 	AdminRole    string       `json:"adminRole,omitempty"`
-	UserRole     string       `json:"userRole,omitempty"`
+	LogoutURL    string       `json:"logoutUrl,omitempty"`
 	Features     FeatureFlags `json:"features"`
 	AuthDisabled bool         `json:"authDisabled"`
 }
@@ -62,54 +55,19 @@ func (app *App) GetReadyz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
-// GetAuthConfig is public — the login page needs it before any token exists.
+// GetAuthConfig is public — the frontend needs it before any auth exists.
 func (app *App) GetAuthConfig(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, app.authConfig)
 }
 
-// GetOIDCDiscovery proxies the OIDC discovery document from the issuer,
-// avoiding CORS issues when the frontend and IdP are on different origins.
-func (app *App) GetOIDCDiscovery(w http.ResponseWriter, _ *http.Request) {
-	if app.authConfig.Issuer == "" {
-		writeError(w, http.StatusServiceUnavailable, "no_issuer", "OIDC issuer not configured")
-		return
-	}
-	issuer := strings.TrimRight(app.authConfig.Issuer, "/")
-	resp, err := oidcHTTPClient.Get(issuer + oidcDiscoveryPath)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, "discovery_failed", "identity provider is unreachable")
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		writeError(w, http.StatusBadGateway, "discovery_failed", "identity provider returned an error")
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(w, io.LimitReader(resp.Body, maxTokenResponseBytes))
-}
-
-// GetUserInfo returns the validated OIDC claims for the current user.
-func (app *App) GetUserInfo(w http.ResponseWriter, r *http.Request) {
-	claims := auth.ClaimsFromContext(r.Context())
-	if claims == nil {
-		writeError(w, http.StatusUnauthorized, "unauthorized", "no identity")
-		return
-	}
-	writeJSON(w, http.StatusOK, claims)
-}
-
 // GetWhoAmI returns the current user's identity from the gateway. Falls back to
-// OIDC token claims when the gateway doesn't support GetCurrentUser (pre-PR#2445)
-// or when auth is disabled (dev mode).
+// the username from the auth proxy header when the gateway doesn't support
+// GetCurrentUser or when auth is disabled.
 func (app *App) GetWhoAmI(w http.ResponseWriter, r *http.Request) {
-	claims := auth.ClaimsFromContext(r.Context())
-
 	if app.auth.Disabled() {
 		writeJSON(w, http.StatusOK, models.CurrentUser{
-			Subject:     claims.Subject,
-			DisplayName: claims.Name,
+			Subject:     "dev-user",
+			DisplayName: "Development User",
 			Roles:       []string{"openshell-admin", "openshell-user"},
 		})
 		return
@@ -121,14 +79,11 @@ func (app *App) GetWhoAmI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fallback: extract identity from the validated OIDC claims directly.
-	// This handles gateways that predate GetCurrentUser (PR #2445).
-	if claims != nil {
+	user := auth.UserFromContext(r.Context())
+	if user != "" {
 		writeJSON(w, http.StatusOK, models.CurrentUser{
-			Subject:     claims.Subject,
-			DisplayName: claims.Name,
-			Email:       claims.Email,
-			Roles:       claims.Roles(),
+			Subject:     user,
+			DisplayName: user,
 		})
 		return
 	}
