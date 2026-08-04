@@ -61,6 +61,7 @@ func (app *App) Routes() http.Handler {
 		r.Get("/auth/logout", app.Logout)
 		// BFF liveness (does not call the gateway).
 		r.Get("/healthz", app.GetHealthz)
+		r.Get("/readyz", app.GetReadyz)
 
 		r.Group(func(r chi.Router) {
 			r.Use(app.auth.Handler)

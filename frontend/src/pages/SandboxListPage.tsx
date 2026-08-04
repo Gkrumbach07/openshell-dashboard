@@ -53,13 +53,23 @@ const getInitialViewMode = (): ViewMode => {
 type SandboxListPageProps = {
   workspace: string;
   onSelect?: (name: string) => void;
+  onViewSandbox?: (name: string, tab?: string) => void;
 };
 
 const SandboxListPage: React.FC<SandboxListPageProps> = ({
   workspace,
   onSelect,
+  onViewSandbox,
 }) => {
   const navigate = useNavigate();
+  const viewSandbox = (name: string, tab?: string) => {
+    if (onViewSandbox) {
+      onViewSandbox(name, tab);
+    } else {
+      const tabParam = tab ? `?tab=${tab}` : '';
+      navigate(`/workspaces/${workspace}/sandboxes/${name}${tabParam}`);
+    }
+  };
   const features = useFeatureFlags();
   const sandboxes = useSandboxes(workspace);
   const [isCreateOpen, setCreateOpen] = useState(false);
@@ -267,17 +277,10 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
                 }
                 onNameClick={() => onSelect?.(sandbox.metadata.name)}
                 onDelete={() => setDeleteTargets([sandbox.metadata.name])}
-                onViewLogs={() =>
-                  navigate(
-                    `/workspaces/${workspace}/sandboxes/${sandbox.metadata.name}?tab=logs`,
-                  )
-                }
+                onViewLogs={() => viewSandbox(sandbox.metadata.name, 'logs')}
                 onOpenTerminal={
                   sandbox.status.phase === 'READY' && features.terminal
-                    ? () =>
-                        navigate(
-                          `/workspaces/${workspace}/sandboxes/${sandbox.metadata.name}?tab=terminal`,
-                        )
+                    ? () => viewSandbox(sandbox.metadata.name, 'terminal')
                     : undefined
                 }
                 policyView={policyViews[sandbox.metadata.name]}
@@ -298,23 +301,15 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
           providerExpiry={providerExpiry}
           onDelete={(name) => setDeleteTargets([name])}
           onSelect={onSelect}
-          onViewLogs={(name) =>
-            navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=logs`)
-          }
+          onViewLogs={(name) => viewSandbox(name, 'logs')}
           onOpenTerminal={
             features.terminal
-              ? (name) =>
-                  navigate(
-                    `/workspaces/${workspace}/sandboxes/${name}?tab=terminal`,
-                  )
+              ? (name) => viewSandbox(name, 'terminal')
               : undefined
           }
           onReviewDrafts={
             features.draftPolicy
-              ? (name) =>
-                  navigate(
-                    `/workspaces/${workspace}/sandboxes/${name}?tab=proposals`,
-                  )
+              ? (name) => viewSandbox(name, 'proposals')
               : undefined
           }
           onCreateClick={() => setCreateOpen(true)}

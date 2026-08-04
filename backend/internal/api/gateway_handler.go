@@ -52,6 +52,16 @@ type AuthConfigResponse struct {
 	AuthDisabled bool         `json:"authDisabled"`
 }
 
+// GetReadyz checks gateway reachability — used by orchestrators for readiness probes.
+func (app *App) GetReadyz(w http.ResponseWriter, r *http.Request) {
+	_, err := app.gateway.Health(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "not_ready", "gateway unreachable")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
 // GetAuthConfig is public — the login page needs it before any token exists.
 func (app *App) GetAuthConfig(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, app.authConfig)
