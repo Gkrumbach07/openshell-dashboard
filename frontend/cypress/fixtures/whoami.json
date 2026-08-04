@@ -1,0 +1,6 @@
+{
+  "subject": "test-user-id",
+  "displayName": "Test User",
+  "email": "testuser@example.com",
+  "roles": ["openshell-admin", "openshell-user"]
+}

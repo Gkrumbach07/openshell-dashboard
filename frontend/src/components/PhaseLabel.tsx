@@ -1,5 +1,9 @@
 import { Label } from '@patternfly/react-core';
-import { CheckCircleIcon, ExclamationCircleIcon, InProgressIcon } from '@patternfly/react-icons';
+import {
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  InProgressIcon,
+} from '@patternfly/react-icons';
 
 import type { SandboxPhase, WorkspacePhase } from '../types';
 
@@ -15,13 +19,21 @@ const PhaseLabel: React.FC<PhaseLabelProps> = ({ phase }) => {
     case 'READY':
     case 'ACTIVE':
       return (
-        <Label color="green" icon={<CheckCircleIcon />} data-testid="phase-label">
+        <Label
+          color="green"
+          icon={<CheckCircleIcon />}
+          data-testid="phase-label"
+        >
           {phase}
         </Label>
       );
     case 'ERROR':
       return (
-        <Label color="red" icon={<ExclamationCircleIcon />} data-testid="phase-label">
+        <Label
+          color="red"
+          icon={<ExclamationCircleIcon />}
+          data-testid="phase-label"
+        >
           {phase}
         </Label>
       );
@@ -34,7 +46,11 @@ const PhaseLabel: React.FC<PhaseLabelProps> = ({ phase }) => {
     case 'DELETING':
     case 'TERMINATING':
       return (
-        <Label color="orange" icon={<InProgressIcon />} data-testid="phase-label">
+        <Label
+          color="orange"
+          icon={<InProgressIcon />}
+          data-testid="phase-label"
+        >
           {phase}
         </Label>
       );

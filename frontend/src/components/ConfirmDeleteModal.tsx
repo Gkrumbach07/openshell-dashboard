@@ -67,7 +67,9 @@ const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
             {typedName && !nameMatches && (
               <FormHelperText>
                 <HelperText>
-                  <HelperTextItem variant="error">Name does not match</HelperTextItem>
+                  <HelperTextItem variant="error">
+                    Name does not match
+                  </HelperTextItem>
                 </HelperText>
               </FormHelperText>
             )}

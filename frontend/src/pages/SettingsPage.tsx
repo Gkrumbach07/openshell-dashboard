@@ -24,7 +24,11 @@ import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 
 import { useAlerts } from '../app/AlertContext';
-import { useDeleteGlobalSetting, useGlobalSettings, useSetGlobalSetting } from '../api/settings';
+import {
+  useDeleteGlobalSetting,
+  useGlobalSettings,
+  useSetGlobalSetting,
+} from '../api/settings';
 
 const SettingsPage: React.FC = () => {
   const settings = useGlobalSettings();
@@ -119,7 +123,8 @@ const SettingsPage: React.FC = () => {
       <PageSection>
         <Title headingLevel="h1">Settings</Title>
         <Content component="p">
-          Gateway configuration settings. Changes take effect immediately. Platform Admin only.
+          Gateway configuration settings. Changes take effect immediately.
+          Platform Admin only.
         </Content>
       </PageSection>
       <PageSection>
@@ -135,7 +140,11 @@ const SettingsPage: React.FC = () => {
         {entries.length === 0 ? (
           <Content component="p">No settings configured.</Content>
         ) : (
-          <Table aria-label="Gateway settings" variant="compact" data-testid="settings-table">
+          <Table
+            aria-label="Gateway settings"
+            variant="compact"
+            data-testid="settings-table"
+          >
             <Thead>
               <Tr>
                 <Th>Key</Th>
@@ -149,7 +158,10 @@ const SettingsPage: React.FC = () => {
                   <Td dataLabel="Key" className="pf-v6-u-font-family-monospace">
                     {entry.key}
                   </Td>
-                  <Td dataLabel="Value" className="pf-v6-u-font-family-monospace">
+                  <Td
+                    dataLabel="Value"
+                    className="pf-v6-u-font-family-monospace"
+                  >
                     {editKey === entry.key ? (
                       <Form
                         onSubmit={(e) => {
@@ -162,6 +174,7 @@ const SettingsPage: React.FC = () => {
                           data-testid={`edit-value-${entry.key}`}
                           value={editValue}
                           onChange={(_e, val) => setEditValue(val)}
+                          // eslint-disable-next-line jsx-a11y/no-autofocus
                           autoFocus
                         />
                       </Form>
@@ -234,14 +247,22 @@ const SettingsPage: React.FC = () => {
           </Table>
         )}
         {settings.data && (
-          <Content component="small" className="pf-v6-u-mt-sm pf-v6-u-color-200">
+          <Content
+            component="small"
+            className="pf-v6-u-mt-sm pf-v6-u-color-200"
+          >
             Settings revision: {settings.data.settingsRevision}
           </Content>
         )}
       </PageSection>
 
       {/* Add setting modal */}
-      <Modal variant="small" isOpen={isAddOpen} onClose={() => setAddOpen(false)} aria-label="Add setting">
+      <Modal
+        variant="small"
+        isOpen={isAddOpen}
+        onClose={() => setAddOpen(false)}
+        aria-label="Add setting"
+      >
         <ModalHeader title="Add setting" />
         <ModalBody>
           <Form
@@ -257,6 +278,7 @@ const SettingsPage: React.FC = () => {
                 value={addKey}
                 onChange={(_e, val) => setAddKey(val)}
                 isRequired
+                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
               />
             </FormGroup>
@@ -270,7 +292,12 @@ const SettingsPage: React.FC = () => {
             </FormGroup>
           </Form>
           {setSetting.isError && (
-            <Alert variant="danger" isInline title="Failed to save setting" className="pf-v6-u-mt-md">
+            <Alert
+              variant="danger"
+              isInline
+              title="Failed to save setting"
+              className="pf-v6-u-mt-md"
+            >
               {(setSetting.error as Error).message}
             </Alert>
           )}
@@ -291,14 +318,25 @@ const SettingsPage: React.FC = () => {
       </Modal>
 
       {/* Delete confirmation modal */}
-      <Modal variant="small" isOpen={deleteKey !== null} onClose={() => setDeleteKey(null)} aria-label="Delete setting">
+      <Modal
+        variant="small"
+        isOpen={deleteKey !== null}
+        onClose={() => setDeleteKey(null)}
+        aria-label="Delete setting"
+      >
         <ModalHeader title="Delete setting?" />
         <ModalBody>
           <Content component="p">
-            Are you sure you want to delete the setting <strong>{deleteKey}</strong>?
+            Are you sure you want to delete the setting{' '}
+            <strong>{deleteKey}</strong>?
           </Content>
           {deleteSetting.isError && (
-            <Alert variant="danger" isInline title="Failed to delete setting" className="pf-v6-u-mt-md">
+            <Alert
+              variant="danger"
+              isInline
+              title="Failed to delete setting"
+              className="pf-v6-u-mt-md"
+            >
               {(deleteSetting.error as Error).message}
             </Alert>
           )}

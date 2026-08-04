@@ -41,8 +41,8 @@ const SandboxGalleryView: React.FC<SandboxGalleryViewProps> = ({
     return (
       <EmptyState variant="lg" titleText="No sandboxes" icon={CubesIcon}>
         <EmptyStateBody>
-          Sandboxes are secure execution environments for agents and tools. Create one to get
-          started.
+          Sandboxes are secure execution environments for agents and tools.
+          Create one to get started.
         </EmptyStateBody>
         {onCreateClick && (
           <EmptyStateFooter>
@@ -61,7 +61,11 @@ const SandboxGalleryView: React.FC<SandboxGalleryViewProps> = ({
   }
 
   return (
-    <Gallery hasGutter minWidths={{ default: '320px' }} data-testid="sandbox-gallery">
+    <Gallery
+      hasGutter
+      minWidths={{ default: '320px' }}
+      data-testid="sandbox-gallery"
+    >
       {sandboxes.map((sandbox) => (
         <GalleryItem key={sandbox.metadata.name}>
           <SandboxCard

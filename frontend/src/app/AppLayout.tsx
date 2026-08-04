@@ -51,8 +51,18 @@ type NavEntry = {
 const navEntries: NavEntry[] = [
   { path: '/gateway', label: 'Gateway', adminOnly: true },
   { path: '/workspaces', label: 'Workspaces' },
-  { path: '/global-policy', label: 'Global policy', adminOnly: true, featureKey: 'globalPolicy' },
-  { path: '/settings', label: 'Settings', adminOnly: true, featureKey: 'settings' },
+  {
+    path: '/global-policy',
+    label: 'Global policy',
+    adminOnly: true,
+    featureKey: 'globalPolicy',
+  },
+  {
+    path: '/settings',
+    label: 'Settings',
+    adminOnly: true,
+    featureKey: 'settings',
+  },
 ];
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
@@ -66,7 +76,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [isUserOpen, setUserOpen] = useState(false);
 
   const masthead = (
-    <Masthead display={{ default: 'inline' }} className="pf-v6-u-align-items-center">
+    <Masthead
+      display={{ default: 'inline' }}
+      className="pf-v6-u-align-items-center"
+    >
       <MastheadMain>
         <MastheadToggle>
           <PageToggleButton variant="plain" aria-label="Global navigation">
@@ -76,10 +89,18 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         <MastheadBrand>
           <MastheadLogo
             component={(props) => (
-              <Link {...props} to={isPlatformAdmin ? '/gateway' : '/workspaces'} className="pf-v6-u-text-decoration-none" />
+              <Link
+                {...props}
+                to={isPlatformAdmin ? '/gateway' : '/workspaces'}
+                className="pf-v6-u-text-decoration-none"
+              />
             )}
           >
-            <img src={openshellLogo} alt="OpenShell Dashboard" style={{ height: 'var(--pf-t--global--spacer--2xl)' }} />
+            <img
+              src={openshellLogo}
+              alt="OpenShell Dashboard"
+              style={{ height: 'var(--pf-t--global--spacer--2xl)' }}
+            />
           </MastheadLogo>
         </MastheadBrand>
       </MastheadMain>
@@ -167,17 +188,23 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       <PageSidebarBody>
         <Nav aria-label="Primary navigation">
           <NavList>
-            {navEntries.filter((e) => (!e.adminOnly || isPlatformAdmin) && (!e.featureKey || features[e.featureKey])).map((entry) => (
-              <NavItem
-                key={entry.path}
-                itemId={entry.path}
-                to={entry.path}
-                isActive={location.pathname.startsWith(entry.path)}
-                component={(props) => <Link {...props} to={entry.path} />}
-              >
-                {entry.label}
-              </NavItem>
-            ))}
+            {navEntries
+              .filter(
+                (e) =>
+                  (!e.adminOnly || isPlatformAdmin) &&
+                  (!e.featureKey || features[e.featureKey]),
+              )
+              .map((entry) => (
+                <NavItem
+                  key={entry.path}
+                  itemId={entry.path}
+                  to={entry.path}
+                  isActive={location.pathname.startsWith(entry.path)}
+                  component={(props) => <Link {...props} to={entry.path} />}
+                >
+                  {entry.label}
+                </NavItem>
+              ))}
           </NavList>
         </Nav>
       </PageSidebarBody>
@@ -203,11 +230,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             </DescriptionListGroup>
             <DescriptionListGroup>
               <DescriptionListTerm>Gateway version</DescriptionListTerm>
-              <DescriptionListDescription>{gateway.data?.gatewayVersion || 'Unknown'}</DescriptionListDescription>
+              <DescriptionListDescription>
+                {gateway.data?.gatewayVersion || 'Unknown'}
+              </DescriptionListDescription>
             </DescriptionListGroup>
             <DescriptionListGroup>
               <DescriptionListTerm>Gateway status</DescriptionListTerm>
-              <DescriptionListDescription>{gateway.data?.status || 'Unknown'}</DescriptionListDescription>
+              <DescriptionListDescription>
+                {gateway.data?.status || 'Unknown'}
+              </DescriptionListDescription>
             </DescriptionListGroup>
             <DescriptionListGroup>
               <DescriptionListTerm>Compute driver</DescriptionListTerm>

@@ -45,11 +45,17 @@ type ProviderDetailPageProps = {
 
 // Provider detail. Credential VALUES are secret and never leave the gateway —
 // only the credential key names and their expiry timestamps are shown.
-const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, providerName }) => {
+const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({
+  workspace,
+  providerName,
+}) => {
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const provider = useProvider(workspace, providerName);
   const refreshStatus = useProviderRefreshStatus(workspace, providerName);
-  const configureMutation = useConfigureProviderRefresh(workspace, providerName);
+  const configureMutation = useConfigureProviderRefresh(
+    workspace,
+    providerName,
+  );
   const rotateMutation = useRotateProviderCredential(workspace, providerName);
   const deleteMutation = useDeleteProviderRefresh(workspace, providerName);
   const { addSuccess, addDanger } = useAlerts();
@@ -73,7 +79,11 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
         <Alert
           variant="danger"
           title={`Failed to load provider ${providerName}`}
-          actionLinks={<Button variant="link" onClick={() => provider.refetch()}>Retry</Button>}
+          actionLinks={
+            <Button variant="link" onClick={() => provider.refetch()}>
+              Retry
+            </Button>
+          }
         >
           {(provider.error as Error).message}
         </Alert>
@@ -118,11 +128,15 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
             <DescriptionList isHorizontal>
               <DescriptionListGroup>
                 <DescriptionListTerm>ID</DescriptionListTerm>
-                <DescriptionListDescription>{data.metadata.id}</DescriptionListDescription>
+                <DescriptionListDescription>
+                  {data.metadata.id}
+                </DescriptionListDescription>
               </DescriptionListGroup>
               <DescriptionListGroup>
                 <DescriptionListTerm>Type (profile)</DescriptionListTerm>
-                <DescriptionListDescription>{data.type}</DescriptionListDescription>
+                <DescriptionListDescription>
+                  {data.type}
+                </DescriptionListDescription>
               </DescriptionListGroup>
               <DescriptionListGroup>
                 <DescriptionListTerm>Workspace</DescriptionListTerm>
@@ -177,7 +191,9 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
                         </Label>
                       </Td>
                       <Td dataLabel="Expires">
-                        {expiries[name] ? formatTimestamp(expiries[name]) : 'Never'}
+                        {expiries[name]
+                          ? formatTimestamp(expiries[name])
+                          : 'Never'}
                       </Td>
                     </Tr>
                   ))}
@@ -190,23 +206,28 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
       <PageSection>
         <Card data-testid="provider-refresh-card">
           <CardHeader
-            actions={isWorkspaceAdmin ? {
-              actions: (
-                <Button
-                  variant="secondary"
-                  onClick={() => setIsConfigureOpen(true)}
-                  isDisabled={(data.credentialNames ?? []).length === 0}
-                  data-testid="configure-refresh-button"
-                >
-                  Configure refresh
-                </Button>
-              ),
-            } : undefined}
+            actions={
+              isWorkspaceAdmin
+                ? {
+                    actions: (
+                      <Button
+                        variant="secondary"
+                        onClick={() => setIsConfigureOpen(true)}
+                        isDisabled={(data.credentialNames ?? []).length === 0}
+                        data-testid="configure-refresh-button"
+                      >
+                        Configure refresh
+                      </Button>
+                    ),
+                  }
+                : undefined
+            }
           >
             <CardTitle>Credential refresh</CardTitle>
           </CardHeader>
           <CardBody>
-            {refreshStatus.isError || (refreshStatus.data ?? []).length === 0 ? (
+            {refreshStatus.isError ||
+            (refreshStatus.data ?? []).length === 0 ? (
               'No credential refresh configured'
             ) : (
               <Table aria-label="Credential refresh status" variant="compact">
@@ -227,17 +248,25 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
                     <Tr key={cred.credentialKey}>
                       <Td dataLabel="Credential key">{cred.credentialKey}</Td>
                       <Td dataLabel="Strategy">
-                        <Label isCompact color="blue">{cred.strategy}</Label>
+                        <Label isCompact color="blue">
+                          {cred.strategy}
+                        </Label>
                       </Td>
                       <Td dataLabel="Status">{cred.status}</Td>
                       <Td dataLabel="Expires">
-                        {cred.expiresAtMs ? formatTimestamp(cred.expiresAtMs) : '-'}
+                        {cred.expiresAtMs
+                          ? formatTimestamp(cred.expiresAtMs)
+                          : '-'}
                       </Td>
                       <Td dataLabel="Next refresh">
-                        {cred.nextRefreshAtMs ? formatTimestamp(cred.nextRefreshAtMs) : '-'}
+                        {cred.nextRefreshAtMs
+                          ? formatTimestamp(cred.nextRefreshAtMs)
+                          : '-'}
                       </Td>
                       <Td dataLabel="Last refresh">
-                        {cred.lastRefreshAtMs ? formatTimestamp(cred.lastRefreshAtMs) : '-'}
+                        {cred.lastRefreshAtMs
+                          ? formatTimestamp(cred.lastRefreshAtMs)
+                          : '-'}
                       </Td>
                       <Td dataLabel="Last error">{cred.lastError || '-'}</Td>
                       {isWorkspaceAdmin && (
@@ -252,8 +281,14 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
                                 isDisabled={rotateMutation.isPending}
                                 onClick={() =>
                                   rotateMutation.mutate(cred.credentialKey, {
-                                    onSuccess: () => addSuccess(`Rotated credential "${cred.credentialKey}"`),
-                                    onError: (err) => addDanger(`Rotate failed: ${(err as Error).message}`),
+                                    onSuccess: () =>
+                                      addSuccess(
+                                        `Rotated credential "${cred.credentialKey}"`,
+                                      ),
+                                    onError: (err) =>
+                                      addDanger(
+                                        `Rotate failed: ${(err as Error).message}`,
+                                      ),
                                   })
                                 }
                                 data-testid={`rotate-${cred.credentialKey}`}
@@ -266,7 +301,9 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
                                 variant="danger"
                                 size="sm"
                                 icon={<TrashIcon />}
-                                onClick={() => setDeleteRefreshKey(cred.credentialKey)}
+                                onClick={() =>
+                                  setDeleteRefreshKey(cred.credentialKey)
+                                }
                                 data-testid={`delete-refresh-${cred.credentialKey}`}
                               >
                                 Delete
@@ -311,7 +348,11 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
         isOpen={isConfigureOpen}
         credentialNames={data.credentialNames ?? []}
         isSubmitting={configureMutation.isPending}
-        error={configureMutation.isError ? (configureMutation.error as Error).message : undefined}
+        error={
+          configureMutation.isError
+            ? (configureMutation.error as Error).message
+            : undefined
+        }
         onSubmit={(body: ConfigureProviderRefreshRequest) =>
           configureMutation.mutate(body, {
             onSuccess: () => {
@@ -331,7 +372,11 @@ const ProviderDetailPage: React.FC<ProviderDetailPageProps> = ({ workspace, prov
         body={`Remove automatic refresh for credential "${deleteRefreshKey ?? ''}"? The credential value will remain but will no longer be refreshed.`}
         isOpen={deleteRefreshKey !== null}
         isDeleting={deleteMutation.isPending}
-        error={deleteMutation.isError ? (deleteMutation.error as Error).message : undefined}
+        error={
+          deleteMutation.isError
+            ? (deleteMutation.error as Error).message
+            : undefined
+        }
         onConfirm={() => {
           if (deleteRefreshKey) {
             deleteMutation.mutate(deleteRefreshKey, {

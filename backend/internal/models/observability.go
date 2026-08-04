@@ -14,13 +14,13 @@ import (
 // structured network-decision context (dst_host, action, …) — the dashboard's
 // only window into security decisions (there is no events API).
 type LogLine struct {
+	Fields      map[string]string `json:"fields,omitempty"`
 	SandboxID   string            `json:"sandboxId,omitempty"`
-	TimestampMs int64             `json:"timestampMs"`
 	Level       string            `json:"level,omitempty"`
 	Target      string            `json:"target,omitempty"`
 	Message     string            `json:"message"`
 	Source      string            `json:"source,omitempty"`
-	Fields      map[string]string `json:"fields,omitempty"`
+	TimestampMs int64             `json:"timestampMs"`
 }
 
 // SandboxLogs mirrors GetSandboxLogsResponse.
@@ -48,15 +48,14 @@ func FromSandboxLogs(resp *openshellv1.GetSandboxLogsResponse) SandboxLogs {
 // PolicyRevision mirrors openshell.v1.SandboxPolicyRevision. Policy content
 // is protojson when the gateway populated it.
 type PolicyRevision struct {
-	Version    uint32 `json:"version"`
-	PolicyHash string `json:"policyHash,omitempty"`
-	// Status is PENDING, LOADED, FAILED, or SUPERSEDED.
+	Provenance  map[string]string `json:"provenance,omitempty"`
+	PolicyHash  string            `json:"policyHash,omitempty"`
 	Status      string            `json:"status"`
 	LoadError   string            `json:"loadError,omitempty"`
+	Policy      json.RawMessage   `json:"policy,omitempty"`
 	CreatedAtMs int64             `json:"createdAtMs"`
 	LoadedAtMs  int64             `json:"loadedAtMs,omitempty"`
-	Policy      json.RawMessage   `json:"policy,omitempty"`
-	Provenance  map[string]string `json:"provenance,omitempty"`
+	Version     uint32            `json:"version"`
 }
 
 func policyStatusString(status openshellv1.PolicyStatus) string {
@@ -94,40 +93,40 @@ func FromPolicyRevision(revision *openshellv1.SandboxPolicyRevision) PolicyRevis
 // SandboxPolicyView is the GET .../policy response: the latest revision, the
 // currently active version, and the revision history.
 type SandboxPolicyView struct {
-	ActiveVersion uint32           `json:"activeVersion"`
 	Latest        *PolicyRevision  `json:"latest,omitempty"`
 	Revisions     []PolicyRevision `json:"revisions"`
+	ActiveVersion uint32           `json:"activeVersion"`
 }
 
 // PolicyUpdateResult mirrors UpdateConfigResponse for policy updates.
 type PolicyUpdateResult struct {
-	Version    uint32 `json:"version"`
 	PolicyHash string `json:"policyHash,omitempty"`
+	Version    uint32 `json:"version"`
 }
 
 // PolicyChunk mirrors openshell.v1.PolicyChunk — one draft policy proposal.
 // ProposedRule is protojson of a NetworkPolicyRule. ValidationResult carries
 // the gateway prover verdict (there is no separate verify RPC).
 type PolicyChunk struct {
-	ID               string          `json:"id"`
+	ValidationResult string          `json:"validationResult,omitempty"`
 	Status           string          `json:"status"`
 	RuleName         string          `json:"ruleName,omitempty"`
-	ProposedRule     json.RawMessage `json:"proposedRule,omitempty"`
 	Rationale        string          `json:"rationale,omitempty"`
 	SecurityNotes    string          `json:"securityNotes,omitempty"`
-	Confidence       float32         `json:"confidence"`
+	ID               string          `json:"id"`
+	RejectionReason  string          `json:"rejectionReason,omitempty"`
+	Binary           string          `json:"binary,omitempty"`
+	ProposedRule     json.RawMessage `json:"proposedRule,omitempty"`
 	CreatedAtMs      int64           `json:"createdAtMs"`
 	DecidedAtMs      int64           `json:"decidedAtMs,omitempty"`
+	Confidence       float32         `json:"confidence"`
 	HitCount         int32           `json:"hitCount"`
-	Binary           string          `json:"binary,omitempty"`
-	ValidationResult string          `json:"validationResult,omitempty"`
-	RejectionReason  string          `json:"rejectionReason,omitempty"`
 }
 
 // DraftPolicy mirrors GetDraftPolicyResponse.
 type DraftPolicy struct {
-	Chunks           []PolicyChunk `json:"chunks"`
 	RollingSummary   string        `json:"rollingSummary,omitempty"`
+	Chunks           []PolicyChunk `json:"chunks"`
 	DraftVersion     uint64        `json:"draftVersion"`
 	LastAnalyzedAtMs int64         `json:"lastAnalyzedAtMs,omitempty"`
 }
@@ -166,10 +165,10 @@ func FromDraftPolicy(resp *openshellv1.GetDraftPolicyResponse) DraftPolicy {
 
 // DraftHistoryEntry mirrors openshell.v1.DraftHistoryEntry.
 type DraftHistoryEntry struct {
-	TimestampMs int64  `json:"timestampMs"`
 	EventType   string `json:"eventType"`
 	Description string `json:"description"`
 	ChunkID     string `json:"chunkId,omitempty"`
+	TimestampMs int64  `json:"timestampMs"`
 }
 
 func FromDraftHistory(resp *openshellv1.GetDraftHistoryResponse) []DraftHistoryEntry {
@@ -189,9 +188,9 @@ func FromDraftHistory(resp *openshellv1.GetDraftHistoryResponse) []DraftHistoryE
 type ServiceEndpoint struct {
 	SandboxName string `json:"sandboxName"`
 	ServiceName string `json:"serviceName"`
+	URL         string `json:"url,omitempty"`
 	TargetPort  uint32 `json:"targetPort"`
 	Domain      bool   `json:"domain"`
-	URL         string `json:"url,omitempty"`
 }
 
 func FromServiceEndpointResponse(resp *openshellv1.ServiceEndpointResponse) ServiceEndpoint {

@@ -1,6 +1,9 @@
 // Small pure helpers shared across pages.
 
-export const formatAge = (createdAtMs: number, nowMs: number = Date.now()): string => {
+export const formatAge = (
+  createdAtMs: number,
+  nowMs: number = Date.now(),
+): string => {
   if (!createdAtMs || createdAtMs > nowMs) {
     return '-';
   }
@@ -23,7 +26,10 @@ export const formatAge = (createdAtMs: number, nowMs: number = Date.now()): stri
 export const formatTimestamp = (ms?: number): string =>
   ms ? new Date(ms).toLocaleString() : '-';
 
-export const formatUptime = (createdAtMs: number, nowMs: number = Date.now()): string => {
+export const formatUptime = (
+  createdAtMs: number,
+  nowMs: number = Date.now(),
+): string => {
   if (!createdAtMs || createdAtMs > nowMs) {
     return '';
   }
@@ -46,7 +52,8 @@ export const formatUptime = (createdAtMs: number, nowMs: number = Date.now()): s
 // Community sandbox image shorthand, mirroring the CLI's `--from <name>`:
 // a bare name (no "/" or ":") resolves to the community registry. This is a
 // naming convention — there is no list-images API.
-export const COMMUNITY_REGISTRY = 'ghcr.io/nvidia/openshell-community/sandboxes';
+export const COMMUNITY_REGISTRY =
+  'ghcr.io/nvidia/openshell-community/sandboxes';
 
 export const resolveImage = (input: string): string => {
   const trimmed = input.trim();
@@ -68,11 +75,14 @@ const STATUS_DOT_COLORS: Partial<Record<SandboxPhase, string>> = {
 };
 
 export const getStatusDotColor = (phase: SandboxPhase): string =>
-  STATUS_DOT_COLORS[phase] ?? 'var(--pf-t--global--color--status--custom--default)';
+  STATUS_DOT_COLORS[phase] ??
+  'var(--pf-t--global--color--status--custom--default)';
 
 // ── Egress helpers ──
 
-export const countEgressHosts = (policies: Record<string, NetworkPolicyRule>): number => {
+export const countEgressHosts = (
+  policies: Record<string, NetworkPolicyRule>,
+): number => {
   const hosts = new Set<string>();
   for (const rule of Object.values(policies)) {
     for (const ep of rule.endpoints ?? []) {
@@ -89,7 +99,9 @@ export const getEnforcementLabel = (rule: NetworkPolicyRule): string => {
   return ep.enforcement ?? 'enforce';
 };
 
-export const getEnforcementColor = (mode: string): 'green' | 'blue' | 'grey' => {
+export const getEnforcementColor = (
+  mode: string,
+): 'green' | 'blue' | 'grey' => {
   if (mode === 'enforce') return 'green';
   if (mode === 'observe' || mode === 'advisor') return 'blue';
   return 'grey';

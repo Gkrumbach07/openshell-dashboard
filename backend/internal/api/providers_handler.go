@@ -14,11 +14,11 @@ import (
 // CreateProviderRequest is the create-provider body. Credentials are
 // write-only: accepted here, forwarded to the gateway, never returned.
 type CreateProviderRequest struct {
-	Name        string            `json:"name"`
-	Type        string            `json:"type"`
 	Credentials map[string]string `json:"credentials,omitempty"`
 	Config      map[string]string `json:"config,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty"`
+	Name        string            `json:"name"`
+	Type        string            `json:"type"`
 }
 
 func (app *App) ListProviders(w http.ResponseWriter, r *http.Request) {
@@ -81,8 +81,8 @@ func (app *App) DeleteProvider(w http.ResponseWriter, r *http.Request) {
 // UpdateProviderBody is the update-provider body. Only non-nil maps are
 // applied; credential values are write-only just like create.
 type UpdateProviderBody struct {
-	Credentials          map[string]string `json:"credentials,omitempty"`
-	Config               map[string]string `json:"config,omitempty"`
+	Credentials           map[string]string `json:"credentials,omitempty"`
+	Config                map[string]string `json:"config,omitempty"`
 	CredentialExpiresAtMs map[string]int64  `json:"credentialExpiresAtMs,omitempty"`
 }
 
@@ -139,11 +139,11 @@ var refreshStrategyMap = map[string]openshellv1.ProviderCredentialRefreshStrateg
 }
 
 type ConfigureProviderRefreshBody struct {
+	Material           map[string]string `json:"material,omitempty"`
+	ExpiresAtMs        *int64            `json:"expiresAtMs,omitempty"`
 	CredentialKey      string            `json:"credentialKey"`
 	Strategy           string            `json:"strategy"`
-	Material           map[string]string `json:"material,omitempty"`
 	SecretMaterialKeys []string          `json:"secretMaterialKeys,omitempty"`
-	ExpiresAtMs        *int64            `json:"expiresAtMs,omitempty"`
 }
 
 func (app *App) ConfigureProviderRefresh(w http.ResponseWriter, r *http.Request) {

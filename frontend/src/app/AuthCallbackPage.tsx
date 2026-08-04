@@ -46,10 +46,7 @@ const AuthCallbackPage: React.FC = () => {
           variant="danger"
           title="Sign-in failed"
           actionLinks={
-            <Button
-              variant="link"
-              onClick={() => logout()}
-            >
+            <Button variant="link" onClick={() => logout()}>
               Try again
             </Button>
           }

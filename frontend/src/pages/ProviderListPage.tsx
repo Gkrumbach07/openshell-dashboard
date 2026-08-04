@@ -21,7 +21,15 @@ import {
   Tooltip,
 } from '@patternfly/react-core';
 import { EllipsisVIcon, PlusCircleIcon } from '@patternfly/react-icons';
-import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
+import {
+  ActionsColumn,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from '@patternfly/react-table';
 
 import { deleteProvider, useProviders } from '../api/providers';
 import { useAlerts } from '../app/AlertContext';
@@ -39,9 +47,14 @@ type ProviderListPageProps = {
   renderCredentialInput?: CredentialInputSlot;
 };
 
-const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect, renderCredentialInput }) => {
+const ProviderListPage: React.FC<ProviderListPageProps> = ({
+  workspace,
+  onSelect,
+  renderCredentialInput,
+}) => {
   const slots = useSlots();
-  const resolvedCredentialInput = renderCredentialInput ?? slots.credentialInput;
+  const resolvedCredentialInput =
+    renderCredentialInput ?? slots.credentialInput;
   const providers = useProviders(workspace);
   const { addSuccess } = useAlerts();
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
@@ -87,7 +100,8 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
   const pageRows = allRows.slice(startIndex, startIndex + perPage);
   const pageNames = pageRows.map((p) => p.metadata.name);
   const numSelected = selected.length;
-  const pageAllSelected = pageNames.length > 0 && pageNames.every((n) => selected.includes(n));
+  const pageAllSelected =
+    pageNames.length > 0 && pageNames.every((n) => selected.includes(n));
 
   const toggleAll = (isSelecting: boolean) => {
     setSelected(isSelecting ? pageNames : []);
@@ -103,13 +117,16 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
       <>
         <EmptyState variant="lg" titleText="No providers" icon={PlusCircleIcon}>
           <EmptyStateBody>
-            Providers register inference endpoints and service credentials (Anthropic, NVIDIA NIM,
-            GitLab, ...) that sandboxes can use.
+            Providers register inference endpoints and service credentials
+            (Anthropic, NVIDIA NIM, GitLab, ...) that sandboxes can use.
           </EmptyStateBody>
           {isWorkspaceAdmin && (
             <EmptyStateFooter>
               <EmptyStateActions>
-                <Button onClick={() => setCreateOpen(true)} data-testid="create-provider-empty">
+                <Button
+                  onClick={() => setCreateOpen(true)}
+                  data-testid="create-provider-empty"
+                >
                   Add provider
                 </Button>
               </EmptyStateActions>
@@ -133,7 +150,10 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
         <ToolbarContent>
           {isWorkspaceAdmin && (
             <ToolbarItem>
-              <Button onClick={() => setCreateOpen(true)} data-testid="create-provider">
+              <Button
+                onClick={() => setCreateOpen(true)}
+                data-testid="create-provider"
+              >
                 Add provider
               </Button>
             </ToolbarItem>
@@ -215,7 +235,9 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
                       setSelected((current) =>
                         isSelecting
                           ? [...current, provider.metadata.name]
-                          : current.filter((item) => item !== provider.metadata.name),
+                          : current.filter(
+                              (item) => item !== provider.metadata.name,
+                            ),
                       ),
                     isSelected: selected.includes(provider.metadata.name),
                   }}
@@ -249,14 +271,17 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
                   '-'
                 )}
               </Td>
-              <Td dataLabel="Age">{formatAge(provider.metadata.createdAtMs)}</Td>
+              <Td dataLabel="Age">
+                {formatAge(provider.metadata.createdAtMs)}
+              </Td>
               {isWorkspaceAdmin && (
                 <Td isActionCell>
                   <ActionsColumn
                     items={[
                       {
                         title: 'Delete',
-                        onClick: () => setDeleteTargets([provider.metadata.name]),
+                        onClick: () =>
+                          setDeleteTargets([provider.metadata.name]),
                       },
                     ]}
                   />
@@ -274,7 +299,11 @@ const ProviderListPage: React.FC<ProviderListPageProps> = ({ workspace, onSelect
         renderCredentialInput={renderCredentialInput}
       />
       <ConfirmDeleteModal
-        title={deleteTargets && deleteTargets.length > 1 ? 'Delete providers?' : 'Delete provider?'}
+        title={
+          deleteTargets && deleteTargets.length > 1
+            ? 'Delete providers?'
+            : 'Delete provider?'
+        }
         body={
           deleteTargets && deleteTargets.length > 1
             ? `${deleteTargets.length} providers will be deleted. Sandboxes using them lose access to their credentials.`

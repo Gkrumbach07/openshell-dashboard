@@ -15,7 +15,9 @@ export const useBulkDelete = (
   const run = async (names: string[], onDone: () => void) => {
     setDeleting(true);
     setError(undefined);
-    const results = await Promise.allSettled(names.map((name) => deleteOne(name)));
+    const results = await Promise.allSettled(
+      names.map((name) => deleteOne(name)),
+    );
     await queryClient.invalidateQueries({ queryKey: [...invalidateKey] });
     setDeleting(false);
     const failed = results.filter((result) => result.status === 'rejected');

@@ -37,7 +37,11 @@ type CreateSandboxModalProps = {
 // Create sandbox form. spec.policy is REQUIRED by the gateway — the form
 // always submits a policy, seeded from a client-side starter template and
 // editable as JSON. (There is no server-side policy library to pick from.)
-const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({ workspace, isOpen, onClose }) => {
+const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
+  workspace,
+  isOpen,
+  onClose,
+}) => {
   const [name, setName] = useState('');
   const [image, setImage] = useState('');
   const [labelsText, setLabelsText] = useState('');
@@ -76,7 +80,9 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({ workspace, isOp
 
   const toggleProvider = (providerName: string, checked: boolean) => {
     setSelectedProviders((current) =>
-      checked ? [...current, providerName] : current.filter((item) => item !== providerName),
+      checked
+        ? [...current, providerName]
+        : current.filter((item) => item !== providerName),
     );
   };
 
@@ -110,14 +116,26 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({ workspace, isOp
         cpu: cpu || undefined,
         memory: memory || undefined,
       },
-      { onSuccess: () => { addSuccess('Sandbox created'); close(); } },
+      {
+        onSuccess: () => {
+          addSuccess('Sandbox created');
+          close();
+        },
+      },
     );
   };
 
-  const activeTemplate = policyTemplates.find((candidate) => candidate.id === templateId);
+  const activeTemplate = policyTemplates.find(
+    (candidate) => candidate.id === templateId,
+  );
 
   return (
-    <Modal variant="large" isOpen={isOpen} onClose={close} aria-label="Create sandbox">
+    <Modal
+      variant="large"
+      isOpen={isOpen}
+      onClose={close}
+      aria-label="Create sandbox"
+    >
       <ModalHeader
         title="Create sandbox"
         description="A sandbox is a secure execution environment. It runs until deleted — there is no stop or suspend."
@@ -180,7 +198,9 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({ workspace, isOp
             {(providers.data ?? []).length === 0 ? (
               <FormHelperText>
                 <HelperText>
-                  <HelperTextItem>No providers in this workspace yet</HelperTextItem>
+                  <HelperTextItem>
+                    No providers in this workspace yet
+                  </HelperTextItem>
                 </HelperText>
               </FormHelperText>
             ) : (
@@ -191,7 +211,9 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({ workspace, isOp
                   data-testid={`sandbox-provider-${provider.metadata.name}`}
                   label={`${provider.metadata.name} (${provider.type})`}
                   isChecked={selectedProviders.includes(provider.metadata.name)}
-                  onChange={(_event, checked) => toggleProvider(provider.metadata.name, checked)}
+                  onChange={(_event, checked) =>
+                    toggleProvider(provider.metadata.name, checked)
+                  }
                 />
               ))
             )}
@@ -240,7 +262,11 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({ workspace, isOp
               </HelperText>
             </FormHelperText>
           </FormGroup>
-          <FormGroup label="Security policy" isRequired fieldId="sandbox-policy-template">
+          <FormGroup
+            label="Security policy"
+            isRequired
+            fieldId="sandbox-policy-template"
+          >
             <FormSelect
               id="sandbox-policy-template"
               data-testid="sandbox-policy-template-select"
@@ -248,7 +274,11 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({ workspace, isOp
               onChange={(_event, value) => applyTemplate(value)}
             >
               {policyTemplates.map((template) => (
-                <FormSelectOption key={template.id} value={template.id} label={template.name} />
+                <FormSelectOption
+                  key={template.id}
+                  value={template.id}
+                  label={template.name}
+                />
               ))}
             </FormSelect>
             {activeTemplate && (

@@ -16,21 +16,17 @@ import (
 // CreateSandboxRequest is the create-sandbox body. Policy is required by the
 // gateway (SandboxSpec.policy) and is validated here before the gRPC call.
 type CreateSandboxRequest struct {
-	Name        string            `json:"name"`
 	Labels      map[string]string `json:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`
+	Environment map[string]string `json:"environment,omitempty"`
+	Name        string            `json:"name"`
 	Image       string            `json:"image"`
 	LogLevel    string            `json:"logLevel,omitempty"`
-	Environment map[string]string `json:"environment,omitempty"`
+	CPU         string            `json:"cpu,omitempty"`
+	Memory      string            `json:"memory,omitempty"`
 	Providers   []string          `json:"providers,omitempty"`
-	// GpuCount requests GPUs via ResourceRequirements.gpu. 0 means no GPU.
-	GpuCount uint32 `json:"gpuCount,omitempty"`
-	// Cpu / Memory are K8s-style quantities ("2", "500m", "4Gi") placed in
-	// template.resources as {"limits": {...}} — the same shape the CLI sends.
-	Cpu    string `json:"cpu,omitempty"`
-	Memory string `json:"memory,omitempty"`
-	// Policy is a protojson-encoded openshell.sandbox.v1.SandboxPolicy.
-	Policy json.RawMessage `json:"policy"`
+	Policy      json.RawMessage   `json:"policy"`
+	GpuCount    uint32            `json:"gpuCount,omitempty"`
 }
 
 func (app *App) ListSandboxes(w http.ResponseWriter, r *http.Request) {
@@ -70,15 +66,16 @@ func (app *App) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	template := &openshellv1.SandboxTemplate{Image: body.Image}
-	if body.Cpu != "" || body.Memory != "" {
+	if body.CPU != "" || body.Memory != "" {
 		limits := map[string]any{}
-		if body.Cpu != "" {
-			limits["cpu"] = body.Cpu
+		if body.CPU != "" {
+			limits["cpu"] = body.CPU
 		}
 		if body.Memory != "" {
 			limits["memory"] = body.Memory
 		}
-		resources, err := structpb.NewStruct(map[string]any{"limits": limits})
+		var resources *structpb.Struct
+		resources, err = structpb.NewStruct(map[string]any{"limits": limits})
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_resources", "invalid cpu/memory values")
 			return

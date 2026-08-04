@@ -21,7 +21,7 @@ PROTO_GRPC_OPTS := \
 -include scripts/.env.dev
 export
 
-.PHONY: setup proto dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint typecheck clean
+.PHONY: setup proto dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean
 
 setup: ## Install frontend deps and Go deps
 	cd frontend && npm install
@@ -62,12 +62,22 @@ test: ## Frontend unit tests + go tests
 	cd frontend && npm test -- --passWithNoTests
 	cd backend && go test ./...
 
-lint: ## eslint + go vet (golangci-lint if installed)
+lint: ## eslint + golangci-lint + prettier check
 	cd frontend && npm run lint
-	cd backend && go vet ./... && { command -v golangci-lint >/dev/null && golangci-lint run ./... || true; }
+	cd frontend && npm run format:check
+	$(MAKE) lint-go
+
+lint-go: ## golangci-lint (requires golangci-lint installed)
+	cd backend && golangci-lint run ./...
 
 typecheck: ## tsc --noEmit
 	cd frontend && npm run typecheck
+
+format: ## Auto-format frontend code with Prettier
+	cd frontend && npm run format
+
+format-check: ## Check frontend formatting without writing
+	cd frontend && npm run format:check
 
 clean:
 	rm -rf frontend/dist backend/bin

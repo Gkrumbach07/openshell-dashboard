@@ -1,5 +1,10 @@
 import { useMemo } from 'react';
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import { apiFetch, del, get, post, put } from './client';
 import type {
@@ -15,7 +20,10 @@ import type {
 const sandboxBase = (workspace: string, name: string) =>
   `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}`;
 
-export const getSandboxPolicy = (workspace: string, name: string): Promise<SandboxPolicyView> =>
+export const getSandboxPolicy = (
+  workspace: string,
+  name: string,
+): Promise<SandboxPolicyView> =>
   get<SandboxPolicyView>(`${sandboxBase(workspace, name)}/policy`);
 
 export const updateSandboxPolicy = (
@@ -32,7 +40,9 @@ export const updateSandboxPolicy = (
 export const getGlobalPolicy = (): Promise<SandboxPolicyView> =>
   get<SandboxPolicyView>('/api/v1/global-policy');
 
-export const setGlobalPolicy = (policy: SandboxPolicy): Promise<PolicyUpdateResult> =>
+export const setGlobalPolicy = (
+  policy: SandboxPolicy,
+): Promise<PolicyUpdateResult> =>
   apiFetch<PolicyUpdateResult>('/api/v1/global-policy', {
     method: 'PUT',
     body: JSON.stringify({ policy }),
@@ -115,8 +125,12 @@ export const useUpdateSandboxPolicy = (workspace: string, name: string) => {
       expectedResourceVersion?: number;
     }) => updateSandboxPolicy(workspace, name, policy, expectedResourceVersion),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sandbox-policy', workspace, name] });
-      queryClient.invalidateQueries({ queryKey: ['sandboxes', workspace, name] });
+      queryClient.invalidateQueries({
+        queryKey: ['sandbox-policy', workspace, name],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['sandboxes', workspace, name],
+      });
     },
   });
 };
@@ -128,7 +142,8 @@ export const useSetGlobalPolicy = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: setGlobalPolicy,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['global-policy'] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['global-policy'] }),
   });
 };
 
@@ -139,7 +154,8 @@ export const useDeleteGlobalPolicy = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: deleteGlobalPolicy,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['global-policy'] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['global-policy'] }),
   });
 };
 
@@ -162,7 +178,9 @@ const useDraftMutation = <TArgs, TResult>(
     mutationFn,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['drafts', workspace, name] });
-      queryClient.invalidateQueries({ queryKey: ['sandbox-policy', workspace, name] });
+      queryClient.invalidateQueries({
+        queryKey: ['sandbox-policy', workspace, name],
+      });
     },
   });
 };
@@ -173,8 +191,11 @@ export const useApproveDraftChunk = (workspace: string, name: string) =>
   );
 
 export const useRejectDraftChunk = (workspace: string, name: string) =>
-  useDraftMutation(workspace, name, ({ chunkId, reason }: { chunkId: string; reason?: string }) =>
-    rejectDraftChunk(workspace, name, chunkId, reason),
+  useDraftMutation(
+    workspace,
+    name,
+    ({ chunkId, reason }: { chunkId: string; reason?: string }) =>
+      rejectDraftChunk(workspace, name, chunkId, reason),
   );
 
 export const useApproveAllDraftChunks = (workspace: string, name: string) =>
@@ -207,7 +228,10 @@ export const clearDraftChunks = (
   workspace: string,
   name: string,
 ): Promise<{ chunksCleared: number }> =>
-  post<{ chunksCleared: number }>(`${sandboxBase(workspace, name)}/drafts/clear`, {});
+  post<{ chunksCleared: number }>(
+    `${sandboxBase(workspace, name)}/drafts/clear`,
+    {},
+  );
 
 export const getDraftHistory = (
   workspace: string,
@@ -219,8 +243,13 @@ export const useEditDraftChunk = (workspace: string, name: string) =>
   useDraftMutation(
     workspace,
     name,
-    ({ chunkId, proposedRule }: { chunkId: string; proposedRule: NetworkPolicyRule }) =>
-      editDraftChunk(workspace, name, chunkId, proposedRule),
+    ({
+      chunkId,
+      proposedRule,
+    }: {
+      chunkId: string;
+      proposedRule: NetworkPolicyRule;
+    }) => editDraftChunk(workspace, name, chunkId, proposedRule),
   );
 
 export const useUndoDraftChunk = (workspace: string, name: string) =>
@@ -256,4 +285,3 @@ export const useDraftNotifications = (enabled = true) => {
     isLoading: query.isLoading,
   };
 };
-

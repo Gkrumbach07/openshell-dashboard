@@ -9,16 +9,9 @@ import {
   Flex,
   FlexItem,
 } from '@patternfly/react-core';
-import {
-  AngleLeftIcon,
-  AngleRightIcon,
-} from '@patternfly/react-icons';
+import { AngleLeftIcon, AngleRightIcon } from '@patternfly/react-icons';
 
-import type {
-  DraftSandboxSummary,
-  Sandbox,
-  SandboxPolicyView,
-} from '../types';
+import type { DraftSandboxSummary, Sandbox, SandboxPolicyView } from '../types';
 import { formatAge } from './utils';
 
 type AlertVariant = 'danger' | 'warning' | 'info';
@@ -49,17 +42,20 @@ export const buildAttentionItems = (
   const now = Date.now();
 
   if (status.phase === 'ERROR') {
-    const condition = status.conditions?.find((c) => c.status === 'False' || c.reason);
+    const condition = status.conditions?.find(
+      (c) => c.status === 'False' || c.reason,
+    );
     items.push({
       key: 'error',
       variant: 'danger',
       title: condition?.reason ?? 'Error',
-      description: [
-        condition?.message,
-        status.currentPolicyVersion === 0 ? 'Policy never loaded' : undefined,
-      ]
-        .filter(Boolean)
-        .join(' · ') || undefined,
+      description:
+        [
+          condition?.message,
+          status.currentPolicyVersion === 0 ? 'Policy never loaded' : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · ') || undefined,
     });
   }
 
@@ -72,7 +68,10 @@ export const buildAttentionItems = (
         title: `Policy v${rev.version} failed to load`,
         description: rev.loadError,
       });
-    } else if (rev.status === 'PENDING' && now - rev.createdAtMs > FIVE_MINUTES_MS) {
+    } else if (
+      rev.status === 'PENDING' &&
+      now - rev.createdAtMs > FIVE_MINUTES_MS
+    ) {
       items.push({
         key: 'policy-status',
         variant: 'warning',
@@ -82,7 +81,11 @@ export const buildAttentionItems = (
     }
   }
 
-  if (draftSummary && draftSummary.pendingCount > 0 && status.phase !== 'ERROR') {
+  if (
+    draftSummary &&
+    draftSummary.pendingCount > 0 &&
+    status.phase !== 'ERROR'
+  ) {
     const n = draftSummary.pendingCount;
     items.push({
       key: 'drafts',
@@ -91,7 +94,10 @@ export const buildAttentionItems = (
         ? `${n} rule${n > 1 ? 's' : ''} proposed, with findings`
         : `${n} rule${n > 1 ? 's' : ''} proposed`,
       action: callbacks?.onReviewDrafts
-        ? { label: 'Review', onClick: () => callbacks.onReviewDrafts!(metadata.name) }
+        ? {
+            label: 'Review',
+            onClick: () => callbacks.onReviewDrafts!(metadata.name),
+          }
         : undefined,
     });
   }
@@ -111,7 +117,8 @@ export const buildAttentionItems = (
       } else if (remaining < ONE_DAY_MS) {
         const hours = Math.floor(remaining / (60 * 60 * 1000));
         const mins = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
-        const timeLeft = hours > 0 ? `${hours}h ${mins}m` : mins > 0 ? `${mins}m` : '<1m';
+        const timeLeft =
+          hours > 0 ? `${hours}h ${mins}m` : mins > 0 ? `${mins}m` : '<1m';
         items.push({
           key: `provider-expiring-${name}`,
           variant: 'warning',
@@ -245,10 +252,16 @@ const SandboxAttention: React.FC<SandboxAttentionProps> = ({
   mode = 'card',
   wrapper,
 }) => {
-  const items = buildAttentionItems(sandbox, draftSummary, policyView, {
-    onReviewDrafts,
-    onViewLogs,
-  }, providerExpiry);
+  const items = buildAttentionItems(
+    sandbox,
+    draftSummary,
+    policyView,
+    {
+      onReviewDrafts,
+      onViewLogs,
+    },
+    providerExpiry,
+  );
 
   if (items.length === 0) return null;
 

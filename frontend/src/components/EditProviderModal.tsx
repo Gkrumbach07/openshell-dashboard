@@ -36,10 +36,17 @@ const EditProviderModal: React.FC<EditProviderModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const [credentialValues, setCredentialValues] = useState<Record<string, string>>({});
+  const [credentialValues, setCredentialValues] = useState<
+    Record<string, string>
+  >({});
   const [expiryValues, setExpiryValues] = useState<Record<string, string>>({});
-  const [configRows, setConfigRows] = useState<{ key: string; value: string }[]>(
-    Object.entries(provider.config ?? {}).map(([key, value]) => ({ key, value })),
+  const [configRows, setConfigRows] = useState<
+    { key: string; value: string }[]
+  >(
+    Object.entries(provider.config ?? {}).map(([key, value]) => ({
+      key,
+      value,
+    })),
   );
   const profiles = useProviderProfiles(workspace);
   const updateProvider = useUpdateProvider(workspace);
@@ -53,7 +60,12 @@ const EditProviderModal: React.FC<EditProviderModalProps> = ({
   const close = () => {
     setCredentialValues({});
     setExpiryValues({});
-    setConfigRows(Object.entries(provider.config ?? {}).map(([key, value]) => ({ key, value })));
+    setConfigRows(
+      Object.entries(provider.config ?? {}).map(([key, value]) => ({
+        key,
+        value,
+      })),
+    );
     updateProvider.reset();
     onClose();
   };
@@ -84,8 +96,12 @@ const EditProviderModal: React.FC<EditProviderModalProps> = ({
     updateProvider.mutate(
       {
         name: provider.metadata.name,
-        credentials: Object.keys(credentials).length > 0 ? credentials : undefined,
-        credentialExpiresAtMs: Object.keys(credentialExpiresAtMs).length > 0 ? credentialExpiresAtMs : undefined,
+        credentials:
+          Object.keys(credentials).length > 0 ? credentials : undefined,
+        credentialExpiresAtMs:
+          Object.keys(credentialExpiresAtMs).length > 0
+            ? credentialExpiresAtMs
+            : undefined,
         config,
       },
       {
@@ -98,7 +114,12 @@ const EditProviderModal: React.FC<EditProviderModalProps> = ({
   };
 
   return (
-    <Modal variant="medium" isOpen={isOpen} onClose={close} aria-label="Edit provider">
+    <Modal
+      variant="medium"
+      isOpen={isOpen}
+      onClose={close}
+      aria-label="Edit provider"
+    >
       <ModalHeader title="Edit provider" />
       <ModalBody>
         {profiles.isLoading ? (
@@ -123,7 +144,10 @@ const EditProviderModal: React.FC<EditProviderModalProps> = ({
                     placeholder="Leave blank to keep current value"
                     value={credentialValues[credential.name] ?? ''}
                     onChange={(_event, value) =>
-                      setCredentialValues((current) => ({ ...current, [credential.name]: value }))
+                      setCredentialValues((current) => ({
+                        ...current,
+                        [credential.name]: value,
+                      }))
                     }
                   />
                   <FormHelperText>
@@ -137,22 +161,37 @@ const EditProviderModal: React.FC<EditProviderModalProps> = ({
                     </HelperText>
                   </FormHelperText>
                 </FormGroup>
-                <FormGroup label={`${credential.name} expiry`} fieldId={`credential-expires-${credential.name}`}>
+                <FormGroup
+                  label={`${credential.name} expiry`}
+                  fieldId={`credential-expires-${credential.name}`}
+                >
                   <TextInput
                     id={`credential-expires-${credential.name}`}
                     value={expiryValues[credential.name] ?? ''}
-                    onChange={(_event, value) => setExpiryValues((c) => ({ ...c, [credential.name]: value }))}
+                    onChange={(_event, value) =>
+                      setExpiryValues((c) => ({
+                        ...c,
+                        [credential.name]: value,
+                      }))
+                    }
                     placeholder="RFC3339 or epoch ms (optional, 0 to clear)"
                   />
                   <FormHelperText>
                     <HelperText>
-                      <HelperTextItem>When this credential expires. Leave empty to keep current value.</HelperTextItem>
+                      <HelperTextItem>
+                        When this credential expires. Leave empty to keep
+                        current value.
+                      </HelperTextItem>
                     </HelperText>
                   </FormHelperText>
                 </FormGroup>
               </React.Fragment>
             ))}
-            <FormGroup label="Configuration" fieldId="edit-provider-config" role="group">
+            <FormGroup
+              label="Configuration"
+              fieldId="edit-provider-config"
+              role="group"
+            >
               <Stack hasGutter>
                 {configRows.map((row, index) => (
                   <StackItem key={index}>
@@ -164,7 +203,9 @@ const EditProviderModal: React.FC<EditProviderModalProps> = ({
                           value={row.key}
                           onChange={(_event, value) =>
                             setConfigRows((rows) =>
-                              rows.map((r, i) => (i === index ? { ...r, key: value } : r)),
+                              rows.map((r, i) =>
+                                i === index ? { ...r, key: value } : r,
+                              ),
                             )
                           }
                           placeholder="key"
@@ -178,7 +219,9 @@ const EditProviderModal: React.FC<EditProviderModalProps> = ({
                           value={row.value}
                           onChange={(_event, value) =>
                             setConfigRows((rows) =>
-                              rows.map((r, i) => (i === index ? { ...r, value } : r)),
+                              rows.map((r, i) =>
+                                i === index ? { ...r, value } : r,
+                              ),
                             )
                           }
                           placeholder="value"
@@ -188,7 +231,11 @@ const EditProviderModal: React.FC<EditProviderModalProps> = ({
                       <GridItem span={2}>
                         <Button
                           variant="link"
-                          onClick={() => setConfigRows((rows) => rows.filter((_, i) => i !== index))}
+                          onClick={() =>
+                            setConfigRows((rows) =>
+                              rows.filter((_, i) => i !== index),
+                            )
+                          }
                           data-testid={`edit-provider-config-remove-${index}`}
                         >
                           Remove
@@ -201,7 +248,9 @@ const EditProviderModal: React.FC<EditProviderModalProps> = ({
               <Button
                 variant="link"
                 isInline
-                onClick={() => setConfigRows((rows) => [...rows, { key: '', value: '' }])}
+                onClick={() =>
+                  setConfigRows((rows) => [...rows, { key: '', value: '' }])
+                }
                 data-testid="edit-provider-config-add"
               >
                 Add config entry

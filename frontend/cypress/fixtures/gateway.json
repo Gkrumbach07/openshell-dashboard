@@ -1,0 +1,11 @@
+{
+  "status": "HEALTHY",
+  "gatewayVersion": "0.0.92",
+  "computeDrivers": [
+    {
+      "name": "podman",
+      "driverName": "podman",
+      "driverVersion": "5.4.2"
+    }
+  ]
+}

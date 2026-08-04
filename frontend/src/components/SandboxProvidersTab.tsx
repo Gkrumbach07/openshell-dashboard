@@ -11,7 +11,15 @@ import {
   ToolbarContent,
   ToolbarItem,
 } from '@patternfly/react-core';
-import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
+import {
+  ActionsColumn,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from '@patternfly/react-table';
 
 import { useProviders } from '../api/providers';
 import {
@@ -27,7 +35,10 @@ type SandboxProvidersTabProps = {
 
 // Attach/detach providers on a live sandbox. Mutations pass the sandbox's
 // current resource_version for optimistic concurrency.
-const SandboxProvidersTab: React.FC<SandboxProvidersTabProps> = ({ workspace, sandboxName }) => {
+const SandboxProvidersTab: React.FC<SandboxProvidersTabProps> = ({
+  workspace,
+  sandboxName,
+}) => {
   const attached = useAttachedProviders(workspace, sandboxName);
   const workspaceProviders = useProviders(workspace);
   const attach = useAttachProvider(workspace, sandboxName);
@@ -47,7 +58,11 @@ const SandboxProvidersTab: React.FC<SandboxProvidersTabProps> = ({ workspace, sa
       <Alert
         variant="danger"
         title="Failed to load attached providers"
-        actionLinks={<Button variant="link" onClick={() => attached.refetch()}>Retry</Button>}
+        actionLinks={
+          <Button variant="link" onClick={() => attached.refetch()}>
+            Retry
+          </Button>
+        }
       >
         {(attached.error as Error).message}
       </Alert>
@@ -71,7 +86,11 @@ const SandboxProvidersTab: React.FC<SandboxProvidersTabProps> = ({ workspace, sa
               onChange={(_event, value) => setToAttach(value)}
               data-testid="attach-provider-select"
             >
-              <FormSelectOption value="" label="Select a provider to attach" isDisabled />
+              <FormSelectOption
+                value=""
+                label="Select a provider to attach"
+                isDisabled
+              />
               {attachable.map((provider) => (
                 <FormSelectOption
                   key={provider.metadata.name}
@@ -87,7 +106,6 @@ const SandboxProvidersTab: React.FC<SandboxProvidersTabProps> = ({ workspace, sa
                 attach.mutate(
                   {
                     provider: toAttach,
-
                   },
                   { onSuccess: () => setToAttach('') },
                 )
@@ -106,7 +124,11 @@ const SandboxProvidersTab: React.FC<SandboxProvidersTabProps> = ({ workspace, sa
           {((attach.error || detach.error) as Error).message}
         </Alert>
       )}
-      <Table aria-label="Attached providers" variant="compact" data-testid="attached-providers-table">
+      <Table
+        aria-label="Attached providers"
+        variant="compact"
+        data-testid="attached-providers-table"
+      >
         <Thead>
           <Tr>
             <Th>Name</Th>
@@ -122,7 +144,9 @@ const SandboxProvidersTab: React.FC<SandboxProvidersTabProps> = ({ workspace, sa
               <Td dataLabel="Type">
                 <Label color="purple">{provider.type}</Label>
               </Td>
-              <Td dataLabel="Credentials">{(provider.credentialNames ?? []).join(', ') || '-'}</Td>
+              <Td dataLabel="Credentials">
+                {(provider.credentialNames ?? []).join(', ') || '-'}
+              </Td>
               <Td isActionCell>
                 <ActionsColumn
                   items={[

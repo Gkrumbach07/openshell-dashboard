@@ -37,7 +37,9 @@ type SandboxPolicyTabProps = {
   sandboxName: string;
 };
 
-export const policyStatusColor = (status: PolicyStatus): 'green' | 'red' | 'blue' | 'grey' => {
+export const policyStatusColor = (
+  status: PolicyStatus,
+): 'green' | 'red' | 'blue' | 'grey' => {
   switch (status) {
     case 'LOADED':
       return 'green';
@@ -69,7 +71,10 @@ export const policyStatusIcon = (status: PolicyStatus) => {
 // editor. Only network_policies (and inference fields) can change after
 // create — filesystem/landlock/process are immutable, so the editor keeps
 // the static fields from the current policy and replaces networkPolicies.
-const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({ workspace, sandboxName }) => {
+const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({
+  workspace,
+  sandboxName,
+}) => {
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const policyView = useSandboxPolicy(workspace, sandboxName);
   const sandbox = useSandbox(workspace, sandboxName);
@@ -100,13 +105,18 @@ const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({ workspace, sandboxN
 
   // A 404 just means no revisions recorded yet — fall through and render
   // the create-time policy from spec.policy with an empty history.
-  const notFound = policyView.isError && (policyView.error as ApiError).status === 404;
+  const notFound =
+    policyView.isError && (policyView.error as ApiError).status === 404;
   if (policyView.isError && !notFound) {
     return (
       <Alert
         variant="danger"
         title="Failed to load policy"
-        actionLinks={<Button variant="link" onClick={() => policyView.refetch()}>Retry</Button>}
+        actionLinks={
+          <Button variant="link" onClick={() => policyView.refetch()}>
+            Retry
+          </Button>
+        }
       >
         {(policyView.error as Error).message}
       </Alert>
@@ -114,7 +124,9 @@ const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({ workspace, sandboxN
   }
 
   const openEditor = () => {
-    setNetworkText(JSON.stringify(currentPolicy?.networkPolicies ?? {}, null, 2));
+    setNetworkText(
+      JSON.stringify(currentPolicy?.networkPolicies ?? {}, null, 2),
+    );
     updatePolicy.reset();
     setEditOpen(true);
   };
@@ -128,7 +140,10 @@ const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({ workspace, sandboxN
       networkPolicies: JSON.parse(networkText || '{}'),
     };
     updatePolicy.mutate(
-      { policy, expectedResourceVersion: sandbox.data?.metadata.resourceVersion },
+      {
+        policy,
+        expectedResourceVersion: sandbox.data?.metadata.resourceVersion,
+      },
       { onSuccess: () => setEditOpen(false) },
     );
   };
@@ -138,11 +153,17 @@ const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({ workspace, sandboxN
       <Toolbar aria-label="Policy actions">
         <ToolbarContent>
           <ToolbarItem>
-            <Label color="blue">Active version: {policyView.data?.activeVersion ?? '-'}</Label>
+            <Label color="blue">
+              Active version: {policyView.data?.activeVersion ?? '-'}
+            </Label>
           </ToolbarItem>
           {isWorkspaceAdmin && (
             <ToolbarItem>
-              <Button onClick={openEditor} isDisabled={!currentPolicy} data-testid="edit-policy">
+              <Button
+                onClick={openEditor}
+                isDisabled={!currentPolicy}
+                data-testid="edit-policy"
+              >
                 Edit network rules
               </Button>
             </ToolbarItem>
@@ -151,7 +172,11 @@ const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({ workspace, sandboxN
       </Toolbar>
 
       <Title headingLevel="h3">Revision history</Title>
-      <Table aria-label="Policy revisions" variant="compact" data-testid="policy-revisions-table">
+      <Table
+        aria-label="Policy revisions"
+        variant="compact"
+        data-testid="policy-revisions-table"
+      >
         <Thead>
           <Tr>
             <Th>Version</Th>
@@ -167,11 +192,17 @@ const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({ workspace, sandboxN
             <Tr key={revision.version}>
               <Td dataLabel="Version">{revision.version}</Td>
               <Td dataLabel="Status">
-                <Label isCompact color={policyStatusColor(revision.status)} icon={policyStatusIcon(revision.status)}>
+                <Label
+                  isCompact
+                  color={policyStatusColor(revision.status)}
+                  icon={policyStatusIcon(revision.status)}
+                >
                   {revision.status}
                 </Label>
               </Td>
-              <Td dataLabel="Created">{formatTimestamp(revision.createdAtMs)}</Td>
+              <Td dataLabel="Created">
+                {formatTimestamp(revision.createdAtMs)}
+              </Td>
               <Td dataLabel="Loaded">{formatTimestamp(revision.loadedAtMs)}</Td>
               <Td dataLabel="Hash" className="pf-v6-u-font-family-monospace">
                 {(revision.policyHash ?? '').slice(0, 12) || '-'}
@@ -200,7 +231,12 @@ const SandboxPolicyTab: React.FC<SandboxPolicyTabProps> = ({ workspace, sandboxN
         </>
       )}
 
-      <Modal variant="large" isOpen={isEditOpen} onClose={() => setEditOpen(false)} aria-label="Edit network rules">
+      <Modal
+        variant="large"
+        isOpen={isEditOpen}
+        onClose={() => setEditOpen(false)}
+        aria-label="Edit network rules"
+      >
         <ModalHeader
           title="Edit network rules"
           description="Filesystem, landlock, and process settings are immutable after create — only networkPolicies can change. The static fields are kept from the current policy."

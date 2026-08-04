@@ -34,12 +34,7 @@ export type WorkspaceMember = {
 // openshell.v1.SandboxPhase — the full lifecycle. There is no stopped or
 // suspended state; a sandbox runs until deleted.
 export type SandboxPhase =
-  | 'PROVISIONING'
-  | 'READY'
-  | 'ERROR'
-  | 'DELETING'
-  | 'UNKNOWN'
-  | 'UNSPECIFIED';
+  'PROVISIONING' | 'READY' | 'ERROR' | 'DELETING' | 'UNKNOWN' | 'UNSPECIFIED';
 
 export type SandboxCondition = {
   type: string;
@@ -244,7 +239,8 @@ export type CredentialRefreshStatus = {
 
 // --- Gateway ---
 
-export type ServiceStatus = 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY' | 'UNSPECIFIED';
+export type ServiceStatus =
+  'HEALTHY' | 'DEGRADED' | 'UNHEALTHY' | 'UNSPECIFIED';
 
 export type ComputeDriver = {
   name: string;
@@ -334,7 +330,8 @@ export type SandboxLogs = {
 
 // --- Policy revisions (SandboxPolicyRevision) ---
 
-export type PolicyStatus = 'PENDING' | 'LOADED' | 'FAILED' | 'SUPERSEDED' | 'UNSPECIFIED';
+export type PolicyStatus =
+  'PENDING' | 'LOADED' | 'FAILED' | 'SUPERSEDED' | 'UNSPECIFIED';
 
 export type PolicyRevision = {
   version: number;

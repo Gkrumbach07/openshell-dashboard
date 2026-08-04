@@ -20,16 +20,9 @@ import {
   Stack,
   StackItem,
 } from '@patternfly/react-core';
-import {
-  EllipsisVIcon,
-  ScreenIcon,
-} from '@patternfly/react-icons';
+import { EllipsisVIcon, ScreenIcon } from '@patternfly/react-icons';
 
-import type {
-  DraftSandboxSummary,
-  Sandbox,
-  SandboxPolicyView,
-} from '../types';
+import type { DraftSandboxSummary, Sandbox, SandboxPolicyView } from '../types';
 import LabelsList from './LabelsList';
 import SandboxAttention from './SandboxAttention';
 import SandboxEgressSummary from './SandboxEgressSummary';
@@ -82,7 +75,10 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
         <Stack hasGutter>
           {/* ── Header ── */}
           <StackItem>
-            <Flex alignItems={{ default: 'alignItemsFlexStart' }} gap={{ default: 'gapMd' }}>
+            <Flex
+              alignItems={{ default: 'alignItemsFlexStart' }}
+              gap={{ default: 'gapMd' }}
+            >
               <FlexItem style={{ flex: 1, minWidth: 0 }}>
                 <Stack>
                   <StackItem>
@@ -99,14 +95,20 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
                           variant="link"
                           isInline
                           onClick={() => onSelect?.(metadata.name)}
-                          style={{ fontSize: 'var(--pf-t--global--font--size--heading--xs)' }}
+                          style={{
+                            fontSize:
+                              'var(--pf-t--global--font--size--heading--xs)',
+                          }}
                           data-testid={`sandbox-card-name-${metadata.name}`}
                         >
                           {metadata.name}
                         </Button>
                       </FlexItem>
                       <FlexItem>
-                        <Content component="small" style={{ whiteSpace: 'nowrap' }}>
+                        <Content
+                          component="small"
+                          style={{ whiteSpace: 'nowrap' }}
+                        >
                           {getSubtitleText(sandbox)}
                         </Content>
                       </FlexItem>
@@ -148,7 +150,10 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
                   popperProps={{ position: 'end' }}
                 >
                   <DropdownList>
-                    <DropdownItem key="delete" onClick={() => onDelete(metadata.name)}>
+                    <DropdownItem
+                      key="delete"
+                      onClick={() => onDelete(metadata.name)}
+                    >
                       Delete
                     </DropdownItem>
                   </DropdownList>
@@ -178,7 +183,11 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
           {/* ── Providers + Labels ── */}
           {(providers.length > 0 || hasLabels) && status.phase !== 'ERROR' && (
             <StackItem>
-              <DescriptionList isHorizontal isCompact horizontalTermWidthModifier={{ default: '10ch' }}>
+              <DescriptionList
+                isHorizontal
+                isCompact
+                horizontalTermWidthModifier={{ default: '10ch' }}
+              >
                 {providers.length > 0 && (
                   <DescriptionListGroup>
                     <DescriptionListTerm>Providers</DescriptionListTerm>
@@ -229,7 +238,10 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
       {/* ── Footer ── */}
       <Divider />
       <CardFooter>
-        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+        <Flex
+          alignItems={{ default: 'alignItemsCenter' }}
+          gap={{ default: 'gapSm' }}
+        >
           {isReady && onOpenTerminal && (
             <FlexItem>
               <Button

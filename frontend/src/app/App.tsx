@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Breadcrumb, BreadcrumbItem, PageBreadcrumb } from '@patternfly/react-core';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  PageBreadcrumb,
+} from '@patternfly/react-core';
 import {
   BrowserRouter,
   Link,
@@ -35,7 +39,9 @@ const queryClient = new QueryClient({
 // the props from URL params here in the standalone app shell.
 const WorkspaceListRoute: React.FC = () => {
   const navigate = useNavigate();
-  return <WorkspaceListPage onSelect={(name) => navigate(`/workspaces/${name}`)} />;
+  return (
+    <WorkspaceListPage onSelect={(name) => navigate(`/workspaces/${name}`)} />
+  );
 };
 
 // Breadcrumbs live in the standalone shell, not in the self-contained pages —
@@ -82,15 +88,22 @@ const WorkspaceDetailRoute: React.FC = () => {
       <WorkspaceCrumbs workspace={workspace} />
       <WorkspaceDetailPage
         workspace={workspace}
-        onSelectSandbox={(name) => navigate(`/workspaces/${workspace}/sandboxes/${name}`)}
-        onSelectProvider={(name) => navigate(`/workspaces/${workspace}/providers/${name}`)}
+        onSelectSandbox={(name) =>
+          navigate(`/workspaces/${workspace}/sandboxes/${name}`)
+        }
+        onSelectProvider={(name) =>
+          navigate(`/workspaces/${workspace}/providers/${name}`)
+        }
       />
     </>
   );
 };
 
 const SandboxDetailRoute: React.FC = () => {
-  const { workspace, sandbox } = useParams<{ workspace: string; sandbox: string }>();
+  const { workspace, sandbox } = useParams<{
+    workspace: string;
+    sandbox: string;
+  }>();
   if (!workspace || !sandbox) {
     return <Navigate to="/workspaces" replace />;
   }
@@ -103,7 +116,10 @@ const SandboxDetailRoute: React.FC = () => {
 };
 
 const ProviderDetailRoute: React.FC = () => {
-  const { workspace, provider } = useParams<{ workspace: string; provider: string }>();
+  const { workspace, provider } = useParams<{
+    workspace: string;
+    provider: string;
+  }>();
   if (!workspace || !provider) {
     return <Navigate to="/workspaces" replace />;
   }
@@ -123,8 +139,14 @@ const AuthenticatedApp: React.FC = () => (
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/workspaces" element={<WorkspaceListRoute />} />
       <Route path="/workspaces/:workspace" element={<WorkspaceDetailRoute />} />
-      <Route path="/workspaces/:workspace/sandboxes/:sandbox" element={<SandboxDetailRoute />} />
-      <Route path="/workspaces/:workspace/providers/:provider" element={<ProviderDetailRoute />} />
+      <Route
+        path="/workspaces/:workspace/sandboxes/:sandbox"
+        element={<SandboxDetailRoute />}
+      />
+      <Route
+        path="/workspaces/:workspace/providers/:provider"
+        element={<ProviderDetailRoute />}
+      />
       <Route path="*" element={<Navigate to="/workspaces" replace />} />
     </Routes>
   </AppLayout>
@@ -148,7 +170,13 @@ const AppRoutes: React.FC = () => {
       />
       <Route
         path="*"
-        element={authenticated ? <AuthenticatedApp /> : <Navigate to="/login" replace />}
+        element={
+          authenticated ? (
+            <AuthenticatedApp />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
       />
     </Routes>
   );
@@ -158,7 +186,9 @@ const App: React.FC = () => (
   <QueryClientProvider client={queryClient}>
     <SlotProvider slots={{}}>
       <AlertProvider>
-        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <BrowserRouter
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           <AppRoutes />
         </BrowserRouter>
       </AlertProvider>

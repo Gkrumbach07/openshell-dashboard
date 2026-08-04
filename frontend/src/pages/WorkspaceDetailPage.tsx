@@ -47,7 +47,8 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
   renderModelPicker,
 }) => {
   const slots = useSlots();
-  const resolvedCredentialInput = renderCredentialInput ?? slots.credentialInput;
+  const resolvedCredentialInput =
+    renderCredentialInput ?? slots.credentialInput;
   const resolvedModelPicker = renderModelPicker ?? slots.modelPicker;
   const workspaceQuery = useWorkspace(workspace);
   const sandboxCount = useSandboxes(workspace);
@@ -71,7 +72,11 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
         <Alert
           variant="danger"
           title={`Failed to load workspace ${workspace}`}
-          actionLinks={<Button variant="link" onClick={() => workspaceQuery.refetch()}>Retry</Button>}
+          actionLinks={
+            <Button variant="link" onClick={() => workspaceQuery.refetch()}>
+              Retry
+            </Button>
+          }
         >
           {(workspaceQuery.error as Error).message}
         </Alert>
@@ -82,7 +87,10 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
   return (
     <>
       <PageSection>
-        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapMd' }}>
+        <Flex
+          alignItems={{ default: 'alignItemsCenter' }}
+          gap={{ default: 'gapMd' }}
+        >
           <FlexItem>
             <Title headingLevel="h1">{workspace}</Title>
           </FlexItem>
@@ -92,9 +100,10 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
             </FlexItem>
           )}
         </Flex>
-        {workspaceQuery.data && Object.keys(workspaceQuery.data.metadata.labels ?? {}).length > 0 && (
-          <LabelsList labels={workspaceQuery.data.metadata.labels} />
-        )}
+        {workspaceQuery.data &&
+          Object.keys(workspaceQuery.data.metadata.labels ?? {}).length > 0 && (
+            <LabelsList labels={workspaceQuery.data.metadata.labels} />
+          )}
       </PageSection>
       <PageSection>
         <Tabs
@@ -102,27 +111,78 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
           onSelect={(_event, key) => setActiveTab(key)}
           aria-label="Workspace resources"
         >
-          <Tab eventKey="sandboxes" title={<TabTitleText>Sandboxes {sandboxCount.data && <Badge isRead>{sandboxCount.data.length}</Badge>}</TabTitleText>} data-testid="tab-sandboxes">
+          <Tab
+            eventKey="sandboxes"
+            title={
+              <TabTitleText>
+                Sandboxes{' '}
+                {sandboxCount.data && (
+                  <Badge isRead>{sandboxCount.data.length}</Badge>
+                )}
+              </TabTitleText>
+            }
+            data-testid="tab-sandboxes"
+          >
             <TabPanel>
-              <SandboxListPage workspace={workspace} onSelect={onSelectSandbox} />
+              <SandboxListPage
+                workspace={workspace}
+                onSelect={onSelectSandbox}
+              />
             </TabPanel>
           </Tab>
-          <Tab eventKey="providers" title={<TabTitleText>Providers {providerCount.data && <Badge isRead>{providerCount.data.length}</Badge>}</TabTitleText>} data-testid="tab-providers">
+          <Tab
+            eventKey="providers"
+            title={
+              <TabTitleText>
+                Providers{' '}
+                {providerCount.data && (
+                  <Badge isRead>{providerCount.data.length}</Badge>
+                )}
+              </TabTitleText>
+            }
+            data-testid="tab-providers"
+          >
             <TabPanel>
-              <ProviderListPage workspace={workspace} onSelect={onSelectProvider} renderCredentialInput={resolvedCredentialInput} />
+              <ProviderListPage
+                workspace={workspace}
+                onSelect={onSelectProvider}
+                renderCredentialInput={resolvedCredentialInput}
+              />
             </TabPanel>
           </Tab>
-          <Tab eventKey="members" title={<TabTitleText>Members {memberCount.data && <Badge isRead>{memberCount.data.length}</Badge>}</TabTitleText>} data-testid="tab-members">
+          <Tab
+            eventKey="members"
+            title={
+              <TabTitleText>
+                Members{' '}
+                {memberCount.data && (
+                  <Badge isRead>{memberCount.data.length}</Badge>
+                )}
+              </TabTitleText>
+            }
+            data-testid="tab-members"
+          >
             <TabPanel>
               <MemberListPage workspace={workspace} />
             </TabPanel>
           </Tab>
-          <Tab eventKey="inference" title={<TabTitleText>Inference</TabTitleText>} data-testid="tab-inference">
+          <Tab
+            eventKey="inference"
+            title={<TabTitleText>Inference</TabTitleText>}
+            data-testid="tab-inference"
+          >
             <TabPanel>
-              <InferenceTab workspace={workspace} renderModelPicker={resolvedModelPicker} />
+              <InferenceTab
+                workspace={workspace}
+                renderModelPicker={resolvedModelPicker}
+              />
             </TabPanel>
           </Tab>
-          <Tab eventKey="profiles" title={<TabTitleText>Profiles</TabTitleText>} data-testid="tab-profiles">
+          <Tab
+            eventKey="profiles"
+            title={<TabTitleText>Profiles</TabTitleText>}
+            data-testid="tab-profiles"
+          >
             <TabPanel>
               <ProfilesTab workspace={workspace} />
             </TabPanel>

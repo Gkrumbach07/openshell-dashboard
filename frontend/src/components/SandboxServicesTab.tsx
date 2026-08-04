@@ -17,17 +17,32 @@ import {
   ToolbarContent,
   ToolbarItem,
 } from '@patternfly/react-core';
-import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
+import {
+  ActionsColumn,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from '@patternfly/react-table';
 import { ExternalLinkAltIcon } from '@patternfly/react-icons';
 
-import { useDeleteService, useExposeService, useServices } from '../api/sandboxes';
+import {
+  useDeleteService,
+  useExposeService,
+  useServices,
+} from '../api/sandboxes';
 
 type SandboxServicesTabProps = {
   workspace: string;
   sandboxName: string;
 };
 
-const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({ workspace, sandboxName }) => {
+const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({
+  workspace,
+  sandboxName,
+}) => {
   const services = useServices(workspace, sandboxName);
   const expose = useExposeService(workspace, sandboxName);
   const remove = useDeleteService(workspace, sandboxName);
@@ -49,7 +64,10 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({ workspace, sand
     if (!serviceName || !port) {
       return;
     }
-    expose.mutate({ service: serviceName, targetPort: port, domain }, { onSuccess: resetModal });
+    expose.mutate(
+      { service: serviceName, targetPort: port, domain },
+      { onSuccess: resetModal },
+    );
   };
 
   if (services.isLoading) {
@@ -65,7 +83,11 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({ workspace, sand
       <Alert
         variant="danger"
         title="Failed to load services"
-        actionLinks={<Button variant="link" onClick={() => services.refetch()}>Retry</Button>}
+        actionLinks={
+          <Button variant="link" onClick={() => services.refetch()}>
+            Retry
+          </Button>
+        }
       >
         {(services.error as Error).message}
       </Alert>
@@ -79,7 +101,10 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({ workspace, sand
       <Toolbar aria-label="Service actions">
         <ToolbarContent>
           <ToolbarItem>
-            <Button onClick={() => setIsModalOpen(true)} data-testid="expose-service-button">
+            <Button
+              onClick={() => setIsModalOpen(true)}
+              data-testid="expose-service-button"
+            >
               Expose service
             </Button>
           </ToolbarItem>
@@ -90,7 +115,11 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({ workspace, sand
           {((expose.error || remove.error) as Error).message}
         </Alert>
       )}
-      <Table aria-label="Exposed services" variant="compact" data-testid="services-table">
+      <Table
+        aria-label="Exposed services"
+        variant="compact"
+        data-testid="services-table"
+      >
         <Thead>
           <Tr>
             <Th>Service</Th>
@@ -177,7 +206,12 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({ workspace, sand
             </FormGroup>
           </Form>
           {expose.isError && (
-            <Alert variant="danger" isInline title="Failed to expose service" className="pf-v6-u-mt-md">
+            <Alert
+              variant="danger"
+              isInline
+              title="Failed to expose service"
+              className="pf-v6-u-mt-md"
+            >
               {(expose.error as Error).message}
             </Alert>
           )}
@@ -191,7 +225,11 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({ workspace, sand
           >
             Expose
           </Button>
-          <Button variant="link" onClick={resetModal} isDisabled={expose.isPending}>
+          <Button
+            variant="link"
+            onClick={resetModal}
+            isDisabled={expose.isPending}
+          >
             Cancel
           </Button>
         </ModalFooter>

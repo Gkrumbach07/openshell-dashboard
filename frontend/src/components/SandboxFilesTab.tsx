@@ -25,7 +25,10 @@ type SandboxFilesTabProps = {
   sandboxName: string;
 };
 
-const SandboxFilesTab: React.FC<SandboxFilesTabProps> = ({ workspace, sandboxName }) => {
+const SandboxFilesTab: React.FC<SandboxFilesTabProps> = ({
+  workspace,
+  sandboxName,
+}) => {
   const upload = useUploadFile(workspace, sandboxName);
 
   const [dest, setDest] = useState('/sandbox');
@@ -95,7 +98,9 @@ const SandboxFilesTab: React.FC<SandboxFilesTabProps> = ({ workspace, sandboxNam
                 />
                 <FormHelperText>
                   <HelperText>
-                    <HelperTextItem>Drag and drop a file or click Browse</HelperTextItem>
+                    <HelperTextItem>
+                      Drag and drop a file or click Browse
+                    </HelperTextItem>
                   </HelperText>
                 </FormHelperText>
               </FormGroup>

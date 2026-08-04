@@ -11,8 +11,8 @@ import (
 
 // CreateWorkspaceRequest is the create-workspace body.
 type CreateWorkspaceRequest struct {
-	Name   string            `json:"name"`
 	Labels map[string]string `json:"labels,omitempty"`
+	Name   string            `json:"name"`
 }
 
 func (app *App) ListWorkspaces(w http.ResponseWriter, r *http.Request) {

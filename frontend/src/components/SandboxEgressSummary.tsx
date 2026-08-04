@@ -11,8 +11,16 @@ import {
 } from '@patternfly/react-core';
 import { SecurityIcon } from '@patternfly/react-icons';
 
-import type { NetworkPolicyRule, SandboxPolicy, SandboxPolicyView } from '../types';
-import { countEgressHosts, getEnforcementColor, getEnforcementLabel } from './utils';
+import type {
+  NetworkPolicyRule,
+  SandboxPolicy,
+  SandboxPolicyView,
+} from '../types';
+import {
+  countEgressHosts,
+  getEnforcementColor,
+  getEnforcementLabel,
+} from './utils';
 
 type SandboxEgressSummaryProps = {
   policy?: SandboxPolicy;
@@ -59,7 +67,9 @@ export const getPolicySummary = (
   return { title, iconColor, subtitle, version, networkPolicies: np };
 };
 
-const EgressRuleList: React.FC<{ rules: [string, NetworkPolicyRule][] }> = ({ rules }) => (
+const EgressRuleList: React.FC<{ rules: [string, NetworkPolicyRule][] }> = ({
+  rules,
+}) => (
   <Stack>
     {rules.map(([name, rule], idx) => {
       const hosts = rule.endpoints?.length ?? 0;
@@ -128,7 +138,9 @@ const SandboxEgressSummary: React.FC<SandboxEgressSummaryProps> = ({
           {summary.version > 0 ? (
             <span>
               <strong>Policy v{summary.version} enforced</strong>
-              <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
+              <span
+                style={{ color: 'var(--pf-t--global--text--color--subtle)' }}
+              >
                 {' · '}
                 {summary.subtitle || 'no egress'}
               </span>

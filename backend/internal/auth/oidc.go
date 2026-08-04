@@ -62,18 +62,15 @@ func (c *Claims) Roles() []string {
 
 // Config holds OIDC settings.
 type Config struct {
-	// Disabled skips all token validation (dev only, AUTH_DISABLED=true).
-	Disabled bool
-	// Issuer is the OIDC issuer URL used for discovery and JWKS.
-	Issuer string
-	// ClientID is the expected audience. Empty skips the audience check.
+	Issuer   string
 	ClientID string
+	Disabled bool
 }
 
 // Middleware validates OIDC bearer tokens.
 type Middleware struct {
-	cfg      Config
 	verifier *oidc.IDTokenVerifier
+	cfg      Config
 }
 
 // New builds the middleware, performing OIDC discovery unless auth is disabled.
@@ -165,6 +162,13 @@ func writeUnauthorized(w http.ResponseWriter, message string) {
 func TokenFromContext(ctx context.Context) string {
 	token, _ := ctx.Value(tokenContextKey).(string)
 	return token
+}
+
+// WithToken returns a context carrying the given bearer token. This is
+// primarily useful in tests; production code relies on the middleware to
+// populate the token via Handler.
+func WithToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, tokenContextKey, token)
 }
 
 // ClaimsFromContext returns the validated claims, or nil when absent.

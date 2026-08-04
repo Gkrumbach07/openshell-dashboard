@@ -1,11 +1,21 @@
-import { clearToken, getRefreshToken, getToken, setRefreshToken, setToken } from '../app/authStore';
+import {
+  clearToken,
+  getRefreshToken,
+  getToken,
+  setRefreshToken,
+  setToken,
+} from '../app/authStore';
 
 export type ApiError = Error & {
   status: number;
   code?: string;
 };
 
-const buildError = (status: number, code: string | undefined, message: string): ApiError => {
+const buildError = (
+  status: number,
+  code: string | undefined,
+  message: string,
+): ApiError => {
   const error = new Error(message) as ApiError;
   error.status = status;
   error.code = code;
@@ -37,7 +47,10 @@ const tryRefresh = async (): Promise<string | null> => {
       if (!response.ok) {
         return null;
       }
-      const body = (await response.json()) as { accessToken?: string; refreshToken?: string };
+      const body = (await response.json()) as {
+        accessToken?: string;
+        refreshToken?: string;
+      };
       if (body.accessToken) {
         setToken(body.accessToken);
         if (body.refreshToken) {
@@ -69,7 +82,10 @@ const redirectToLogin = () => {
   window.location.assign('/login');
 };
 
-export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
+export const apiFetch = async <T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> => {
   const headers: Record<string, string> = {
     ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
     ...((init?.headers as Record<string, string>) ?? {}),
@@ -84,7 +100,10 @@ export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> 
     let code: string | undefined;
     let message = `Request failed (${response.status})`;
     try {
-      const body = (await response.json()) as { code?: string; message?: string };
+      const body = (await response.json()) as {
+        code?: string;
+        message?: string;
+      };
       code = body.code;
       if (body.message) {
         message = body.message;
@@ -123,4 +142,5 @@ export const post = <T>(path: string, body: unknown): Promise<T> =>
 export const put = <T>(path: string, body: unknown): Promise<T> =>
   apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) });
 
-export const del = <T>(path: string): Promise<T> => apiFetch<T>(path, { method: 'DELETE' });
+export const del = <T>(path: string): Promise<T> =>
+  apiFetch<T>(path, { method: 'DELETE' });

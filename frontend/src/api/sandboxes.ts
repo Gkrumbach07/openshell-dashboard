@@ -15,7 +15,10 @@ import type {
 // interval so phase transitions show up without a manual refresh.
 const POLL_INTERVAL_MS = 5_000;
 
-export const listSandboxes = (workspace: string, labelSelector?: string): Promise<Sandbox[]> =>
+export const listSandboxes = (
+  workspace: string,
+  labelSelector?: string,
+): Promise<Sandbox[]> =>
   get<Sandbox[]>(
     `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes${
       labelSelector ? `?labelSelector=${encodeURIComponent(labelSelector)}` : ''
@@ -27,10 +30,19 @@ export const getSandbox = (workspace: string, name: string): Promise<Sandbox> =>
     `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}`,
   );
 
-export const createSandbox = (workspace: string, body: CreateSandboxRequest): Promise<Sandbox> =>
-  post<Sandbox>(`/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes`, body);
+export const createSandbox = (
+  workspace: string,
+  body: CreateSandboxRequest,
+): Promise<Sandbox> =>
+  post<Sandbox>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes`,
+    body,
+  );
 
-export const deleteSandbox = (workspace: string, name: string): Promise<{ deleted: boolean }> =>
+export const deleteSandbox = (
+  workspace: string,
+  name: string,
+): Promise<{ deleted: boolean }> =>
   del<{ deleted: boolean }>(
     `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}`,
   );
@@ -53,7 +65,8 @@ export const useCreateSandbox = (workspace: string) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateSandboxRequest) => createSandbox(workspace, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sandboxes', workspace] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['sandboxes', workspace] }),
   });
 };
 
@@ -102,7 +115,10 @@ export const useSandboxLogs = (
     refetchInterval: autoRefresh ? POLL_INTERVAL_MS : false,
   });
 
-export const listAttachedProviders = (workspace: string, name: string): Promise<Provider[]> =>
+export const listAttachedProviders = (
+  workspace: string,
+  name: string,
+): Promise<Provider[]> =>
   get<Provider[]>(
     `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/providers`,
   );
@@ -144,8 +160,12 @@ export const useAttachProvider = (workspace: string, name: string) => {
       expectedResourceVersion?: number;
     }) => attachProvider(workspace, name, provider, expectedResourceVersion),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sandbox-providers', workspace, name] });
-      queryClient.invalidateQueries({ queryKey: ['sandboxes', workspace, name] });
+      queryClient.invalidateQueries({
+        queryKey: ['sandbox-providers', workspace, name],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['sandboxes', workspace, name],
+      });
     },
   });
 };
@@ -155,8 +175,12 @@ export const useDetachProvider = (workspace: string, name: string) => {
   return useMutation({
     mutationFn: (provider: string) => detachProvider(workspace, name, provider),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sandbox-providers', workspace, name] });
-      queryClient.invalidateQueries({ queryKey: ['sandboxes', workspace, name] });
+      queryClient.invalidateQueries({
+        queryKey: ['sandbox-providers', workspace, name],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['sandboxes', workspace, name],
+      });
     },
   });
 };
@@ -165,13 +189,17 @@ export const useDeleteSandbox = (workspace: string) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (name: string) => deleteSandbox(workspace, name),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sandboxes', workspace] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['sandboxes', workspace] }),
   });
 };
 
 // --- Service endpoints ---
 
-export const listServices = (workspace: string, sandbox: string): Promise<ServiceEndpoint[]> =>
+export const listServices = (
+  workspace: string,
+  sandbox: string,
+): Promise<ServiceEndpoint[]> =>
   get<ServiceEndpoint[]>(
     `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandbox)}/services`,
   );
@@ -205,9 +233,12 @@ export const useServices = (workspace: string, sandbox: string) =>
 export const useExposeService = (workspace: string, sandbox: string) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: ExposeServiceRequest) => exposeService(workspace, sandbox, body),
+    mutationFn: (body: ExposeServiceRequest) =>
+      exposeService(workspace, sandbox, body),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['sandbox-services', workspace, sandbox] }),
+      queryClient.invalidateQueries({
+        queryKey: ['sandbox-services', workspace, sandbox],
+      }),
   });
 };
 
@@ -216,7 +247,9 @@ export const useDeleteService = (workspace: string, sandbox: string) => {
   return useMutation({
     mutationFn: (service: string) => deleteService(workspace, sandbox, service),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['sandbox-services', workspace, sandbox] }),
+      queryClient.invalidateQueries({
+        queryKey: ['sandbox-services', workspace, sandbox],
+      }),
   });
 };
 
@@ -250,7 +283,10 @@ export const uploadFile = async (
   );
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error((body as { message?: string }).message || `Upload failed (${response.status})`);
+    throw new Error(
+      (body as { message?: string }).message ||
+        `Upload failed (${response.status})`,
+    );
   }
   return response.json() as Promise<UploadResult>;
 };
@@ -268,7 +304,8 @@ export const downloadFile = async (
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(
-      (body as { message?: string }).message || `Download failed (${response.status})`,
+      (body as { message?: string }).message ||
+        `Download failed (${response.status})`,
     );
   }
   const blob = await response.blob();

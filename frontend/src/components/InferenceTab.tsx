@@ -25,7 +25,11 @@ import {
   TextInput,
 } from '@patternfly/react-core';
 
-import { useDeleteInferenceRoute, useInferenceRoute, useSetInferenceRoute } from '../api/inference';
+import {
+  useDeleteInferenceRoute,
+  useInferenceRoute,
+  useSetInferenceRoute,
+} from '../api/inference';
 import { useProviders } from '../api/providers';
 import { useWorkspaceRole } from '../app/useWorkspaceRole';
 import { useSlots } from '../slots';
@@ -39,16 +43,17 @@ type InferenceTabProps = {
 
 const SYSTEM_ROUTE = 'sandbox-system';
 
-const RouteCard: React.FC<{ workspace: string; route: string; title: string; note: string; isWorkspaceAdmin: boolean }> = ({
-  workspace,
-  route,
-  title,
-  note,
-  isWorkspaceAdmin,
-}) => {
+const RouteCard: React.FC<{
+  workspace: string;
+  route: string;
+  title: string;
+  note: string;
+  isWorkspaceAdmin: boolean;
+}> = ({ workspace, route, title, note, isWorkspaceAdmin }) => {
   const query = useInferenceRoute(workspace, route);
   const deleteRoute = useDeleteInferenceRoute(workspace);
-  const notConfigured = query.isError && (query.error as ApiError).status === 404;
+  const notConfigured =
+    query.isError && (query.error as ApiError).status === 404;
 
   return (
     <Card data-testid={`inference-route-${route || 'user'}`}>
@@ -64,7 +69,11 @@ const RouteCard: React.FC<{ workspace: string; route: string; title: string; not
             variant="danger"
             isInline
             title="Failed to load route"
-            actionLinks={<Button variant="link" onClick={() => query.refetch()}>Retry</Button>}
+            actionLinks={
+              <Button variant="link" onClick={() => query.refetch()}>
+                Retry
+              </Button>
+            }
           >
             {(query.error as Error).message}
           </Alert>
@@ -73,21 +82,29 @@ const RouteCard: React.FC<{ workspace: string; route: string; title: string; not
             <DescriptionList isHorizontal isCompact>
               <DescriptionListGroup>
                 <DescriptionListTerm>Provider</DescriptionListTerm>
-                <DescriptionListDescription>{query.data?.providerName}</DescriptionListDescription>
+                <DescriptionListDescription>
+                  {query.data?.providerName}
+                </DescriptionListDescription>
               </DescriptionListGroup>
               <DescriptionListGroup>
                 <DescriptionListTerm>Model</DescriptionListTerm>
-                <DescriptionListDescription>{query.data?.modelId}</DescriptionListDescription>
+                <DescriptionListDescription>
+                  {query.data?.modelId}
+                </DescriptionListDescription>
               </DescriptionListGroup>
               <DescriptionListGroup>
                 <DescriptionListTerm>Timeout</DescriptionListTerm>
                 <DescriptionListDescription>
-                  {query.data?.timeoutSecs ? `${query.data.timeoutSecs}s` : 'default (60s)'}
+                  {query.data?.timeoutSecs
+                    ? `${query.data.timeoutSecs}s`
+                    : 'default (60s)'}
                 </DescriptionListDescription>
               </DescriptionListGroup>
               <DescriptionListGroup>
                 <DescriptionListTerm>Version</DescriptionListTerm>
-                <DescriptionListDescription>{query.data?.version}</DescriptionListDescription>
+                <DescriptionListDescription>
+                  {query.data?.version}
+                </DescriptionListDescription>
               </DescriptionListGroup>
             </DescriptionList>
             {isWorkspaceAdmin && (
@@ -111,7 +128,10 @@ const RouteCard: React.FC<{ workspace: string; route: string; title: string; not
 
 // Inference routing: all sandboxes in the workspace reach inference.local,
 // and the gateway routes it to the configured provider/model.
-const InferenceTab: React.FC<InferenceTabProps> = ({ workspace, renderModelPicker }) => {
+const InferenceTab: React.FC<InferenceTabProps> = ({
+  workspace,
+  renderModelPicker,
+}) => {
   const slots = useSlots();
   const resolvedModelPicker = renderModelPicker ?? slots.modelPicker;
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
@@ -163,100 +183,111 @@ const InferenceTab: React.FC<InferenceTabProps> = ({ workspace, renderModelPicke
         />
       </GridItem>
       {isWorkspaceAdmin && (
-      <GridItem span={12}>
-        <Card>
-          <CardTitle>Set route</CardTitle>
-          <CardBody>
-            <Form
-              onSubmit={(event) => {
-                event.preventDefault();
-                submit();
-              }}
-            >
-              <FormGroup label="Provider" isRequired fieldId="inference-provider">
-                <FormSelect
-                  id="inference-provider"
-                  data-testid="inference-provider-select"
-                  value={providerName}
-                  onChange={(_event, value) => setProviderName(value)}
+        <GridItem span={12}>
+          <Card>
+            <CardTitle>Set route</CardTitle>
+            <CardBody>
+              <Form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  submit();
+                }}
+              >
+                <FormGroup
+                  label="Provider"
+                  isRequired
+                  fieldId="inference-provider"
                 >
-                  <FormSelectOption value="" label="Select a provider" isDisabled />
-                  {(providers.data ?? []).map((provider) => (
+                  <FormSelect
+                    id="inference-provider"
+                    data-testid="inference-provider-select"
+                    value={providerName}
+                    onChange={(_event, value) => setProviderName(value)}
+                  >
                     <FormSelectOption
-                      key={provider.metadata.name}
-                      value={provider.metadata.name}
-                      label={`${provider.metadata.name} (${provider.type})`}
+                      value=""
+                      label="Select a provider"
+                      isDisabled
                     />
-                  ))}
-                </FormSelect>
-              </FormGroup>
-              <FormGroup label="Model" isRequired fieldId="inference-model">
-                {resolvedModelPicker ? (
-                  resolvedModelPicker(modelId, setModelId)
-                ) : (
-                  <TextInput
-                    id="inference-model"
-                    data-testid="inference-model-input"
-                    isRequired
-                    value={modelId}
-                    onChange={(_event, value) => setModelId(value)}
-                    placeholder="e.g. claude-sonnet-5"
-                  />
-                )}
-              </FormGroup>
-              <FormGroup label="Timeout (seconds)" fieldId="inference-timeout">
-                <TextInput
-                  id="inference-timeout"
-                  data-testid="inference-timeout-input"
-                  value={timeoutSecs}
-                  onChange={(_event, value) => setTimeoutSecs(value)}
-                  placeholder="0 = default (60s)"
-                />
-              </FormGroup>
-              <FormGroup fieldId="inference-flags" role="group">
-                <Checkbox
-                  id="inference-system"
-                  data-testid="inference-system-checkbox"
-                  label="Configure the system route instead of the user route"
-                  isChecked={isSystem}
-                  onChange={(_event, checked) => setIsSystem(checked)}
-                />
-                <Checkbox
-                  id="inference-no-verify"
-                  data-testid="inference-no-verify-checkbox"
-                  label="Skip endpoint verification before saving"
-                  isChecked={noVerify}
-                  onChange={(_event, checked) => setNoVerify(checked)}
-                />
-                <FormHelperText>
-                  <HelperText>
-                    <HelperTextItem>
-                      By default the gateway probes the provider endpoint before persisting the
-                      route.
-                    </HelperTextItem>
-                  </HelperText>
-                </FormHelperText>
-              </FormGroup>
-              {setRoute.isError && (
-                <Alert variant="danger" isInline title="Failed to set route">
-                  {(setRoute.error as Error).message}
-                </Alert>
-              )}
-              <ActionGroup>
-                <Button
-                  variant="primary"
-                  onClick={submit}
-                  isDisabled={!providerName || !modelId || setRoute.isPending}
-                  isLoading={setRoute.isPending}
-                  data-testid="set-inference-route"
+                    {(providers.data ?? []).map((provider) => (
+                      <FormSelectOption
+                        key={provider.metadata.name}
+                        value={provider.metadata.name}
+                        label={`${provider.metadata.name} (${provider.type})`}
+                      />
+                    ))}
+                  </FormSelect>
+                </FormGroup>
+                <FormGroup label="Model" isRequired fieldId="inference-model">
+                  {resolvedModelPicker ? (
+                    resolvedModelPicker(modelId, setModelId)
+                  ) : (
+                    <TextInput
+                      id="inference-model"
+                      data-testid="inference-model-input"
+                      isRequired
+                      value={modelId}
+                      onChange={(_event, value) => setModelId(value)}
+                      placeholder="e.g. claude-sonnet-5"
+                    />
+                  )}
+                </FormGroup>
+                <FormGroup
+                  label="Timeout (seconds)"
+                  fieldId="inference-timeout"
                 >
-                  Set route
-                </Button>
-              </ActionGroup>
-            </Form>
-          </CardBody>
-        </Card>
-      </GridItem>
+                  <TextInput
+                    id="inference-timeout"
+                    data-testid="inference-timeout-input"
+                    value={timeoutSecs}
+                    onChange={(_event, value) => setTimeoutSecs(value)}
+                    placeholder="0 = default (60s)"
+                  />
+                </FormGroup>
+                <FormGroup fieldId="inference-flags" role="group">
+                  <Checkbox
+                    id="inference-system"
+                    data-testid="inference-system-checkbox"
+                    label="Configure the system route instead of the user route"
+                    isChecked={isSystem}
+                    onChange={(_event, checked) => setIsSystem(checked)}
+                  />
+                  <Checkbox
+                    id="inference-no-verify"
+                    data-testid="inference-no-verify-checkbox"
+                    label="Skip endpoint verification before saving"
+                    isChecked={noVerify}
+                    onChange={(_event, checked) => setNoVerify(checked)}
+                  />
+                  <FormHelperText>
+                    <HelperText>
+                      <HelperTextItem>
+                        By default the gateway probes the provider endpoint
+                        before persisting the route.
+                      </HelperTextItem>
+                    </HelperText>
+                  </FormHelperText>
+                </FormGroup>
+                {setRoute.isError && (
+                  <Alert variant="danger" isInline title="Failed to set route">
+                    {(setRoute.error as Error).message}
+                  </Alert>
+                )}
+                <ActionGroup>
+                  <Button
+                    variant="primary"
+                    onClick={submit}
+                    isDisabled={!providerName || !modelId || setRoute.isPending}
+                    isLoading={setRoute.isPending}
+                    data-testid="set-inference-route"
+                  >
+                    Set route
+                  </Button>
+                </ActionGroup>
+              </Form>
+            </CardBody>
+          </Card>
+        </GridItem>
       )}
     </Grid>
   );

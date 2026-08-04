@@ -22,7 +22,10 @@ type CreateWorkspaceModalProps = {
   onClose: () => void;
 };
 
-const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({ isOpen, onClose }) => {
+const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
+  isOpen,
+  onClose,
+}) => {
   const [name, setName] = useState('');
   const createWorkspace = useCreateWorkspace();
   const { addSuccess } = useAlerts();
@@ -34,11 +37,24 @@ const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({ isOpen, onC
   };
 
   const submit = () => {
-    createWorkspace.mutate({ name }, { onSuccess: () => { addSuccess('Workspace created'); close(); } });
+    createWorkspace.mutate(
+      { name },
+      {
+        onSuccess: () => {
+          addSuccess('Workspace created');
+          close();
+        },
+      },
+    );
   };
 
   return (
-    <Modal variant="small" isOpen={isOpen} onClose={close} aria-label="Create workspace">
+    <Modal
+      variant="small"
+      isOpen={isOpen}
+      onClose={close}
+      aria-label="Create workspace"
+    >
       <ModalHeader title="Create workspace" />
       <ModalBody>
         <Form
@@ -58,7 +74,8 @@ const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({ isOpen, onC
             <FormHelperText>
               <HelperText>
                 <HelperTextItem>
-                  Lowercase alphanumeric and dashes (DNS-1123 label), e.g. team-a
+                  Lowercase alphanumeric and dashes (DNS-1123 label), e.g.
+                  team-a
                 </HelperTextItem>
               </HelperText>
             </FormHelperText>

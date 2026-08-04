@@ -14,7 +14,15 @@ import {
   ToolbarItem,
 } from '@patternfly/react-core';
 import { UsersIcon } from '@patternfly/react-icons';
-import { ActionsColumn, Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
+import {
+  ActionsColumn,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from '@patternfly/react-table';
 
 import { useCurrentUser } from '../api/auth';
 import { useMembers, useRemoveMember } from '../api/workspaces';
@@ -65,7 +73,10 @@ const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
           {isWorkspaceAdmin && (
             <EmptyStateFooter>
               <EmptyStateActions>
-                <Button onClick={() => setAddOpen(true)} data-testid="add-member-empty">
+                <Button
+                  onClick={() => setAddOpen(true)}
+                  data-testid="add-member-empty"
+                >
                   Add member
                 </Button>
               </EmptyStateActions>
@@ -78,7 +89,10 @@ const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
             <Toolbar aria-label="Member actions">
               <ToolbarContent>
                 <ToolbarItem>
-                  <Button onClick={() => setAddOpen(true)} data-testid="add-member">
+                  <Button
+                    onClick={() => setAddOpen(true)}
+                    data-testid="add-member"
+                  >
                     Add member
                   </Button>
                 </ToolbarItem>
@@ -96,45 +110,68 @@ const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
             </Thead>
             <Tbody>
               {rows.map((member) => {
-                const isCurrentUser = member.principalSubject === currentUser?.subject;
+                const isCurrentUser =
+                  member.principalSubject === currentUser?.subject;
                 return (
-                <Tr key={member.principalSubject}>
-                  <Td dataLabel="Subject">
-                    {isCurrentUser && currentUser?.displayName
-                      ? <>{currentUser.displayName} <Label isCompact color="blue">you</Label></>
-                      : member.principalSubject}
-                  </Td>
-                  <Td dataLabel="Role">
-                    <Label color={member.role === 'ADMIN' ? 'yellow' : 'blue'}>{member.role}</Label>
-                  </Td>
-                  <Td dataLabel="Added">{formatAge(member.metadata.createdAtMs)}</Td>
-                  {isWorkspaceAdmin && (
-                    <Td isActionCell>
-                      <ActionsColumn
-                        items={[
-                          {
-                            title: 'Remove',
-                            onClick: () => setRemoveTarget(member.principalSubject),
-                          },
-                        ]}
-                      />
+                  <Tr key={member.principalSubject}>
+                    <Td dataLabel="Subject">
+                      {isCurrentUser && currentUser?.displayName ? (
+                        <>
+                          {currentUser.displayName}{' '}
+                          <Label isCompact color="blue">
+                            you
+                          </Label>
+                        </>
+                      ) : (
+                        member.principalSubject
+                      )}
                     </Td>
-                  )}
-                </Tr>
+                    <Td dataLabel="Role">
+                      <Label
+                        color={member.role === 'ADMIN' ? 'yellow' : 'blue'}
+                      >
+                        {member.role}
+                      </Label>
+                    </Td>
+                    <Td dataLabel="Added">
+                      {formatAge(member.metadata.createdAtMs)}
+                    </Td>
+                    {isWorkspaceAdmin && (
+                      <Td isActionCell>
+                        <ActionsColumn
+                          items={[
+                            {
+                              title: 'Remove',
+                              onClick: () =>
+                                setRemoveTarget(member.principalSubject),
+                            },
+                          ]}
+                        />
+                      </Td>
+                    )}
+                  </Tr>
                 );
               })}
             </Tbody>
           </Table>
         </>
       )}
-      <AddMemberModal workspace={workspace} isOpen={isAddOpen} onClose={() => setAddOpen(false)} />
+      <AddMemberModal
+        workspace={workspace}
+        isOpen={isAddOpen}
+        onClose={() => setAddOpen(false)}
+      />
       <ConfirmDeleteModal
         title="Remove member?"
         body={`"${removeTarget ?? ''}" will lose access to this workspace. To change a role instead, remove and re-add with the new role.`}
         variant="remove"
         isOpen={removeTarget !== null}
         isDeleting={removeMember.isPending}
-        error={removeMember.isError ? (removeMember.error as Error).message : undefined}
+        error={
+          removeMember.isError
+            ? (removeMember.error as Error).message
+            : undefined
+        }
         onConfirm={() => {
           if (removeTarget) {
             removeMember.mutate(removeTarget, {

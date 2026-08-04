@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Bullseye, Button, Content, Spinner, Stack, StackItem } from '@patternfly/react-core';
+import {
+  Alert,
+  Bullseye,
+  Button,
+  Content,
+  Spinner,
+  Stack,
+  StackItem,
+} from '@patternfly/react-core';
 import { getToken } from '../app/authStore';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -11,7 +19,10 @@ type SandboxTerminalTabProps = {
   sandboxName: string;
 };
 
-const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({ workspace, sandboxName }) => {
+const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({
+  workspace,
+  sandboxName,
+}) => {
   const termRef = useRef<HTMLDivElement>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +130,11 @@ const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({ workspace, sand
             variant={exitCode === 0 ? 'success' : 'warning'}
             isInline
             title={`Session ended (exit code ${exitCode})`}
-            actionLinks={<Button variant="link" onClick={connect}>Reconnect</Button>}
+            actionLinks={
+              <Button variant="link" onClick={connect}>
+                Reconnect
+              </Button>
+            }
           />
         </StackItem>
       )}
@@ -134,7 +149,12 @@ const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({ workspace, sand
         <div
           ref={termRef}
           data-testid="terminal-container"
-          style={{ height: '500px', backgroundColor: '#1e1e1e', borderRadius: '6px', padding: '4px' }}
+          style={{
+            height: '500px',
+            backgroundColor: '#1e1e1e',
+            borderRadius: '6px',
+            padding: '4px',
+          }}
         />
       </StackItem>
       <StackItem>
