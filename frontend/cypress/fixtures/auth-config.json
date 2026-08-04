@@ -1,5 +1,7 @@
 {
   "authDisabled": true,
+  "adminRole": "openshell-admin",
+  "logoutUrl": "/oauth2/sign_out",
   "features": {
     "terminal": true,
     "fileTransfer": true,
