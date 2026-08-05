@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { APP_VERSION } from '../constants';
 import {
   AboutModal,
+  Button,
   Content,
   DescriptionList,
   DescriptionListDescription,
@@ -29,7 +30,12 @@ import {
   ToolbarContent,
   ToolbarItem,
 } from '@patternfly/react-core';
-import { BarsIcon, QuestionCircleIcon } from '@patternfly/react-icons';
+import {
+  BarsIcon,
+  MoonIcon,
+  QuestionCircleIcon,
+  SunIcon,
+} from '@patternfly/react-icons';
 import { Link, useLocation } from 'react-router-dom';
 
 import openshellLogo from '~/assets/openshell-logo.svg';
@@ -37,6 +43,7 @@ import { useGatewayInfo } from '../api/gateway';
 import { useCurrentUser, useFeatureFlags } from '../api/auth';
 import { useUserRole } from '../api/rbac';
 import { logout } from './logout';
+import { useTheme } from './theme';
 
 type AppLayoutProps = {
   children: React.ReactNode;
@@ -75,6 +82,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [isAboutOpen, setAboutOpen] = useState(false);
   const [isHelpOpen, setHelpOpen] = useState(false);
   const [isUserOpen, setUserOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   const masthead = (
     <Masthead
@@ -109,6 +117,20 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         <Toolbar isFullHeight isStatic aria-label="Header actions">
           <ToolbarContent>
             <ToolbarItem align={{ default: 'alignEnd' }}>
+              <Button
+                variant="plain"
+                onClick={toggleTheme}
+                aria-label={
+                  theme === 'dark'
+                    ? 'Switch to light theme'
+                    : 'Switch to dark theme'
+                }
+                data-testid="theme-toggle"
+              >
+                {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+              </Button>
+            </ToolbarItem>
+            <ToolbarItem>
               <Dropdown
                 isOpen={isHelpOpen}
                 onSelect={() => setHelpOpen(false)}
