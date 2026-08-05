@@ -38,9 +38,7 @@ export const startLogin = async (
     code_challenge_method: 'S256',
   });
 
-  const discoveryResp = await fetch(
-    `${issuer.replace(/\/+$/, '')}/.well-known/openid-configuration`,
-  );
+  const discoveryResp = await fetch('/api/v1/auth/discovery');
   const discovery = (await discoveryResp.json()) as {
     authorization_endpoint: string;
   };
