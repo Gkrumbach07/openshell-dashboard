@@ -224,7 +224,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         brandImageAlt="OpenShell Dashboard"
       >
         <Content>
-          <DescriptionList isCompact>
+          <DescriptionList isCompact isHorizontal>
             <DescriptionListGroup>
               <DescriptionListTerm>Dashboard version</DescriptionListTerm>
               <DescriptionListDescription>
