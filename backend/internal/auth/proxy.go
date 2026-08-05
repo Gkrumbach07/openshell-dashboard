@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 type contextKey int
@@ -58,7 +59,13 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if m.cfg.Disabled {
 			ctx := context.WithValue(r.Context(), userContextKey, "dev-user")
-			if token := r.Header.Get(m.cfg.TokenHeader); token != "" {
+			token := r.Header.Get(m.cfg.TokenHeader)
+			if token == "" {
+				if bearer := r.Header.Get("Authorization"); strings.HasPrefix(bearer, "Bearer ") {
+					token = strings.TrimPrefix(bearer, "Bearer ")
+				}
+			}
+			if token != "" {
 				ctx = context.WithValue(ctx, tokenContextKey, token)
 			}
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -66,6 +73,11 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		}
 
 		token := r.Header.Get(m.cfg.TokenHeader)
+		if token == "" {
+			if bearer := r.Header.Get("Authorization"); strings.HasPrefix(bearer, "Bearer ") {
+				token = strings.TrimPrefix(bearer, "Bearer ")
+			}
+		}
 		if token == "" {
 			writeUnauthorized(w, "missing auth proxy token header")
 			return
