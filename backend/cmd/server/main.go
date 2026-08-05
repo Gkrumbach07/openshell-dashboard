@@ -39,7 +39,7 @@ func main() {
 		gatewayCACert = flag.String("gateway-ca-cert", envOr("GATEWAY_CA_CERT", ""), "path to CA cert for gateway TLS (env GATEWAY_CA_CERT)")
 		staticDir     = flag.String("static-dir", envOr("STATIC_DIR", ""), "frontend static assets directory (env STATIC_DIR)")
 		authDisabled  = flag.Bool("auth-disabled", envOr("AUTH_DISABLED", "false") == "true", "skip auth — dev only (env AUTH_DISABLED)")
-		origins       = flag.String("allowed-origins", envOr("ALLOWED_ORIGINS", ""), "comma-separated CORS origins (env ALLOWED_ORIGINS)")
+		origins       = flag.String("allowed-origins", envOr("ALLOWED_ORIGINS", "http://localhost:3000"), "comma-separated CORS origins (env ALLOWED_ORIGINS)")
 		tokenHeader   = flag.String("auth-token-header", envOr("AUTH_TOKEN_HEADER", "x-forwarded-access-token"), "header injected by auth proxy containing the bearer token (env AUTH_TOKEN_HEADER)")
 		userHeader    = flag.String("auth-user-header", envOr("AUTH_USER_HEADER", "x-auth-request-user"), "header injected by auth proxy containing the username (env AUTH_USER_HEADER)")
 		adminRole     = flag.String("admin-role", envOr("ADMIN_ROLE", "admin"), "role name that grants platform admin access (env ADMIN_ROLE)")
