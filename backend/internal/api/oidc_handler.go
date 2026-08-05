@@ -48,7 +48,7 @@ func (app *App) GetOIDCDiscovery(w http.ResponseWriter, _ *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	io.Copy(w, resp.Body)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 // TokenExchange swaps an authorization code for tokens via the IdP's token
