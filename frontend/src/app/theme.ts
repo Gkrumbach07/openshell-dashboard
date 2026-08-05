@@ -11,15 +11,10 @@ export const getStoredTheme = (): Theme | null => {
 };
 
 export const getSystemTheme = (): Theme =>
-  window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light';
+  window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 
 export const applyTheme = (theme: Theme): void => {
-  document.documentElement.classList.toggle(
-    DARK_THEME_CLASS,
-    theme === 'dark',
-  );
+  document.documentElement.classList.toggle(DARK_THEME_CLASS, theme === 'dark');
 };
 
 export const initTheme = (): Theme => {
