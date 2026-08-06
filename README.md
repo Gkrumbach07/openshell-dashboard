@@ -86,7 +86,7 @@ All flags have env var fallbacks:
 
 ## Auth
 
-OIDC only (no mTLS, no OpenShift OAuth). The frontend runs an Authorization Code + PKCE flow against your IdP, stores the ID token in sessionStorage, and sends it as `Authorization: Bearer` to the BFF. The BFF validates the JWT (issuer JWKS via `go-oidc`) and forwards the same token to the gateway on every gRPC call: the gateway makes all RBAC decisions.
+OIDC only (no mTLS, no OpenShift OAuth). The frontend runs an Authorization Code + PKCE flow against your IdP, stores the ID token in sessionStorage, and sends it as `Authorization: Bearer` to the BFF. For terminal WebSocket handshakes, the BFF also sets a secure, HttpOnly, strict same-site cookie that is accepted only on WebSocket upgrades. The BFF validates the JWT (issuer JWKS via `go-oidc`) and forwards the same token to the gateway on every gRPC call: the gateway makes all RBAC decisions.
 
 ## Make targets
 

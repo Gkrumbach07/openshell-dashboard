@@ -50,6 +50,95 @@ func TestHandler_AuthEnabled_MissingToken(t *testing.T) {
 	}
 }
 
+func TestHandler_AuthEnabled_WebSocketCookie(t *testing.T) {
+	m := New(Config{})
+
+	var gotToken string
+	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotToken = TokenFromContext(r.Context())
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/terminal", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	req.AddCookie(&http.Cookie{Name: TerminalTokenCookieName, Value: "terminal-jwt"})
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if gotToken != "terminal-jwt" {
+		t.Errorf("token = %q, want terminal-jwt", gotToken)
+	}
+}
+
+func TestHandler_AuthEnabled_WebSocketMissingCookie(t *testing.T) {
+	m := New(Config{})
+	handler := m.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("handler should not be called")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/terminal", nil)
+	req.Header.Set("Connection", "keep-alive, Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestHandler_AuthEnabled_NonWebSocketRejectsCookie(t *testing.T) {
+	m := New(Config{})
+	handler := m.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("handler should not be called")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/workspaces", nil)
+	req.AddCookie(&http.Cookie{Name: TerminalTokenCookieName, Value: "terminal-jwt"})
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestTerminalTokenCookie(t *testing.T) {
+	w := httptest.NewRecorder()
+	SetTerminalTokenCookie(w, "terminal-jwt")
+
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("cookies = %d, want 1", len(cookies))
+	}
+	cookie := cookies[0]
+	if cookie.Name != TerminalTokenCookieName || cookie.Value != "terminal-jwt" {
+		t.Fatalf("cookie = %s=%q, want %s=terminal-jwt", cookie.Name, cookie.Value, TerminalTokenCookieName)
+	}
+	if !cookie.Secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/" {
+		t.Fatalf("cookie security attributes = %#v", cookie)
+	}
+}
+
+func TestClearTerminalTokenCookie(t *testing.T) {
+	w := httptest.NewRecorder()
+	ClearTerminalTokenCookie(w)
+
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("cookies = %d, want 1", len(cookies))
+	}
+	if cookies[0].Name != TerminalTokenCookieName || cookies[0].MaxAge != -1 {
+		t.Fatalf("clear cookie = %#v", cookies[0])
+	}
+}
+
 func TestHandler_AuthEnabled_TokenOnly(t *testing.T) {
 	m := New(Config{})
 
