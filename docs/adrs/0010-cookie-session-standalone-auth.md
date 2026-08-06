@@ -50,7 +50,19 @@ entirely by the BFF. The browser never sees a token.
   client-side refresh endpoint is removed.
 - **CSRF**: SameSite=Strict is the primary defense; an Origin check on
   mutating methods is defense-in-depth. Requests without an Origin header
-  (non-browser clients) pass — they cannot carry a browser's cookies.
+  (non-browser clients) pass — they cannot carry a browser's cookies. All
+  state-changing endpoints (token exchange, logout) are POST so they pass
+  through the Origin check rather than being triggerable by a bare GET.
+- **Login CSRF / code injection**: the authorization request carries an
+  unguessable `state` (and PKCE `code_challenge`); the callback rejects any
+  response whose `state` doesn't match what this browser generated. Required
+  by the browser-based-apps BCP even with PKCE.
+- **IdP calls are bounded** by a 15s HTTP client timeout so a hanging or slow
+  provider cannot pin goroutines.
+- **Confidential or public client**: `OIDC_CLIENT_SECRET` (optional) is sent
+  as `client_secret_post` on token and refresh calls; absent it, the BFF is a
+  public client (PKCE only). The secret lives outside the browser-serialized
+  config and is env-only.
 - **Login state** is probed via `GET /api/v1/auth/session` (never touches the
   gateway, so a gateway outage does not log users out). The frontend keeps no
   auth state beyond the dev-mode flag.

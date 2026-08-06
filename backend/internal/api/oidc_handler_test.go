@@ -256,7 +256,7 @@ func TestSessionManagerGarbageCookieCleared(t *testing.T) {
 func TestLogoutClearsSessionCookie(t *testing.T) {
 	app := &App{}
 	w := httptest.NewRecorder()
-	app.Logout(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/logout", nil))
+	app.Logout(w, httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil))
 
 	cookie := findCookie(w.Result().Cookies(), auth.SessionCookieName)
 	if cookie == nil || cookie.MaxAge != -1 {
@@ -269,7 +269,7 @@ func TestLogoutReturnsEndSessionRedirect(t *testing.T) {
 	app := &App{authConfig: AuthConfigResponse{Issuer: issuer.URL, ClientID: "dashboard"}}
 
 	w := httptest.NewRecorder()
-	app.Logout(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/logout", nil))
+	app.Logout(w, httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
@@ -291,7 +291,7 @@ func TestLogoutIncludesIDTokenHint(t *testing.T) {
 	if err := codec.SetSession(seed, &auth.Session{Token: "the-id-token"}); err != nil {
 		t.Fatalf("SetSession: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/logout", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	for _, cookie := range seed.Result().Cookies() {
 		if cookie.MaxAge >= 0 {
 			req.AddCookie(cookie)

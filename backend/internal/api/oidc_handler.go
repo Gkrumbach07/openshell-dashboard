@@ -12,7 +12,9 @@ import (
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
 )
 
-var oidcHTTPClient = &http.Client{}
+// oidcHTTPClient talks to the IdP. The timeout bounds discovery and token
+// calls so a hanging or slow IdP cannot pin goroutines indefinitely.
+var oidcHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 func discoverOIDCEndpoints(issuer string) (tokenEndpoint, endSessionEndpoint string, err error) {
 	discoveryURL := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"

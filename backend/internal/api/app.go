@@ -76,7 +76,9 @@ func (app *App) Routes() http.Handler {
 		r.Get("/auth/config", app.GetAuthConfig)
 		r.Get("/auth/discovery", app.GetOIDCDiscovery)
 		r.Post("/auth/token-exchange", app.TokenExchange)
-		r.Get("/auth/logout", app.Logout)
+		// Logout is POST: it clears the session (state-changing), so it must
+		// pass the CSRF Origin check rather than be triggerable by a bare GET.
+		r.Post("/auth/logout", app.Logout)
 		// BFF liveness (does not call the gateway).
 		r.Get("/healthz", app.GetHealthz)
 		r.Get("/readyz", app.GetReadyz)

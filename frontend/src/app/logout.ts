@@ -19,7 +19,7 @@ export const logout = async (): Promise<void> => {
     }
 
     if (config.issuer && config.clientId) {
-      const resp = await fetch('/api/v1/auth/logout');
+      const resp = await fetch('/api/v1/auth/logout', { method: 'POST' });
       const body = (await resp.json()) as { redirect?: string };
       window.location.assign(body.redirect ?? '/login');
       return;

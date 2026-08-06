@@ -1,8 +1,11 @@
 // Generic OIDC Authorization Code + PKCE flow.
-// Works with any standard OIDC provider (Dex, Keycloak, Okta, etc.).
+// Works with any standard OIDC provider (Dex, Keycloak, Okta, Entra, etc.).
 
-const generateCodeVerifier = (): string => {
-  const array = new Uint8Array(32);
+const VERIFIER_KEY = 'oidc.code_verifier';
+const STATE_KEY = 'oidc.state';
+
+const randomHex = (bytes: number): string => {
+  const array = new Uint8Array(bytes);
   crypto.getRandomValues(array);
   return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('');
 };
@@ -24,16 +27,22 @@ export const startLogin = async (
   scopes: string,
   redirectUri: string,
 ): Promise<void> => {
-  const codeVerifier = generateCodeVerifier();
+  const codeVerifier = randomHex(32);
   const challenge = base64url(await sha256(codeVerifier));
+  // `state` binds the callback to this browser: the IdP echoes it back and
+  // the callback rejects any mismatch, defeating login CSRF / code
+  // injection. Required by the OAuth browser-based-apps BCP even with PKCE.
+  const state = randomHex(16);
 
-  sessionStorage.setItem('oidc.code_verifier', codeVerifier);
+  sessionStorage.setItem(VERIFIER_KEY, codeVerifier);
+  sessionStorage.setItem(STATE_KEY, state);
 
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
     redirect_uri: redirectUri,
     scope: scopes,
+    state,
     code_challenge: challenge,
     code_challenge_method: 'S256',
   });
@@ -47,8 +56,11 @@ export const startLogin = async (
 };
 
 export const getCodeVerifier = (): string | null =>
-  sessionStorage.getItem('oidc.code_verifier');
+  sessionStorage.getItem(VERIFIER_KEY);
 
-export const clearCodeVerifier = (): void => {
-  sessionStorage.removeItem('oidc.code_verifier');
+export const getState = (): string | null => sessionStorage.getItem(STATE_KEY);
+
+export const clearLoginState = (): void => {
+  sessionStorage.removeItem(VERIFIER_KEY);
+  sessionStorage.removeItem(STATE_KEY);
 };

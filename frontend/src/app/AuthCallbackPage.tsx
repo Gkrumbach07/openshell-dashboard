@@ -1,15 +1,25 @@
 import { useEffect } from 'react';
 import { Bullseye, Spinner } from '@patternfly/react-core';
 
-import { clearCodeVerifier, getCodeVerifier } from './oidc';
+import { clearLoginState, getCodeVerifier, getState } from './oidc';
 
 const AuthCallbackPage: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
+    const returnedState = params.get('state');
     const codeVerifier = getCodeVerifier();
+    const expectedState = getState();
 
-    if (!code || !codeVerifier) {
+    // Reject the callback unless the IdP echoed back the exact `state` we
+    // generated: this is the CSRF / code-injection guard for the redirect.
+    if (
+      !code ||
+      !codeVerifier ||
+      !expectedState ||
+      returnedState !== expectedState
+    ) {
+      clearLoginState();
       window.location.assign('/login');
       return;
     }
@@ -27,7 +37,7 @@ const AuthCallbackPage: React.FC = () => {
         }),
       });
 
-      clearCodeVerifier();
+      clearLoginState();
       window.location.assign(resp.ok ? '/workspaces' : '/login');
     };
 
