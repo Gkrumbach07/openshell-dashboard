@@ -21,7 +21,7 @@ backend/            Go BFF
   internal/gateway/ gRPC wrapper + Interface (for test mocking)
   internal/models/  Response DTOs (From*() converters) and request builders
   proto/            Copied from NVIDIA/OpenShell/proto/
-  gen/              protoc-generated Go stubs (datamodelv1, openshellv1, sandboxv1, inferencev1)
+  gen/              protoc-generated Go stubs (datamodelv1, openshellv1, optionsv1, sandboxv1, inferencev1)
 scripts/            Dev environment (dev-env.sh — Keycloak + gateway setup)
 docs/adrs/          Architecture Decision Records
 ```

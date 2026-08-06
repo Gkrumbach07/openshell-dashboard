@@ -68,9 +68,10 @@ func FromWorkspace(w *datamodelv1.Workspace) Workspace {
 }
 ```
 
-For request bodies, add a request struct and builder if needed:
+For request bodies: simple request structs go in the handler file (e.g., `CreateWorkspaceRequest` in `workspaces_handler.go`). Complex ones that need builder logic go in `models/builders.go` (e.g., `CreateSandboxRequest` which needs `BuildSandboxSpec()`).
 
 ```go
+// In the handler file for simple cases:
 type CreateWorkspaceRequest struct {
     Name   string            `json:"name"`
     Labels map[string]string `json:"labels"`
@@ -156,12 +157,12 @@ export const useCreateWorkspace = () => {
 };
 ```
 
-For query hooks, use `queryKeys` factories:
+For query hooks, use `queryKeys` factories. Check `queryKeys.ts` for available keys — not all resources have a `list()` method (e.g., `workspaceKeys` has `all`, `detail(name)`, `members(workspace)` but no `list()`):
 
 ```typescript
 export const useWorkspaces = () =>
   useQuery({
-    queryKey: workspaceKeys.list(),
+    queryKey: workspaceKeys.all,
     queryFn: () => listWorkspaces(),
   });
 ```

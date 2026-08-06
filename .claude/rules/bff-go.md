@@ -31,11 +31,13 @@ backend/
 │   │   └── services.go        # ExposeService, ListServices, DeleteService
 │   └── models/                # Response DTOs and request builders
 │       ├── models.go          # FromSandbox(), FromWorkspace(), FromProvider(), etc.
-│       └── builders.go        # BuildSandboxSpec(), ParsePolicy()
+│       ├── builders.go        # BuildSandboxSpec(), ParsePolicy(), complex request structs
+│       └── observability.go   # Observability/metrics helpers
 ├── proto/                     # Copied from NVIDIA/OpenShell/proto/
 ├── gen/                       # protoc-generated Go stubs (committed)
 │   ├── datamodelv1/           # Workspace, Provider, ObjectMeta types
 │   ├── openshellv1/           # RPCs, Sandbox, SandboxSpec types
+│   ├── optionsv1/             # AuthorizationRule, secret field options
 │   ├── sandboxv1/             # Policy, SandboxConfig types
 │   └── inferencev1/           # Inference route types
 ├── go.mod
