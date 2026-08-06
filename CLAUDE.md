@@ -6,7 +6,7 @@ Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell). Go
 
 ```
 frontend/           React + TypeScript + PatternFly 6
-  src/app/          App shell, routing (App.tsx), OIDC login, layout
+  src/app/          App shell, routing (App.tsx), layout; oidc/ subdir for auth
   src/pages/        Page components — flat files, exported for downstream
   src/components/   Shared components
   src/api/          REST client (client.ts), hooks, queryKeys.ts
@@ -32,6 +32,7 @@ docs/adrs/          Architecture Decision Records
 make setup          # install frontend + go deps
 make proto          # regenerate Go stubs from proto files
 make dev            # start frontend dev server + BFF with hot reload
+make dev-full       # start Keycloak + gateway + dashboard (full OIDC stack)
 make build          # produce container image
 make test           # frontend unit tests + go tests
 make lint           # eslint + golangci-lint

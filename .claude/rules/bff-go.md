@@ -116,7 +116,7 @@ Proxy-delegated authentication (see ADR 0003). The BFF is a dumb pipe for tokens
 
 The BFF does NOT validate tokens, call JWKS endpoints, or parse JWT claims. It has zero dependency on `go-oidc`.
 
-The standalone OIDC endpoints (`/auth/discovery`, `/auth/token-exchange`, `/auth/refresh`) in `oidc_handler.go` are server-side proxies for the frontend's PKCE flow — they pass through to the IDP without inspecting tokens.
+The standalone OIDC endpoints in `oidc_handler.go` are server-side proxies for the frontend's PKCE flow — they pass through to the IDP without inspecting tokens. Routes (under `/api/v1/`): `auth/discovery`, `auth/token-exchange`, `auth/refresh`, `auth/logout`.
 
 ## Configuration
 
@@ -134,8 +134,12 @@ Env vars (some also available as CLI flags):
 | `ALLOWED_ORIGINS` | `-allowed-origins` | | Comma-separated CORS origins |
 | `OIDC_ISSUER` | | | OIDC issuer URL (standalone mode) |
 | `OIDC_CLIENT_ID` | | | OIDC client ID (standalone mode) |
-| `ADMIN_ROLE` | `-admin-role` | | OIDC role claim for admin |
-| `LOGOUT_URL` | `-logout-url` | | Post-logout redirect URL |
+| `ADMIN_ROLE` | `-admin-role` | `admin` | OIDC role claim for admin |
+| `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out` | Post-logout redirect URL |
+| `OIDC_SCOPES` | | `openid profile email groups` | OIDC scopes to request |
+| `OIDC_USER_ROLE` | | | OIDC role claim for standard user |
+| `DEPLOYMENT_CONTEXT` | | `standalone` | Deployment context (`standalone` or `embedded`) |
+| `FEATURE_*` | | varies | Feature flags: `FEATURE_TERMINAL`, `FEATURE_FILE_TRANSFER`, `FEATURE_SETTINGS`, `FEATURE_GLOBAL_POLICY`, `FEATURE_CREDENTIAL_REFRESH`, `FEATURE_SERVICES`, `FEATURE_DRAFT_POLICY`, `FEATURE_WORKSPACE_BINDING`, `FEATURE_RESOURCE_LINKS` |
 
 ## Error handling
 
