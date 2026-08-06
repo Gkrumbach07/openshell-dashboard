@@ -46,6 +46,10 @@ type Session struct {
 	RefreshToken string `json:"r,omitempty"`
 	// ExpiresAt is the bearer's expiry as unix seconds; 0 means unknown.
 	ExpiresAt int64 `json:"e,omitempty"`
+	// CreatedAt is when the session first began (unix seconds). Preserved
+	// across refreshes so an absolute lifetime cap can be enforced —
+	// refreshing renews the bearer but never resets this.
+	CreatedAt int64 `json:"c,omitempty"`
 }
 
 // Expired reports whether the session's bearer is past (or within skew of)

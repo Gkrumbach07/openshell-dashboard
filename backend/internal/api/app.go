@@ -3,7 +3,6 @@ package api
 
 import (
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,7 +177,7 @@ func (app *App) csrfMiddleware(next http.Handler) http.Handler {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch:
 			origin := r.Header.Get("Origin")
-			if origin != "" && !app.originAllowed(origin, r.Host) {
+			if origin != "" && !app.originAllowed(origin, requestOrigin(r)) {
 				writeError(w, http.StatusForbidden, "cross_origin_rejected", "cross-origin request rejected")
 				return
 			}
@@ -187,8 +186,10 @@ func (app *App) csrfMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (app *App) originAllowed(origin, requestHost string) bool {
-	if parsed, err := url.Parse(origin); err == nil && parsed.Host == requestHost {
+func (app *App) originAllowed(origin, requestOrigin string) bool {
+	// Full-origin (scheme+host) match, so http:// can't pass for an https
+	// request. requestOrigin is the BFF's own scheme://host for this request.
+	if origin == requestOrigin {
 		return true
 	}
 	for _, allowed := range app.allowedOrigins {

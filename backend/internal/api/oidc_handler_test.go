@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -208,6 +209,79 @@ func TestSessionManagerParallelRequestsShareOneRefresh(t *testing.T) {
 	}
 }
 
+func TestSessionManagerEnforcesAbsoluteLifetime(t *testing.T) {
+	codec := newTestSessionCodec(t)
+	// Refresh would succeed, but the session is past its absolute ceiling.
+	issuer := newFakeIssuer(t, `{"id_token":"refreshed","refresh_token":"r","expires_in":300}`)
+	app := &App{sessions: codec, authConfig: AuthConfigResponse{Issuer: issuer.URL, ClientID: "dashboard"}}
+	sm := &sessionManager{codec: codec, app: app}
+
+	seed := httptest.NewRecorder()
+	if err := codec.SetSession(seed, &auth.Session{
+		Token:        "stale",
+		RefreshToken: "old-refresh",
+		ExpiresAt:    time.Now().Unix() - 60,
+		CreatedAt:    time.Now().Add(-13 * time.Hour).Unix(),
+	}); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	for _, cookie := range seed.Result().Cookies() {
+		if cookie.MaxAge >= 0 {
+			req.AddCookie(cookie)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	if token := sm.TokenFromSession(w, req); token != "" {
+		t.Fatalf("token = %q, want empty — session past absolute lifetime must end", token)
+	}
+	cookie := findCookie(w.Result().Cookies(), auth.SessionCookieName)
+	if cookie == nil || cookie.MaxAge != -1 {
+		t.Fatalf("over-age session cookie not cleared: %#v", cookie)
+	}
+}
+
+func TestSessionManagerRefreshPreservesCreatedAt(t *testing.T) {
+	issuer := newFakeIssuer(t, `{"id_token":"refreshed-id-token","refresh_token":"rotated","expires_in":300}`)
+	codec := newTestSessionCodec(t)
+	app := &App{sessions: codec, authConfig: AuthConfigResponse{Issuer: issuer.URL, ClientID: "dashboard"}}
+	sm := &sessionManager{codec: codec, app: app}
+
+	created := time.Now().Add(-2 * time.Hour).Unix()
+	seed := httptest.NewRecorder()
+	if err := codec.SetSession(seed, &auth.Session{
+		Token:        "stale",
+		RefreshToken: "old-refresh",
+		ExpiresAt:    time.Now().Unix() - 60,
+		CreatedAt:    created,
+	}); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	for _, cookie := range seed.Result().Cookies() {
+		if cookie.MaxAge >= 0 {
+			req.AddCookie(cookie)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	sm.TokenFromSession(w, req)
+	cookie := findCookie(w.Result().Cookies(), auth.SessionCookieName)
+	if cookie == nil {
+		t.Fatal("no refreshed cookie")
+	}
+	readReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	readReq.AddCookie(cookie)
+	session, err := codec.LoadSession(readReq)
+	if err != nil || session == nil {
+		t.Fatalf("LoadSession: %v", err)
+	}
+	if session.CreatedAt != created {
+		t.Fatalf("CreatedAt = %d, want %d preserved across refresh", session.CreatedAt, created)
+	}
+}
+
 func TestSessionManagerExpiredWithoutRefreshEndsSession(t *testing.T) {
 	codec := newTestSessionCodec(t)
 	sm := &sessionManager{codec: codec, app: &App{sessions: codec}}
@@ -276,6 +350,25 @@ func TestLogoutReturnsEndSessionRedirect(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), issuer.URL+"/logout") {
 		t.Fatalf("body = %s, want end-session URL", w.Body.String())
+	}
+}
+
+func TestLogoutRedirectUsesRequestOriginNotReferer(t *testing.T) {
+	issuer := newFakeIssuer(t, `{}`)
+	app := &App{authConfig: AuthConfigResponse{Issuer: issuer.URL, ClientID: "dashboard"}}
+
+	req := httptest.NewRequest(http.MethodPost, "https://dashboard.example.com/api/v1/auth/logout", nil)
+	req.Host = "dashboard.example.com"
+	req.Header.Set("Referer", "https://evil.example.com/attack")
+	w := httptest.NewRecorder()
+	app.Logout(w, req)
+
+	body := w.Body.String()
+	if strings.Contains(body, "evil.example.com") {
+		t.Fatalf("logout redirect honored attacker Referer: %s", body)
+	}
+	if !strings.Contains(body, url.QueryEscape("https://dashboard.example.com/login")) {
+		t.Fatalf("logout redirect should point at the request origin's /login: %s", body)
 	}
 }
 

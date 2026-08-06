@@ -13,11 +13,18 @@ const (
 	// refreshSkew renews sessions slightly before the bearer actually expires
 	// so in-flight requests don't race the deadline.
 	refreshSkew = 30 * time.Second
+	// maxSessionLifetime caps how long a session may be renewed before the
+	// user must re-authenticate, regardless of the IdP refresh token's own
+	// lifetime. Bounds the blast radius of a captured cookie.
+	maxSessionLifetime = 12 * time.Hour
 	// refreshReuseWindow is how long a completed refresh answers for other
 	// requests that arrived carrying the same (now-invalidated) refresh token.
 	// A page load fires many parallel requests with the same expired cookie;
-	// only the first may hit the IdP when refresh tokens are single-use.
-	refreshReuseWindow = time.Minute
+	// only the first may hit the IdP when refresh tokens are single-use. Kept
+	// short: it must outlast a burst of concurrent requests but not linger as
+	// a window where a replayed stale cookie is honored (which would blunt the
+	// IdP's refresh-token replay detection).
+	refreshReuseWindow = 10 * time.Second
 )
 
 // sessionManager implements auth.SessionAuthenticator: it opens the encrypted
@@ -51,6 +58,12 @@ func (sm *sessionManager) TokenFromSession(w http.ResponseWriter, r *http.Reques
 	if session == nil {
 		return ""
 	}
+	// Absolute lifetime cap: a session past its ceiling ends even if the IdP
+	// would still refresh it. CreatedAt is preserved across refreshes.
+	if session.CreatedAt > 0 && time.Since(time.Unix(session.CreatedAt, 0)) > maxSessionLifetime {
+		auth.ClearSession(w)
+		return ""
+	}
 	if !session.Expired(refreshSkew) {
 		return session.Token
 	}
@@ -73,6 +86,9 @@ func (sm *sessionManager) TokenFromSession(w http.ResponseWriter, r *http.Reques
 			auth.ClearSession(w)
 			return ""
 		}
+		// Preserve the original session start so the absolute lifetime cap
+		// counts from first login, not from the latest refresh.
+		refreshed.CreatedAt = session.CreatedAt
 		sm.lastRefreshedRT = session.RefreshToken
 		sm.lastResult = refreshed
 		sm.lastRefreshedAt = time.Now()

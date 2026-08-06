@@ -39,6 +39,12 @@ type Config struct {
 	TokenHeader string
 	UserHeader  string
 	Disabled    bool
+	// TrustProxyHeader enables reading the bearer from TokenHeader
+	// (x-forwarded-access-token). Only safe in federated mode, where an auth
+	// proxy in front of the BFF sets and sanitizes that header. In standalone
+	// mode there is no such proxy, so a client could forge the header to
+	// bypass the session cookie — leave this false there.
+	TrustProxyHeader bool
 }
 
 // Middleware extracts the request's bearer token and stores it on the
@@ -87,7 +93,10 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			return
 		}
 
-		token := r.Header.Get(m.cfg.TokenHeader)
+		var token string
+		if m.cfg.TrustProxyHeader {
+			token = r.Header.Get(m.cfg.TokenHeader)
+		}
 		if token == "" {
 			if bearer := r.Header.Get("Authorization"); strings.HasPrefix(bearer, "Bearer ") {
 				token = strings.TrimPrefix(bearer, "Bearer ")

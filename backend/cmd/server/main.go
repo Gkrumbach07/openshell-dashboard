@@ -58,10 +58,16 @@ func main() {
 		slog.Warn("AUTH_DISABLED=true — authentication is OFF; never use this outside local development")
 	}
 
+	// Federated mode = an auth proxy fronts the BFF (no in-app OIDC issuer).
+	// Only then is the x-forwarded-access-token header trustworthy; in
+	// standalone mode any client could forge it to bypass the session cookie.
+	federated := os.Getenv("OIDC_ISSUER") == "" && !*authDisabled
+
 	authMiddleware := auth.New(auth.Config{
-		Disabled:    *authDisabled,
-		TokenHeader: *tokenHeader,
-		UserHeader:  *userHeader,
+		Disabled:         *authDisabled,
+		TokenHeader:      *tokenHeader,
+		UserHeader:       *userHeader,
+		TrustProxyHeader: federated,
 	})
 
 	// Cookie sessions are only used in standalone OIDC mode. SESSION_SECRET
@@ -118,8 +124,10 @@ func main() {
 	defer gatewayClient.Close()
 
 	var allowedOrigins []string
-	if *origins != "" {
-		allowedOrigins = strings.Split(*origins, ",")
+	for _, o := range strings.Split(*origins, ",") {
+		if trimmed := strings.TrimSpace(o); trimmed != "" {
+			allowedOrigins = append(allowedOrigins, trimmed)
+		}
 	}
 
 	app := api.NewApp(gatewayClient, authMiddleware, sessionCodec, *staticDir, allowedOrigins, authCfg)

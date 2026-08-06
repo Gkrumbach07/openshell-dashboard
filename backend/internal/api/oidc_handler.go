@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -72,7 +73,7 @@ func (t *tokenResponse) session() *auth.Session {
 	if bearer == "" {
 		bearer = t.AccessToken
 	}
-	s := &auth.Session{Token: bearer, RefreshToken: t.RefreshToken}
+	s := &auth.Session{Token: bearer, RefreshToken: t.RefreshToken, CreatedAt: time.Now().Unix()}
 	if t.ExpiresIn > 0 {
 		s.ExpiresAt = time.Now().Unix() + t.ExpiresIn
 	}
@@ -83,6 +84,7 @@ func (t *tokenResponse) session() *auth.Session {
 // endpoint, then seals them into the encrypted session cookie. Tokens are
 // never returned to the browser — the cookie is the session.
 func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
+	noStore(w)
 	if app.authConfig.Issuer == "" || app.authConfig.ClientID == "" {
 		writeError(w, http.StatusBadRequest, "not_configured", "OIDC is not configured")
 		return
@@ -104,7 +106,8 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 
 	tokenEndpoint, _, err := discoverOIDCEndpoints(app.authConfig.Issuer)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "discovery_failed", err.Error())
+		slog.Warn("OIDC discovery failed", "error", err)
+		writeError(w, http.StatusBadGateway, "discovery_failed", "identity provider is unreachable")
 		return
 	}
 
@@ -189,18 +192,34 @@ func (app *App) refreshSession(refreshToken string) (*auth.Session, error) {
 	return session, nil
 }
 
+// requestOrigin returns the BFF's own scheme://host for this request, honoring
+// the standard reverse-proxy forwarding header for the scheme.
+func requestOrigin(r *http.Request) string {
+	scheme := "https"
+	if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+		if fwd := r.Header.Get("X-Forwarded-Proto"); fwd != "" {
+			scheme = fwd
+		} else {
+			scheme = "http"
+		}
+	}
+	return scheme + "://" + r.Host
+}
+
 // GetSession reports whether the request carries a valid session. It sits
 // behind the auth middleware, so reaching it at all means the request
 // authenticated (header, cookie, or dev mode). The frontend uses this as its
 // login probe — unlike whoami it never calls the gateway, so an unreachable
 // gateway doesn't log the user out.
 func (app *App) GetSession(w http.ResponseWriter, _ *http.Request) {
+	noStore(w)
 	writeJSON(w, http.StatusOK, map[string]bool{"authenticated": true})
 }
 
 // Logout clears the session cookie and returns the OIDC end-session URL so
 // the frontend can redirect the browser to the IdP to clear the SSO session.
 func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
+	noStore(w)
 	// Capture the session's ID token before clearing: RP-Initiated Logout
 	// expects id_token_hint alongside post_logout_redirect_uri, and some OPs
 	// show a confirmation page or reject the redirect without it.
@@ -222,14 +241,13 @@ func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	postLogoutRedirect := r.Header.Get("Referer")
-	if postLogoutRedirect == "" {
-		postLogoutRedirect = "/login"
-	}
-
+	// Build an absolute post-logout URI from the BFF's own origin. OPs
+	// validate this against registered values and often reject relative URIs,
+	// so it must be absolute — and it must not come from a client-supplied
+	// header (Referer), which an attacker could steer.
 	params := url.Values{
 		"client_id":                {app.authConfig.ClientID},
-		"post_logout_redirect_uri": {postLogoutRedirect},
+		"post_logout_redirect_uri": {requestOrigin(r) + "/login"},
 	}
 	if idTokenHint != "" {
 		params.Set("id_token_hint", idTokenHint)

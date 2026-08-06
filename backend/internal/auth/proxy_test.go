@@ -6,8 +6,12 @@ import (
 	"testing"
 )
 
-func TestHandler_AuthEnabled_WithToken(t *testing.T) {
-	m := New(Config{TokenHeader: "x-forwarded-access-token", UserHeader: "x-auth-request-user"})
+func TestHandler_Federated_TrustsProxyHeader(t *testing.T) {
+	m := New(Config{
+		TokenHeader:      "x-forwarded-access-token",
+		UserHeader:       "x-auth-request-user",
+		TrustProxyHeader: true,
+	})
 
 	var gotToken, gotUser string
 	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -30,6 +34,28 @@ func TestHandler_AuthEnabled_WithToken(t *testing.T) {
 	}
 	if gotUser != "alice" {
 		t.Errorf("user = %q, want alice", gotUser)
+	}
+}
+
+func TestHandler_Standalone_IgnoresProxyHeader(t *testing.T) {
+	// No TrustProxyHeader: standalone mode. A forged x-forwarded-access-token
+	// must not be honored — only the cookie session (or a real Bearer) counts.
+	m := New(Config{TokenHeader: "x-forwarded-access-token"})
+	m.SetSessionAuthenticator(&staticSessionAuth{token: "session-jwt"})
+
+	var gotToken string
+	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotToken = TokenFromContext(r.Context())
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("x-forwarded-access-token", "forged-proxy-token")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if gotToken != "session-jwt" {
+		t.Fatalf("token = %q, want session-jwt — forged proxy header must be ignored in standalone mode", gotToken)
 	}
 }
 
@@ -97,8 +123,8 @@ func TestHandler_AuthEnabled_SessionFallback(t *testing.T) {
 	}
 }
 
-func TestHandler_AuthEnabled_HeaderBeatsSession(t *testing.T) {
-	m := New(Config{})
+func TestHandler_Federated_HeaderBeatsSession(t *testing.T) {
+	m := New(Config{TrustProxyHeader: true})
 	m.SetSessionAuthenticator(&staticSessionAuth{token: "session-jwt"})
 
 	var gotToken string
@@ -113,7 +139,7 @@ func TestHandler_AuthEnabled_HeaderBeatsSession(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	if gotToken != "proxy-jwt" {
-		t.Errorf("token = %q, want proxy-jwt (header must take precedence over session)", gotToken)
+		t.Errorf("token = %q, want proxy-jwt (trusted proxy header takes precedence)", gotToken)
 	}
 }
 

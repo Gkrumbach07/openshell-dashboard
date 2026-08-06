@@ -70,10 +70,20 @@ entirely by the BFF. The browser never sees a token.
   in production — an auto-generated secret (dev fallback, logged loudly)
   means sessions do not survive restarts and multi-replica deployments
   cannot decrypt each other's cookies.
+- **Absolute lifetime cap.** The sealed session carries its creation time
+  (preserved across refreshes); after `maxSessionLifetime` (12h) it ends and
+  the user re-authenticates, bounding the blast radius of a captured cookie
+  regardless of the IdP refresh token's own lifetime.
+- **The trusted proxy header is mode-gated.** `x-forwarded-access-token` is
+  read only in federated mode, where an auth proxy sets and sanitizes it. In
+  standalone mode there is no such proxy, so honoring the header would let any
+  client forge it to bypass the session cookie — it is ignored there.
+- **Auth responses are `Cache-Control: no-store`** and carry no token in the
+  body; IdP-facing error detail is logged, not returned to the caller.
 
-Federated mode (proxy header) and dev mode (`AUTH_DISABLED`) are unchanged.
-The BFF still never **validates** tokens — the gateway remains the JWT
-authority (ADR 0003's "dumb pipe", now with a lockbox).
+Dev mode (`AUTH_DISABLED`) is unchanged. The BFF still never **validates**
+tokens — the gateway remains the JWT authority (ADR 0003's "dumb pipe", now
+with a lockbox).
 
 ## Alternatives considered
 
@@ -96,7 +106,15 @@ authority (ADR 0003's "dumb pipe", now with a lockbox).
 - Cookie size is bounded by the chunk cap (~30KB sealed) — beyond that the
   BFF rejects the session at login with a clear error.
 - Logout clears the cookie server-side and redirects to the IdP end-session
-  endpoint, clearing SSO state too.
+  endpoint, clearing SSO state too. It does **not** revoke the refresh token,
+  so a *captured* cookie stays usable until its bearer expires or the absolute
+  lifetime cap is hit — the standard stateless-session tradeoff (oauth2-proxy
+  default). "Log out everywhere" would need a deny list or RT revocation;
+  deferred until required.
+- An open terminal outlives the session that opened it: the exec stream holds
+  the bearer captured at upgrade time and is not torn down on expiry/logout.
+  Bounded by the absolute lifetime cap; a max connection lifetime is a
+  follow-up.
 - `POST /api/v1/auth/token-exchange` no longer returns tokens in its body;
   `POST /api/v1/auth/refresh` is removed. Consumers of the npm package that
   used these must upgrade in lockstep (the frontend and BFF ship in one
