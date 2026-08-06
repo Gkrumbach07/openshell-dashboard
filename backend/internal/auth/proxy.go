@@ -10,7 +10,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
+
+const TerminalTokenCookieName = "__Host-openshell-terminal-token" //nolint:gosec // Cookie name, not a credential.
 
 type contextKey int
 
@@ -78,6 +81,11 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 				token = strings.TrimPrefix(bearer, "Bearer ")
 			}
 		}
+		if token == "" && isWebSocketUpgrade(r) {
+			if cookie, err := r.Cookie(TerminalTokenCookieName); err == nil {
+				token = cookie.Value
+			}
+		}
 		if token == "" {
 			writeUnauthorized(w, "missing auth proxy token header")
 			return
@@ -88,6 +96,45 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			ctx = context.WithValue(ctx, userContextKey, user)
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func isWebSocketUpgrade(r *http.Request) bool {
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return false
+	}
+	for value := range strings.SplitSeq(r.Header.Get("Connection"), ",") {
+		if strings.EqualFold(strings.TrimSpace(value), "upgrade") {
+			return true
+		}
+	}
+	return false
+}
+
+// SetTerminalTokenCookie stores the OIDC token for authenticated WebSocket
+// handshakes. The middleware only reads this cookie on WebSocket upgrades;
+// ordinary API requests must continue to send an Authorization header.
+func SetTerminalTokenCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     TerminalTokenCookieName,
+		Value:    token,
+		Path:     "/",
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+// ClearTerminalTokenCookie removes the WebSocket authentication cookie.
+func ClearTerminalTokenCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     TerminalTokenCookieName,
+		Path:     "/",
+		MaxAge:   -1,
+		Expires:  time.Unix(1, 0),
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
 	})
 }
 

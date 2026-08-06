@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
 )
 
 var oidcHTTPClient = &http.Client{}
@@ -109,6 +111,7 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	if bearer == "" {
 		bearer = tokens.AccessToken
 	}
+	auth.SetTerminalTokenCookie(w, bearer)
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"accessToken":  bearer,
@@ -162,6 +165,7 @@ func (app *App) Refresh(w http.ResponseWriter, r *http.Request) {
 	if bearer == "" {
 		bearer = tokens.AccessToken
 	}
+	auth.SetTerminalTokenCookie(w, bearer)
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"accessToken":  bearer,
@@ -172,6 +176,7 @@ func (app *App) Refresh(w http.ResponseWriter, r *http.Request) {
 // Logout returns the OIDC end-session URL so the frontend can redirect the
 // browser to the IdP to clear the SSO session cookie.
 func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
+	auth.ClearTerminalTokenCookie(w)
 	if app.authConfig.Issuer == "" {
 		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
 		return
