@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
@@ -17,20 +19,58 @@ import (
 // calls so a hanging or slow IdP cannot pin goroutines indefinitely.
 var oidcHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
+type discoveryDoc struct {
+	tokenEndpoint      string
+	endSessionEndpoint string
+	fetchedAt          time.Time
+}
+
+// discoveryTTL caches the discovery document so token exchange and refresh
+// don't re-fetch it on every call — which matters because refresh happens
+// under a lock, and a per-call round trip would lengthen the hold.
+const discoveryTTL = 15 * time.Minute
+
+var (
+	discoveryMu    sync.Mutex
+	discoveryCache = map[string]discoveryDoc{}
+)
+
 func discoverOIDCEndpoints(issuer string) (tokenEndpoint, endSessionEndpoint string, err error) {
+	discoveryMu.Lock()
+	if cached, ok := discoveryCache[issuer]; ok && time.Since(cached.fetchedAt) < discoveryTTL {
+		discoveryMu.Unlock()
+		return cached.tokenEndpoint, cached.endSessionEndpoint, nil
+	}
+	discoveryMu.Unlock()
+
 	discoveryURL := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
 	resp, err := oidcHTTPClient.Get(discoveryURL)
 	if err != nil {
 		return "", "", fmt.Errorf("identity provider is unreachable: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("discovery returned status %d", resp.StatusCode)
+	}
 	var discovery struct {
 		TokenEndpoint      string `json:"token_endpoint"`
 		EndSessionEndpoint string `json:"end_session_endpoint"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&discovery); err != nil {
 		return "", "", fmt.Errorf("failed to parse discovery document: %w", err)
 	}
+	if discovery.TokenEndpoint == "" {
+		return "", "", fmt.Errorf("discovery document has no token_endpoint")
+	}
+
+	discoveryMu.Lock()
+	discoveryCache[issuer] = discoveryDoc{
+		tokenEndpoint:      discovery.TokenEndpoint,
+		endSessionEndpoint: discovery.EndSessionEndpoint,
+		fetchedAt:          time.Now(),
+	}
+	discoveryMu.Unlock()
+
 	return discovery.TokenEndpoint, discovery.EndSessionEndpoint, nil
 }
 
@@ -58,11 +98,13 @@ func (app *App) GetOIDCDiscovery(w http.ResponseWriter, _ *http.Request) {
 }
 
 // tokenResponse is the subset of the IdP token endpoint response we use.
+// ExpiresIn is json.Number so a provider that renders it as a JSON string
+// (older Azure AD v1.0, non-strict OAuth servers) doesn't fail the decode.
 type tokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	IDToken      string `json:"id_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int64  `json:"expires_in"`
+	AccessToken  string      `json:"access_token"`
+	IDToken      string      `json:"id_token"`
+	RefreshToken string      `json:"refresh_token"`
+	ExpiresIn    json.Number `json:"expires_in"`
 }
 
 // session builds the server-side session from an IdP token response. The ID
@@ -73,11 +115,48 @@ func (t *tokenResponse) session() *auth.Session {
 	if bearer == "" {
 		bearer = t.AccessToken
 	}
-	s := &auth.Session{Token: bearer, RefreshToken: t.RefreshToken, CreatedAt: time.Now().Unix()}
-	if t.ExpiresIn > 0 {
-		s.ExpiresAt = time.Now().Unix() + t.ExpiresIn
+	now := time.Now().Unix()
+	s := &auth.Session{Token: bearer, RefreshToken: t.RefreshToken, CreatedAt: now}
+
+	// Expiry must track the *forwarded bearer*, not whichever token expires_in
+	// happened to describe. expires_in per RFC 6749 is the access token's
+	// lifetime; when we forward the ID token (which can expire much sooner or
+	// later — Okta pins ID tokens to 60m), scheduling refresh off expires_in
+	// leaves the session "live" after the ID token is dead, so the gateway
+	// 401s and never triggers a refresh. Prefer the bearer's own `exp` claim.
+	if exp := jwtExpiry(bearer); exp > 0 {
+		s.ExpiresAt = exp
+	}
+	if secs, err := t.ExpiresIn.Int64(); err == nil && secs > 0 {
+		accessExpiry := now + secs
+		// Take the earlier of the two so we never overrun the live bearer.
+		if s.ExpiresAt == 0 || accessExpiry < s.ExpiresAt {
+			s.ExpiresAt = accessExpiry
+		}
 	}
 	return s
+}
+
+// jwtExpiry reads the `exp` claim (unix seconds) from a JWT's payload without
+// verifying the signature. This is NOT token validation — the gateway remains
+// the sole authority on token validity; the BFF reads exp only to schedule
+// its own refresh. Returns 0 for a non-JWT (opaque) token or a missing claim.
+func jwtExpiry(token string) int64 {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return 0
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return 0
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return 0
+	}
+	return claims.Exp
 }
 
 // TokenExchange swaps an authorization code for tokens via the IdP's token
@@ -99,7 +178,12 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 		CodeVerifier string `json:"codeVerifier"`
 		RedirectURI  string `json:"redirectUri"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Code == "" {
+	// decodeBody bounds the body (MaxBytesReader) and rejects unknown fields —
+	// this is a public, unauthenticated endpoint.
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	if body.Code == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "code is required")
 		return
 	}
@@ -128,13 +212,35 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tokenResp.Body.Close()
 
+	// A non-2xx from the token endpoint is an OAuth error (invalid_grant,
+	// invalid_client, redirect_uri_mismatch, …). Surface it as a 400 with the
+	// provider's error/description instead of a flat 401 — a 401 would send
+	// the frontend into a login loop that can't succeed on a misconfiguration.
+	if tokenResp.StatusCode != http.StatusOK {
+		var oauthErr struct {
+			Error       string `json:"error"`
+			Description string `json:"error_description"`
+		}
+		_ = json.NewDecoder(io.LimitReader(tokenResp.Body, 1<<16)).Decode(&oauthErr)
+		slog.Warn("token exchange rejected", "status", tokenResp.StatusCode, "error", oauthErr.Error, "description", oauthErr.Description)
+		msg := "identity provider rejected the sign-in"
+		if oauthErr.Error != "" {
+			msg = oauthErr.Error
+			if oauthErr.Description != "" {
+				msg += ": " + oauthErr.Description
+			}
+		}
+		writeError(w, http.StatusBadRequest, "token_exchange_rejected", msg)
+		return
+	}
+
 	var tokens tokenResponse
 	if err := json.NewDecoder(tokenResp.Body).Decode(&tokens); err != nil {
 		writeError(w, http.StatusBadGateway, "token_parse_failed", "failed to parse token response")
 		return
 	}
 	if tokens.AccessToken == "" && tokens.IDToken == "" {
-		writeError(w, http.StatusUnauthorized, "token_exchange_failed", "no token received from identity provider")
+		writeError(w, http.StatusBadGateway, "token_exchange_failed", "no token received from identity provider")
 		return
 	}
 

@@ -71,20 +71,25 @@ func main() {
 	})
 
 	// Cookie sessions are only used in standalone OIDC mode. SESSION_SECRET
-	// must be set explicitly in production: an auto-generated secret means
-	// every restart invalidates all sessions and multi-replica deployments
-	// cannot decrypt each other's cookies.
+	// must be set explicitly outside dev: an auto-generated secret means every
+	// restart invalidates all sessions, and each replica gets a different key
+	// so cookies sealed on one pod fail to decrypt on another — surfacing as
+	// intermittent random logouts. Fail closed unless DEPLOYMENT_CONTEXT=dev.
 	var sessionCodec *auth.SessionCodec
 	if issuer := os.Getenv("OIDC_ISSUER"); issuer != "" && !*authDisabled {
 		secret := os.Getenv("SESSION_SECRET")
 		if secret == "" {
+			if os.Getenv("DEPLOYMENT_CONTEXT") != "dev" {
+				slog.Error("SESSION_SECRET is required when OIDC is configured (set DEPLOYMENT_CONTEXT=dev to allow an ephemeral secret for local development)")
+				os.Exit(1)
+			}
 			generated := make([]byte, 32)
 			if _, err := rand.Read(generated); err != nil {
 				slog.Error("failed to generate a session secret", "error", err)
 				os.Exit(1)
 			}
 			secret = string(generated)
-			slog.Warn("SESSION_SECRET is not set — generated an ephemeral secret; sessions will not survive restarts and multi-replica deployments will not work")
+			slog.Warn("SESSION_SECRET not set — using an ephemeral dev secret; sessions won't survive restarts")
 		}
 		codec, err := auth.NewSessionCodec([]byte(secret))
 		if err != nil {

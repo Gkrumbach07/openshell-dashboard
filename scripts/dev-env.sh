@@ -602,6 +602,9 @@ OIDC_ISSUER=http://localhost:${KEYCLOAK_PORT}/realms/openshell
 OIDC_CLIENT_ID=openshell-dashboard
 GATEWAY_CA_CERT=${PKI_DIR}/ca.crt
 AUTH_DISABLED=false
+# Local dev: allow an ephemeral session-cookie secret (production must set
+# SESSION_SECRET explicitly; the BFF fails closed without it otherwise).
+DEPLOYMENT_CONTEXT=dev
 EOF
 }
 

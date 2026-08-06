@@ -80,6 +80,18 @@ entirely by the BFF. The browser never sees a token.
   client forge it to bypass the session cookie — it is ignored there.
 - **Auth responses are `Cache-Control: no-store`** and carry no token in the
   body; IdP-facing error detail is logged, not returned to the caller.
+- **Session expiry tracks the forwarded bearer, not `expires_in`.** RFC 6749
+  `expires_in` describes the *access* token; we forward the *ID* token, whose
+  lifetime can differ sharply (Okta pins ID tokens to 60m). The BFF reads the
+  bearer's own `exp` claim (and takes the earlier of that and `expires_in`) to
+  schedule refresh. Reading `exp` from an unverified JWT is **not** token
+  validation — the gateway remains the sole validity authority; the BFF only
+  decides when to refresh. `expires_in` is parsed as `json.Number` so a
+  provider that renders it as a string (older Azure AD v1.0) still decodes.
+- **Token-endpoint errors surface as 400** with the provider's
+  `error`/`error_description`, not a flat 401 — a 401 on a misconfiguration
+  (invalid_grant, redirect_uri_mismatch, …) would loop the frontend through a
+  login that cannot succeed.
 
 Dev mode (`AUTH_DISABLED`) is unchanged. The BFF still never **validates**
 tokens — the gateway remains the JWT authority (ADR 0003's "dumb pipe", now
@@ -115,6 +127,12 @@ with a lockbox).
   the bearer captured at upgrade time and is not torn down on expiry/logout.
   Bounded by the absolute lifetime cap; a max connection lifetime is a
   follow-up.
+- **Client authentication is `client_secret_post` only.** IdPs that require
+  `client_secret_basic` (some Okta registrations default to it) are not yet
+  supported; a configurable auth method is a follow-up.
+- **Refreshes serialize on one process-global lock.** Fine at single-replica
+  dashboard scale (discovery is cached, so the hold is one token round trip);
+  a per-refresh-token single-flight is the scale-out fix if needed.
 - `POST /api/v1/auth/token-exchange` no longer returns tokens in its body;
   `POST /api/v1/auth/refresh` is removed. Consumers of the npm package that
   used these must upgrade in lockstep (the frontend and BFF ship in one

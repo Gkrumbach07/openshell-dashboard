@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -85,6 +87,78 @@ func TestTokenExchangeSetsSessionCookie(t *testing.T) {
 	}
 	if session.ExpiresAt < time.Now().Unix() {
 		t.Fatalf("session.ExpiresAt = %d, want future", session.ExpiresAt)
+	}
+}
+
+// makeJWT builds an unsigned JWT with the given exp claim, for expiry parsing.
+func makeJWT(exp int64) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
+	payload := base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, `{"exp":%d}`, exp))
+	return header + "." + payload + ".sig"
+}
+
+func TestSessionExpiryPrefersIDTokenExp(t *testing.T) {
+	// ID token expires in 60s; expires_in claims 3600 (the access token's).
+	// The session must track the ID token (the forwarded bearer), not 3600.
+	idExp := time.Now().Add(60 * time.Second).Unix()
+	tr := &tokenResponse{IDToken: makeJWT(idExp), ExpiresIn: "3600"}
+	s := tr.session()
+	if s.ExpiresAt != idExp {
+		t.Fatalf("ExpiresAt = %d, want ID token exp %d (not access-token expires_in)", s.ExpiresAt, idExp)
+	}
+}
+
+func TestSessionExpiryTakesEarlierOfIDExpAndExpiresIn(t *testing.T) {
+	// ID token valid for an hour, but expires_in says the access token dies in
+	// 30s. When the ID token is the bearer we key off its exp; verify we never
+	// overrun a shorter access-token window either.
+	idExp := time.Now().Add(1 * time.Hour).Unix()
+	tr := &tokenResponse{IDToken: makeJWT(idExp), ExpiresIn: "30"}
+	s := tr.session()
+	accessExpiry := time.Now().Add(30 * time.Second).Unix()
+	if s.ExpiresAt > accessExpiry+2 {
+		t.Fatalf("ExpiresAt = %d, want <= access expiry %d", s.ExpiresAt, accessExpiry)
+	}
+}
+
+func TestSessionExpiryToleratesStringExpiresIn(t *testing.T) {
+	// Azure AD v1.0 renders expires_in as a JSON string; the decode must not
+	// choke. Round-trip through JSON to exercise the json.Number path.
+	var tr tokenResponse
+	if err := json.Unmarshal([]byte(`{"access_token":"opaque","expires_in":"3599"}`), &tr); err != nil {
+		t.Fatalf("decode with string expires_in: %v", err)
+	}
+	s := tr.session()
+	if s.ExpiresAt == 0 {
+		t.Fatal("ExpiresAt = 0, want it set from a string expires_in")
+	}
+}
+
+func TestTokenExchangeSurfacesOAuthError(t *testing.T) {
+	var issuer *httptest.Server
+	issuer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_, _ = fmt.Fprintf(w, `{"token_endpoint":%q}`, issuer.URL+"/token")
+		case "/token":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"code expired"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(issuer.Close)
+
+	app := &App{sessions: newTestSessionCodec(t), authConfig: AuthConfigResponse{Issuer: issuer.URL, ClientID: "dashboard"}}
+	body := `{"code":"stale","codeVerifier":"v","redirectUri":"https://d/cb"}`
+	w := httptest.NewRecorder()
+	app.TokenExchange(w, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (not a 401 login loop)", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "invalid_grant") || !strings.Contains(w.Body.String(), "code expired") {
+		t.Fatalf("body = %s, want the OAuth error surfaced", w.Body.String())
 	}
 }
 
