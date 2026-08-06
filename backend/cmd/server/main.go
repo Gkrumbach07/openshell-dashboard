@@ -8,6 +8,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"log/slog"
 	"net/http"
@@ -63,6 +64,30 @@ func main() {
 		UserHeader:  *userHeader,
 	})
 
+	// Cookie sessions are only used in standalone OIDC mode. SESSION_SECRET
+	// must be set explicitly in production: an auto-generated secret means
+	// every restart invalidates all sessions and multi-replica deployments
+	// cannot decrypt each other's cookies.
+	var sessionCodec *auth.SessionCodec
+	if issuer := os.Getenv("OIDC_ISSUER"); issuer != "" && !*authDisabled {
+		secret := os.Getenv("SESSION_SECRET")
+		if secret == "" {
+			generated := make([]byte, 32)
+			if _, err := rand.Read(generated); err != nil {
+				slog.Error("failed to generate a session secret", "error", err)
+				os.Exit(1)
+			}
+			secret = string(generated)
+			slog.Warn("SESSION_SECRET is not set — generated an ephemeral secret; sessions will not survive restarts and multi-replica deployments will not work")
+		}
+		codec, err := auth.NewSessionCodec([]byte(secret))
+		if err != nil {
+			slog.Error("session codec setup failed", "error", err)
+			os.Exit(1)
+		}
+		sessionCodec = codec
+	}
+
 	authCfg := api.AuthConfigResponse{
 		AuthDisabled: *authDisabled,
 		Issuer:       envOr("OIDC_ISSUER", ""),
@@ -97,7 +122,7 @@ func main() {
 		allowedOrigins = strings.Split(*origins, ",")
 	}
 
-	app := api.NewApp(gatewayClient, authMiddleware, *staticDir, allowedOrigins, authCfg)
+	app := api.NewApp(gatewayClient, authMiddleware, sessionCodec, *staticDir, allowedOrigins, authCfg)
 
 	addr := ":" + *port
 	slog.Info("openshell-dashboard BFF listening",

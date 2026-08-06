@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { Bullseye, Spinner } from '@patternfly/react-core';
 
-import { setToken, setRefreshToken } from './authStore';
 import { clearCodeVerifier, getCodeVerifier } from './oidc';
 
 const AuthCallbackPage: React.FC = () => {
@@ -16,6 +15,8 @@ const AuthCallbackPage: React.FC = () => {
     }
 
     const exchange = async () => {
+      // The BFF exchanges the code server-side and sets the HttpOnly session
+      // cookie on this response. No tokens ever reach JavaScript.
       const resp = await fetch('/api/v1/auth/token-exchange', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -26,26 +27,8 @@ const AuthCallbackPage: React.FC = () => {
         }),
       });
 
-      if (!resp.ok) {
-        clearCodeVerifier();
-        window.location.assign('/login');
-        return;
-      }
-
-      const body = (await resp.json()) as {
-        accessToken?: string;
-        refreshToken?: string;
-      };
-
-      if (body.accessToken) {
-        setToken(body.accessToken);
-        if (body.refreshToken) {
-          setRefreshToken(body.refreshToken);
-        }
-      }
-
       clearCodeVerifier();
-      window.location.assign('/workspaces');
+      window.location.assign(resp.ok ? '/workspaces' : '/login');
     };
 
     exchange();

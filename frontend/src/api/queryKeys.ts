@@ -49,6 +49,7 @@ export const gatewayKeys = {
 
 export const authKeys = {
   config: ['auth', 'config'] as const,
+  session: ['auth', 'session'] as const,
   userInfo: ['auth', 'userinfo'] as const,
   whoami: ['auth', 'whoami'] as const,
 };

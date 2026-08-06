@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
 )
@@ -53,12 +54,39 @@ func (app *App) GetOIDCDiscovery(w http.ResponseWriter, _ *http.Request) {
 	_, _ = io.Copy(w, resp.Body)
 }
 
+// tokenResponse is the subset of the IdP token endpoint response we use.
+type tokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	IDToken      string `json:"id_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int64  `json:"expires_in"`
+}
+
+// session builds the server-side session from an IdP token response. The ID
+// token is preferred as the gateway bearer (it carries the sub/groups claims
+// the gateway's RBAC reads); the access token is the fallback.
+func (t *tokenResponse) session() *auth.Session {
+	bearer := t.IDToken
+	if bearer == "" {
+		bearer = t.AccessToken
+	}
+	s := &auth.Session{Token: bearer, RefreshToken: t.RefreshToken}
+	if t.ExpiresIn > 0 {
+		s.ExpiresAt = time.Now().Unix() + t.ExpiresIn
+	}
+	return s
+}
+
 // TokenExchange swaps an authorization code for tokens via the IdP's token
-// endpoint. The BFF does this server-side so the client secret (if any) and
-// the token endpoint URL are never exposed to the browser.
+// endpoint, then seals them into the encrypted session cookie. Tokens are
+// never returned to the browser — the cookie is the session.
 func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	if app.authConfig.Issuer == "" || app.authConfig.ClientID == "" {
 		writeError(w, http.StatusBadRequest, "not_configured", "OIDC is not configured")
+		return
+	}
+	if app.sessions == nil {
+		writeError(w, http.StatusInternalServerError, "no_session_codec", "session support is not configured")
 		return
 	}
 
@@ -91,92 +119,79 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tokenResp.Body.Close()
 
-	var tokens struct {
-		AccessToken  string `json:"access_token"`
-		IDToken      string `json:"id_token"`
-		RefreshToken string `json:"refresh_token"`
-		TokenType    string `json:"token_type"`
-	}
+	var tokens tokenResponse
 	if err := json.NewDecoder(tokenResp.Body).Decode(&tokens); err != nil {
 		writeError(w, http.StatusBadGateway, "token_parse_failed", "failed to parse token response")
 		return
 	}
-
 	if tokens.AccessToken == "" && tokens.IDToken == "" {
 		writeError(w, http.StatusUnauthorized, "token_exchange_failed", "no token received from identity provider")
 		return
 	}
 
-	bearer := tokens.IDToken
-	if bearer == "" {
-		bearer = tokens.AccessToken
+	if err := app.sessions.SetSession(w, tokens.session()); err != nil {
+		writeError(w, http.StatusInternalServerError, "session_failed", err.Error())
+		return
 	}
-	auth.SetTerminalTokenCookie(w, bearer)
 
-	writeJSON(w, http.StatusOK, map[string]string{
-		"accessToken":  bearer,
-		"refreshToken": tokens.RefreshToken,
-	})
+	writeJSON(w, http.StatusOK, map[string]bool{"authenticated": true})
 }
 
-// Refresh exchanges a refresh token for a new access token.
-func (app *App) Refresh(w http.ResponseWriter, r *http.Request) {
+// refreshSession exchanges a refresh token for new tokens server-side. Called
+// by the session manager when a session's bearer has expired.
+func (app *App) refreshSession(refreshToken string) (*auth.Session, error) {
 	if app.authConfig.Issuer == "" || app.authConfig.ClientID == "" {
-		writeError(w, http.StatusBadRequest, "not_configured", "OIDC is not configured")
-		return
-	}
-
-	var body struct {
-		RefreshToken string `json:"refreshToken"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RefreshToken == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "refreshToken is required")
-		return
+		return nil, fmt.Errorf("OIDC is not configured")
 	}
 
 	tokenEndpoint, _, err := discoverOIDCEndpoints(app.authConfig.Issuer)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "discovery_failed", err.Error())
-		return
+		return nil, err
 	}
 
 	tokenResp, err := oidcHTTPClient.PostForm(tokenEndpoint, url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {app.authConfig.ClientID},
-		"refresh_token": {body.RefreshToken},
+		"refresh_token": {refreshToken},
 	})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "refresh_failed", "identity provider is unreachable")
-		return
+		return nil, fmt.Errorf("identity provider is unreachable: %w", err)
 	}
 	defer tokenResp.Body.Close()
 
-	var tokens struct {
-		AccessToken  string `json:"access_token"`
-		IDToken      string `json:"id_token"`
-		RefreshToken string `json:"refresh_token"`
+	if tokenResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("identity provider rejected the refresh (status %d)", tokenResp.StatusCode)
 	}
+
+	var tokens tokenResponse
 	if err := json.NewDecoder(tokenResp.Body).Decode(&tokens); err != nil {
-		writeError(w, http.StatusBadGateway, "token_parse_failed", "failed to parse token response")
-		return
+		return nil, fmt.Errorf("failed to parse token response: %w", err)
+	}
+	if tokens.AccessToken == "" && tokens.IDToken == "" {
+		return nil, fmt.Errorf("no token received from identity provider")
 	}
 
-	bearer := tokens.IDToken
-	if bearer == "" {
-		bearer = tokens.AccessToken
+	session := tokens.session()
+	if session.RefreshToken == "" {
+		// IdP did not rotate the refresh token; keep using the old one.
+		session.RefreshToken = refreshToken
 	}
-	auth.SetTerminalTokenCookie(w, bearer)
-
-	writeJSON(w, http.StatusOK, map[string]string{
-		"accessToken":  bearer,
-		"refreshToken": tokens.RefreshToken,
-	})
+	return session, nil
 }
 
-// Logout returns the OIDC end-session URL so the frontend can redirect the
-// browser to the IdP to clear the SSO session cookie.
+// GetSession reports whether the request carries a valid session. It sits
+// behind the auth middleware, so reaching it at all means the request
+// authenticated (header, cookie, or dev mode). The frontend uses this as its
+// login probe — unlike whoami it never calls the gateway, so an unreachable
+// gateway doesn't log the user out.
+func (app *App) GetSession(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]bool{"authenticated": true})
+}
+
+// Logout clears the session cookie and returns the OIDC end-session URL so
+// the frontend can redirect the browser to the IdP to clear the SSO session.
 func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
-	auth.ClearTerminalTokenCookie(w)
+	auth.ClearSession(w)
 	if app.authConfig.Issuer == "" {
 		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
 		return

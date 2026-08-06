@@ -83,10 +83,17 @@ All flags have env var fallbacks:
 | `-auth-disabled` | `AUTH_DISABLED` | `false` | Skip OIDC validation: **dev only** |
 | `-gateway-ca-cert` | `GATEWAY_CA_CERT` |: | Path to CA cert for self-signed gateway TLS |
 | `-allowed-origins` | `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS origins |
+| | `SESSION_SECRET` |: | Key for encrypted session cookies (standalone OIDC). **Required in production** — without it an ephemeral key is generated and sessions won't survive restarts |
 
 ## Auth
 
-OIDC only (no mTLS, no OpenShift OAuth). The frontend runs an Authorization Code + PKCE flow against your IdP, stores the ID token in sessionStorage, and sends it as `Authorization: Bearer` to the BFF. For terminal WebSocket handshakes, the BFF also sets a secure, HttpOnly, strict same-site cookie that is accepted only on WebSocket upgrades. The BFF validates the JWT (issuer JWKS via `go-oidc`) and forwards the same token to the gateway on every gRPC call: the gateway makes all RBAC decisions.
+OIDC only (no mTLS, no OpenShift OAuth). Three modes, one middleware:
+
+- **Standalone OIDC** (`OIDC_ISSUER` + `OIDC_CLIENT_ID` set): the frontend runs an Authorization Code + PKCE flow against your IdP; the BFF exchanges the code server-side and seals the tokens into an encrypted, HttpOnly session cookie (`__Host-openshell-session`). The browser never sees a token, and the cookie authenticates everything — REST calls and the terminal's WebSocket handshake alike. Expired sessions are refreshed against the IdP transparently, server-side.
+- **Federated** (behind oauth2-proxy / kube-auth-proxy): the proxy injects the user's token as `x-forwarded-access-token`; the BFF forwards it.
+- **Dev** (`AUTH_DISABLED=true`): no auth, synthetic dev-user, no tokens forwarded.
+
+The BFF never validates JWTs — it forwards the bearer to the gateway on every gRPC call, and the gateway makes all RBAC decisions. See `docs/adrs/0010-cookie-session-standalone-auth.md` for the full design.
 
 ## Make targets
 

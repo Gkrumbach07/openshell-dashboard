@@ -27,9 +27,9 @@ import SettingsPage from '../pages/SettingsPage';
 import { AlertProvider } from './AlertContext';
 import AppLayout from './AppLayout';
 import AuthCallbackPage from './AuthCallbackPage';
-import { useAuthConfig } from '../api/auth';
+import { useAuthConfig, useSession } from '../api/auth';
 import { useUserRole } from '../api/rbac';
-import { hasSession } from './authStore';
+import { isDevSession } from './authStore';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -184,7 +184,13 @@ const AuthenticatedApp: React.FC = () => (
 
 const AppRoutes: React.FC = () => {
   const { data: config, isLoading } = useAuthConfig();
-  const [authenticated, setAuthenticated] = useState(hasSession());
+  const [devAuthenticated, setDevAuthenticated] = useState(isDevSession());
+  const standalone = Boolean(
+    config && !config.authDisabled && config.issuer && config.clientId,
+  );
+  // The session lives in an HttpOnly cookie, so login state is probed via the
+  // BFF rather than read from browser storage.
+  const session = useSession(standalone);
 
   if (isLoading) {
     return null;
@@ -192,7 +198,7 @@ const AppRoutes: React.FC = () => {
 
   // Dev mode (AUTH_DISABLED=true): show login page for "Continue as developer".
   if (config?.authDisabled) {
-    if (authenticated) {
+    if (devAuthenticated) {
       return <AuthenticatedApp />;
     }
     return (
@@ -202,7 +208,7 @@ const AppRoutes: React.FC = () => {
           element={
             <LoginPage
               config={config}
-              onAuthenticated={() => setAuthenticated(true)}
+              onAuthenticated={() => setDevAuthenticated(true)}
             />
           }
         />
@@ -211,7 +217,11 @@ const AppRoutes: React.FC = () => {
   }
 
   // Standalone OIDC mode: issuer/clientId configured, frontend handles login.
-  if (config?.issuer && config?.clientId) {
+  if (standalone && config) {
+    if (session.isLoading) {
+      return null;
+    }
+    const authenticated = session.isSuccess;
     return (
       <Routes>
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
@@ -221,10 +231,7 @@ const AppRoutes: React.FC = () => {
             authenticated ? (
               <Navigate to="/workspaces" replace />
             ) : (
-              <LoginPage
-                config={config}
-                onAuthenticated={() => setAuthenticated(true)}
-              />
+              <LoginPage config={config} />
             )
           }
         />

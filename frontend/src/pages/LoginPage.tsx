@@ -17,7 +17,8 @@ import type { AuthConfig } from '../types';
 
 type LoginPageProps = {
   config?: AuthConfig;
-  onAuthenticated: () => void;
+  // Called after dev-mode login; OIDC login leaves the page for the IdP.
+  onAuthenticated?: () => void;
 };
 
 const LoginPage: React.FC<LoginPageProps> = ({ config, onAuthenticated }) => {
@@ -69,7 +70,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ config, onAuthenticated }) => {
                   className="pf-v6-u-mt-md"
                   onClick={() => {
                     setDevSession();
-                    onAuthenticated();
+                    onAuthenticated?.();
                   }}
                   data-testid="dev-login"
                 >
