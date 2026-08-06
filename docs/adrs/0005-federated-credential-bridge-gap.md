@@ -40,9 +40,42 @@ For the Sept 15 beta, **Option A is the recommended path** — RHOAI customers d
 
 Option B is the medium-term goal (gateway-native token validation). Option C is the fallback if neither A nor B is ready.
 
+## Option D: Praxis / AI Gateway owns auth (emerging, Aug 2026)
+
+The Red Hat AI Gateway is converging on **Praxis** — a single Rust-based data plane that owns auth, identity, policy, credential injection, and the agentic loop for all AI traffic in RHOAI. Under this architecture, OpenShell becomes a **terminal service** behind Praxis.
+
+- Praxis authenticates users via OIDC (Keycloak), then forwards validated identity to the OpenShell gateway — the "OGX behind Praxis with forwarded identity, tenant, scope, and trace context" pattern.
+- Credential injection (BYOK, per-destination SigV4/Azure AD/GCP Workload Identity, secret-manager integration) is Praxis's job, not the BFF's.
+- Ann Marie Fred (Aug 5 Slack thread): "Users will need to use the same OIDC provider to log in to OpenShell and MaaS." Two proxy layers — Praxis for AI plane auth, OpenShell supervisor for per-sandbox policy.
+- The opaque-token problem dissolves: Praxis owns auth for the AI plane, so the BFF never needs to validate tokens itself.
+
+**Timeline:** Praxis targets RHOAI 3.6 (replacing IPP). OpenShell integration is "work on exactly how they integrate later" (Ann Marie). This option is not available for the Sep 15 beta but may define the long-term architecture.
+
+**Impact on our BFF:** Our proxy-delegated design (ADR 0003) is already forward-compatible with Praxis. The BFF receives forwarded identity from Praxis the same way it receives `x-forwarded-access-token` from kube-auth-proxy.
+
+## Gateway OIDC role mapping (how it works when it works)
+
+The ACP team's verified ROSA deployment (12/12 e2e tests pass) shows the concrete mapping:
+
+```toml
+[openshell.gateway.oidc]
+issuer      = "https://keycloak.example.com/realms/ambient-code"
+audience    = "ambient-frontend"
+roles_claim = "groups"          # reads JWT's "groups" array
+admin_role  = "ambient-admins"  # groups contains this → platform_admin
+user_role   = "ambient-users"   # groups contains this → authenticated user
+```
+
+Two-layer RBAC:
+1. **Global role** (from JWT claims): `platform_admin` granted when `groups` array contains `admin_role` value
+2. **Workspace role** (from membership records): gateway matches JWT `sub` claim against `WorkspaceMember.principal_subject` to determine per-workspace `admin` or `user` role
+
+Unsolved: who manages `WorkspaceMember` records in RHOAI? Someone must call `AddWorkspaceMember(sub, role)` — this needs to map from OpenShift project RBAC or RHOAI group membership, and nobody has designed that mapping yet.
+
 ## No Decision Yet
 
 This ADR documents the gap and options. A decision will be made based on:
 1. Whether the beta deployment requires supporting default OpenShift OAuth
 2. Whether the gateway adds TokenReview support before the beta
 3. Feedback from the ACP team on their production auth architecture
+4. Timeline for Praxis integration with OpenShell (Option D)
