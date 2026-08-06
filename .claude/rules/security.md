@@ -10,7 +10,7 @@ alwaysApply: false
 
 - Authentication is proxy-delegated (see ADR 0003): BFF reads the bearer token from a configurable header (default `x-forwarded-access-token`) or `Authorization: Bearer` and forwards it to the gateway
 - The BFF does NOT validate JWTs — it is a dumb pipe for tokens. The gateway validates against its own OIDC JWKS
-- In standalone OIDC mode, the frontend stores tokens in JavaScript memory (`authStore.ts`) and sends as `Authorization: Bearer` — not in cookies or localStorage
+- In standalone OIDC mode, the frontend stores tokens in `sessionStorage` (`authStore.ts`) and sends as `Authorization: Bearer` — not in cookies or localStorage. sessionStorage is tab-scoped and cleared on tab close but survives page reloads within the tab
 - Never expose raw gRPC errors to the frontend — use `writeGrpcError()` which maps gRPC status codes to safe HTTP status codes
 - CORS configured explicitly — no wildcard origins, empty allowlist by default
 
