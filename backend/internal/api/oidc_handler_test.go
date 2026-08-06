@@ -278,3 +278,73 @@ func TestLogoutReturnsEndSessionRedirect(t *testing.T) {
 		t.Fatalf("body = %s, want end-session URL", w.Body.String())
 	}
 }
+
+func TestLogoutIncludesIDTokenHint(t *testing.T) {
+	issuer := newFakeIssuer(t, `{}`)
+	codec := newTestSessionCodec(t)
+	app := &App{
+		sessions:   codec,
+		authConfig: AuthConfigResponse{Issuer: issuer.URL, ClientID: "dashboard"},
+	}
+
+	seed := httptest.NewRecorder()
+	if err := codec.SetSession(seed, &auth.Session{Token: "the-id-token"}); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/logout", nil)
+	for _, cookie := range seed.Result().Cookies() {
+		if cookie.MaxAge >= 0 {
+			req.AddCookie(cookie)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	app.Logout(w, req)
+
+	if !strings.Contains(w.Body.String(), "id_token_hint=the-id-token") {
+		t.Fatalf("body = %s, want id_token_hint per RP-Initiated Logout", w.Body.String())
+	}
+}
+
+func TestTokenEndpointCallsIncludeClientSecret(t *testing.T) {
+	var gotSecret string
+	var issuer *httptest.Server
+	issuer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_, _ = fmt.Fprintf(w, `{"token_endpoint":%q}`, issuer.URL+"/token")
+		case "/token":
+			_ = r.ParseForm()
+			gotSecret = r.PostFormValue("client_secret")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id_token":"signed-id-token","expires_in":300}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(issuer.Close)
+
+	app := &App{
+		sessions:         newTestSessionCodec(t),
+		authConfig:       AuthConfigResponse{Issuer: issuer.URL, ClientID: "dashboard"},
+		oidcClientSecret: "confidential-secret",
+	}
+
+	body := `{"code":"code","codeVerifier":"verifier","redirectUri":"https://dashboard.example.com/auth/callback"}`
+	w := httptest.NewRecorder()
+	app.TokenExchange(w, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	if gotSecret != "confidential-secret" {
+		t.Fatalf("token exchange client_secret = %q, want confidential-secret", gotSecret)
+	}
+
+	gotSecret = ""
+	if _, err := app.refreshSession("refresh-token"); err != nil {
+		t.Fatalf("refreshSession: %v", err)
+	}
+	if gotSecret != "confidential-secret" {
+		t.Fatalf("refresh client_secret = %q, want confidential-secret", gotSecret)
+	}
+}

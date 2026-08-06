@@ -17,14 +17,26 @@ import (
 
 // App wires the gateway client, auth middleware, and REST routes.
 type App struct { //nolint:govet // fieldalignment: readability over padding
-	gateway        gateway.Interface
-	auth           *auth.Middleware
-	sessions       *auth.SessionCodec
-	authConfig     AuthConfigResponse
-	staticDir      string
-	allowedOrigins []string
-	maxUploadSize  int64
-	execTimeout    uint32
+	gateway  gateway.Interface
+	auth     *auth.Middleware
+	sessions *auth.SessionCodec
+	// authConfig is serialized to the browser via GET /auth/config — never
+	// put secrets in it.
+	authConfig AuthConfigResponse
+	// oidcClientSecret authenticates the BFF to the IdP token endpoint as a
+	// confidential client (client_secret_post). Empty = public client (PKCE
+	// only). Kept outside authConfig so it cannot leak to the frontend.
+	oidcClientSecret string
+	staticDir        string
+	allowedOrigins   []string
+	maxUploadSize    int64
+	execTimeout      uint32
+}
+
+// SetOIDCClientSecret configures confidential-client authentication for
+// token-endpoint calls. Optional; without it the BFF acts as a public client.
+func (app *App) SetOIDCClientSecret(secret string) {
+	app.oidcClientSecret = secret
 }
 
 // NewApp builds the application. sessions may be nil, which disables cookie

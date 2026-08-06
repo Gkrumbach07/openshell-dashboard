@@ -84,12 +84,13 @@ All flags have env var fallbacks:
 | `-gateway-ca-cert` | `GATEWAY_CA_CERT` |: | Path to CA cert for self-signed gateway TLS |
 | `-allowed-origins` | `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS origins |
 | | `SESSION_SECRET` |: | Key for encrypted session cookies (standalone OIDC). **Required in production** — without it an ephemeral key is generated and sessions won't survive restarts |
+| | `OIDC_CLIENT_SECRET` |: | Optional client secret for confidential-client registration at the IdP. Without it the BFF acts as a public client (PKCE only) |
 
 ## Auth
 
 OIDC only (no mTLS, no OpenShift OAuth). Three modes, one middleware:
 
-- **Standalone OIDC** (`OIDC_ISSUER` + `OIDC_CLIENT_ID` set): the frontend runs an Authorization Code + PKCE flow against your IdP; the BFF exchanges the code server-side and seals the tokens into an encrypted, HttpOnly session cookie (`__Host-openshell-session`). The browser never sees a token, and the cookie authenticates everything — REST calls and the terminal's WebSocket handshake alike. Expired sessions are refreshed against the IdP transparently, server-side.
+- **Standalone OIDC** (`OIDC_ISSUER` + `OIDC_CLIENT_ID` set): the frontend runs an Authorization Code + PKCE flow against your IdP; the BFF exchanges the code server-side and seals the tokens into an encrypted, HttpOnly session cookie (`__Host-openshell-session`). The browser never sees a token, and the cookie authenticates everything — REST calls and the terminal's WebSocket handshake alike. Expired sessions are refreshed against the IdP transparently, server-side (requires the IdP to issue a refresh token — some providers need `offline_access` added to `OIDC_SCOPES`). Any spec-compliant OIDC provider works; register the BFF as a confidential client and set `OIDC_CLIENT_SECRET` where possible, or as a public client without it.
 - **Federated** (behind oauth2-proxy / kube-auth-proxy): the proxy injects the user's token as `x-forwarded-access-token`; the BFF forwards it.
 - **Dev** (`AUTH_DISABLED=true`): no auth, synthetic dev-user, no tokens forwarded.
 

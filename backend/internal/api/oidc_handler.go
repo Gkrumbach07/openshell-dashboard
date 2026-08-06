@@ -106,13 +106,17 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenResp, err := oidcHTTPClient.PostForm(tokenEndpoint, url.Values{
+	form := url.Values{
 		"grant_type":    {"authorization_code"},
 		"client_id":     {app.authConfig.ClientID},
 		"code":          {body.Code},
 		"redirect_uri":  {body.RedirectURI},
 		"code_verifier": {body.CodeVerifier},
-	})
+	}
+	if app.oidcClientSecret != "" {
+		form.Set("client_secret", app.oidcClientSecret)
+	}
+	tokenResp, err := oidcHTTPClient.PostForm(tokenEndpoint, form)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "token_exchange_failed", "identity provider is unreachable")
 		return
@@ -149,11 +153,15 @@ func (app *App) refreshSession(refreshToken string) (*auth.Session, error) {
 		return nil, err
 	}
 
-	tokenResp, err := oidcHTTPClient.PostForm(tokenEndpoint, url.Values{
+	form := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {app.authConfig.ClientID},
 		"refresh_token": {refreshToken},
-	})
+	}
+	if app.oidcClientSecret != "" {
+		form.Set("client_secret", app.oidcClientSecret)
+	}
+	tokenResp, err := oidcHTTPClient.PostForm(tokenEndpoint, form)
 	if err != nil {
 		return nil, fmt.Errorf("identity provider is unreachable: %w", err)
 	}
@@ -191,6 +199,15 @@ func (app *App) GetSession(w http.ResponseWriter, _ *http.Request) {
 // Logout clears the session cookie and returns the OIDC end-session URL so
 // the frontend can redirect the browser to the IdP to clear the SSO session.
 func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
+	// Capture the session's ID token before clearing: RP-Initiated Logout
+	// expects id_token_hint alongside post_logout_redirect_uri, and some OPs
+	// show a confirmation page or reject the redirect without it.
+	var idTokenHint string
+	if app.sessions != nil {
+		if session, err := app.sessions.LoadSession(r); err == nil && session != nil {
+			idTokenHint = session.Token
+		}
+	}
 	auth.ClearSession(w)
 	if app.authConfig.Issuer == "" {
 		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
@@ -208,11 +225,15 @@ func (app *App) Logout(w http.ResponseWriter, r *http.Request) {
 		postLogoutRedirect = "/login"
 	}
 
-	logoutURL := fmt.Sprintf("%s?client_id=%s&post_logout_redirect_uri=%s",
-		endSessionEndpoint,
-		url.QueryEscape(app.authConfig.ClientID),
-		url.QueryEscape(postLogoutRedirect),
-	)
+	params := url.Values{
+		"client_id":                {app.authConfig.ClientID},
+		"post_logout_redirect_uri": {postLogoutRedirect},
+	}
+	if idTokenHint != "" {
+		params.Set("id_token_hint", idTokenHint)
+	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"redirect": logoutURL})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"redirect": endSessionEndpoint + "?" + params.Encode(),
+	})
 }

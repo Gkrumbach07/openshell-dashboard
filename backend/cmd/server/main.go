@@ -123,6 +123,11 @@ func main() {
 	}
 
 	app := api.NewApp(gatewayClient, authMiddleware, sessionCodec, *staticDir, allowedOrigins, authCfg)
+	// Optional confidential-client secret for the IdP token endpoint (env
+	// only — never a flag, so it can't leak into process listings).
+	if secret := os.Getenv("OIDC_CLIENT_SECRET"); secret != "" {
+		app.SetOIDCClientSecret(secret)
+	}
 
 	addr := ":" + *port
 	slog.Info("openshell-dashboard BFF listening",
