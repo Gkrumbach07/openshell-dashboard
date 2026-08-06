@@ -151,6 +151,34 @@ func TestSessionManagerRefreshesExpiredSession(t *testing.T) {
 	}
 }
 
+func TestSessionManagerExpiredWithoutRefreshEndsSession(t *testing.T) {
+	codec := newTestSessionCodec(t)
+	sm := &sessionManager{codec: codec, app: &App{sessions: codec}}
+
+	seed := httptest.NewRecorder()
+	if err := codec.SetSession(seed, &auth.Session{
+		Token:     "stale-token",
+		ExpiresAt: time.Now().Unix() - 60,
+	}); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	for _, cookie := range seed.Result().Cookies() {
+		if cookie.MaxAge >= 0 {
+			req.AddCookie(cookie)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	if token := sm.TokenFromSession(w, req); token != "" {
+		t.Fatalf("token = %q, want empty — an unrenewable expired session must end", token)
+	}
+	cookie := findCookie(w.Result().Cookies(), auth.SessionCookieName)
+	if cookie == nil || cookie.MaxAge != -1 {
+		t.Fatalf("expired session cookie not cleared: %#v", cookie)
+	}
+}
+
 func TestSessionManagerGarbageCookieCleared(t *testing.T) {
 	codec := newTestSessionCodec(t)
 	sm := &sessionManager{codec: codec, app: &App{sessions: codec}}

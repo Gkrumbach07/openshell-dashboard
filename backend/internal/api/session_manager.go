@@ -42,9 +42,11 @@ func (sm *sessionManager) TokenFromSession(w http.ResponseWriter, r *http.Reques
 		return session.Token
 	}
 	if session.RefreshToken == "" {
-		// Expired with no way to renew: let the gateway make the final call
-		// (clock skew tolerance lives there, not here).
-		return session.Token
+		// Expired with no way to renew: end the session. Passing the stale
+		// token through would have the gateway 401 every request while the
+		// session probe keeps reporting "logged in" — a redirect loop.
+		auth.ClearSession(w)
+		return ""
 	}
 
 	sm.refreshMu.Lock()
