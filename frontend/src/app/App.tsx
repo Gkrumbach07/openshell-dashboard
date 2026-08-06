@@ -221,7 +221,11 @@ const AppRoutes: React.FC = () => {
     if (session.isLoading) {
       return null;
     }
-    const authenticated = session.isSuccess;
+    // A 401 resolves to { authenticated: false }, so isSuccess alone would
+    // wave an unauthenticated user through — read the explicit flag. A
+    // post-retry transient error leaves data undefined and falls through to
+    // the login page (the terminal fallback when the BFF is unreachable).
+    const authenticated = session.data?.authenticated === true;
     return (
       <Routes>
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
