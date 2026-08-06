@@ -15,8 +15,10 @@ Add a new page to the dashboard frontend.
 
 ### 1. Create the page component
 
+Pages are flat files in `frontend/src/pages/` (no subdirectories):
+
 ```
-frontend/src/pages/<resource>/<PageName>.tsx
+frontend/src/pages/<PageName>.tsx
 ```
 
 Rules:
@@ -24,42 +26,71 @@ Rules:
 - No `@odh-dashboard/*` imports — this must work standalone
 - PatternFly 6 components only
 - Export as default
+- Use relative imports (not `~/` alias)
 
 ```tsx
-import React from 'react';
+import { useState } from 'react';
 import { PageSection, Title } from '@patternfly/react-core';
-import { useSandboxes } from '~/api/sandboxes';
+import { useSandboxes } from '../api/sandboxes';
+import { sandboxKeys } from '../api/queryKeys';
 
 type SandboxListPageProps = {
   workspace: string;
+  onSelect?: (name: string) => void;
 };
 
-const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace }) => {
+const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }) => {
   const { data, isLoading, error } = useSandboxes(workspace);
+
+  const handleSelect = (name: string) => {
+    if (onSelect) {
+      onSelect(name);
+    } else {
+      navigate(`/workspaces/${workspace}/sandboxes/${name}`);
+    }
+  };
+
   // ...
 };
 
 export default SandboxListPage;
 ```
 
+Key patterns:
+- Optional navigation callbacks (`onSelect`, `onViewSandbox`, `onTabChange`) that fall back to `useNavigate` when not provided (see ADR 0004)
+- `data-testid` on interactive elements
+- No breadcrumbs in pages — the app shell adds its own
+
 ### 2. Add the route
 
-In `frontend/src/app/AppRoutes.tsx`:
+Routes are defined inline in `frontend/src/app/App.tsx` within the `AppRoutes` component:
 
 ```tsx
 <Route path="/workspaces/:workspace/sandboxes" element={<SandboxListPage />} />
 ```
 
+For admin-only pages, wrap with `AdminRoute`:
+
+```tsx
+<Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
+```
+
 ### 3. Add navigation
 
-In the sidebar/navigation component, add the link with appropriate role gating.
+In `frontend/src/app/AppLayout.tsx`, add a `NavItem` to the sidebar with appropriate role gating:
+
+```tsx
+<NavItem isActive={location.pathname === '/settings'}>
+  <Link to="/settings">Settings</Link>
+</NavItem>
+```
 
 ### 4. Export for downstream
 
 Add to `frontend/src/pages/index.ts`:
 
 ```tsx
-export { default as SandboxListPage } from './sandboxes/SandboxListPage';
+export { default as SandboxListPage } from './SandboxListPage';
 ```
 
 This allows downstream consumers to `import { SandboxListPage } from 'openshell-dashboard/pages'`.
@@ -71,6 +102,8 @@ If the page needs data not yet wired up, use the `add-rpc` skill first.
 ### 6. Verify
 
 ```bash
-cd frontend && npm run typecheck && npm run test
+make lint
+make typecheck
+make test
 make dev  # verify in browser
 ```

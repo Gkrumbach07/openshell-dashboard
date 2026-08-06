@@ -14,26 +14,37 @@ backend/
 ├── internal/
 │   ├── api/                   # HTTP handlers and routing
 │   │   ├── app.go             # App struct, NewApp(), Routes()
-│   │   ├── *_handler.go       # Per-resource handlers
-│   │   └── middleware.go      # Auth, CORS, logging
-│   ├── auth/                  # OIDC middleware
+│   │   ├── respond.go         # writeJSON, writeError, writeGrpcError, decodeBody, validDNS1123
+│   │   ├── *_handler.go       # Per-resource handlers (sandboxes, workspaces, providers, etc.)
+│   │   └── *_handler_test.go  # Table-driven handler tests
+│   ├── auth/                  # Proxy-delegated auth middleware
+│   │   └── proxy.go           # Token extraction from headers
 │   ├── gateway/               # Thin gRPC wrapper
-│   │   ├── client.go          # Connection, per-RPC OIDC auth
-│   │   ├── sandboxes.go       # Sandbox CRUD + logs
+│   │   ├── client.go          # Connection setup, per-RPC bearer forwarding
+│   │   ├── interface.go       # Interface type (for test mocking)
+│   │   ├── sandboxes.go       # Sandbox CRUD
 │   │   ├── workspaces.go      # Workspace + member CRUD
 │   │   ├── providers.go       # Provider + profile CRUD
 │   │   ├── policies.go        # Policy + draft policy
-│   │   └── inference.go       # Inference route CRUD
-│   └── models/                # Response DTOs
+│   │   ├── inference.go       # Inference route CRUD
+│   │   ├── logs.go            # GetSandboxLogs + provider attach/detach
+│   │   └── services.go        # ExposeService, ListServices, DeleteService
+│   └── models/                # Response DTOs and request builders
+│       ├── models.go          # FromSandbox(), FromWorkspace(), FromProvider(), etc.
+│       └── builders.go        # BuildSandboxSpec(), ParsePolicy()
 ├── proto/                     # Copied from NVIDIA/OpenShell/proto/
 ├── gen/                       # protoc-generated Go stubs (committed)
+│   ├── datamodelv1/           # Workspace, Provider, ObjectMeta types
+│   ├── openshellv1/           # RPCs, Sandbox, SandboxSpec types
+│   ├── sandboxv1/             # Policy, SandboxConfig types
+│   └── inferencev1/           # Inference route types
 ├── go.mod
 └── go.sum
 ```
 
 ## Router
 
-Use `go-chi/chi` for routing. Handler signature:
+Use `go-chi/chi` for routing. Handler signature (no `Handler` suffix):
 
 ```go
 func (app *App) ListSandboxes(w http.ResponseWriter, r *http.Request)
@@ -43,12 +54,15 @@ URL params via `chi.URLParam(r, "workspace")`.
 
 ## Gateway client
 
-The `internal/gateway/` package wraps protoc-generated gRPC stubs. Each method is 5-10 lines:
+The `internal/gateway/` package wraps protoc-generated gRPC stubs. Each method is 5-10 lines. The generated types live in separate packages — use the correct one:
 
 ```go
-func (c *Client) ListSandboxes(ctx context.Context, workspace string) ([]*pb.Sandbox, error) {
-    resp, err := c.openshell.ListSandboxes(ctx, &pb.ListSandboxesRequest{
-        Workspace: workspace,
+func (c *Client) ListSandboxes(ctx context.Context, workspace string, limit, offset uint32, labelSelector string) ([]*openshellv1.Sandbox, error) {
+    resp, err := c.openshell.ListSandboxes(ctx, &openshellv1.ListSandboxesRequest{
+        Workspace:     workspace,
+        Limit:         limit,
+        Offset:        offset,
+        LabelSelector: labelSelector,
     })
     if err != nil {
         return nil, err
@@ -57,32 +71,71 @@ func (c *Client) ListSandboxes(ctx context.Context, workspace string) ([]*pb.San
 }
 ```
 
-Only wrap user-facing RPCs (~30). Skip supervisor/internal RPCs.
+When adding a new wrapper, also add the method to `interface.go` (the `Interface` type used by test mocks).
+
+## Handlers
+
+Handlers use package-level helpers from `respond.go`:
+
+```go
+func (app *App) CreateSandbox(w http.ResponseWriter, r *http.Request) {
+    var body models.CreateSandboxRequest
+    if !decodeBody(w, r, &body) {
+        return
+    }
+    spec, err := models.BuildSandboxSpec(body)
+    if err != nil {
+        writeError(w, http.StatusBadRequest, "invalid_spec", err.Error())
+        return
+    }
+    sandbox, err := app.gateway.CreateSandbox(r.Context(), workspace, body.Name, spec, body.Labels, body.Annotations)
+    if err != nil {
+        writeGrpcError(w, err)
+        return
+    }
+    writeJSON(w, http.StatusCreated, models.FromSandbox(sandbox))
+}
+```
+
+Key patterns:
+- `decodeBody(w, r, &dst)` — handles MaxBytesReader, DisallowUnknownFields, writes error response on failure, returns false
+- `writeJSON(w, statusCode, payload)` — marshals and writes
+- `writeError(w, statusCode, code, message)` — writes ErrorResponse envelope
+- `writeGrpcError(w, err)` — maps gRPC status codes to HTTP status codes
+- `validDNS1123(name)` — validates resource names
+- Always convert proto responses through `models.From*()` before serializing to JSON
 
 ## Auth
 
-Proxy-delegated authentication. An external auth proxy (oauth2-proxy, kube-rbac-proxy, etc.) sits in front of the BFF and handles OIDC. Per-request flow:
-1. Auth proxy validates the user's token and injects it as an HTTP header
-2. BFF middleware reads the token from the configured header (default `x-forwarded-access-token`)
-3. Forward same token to gateway on every gRPC call via `grpc.PerRPCCredentials`
+Proxy-delegated authentication (see ADR 0003). The BFF is a dumb pipe for tokens:
+
+1. `auth/proxy.go` reads the token from `x-forwarded-access-token` header (proxy mode) or `Authorization: Bearer` header (standalone mode)
+2. Token is stored in request context
+3. `client.go` reads token from context and forwards as gRPC `authorization: Bearer` metadata
 4. Gateway enforces RBAC (admin/user roles) and workspace membership
 
-The BFF does NOT perform OIDC validation, token exchange, or refresh. Those are the auth proxy's job.
+The BFF does NOT validate tokens, call JWKS endpoints, or parse JWT claims. It has zero dependency on `go-oidc`.
+
+The standalone OIDC endpoints (`/auth/discovery`, `/auth/token-exchange`, `/auth/refresh`) in `oidc_handler.go` are server-side proxies for the frontend's PKCE flow — they pass through to the IDP without inspecting tokens.
 
 ## Configuration
 
-CLI flags with env var fallbacks:
+Env vars (some also available as CLI flags):
 
-| Flag | Env Var | Description |
-|------|---------|-------------|
-| `-port` | `PORT` | Listen port (default 8080) |
-| `-gateway-url` | `OPENSHELL_GATEWAY_URL` | Gateway gRPC endpoint |
-| `-gateway-ca-cert` | `GATEWAY_CA_CERT` | CA cert for gateway TLS |
-| `-static-dir` | `STATIC_DIR` | Frontend static assets directory |
-| `-auth-disabled` | `AUTH_DISABLED` | Skip auth — dev only (default false) |
-| `-auth-token-header` | `AUTH_TOKEN_HEADER` | Auth proxy token header (default x-forwarded-access-token) |
-| `-auth-user-header` | `AUTH_USER_HEADER` | Auth proxy user header (default x-auth-request-user) |
-| `-allowed-origins` | `ALLOWED_ORIGINS` | Comma-separated CORS origins (default empty) |
+| Env Var | Flag | Default | Description |
+|---------|------|---------|-------------|
+| `PORT` | `-port` | `8080` | BFF listen port |
+| `OPENSHELL_GATEWAY_URL` | `-gateway-url` | `localhost:50051` | Gateway gRPC endpoint |
+| `GATEWAY_CA_CERT` | `-gateway-ca-cert` | | CA cert for gateway TLS |
+| `STATIC_DIR` | `-static-dir` | | Frontend static assets directory |
+| `AUTH_DISABLED` | `-auth-disabled` | `false` | Skip auth — dev only |
+| `AUTH_TOKEN_HEADER` | `-auth-token-header` | `x-forwarded-access-token` | Token header name |
+| `AUTH_USER_HEADER` | `-auth-user-header` | `x-auth-request-user` | User header name |
+| `ALLOWED_ORIGINS` | `-allowed-origins` | | Comma-separated CORS origins |
+| `OIDC_ISSUER` | | | OIDC issuer URL (standalone mode) |
+| `OIDC_CLIENT_ID` | | | OIDC client ID (standalone mode) |
+| `ADMIN_ROLE` | `-admin-role` | | OIDC role claim for admin |
+| `LOGOUT_URL` | `-logout-url` | | Post-logout redirect URL |
 
 ## Error handling
 
@@ -99,6 +152,7 @@ type ErrorResponse struct {
 
 - Table-driven tests with `*_test.go` adjacent to implementation
 - `httptest.NewRecorder()` + `http.NewRequest()` for handler tests
+- `mock_gateway_test.go` implements `gateway.Interface` for test stubs
 - `slog` for structured logging
 
 ## Proto regeneration

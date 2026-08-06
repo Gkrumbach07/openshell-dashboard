@@ -6,18 +6,24 @@ Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell). Go
 
 ```
 frontend/           React + TypeScript + PatternFly 6
-  src/app/          App shell, routing, OIDC login
-  src/pages/        Page components (exported for downstream consumers)
+  src/app/          App shell, routing (App.tsx), OIDC login, layout
+  src/pages/        Page components — flat files, exported for downstream
   src/components/   Shared components
-  src/api/          REST client hooks (React Query)
+  src/api/          REST client (client.ts), hooks, queryKeys.ts
+  src/hooks/        Custom hooks (useBulkDelete, useListPage, useTableSelection)
+  src/slots/        SlotProvider context for downstream UI injection
   src/types/        TypeScript interfaces
+  src/utils/        Formatters and helpers
 backend/            Go BFF
   cmd/              Entry point
-  internal/api/     REST handlers
-  internal/auth/    OIDC middleware
-  internal/gateway/ Thin gRPC wrapper (~30 RPCs)
+  internal/api/     REST handlers (respond.go helpers, *_handler.go)
+  internal/auth/    Proxy-delegated token extraction (proxy.go)
+  internal/gateway/ gRPC wrapper + Interface (for test mocking)
+  internal/models/  Response DTOs (From*() converters) and request builders
   proto/            Copied from NVIDIA/OpenShell/proto/
-  gen/              protoc-generated Go stubs
+  gen/              protoc-generated Go stubs (datamodelv1, openshellv1, sandboxv1, inferencev1)
+scripts/            Dev environment (dev-env.sh — Keycloak + gateway setup)
+docs/adrs/          Architecture Decision Records
 ```
 
 ## Build and run
@@ -49,7 +55,7 @@ Each rule has a corresponding Architecture Decision Record in [`docs/adrs/`](doc
 
 ## OpenShell API reference
 
-The gateway exposes 67 gRPC RPCs across 2 services (`OpenShell` and `Inference`). We surface ~30 user-facing ones. Proto files are in `backend/proto/`.
+The gateway exposes 68 gRPC RPCs across 2 services (64 in `OpenShell`, 4 in `Inference`). Proto files are in `backend/proto/`.
 
 ## Personas
 
