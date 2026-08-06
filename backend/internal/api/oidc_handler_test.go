@@ -151,6 +151,63 @@ func TestSessionManagerRefreshesExpiredSession(t *testing.T) {
 	}
 }
 
+func TestSessionManagerParallelRequestsShareOneRefresh(t *testing.T) {
+	// An IdP with single-use refresh tokens: the second redemption of the
+	// same token fails, as Dex does by default.
+	var tokenCalls int
+	var issuer *httptest.Server
+	issuer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_, _ = fmt.Fprintf(w, `{"token_endpoint":%q}`, issuer.URL+"/token")
+		case "/token":
+			tokenCalls++
+			if tokenCalls > 1 {
+				http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id_token":"refreshed-id-token","refresh_token":"rotated-refresh","expires_in":300}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(issuer.Close)
+
+	codec := newTestSessionCodec(t)
+	app := &App{
+		sessions:   codec,
+		authConfig: AuthConfigResponse{Issuer: issuer.URL, ClientID: "dashboard"},
+	}
+	sm := &sessionManager{codec: codec, app: app}
+
+	seed := httptest.NewRecorder()
+	if err := codec.SetSession(seed, &auth.Session{
+		Token:        "stale-token",
+		RefreshToken: "old-refresh",
+		ExpiresAt:    time.Now().Unix() - 60,
+	}); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
+
+	// Two requests from the same page load, both carrying the old cookie.
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		for _, cookie := range seed.Result().Cookies() {
+			if cookie.MaxAge >= 0 {
+				req.AddCookie(cookie)
+			}
+		}
+		w := httptest.NewRecorder()
+		if token := sm.TokenFromSession(w, req); token != "refreshed-id-token" {
+			t.Fatalf("request %d: token = %q, want refreshed-id-token", i+1, token)
+		}
+	}
+	if tokenCalls != 1 {
+		t.Fatalf("IdP token endpoint called %d times, want 1 (single-flight)", tokenCalls)
+	}
+}
+
 func TestSessionManagerExpiredWithoutRefreshEndsSession(t *testing.T) {
 	codec := newTestSessionCodec(t)
 	sm := &sessionManager{codec: codec, app: &App{sessions: codec}}
