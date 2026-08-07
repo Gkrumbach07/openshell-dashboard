@@ -1,8 +1,15 @@
-// Package auth provides proxy-delegated authentication middleware for the BFF.
-// An external auth proxy (oauth2-proxy, kube-rbac-proxy, etc.) handles OIDC
-// validation and injects the bearer token and username as HTTP headers. The
-// middleware reads those headers and stores the token on the request context so
-// the gateway client can forward it on every gRPC call.
+// Package auth provides the BFF's authentication middleware. The BFF never
+// validates tokens itself — the gateway does that against its own OIDC JWKS.
+// The middleware only decides where the bearer for a request comes from, in
+// precedence order:
+//
+//  1. The auth-proxy header (federated mode: oauth2-proxy / kube-auth-proxy
+//     injects `x-forwarded-access-token`).
+//  2. An explicit `Authorization: Bearer` header (API clients, tests).
+//  3. The encrypted session cookie (standalone OIDC mode; see session.go).
+//
+// Cookie sessions cover WebSocket upgrades too — browsers cannot attach an
+// Authorization header to a WebSocket handshake, but they do send cookies.
 package auth
 
 import (
@@ -19,16 +26,32 @@ const (
 	userContextKey
 )
 
-// Config holds proxy-auth settings.
+// SessionAuthenticator resolves a bearer token from a request's session
+// cookie, transparently refreshing (and re-setting the cookie) when the
+// session is expired. Implemented by the api package, which owns the OIDC
+// client configuration. Returns "" when the request carries no usable session.
+type SessionAuthenticator interface {
+	TokenFromSession(w http.ResponseWriter, r *http.Request) string
+}
+
+// Config holds auth middleware settings.
 type Config struct {
 	TokenHeader string
 	UserHeader  string
 	Disabled    bool
+	// TrustProxyHeader enables reading the bearer from TokenHeader
+	// (x-forwarded-access-token). Only safe in federated mode, where an auth
+	// proxy in front of the BFF sets and sanitizes that header. In standalone
+	// mode there is no such proxy, so a client could forge the header to
+	// bypass the session cookie — leave this false there.
+	TrustProxyHeader bool
 }
 
-// Middleware reads auth headers injected by a reverse proxy.
-type Middleware struct {
-	cfg Config
+// Middleware extracts the request's bearer token and stores it on the
+// request context for the gateway client to forward.
+type Middleware struct { //nolint:govet // fieldalignment: readability over padding
+	cfg     Config
+	session SessionAuthenticator
 }
 
 // New builds the middleware.
@@ -42,6 +65,12 @@ func New(cfg Config) *Middleware {
 	return &Middleware{cfg: cfg}
 }
 
+// SetSessionAuthenticator enables cookie-session authentication (standalone
+// OIDC mode). Optional; without it only header-based auth is accepted.
+func (m *Middleware) SetSessionAuthenticator(sa SessionAuthenticator) {
+	m.session = sa
+}
+
 // Disabled reports whether auth validation is turned off.
 func (m *Middleware) Disabled() bool {
 	return m.cfg.Disabled
@@ -52,34 +81,32 @@ func (m *Middleware) TokenHeader() string {
 	return m.cfg.TokenHeader
 }
 
-// Handler reads the auth proxy headers and stores the token and username on
-// the request context. When auth is disabled, a synthetic dev-user identity
-// is injected.
+// Handler resolves the request's bearer token (header, then cookie session)
+// and stores it on the request context. When auth is disabled, a synthetic
+// dev-user identity is injected and any tokens on the request are ignored, so
+// a misconfigured proxy cannot leak credentials to the gateway in dev mode.
 func (m *Middleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if m.cfg.Disabled {
 			ctx := context.WithValue(r.Context(), userContextKey, "dev-user")
-			token := r.Header.Get(m.cfg.TokenHeader)
-			if token == "" {
-				if bearer := r.Header.Get("Authorization"); strings.HasPrefix(bearer, "Bearer ") {
-					token = strings.TrimPrefix(bearer, "Bearer ")
-				}
-			}
-			if token != "" {
-				ctx = context.WithValue(ctx, tokenContextKey, token)
-			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
-		token := r.Header.Get(m.cfg.TokenHeader)
+		var token string
+		if m.cfg.TrustProxyHeader {
+			token = r.Header.Get(m.cfg.TokenHeader)
+		}
 		if token == "" {
 			if bearer := r.Header.Get("Authorization"); strings.HasPrefix(bearer, "Bearer ") {
 				token = strings.TrimPrefix(bearer, "Bearer ")
 			}
 		}
+		if token == "" && m.session != nil {
+			token = m.session.TokenFromSession(w, r)
+		}
 		if token == "" {
-			writeUnauthorized(w, "missing auth proxy token header")
+			writeUnauthorized(w, "not authenticated")
 			return
 		}
 

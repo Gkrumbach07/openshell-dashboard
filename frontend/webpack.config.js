@@ -45,7 +45,9 @@ module.exports = (env, argv) => {
         {
           context: ['/api'],
           target: process.env.BFF_URL || 'http://localhost:8080',
-          changeOrigin: true,
+          // Preserve the browser's Host header so the BFF's same-origin
+          // (CSRF) check sees Origin and Host agree in dev.
+          changeOrigin: false,
           ws: true,
         },
       ],

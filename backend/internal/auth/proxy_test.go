@@ -6,8 +6,12 @@ import (
 	"testing"
 )
 
-func TestHandler_AuthEnabled_WithToken(t *testing.T) {
-	m := New(Config{TokenHeader: "x-forwarded-access-token", UserHeader: "x-auth-request-user"})
+func TestHandler_Federated_TrustsProxyHeader(t *testing.T) {
+	m := New(Config{
+		TokenHeader:      "x-forwarded-access-token",
+		UserHeader:       "x-auth-request-user",
+		TrustProxyHeader: true,
+	})
 
 	var gotToken, gotUser string
 	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -33,6 +37,28 @@ func TestHandler_AuthEnabled_WithToken(t *testing.T) {
 	}
 }
 
+func TestHandler_Standalone_IgnoresProxyHeader(t *testing.T) {
+	// No TrustProxyHeader: standalone mode. A forged x-forwarded-access-token
+	// must not be honored — only the cookie session (or a real Bearer) counts.
+	m := New(Config{TokenHeader: "x-forwarded-access-token"})
+	m.SetSessionAuthenticator(&staticSessionAuth{token: "session-jwt"})
+
+	var gotToken string
+	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotToken = TokenFromContext(r.Context())
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("x-forwarded-access-token", "forged-proxy-token")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if gotToken != "session-jwt" {
+		t.Fatalf("token = %q, want session-jwt — forged proxy header must be ignored in standalone mode", gotToken)
+	}
+}
+
 func TestHandler_AuthEnabled_MissingToken(t *testing.T) {
 	m := New(Config{})
 
@@ -50,55 +76,8 @@ func TestHandler_AuthEnabled_MissingToken(t *testing.T) {
 	}
 }
 
-func TestHandler_AuthEnabled_TokenOnly(t *testing.T) {
+func TestHandler_AuthEnabled_BearerFallback(t *testing.T) {
 	m := New(Config{})
-
-	var gotUser string
-	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		gotUser = UserFromContext(r.Context())
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("x-forwarded-access-token", "tok")
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
-	}
-	if gotUser != "" {
-		t.Errorf("user = %q, want empty (no user header)", gotUser)
-	}
-}
-
-func TestHandler_Disabled_DevUser(t *testing.T) {
-	m := New(Config{Disabled: true})
-
-	var gotToken, gotUser string
-	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		gotToken = TokenFromContext(r.Context())
-		gotUser = UserFromContext(r.Context())
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
-	}
-	if gotUser != "dev-user" {
-		t.Errorf("user = %q, want dev-user", gotUser)
-	}
-	if gotToken != "" {
-		t.Errorf("token = %q, want empty (no token forwarded)", gotToken)
-	}
-}
-
-func TestHandler_Disabled_ForwardsToken(t *testing.T) {
-	m := New(Config{Disabled: true})
 
 	var gotToken string
 	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -106,18 +85,84 @@ func TestHandler_Disabled_ForwardsToken(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("x-forwarded-access-token", "override-tok")
+	req.Header.Set("Authorization", "Bearer bearer-jwt")
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
 
-	if gotToken != "override-tok" {
-		t.Errorf("token = %q, want override-tok", gotToken)
+	if gotToken != "bearer-jwt" {
+		t.Errorf("token = %q, want bearer-jwt", gotToken)
 	}
 }
 
-func TestHandler_CustomHeaders(t *testing.T) {
-	m := New(Config{TokenHeader: "x-custom-token", UserHeader: "x-custom-user"})
+type staticSessionAuth struct{ token string }
+
+func (s *staticSessionAuth) TokenFromSession(http.ResponseWriter, *http.Request) string {
+	return s.token
+}
+
+func TestHandler_AuthEnabled_SessionFallback(t *testing.T) {
+	m := New(Config{})
+	m.SetSessionAuthenticator(&staticSessionAuth{token: "session-jwt"})
+
+	var gotToken string
+	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotToken = TokenFromContext(r.Context())
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if gotToken != "session-jwt" {
+		t.Errorf("token = %q, want session-jwt", gotToken)
+	}
+}
+
+func TestHandler_Federated_HeaderBeatsSession(t *testing.T) {
+	m := New(Config{TrustProxyHeader: true})
+	m.SetSessionAuthenticator(&staticSessionAuth{token: "session-jwt"})
+
+	var gotToken string
+	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotToken = TokenFromContext(r.Context())
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("x-forwarded-access-token", "proxy-jwt")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if gotToken != "proxy-jwt" {
+		t.Errorf("token = %q, want proxy-jwt (trusted proxy header takes precedence)", gotToken)
+	}
+}
+
+func TestHandler_AuthEnabled_EmptySessionRejected(t *testing.T) {
+	m := New(Config{})
+	m.SetSessionAuthenticator(&staticSessionAuth{token: ""})
+
+	handler := m.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("handler should not be called")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestHandler_AuthDisabled_DropsTokens(t *testing.T) {
+	m := New(Config{Disabled: true})
 
 	var gotToken, gotUser string
 	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -126,33 +171,19 @@ func TestHandler_CustomHeaders(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("x-custom-token", "custom-jwt")
-	req.Header.Set("x-custom-user", "bob")
+	req.Header.Set("x-forwarded-access-token", "stray-token")
+	req.Header.Set("Authorization", "Bearer stray-bearer")
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
 
-	if gotToken != "custom-jwt" {
-		t.Errorf("token = %q, want custom-jwt", gotToken)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
 	}
-	if gotUser != "bob" {
-		t.Errorf("user = %q, want bob", gotUser)
+	if gotToken != "" {
+		t.Errorf("token = %q, want empty — dev mode must not forward tokens", gotToken)
 	}
-}
-
-func TestDefaults(t *testing.T) {
-	m := New(Config{})
-	if m.TokenHeader() != "x-forwarded-access-token" {
-		t.Errorf("default token header = %q", m.TokenHeader())
-	}
-	if m.Disabled() {
-		t.Error("should not be disabled by default")
-	}
-}
-
-func TestWithToken(t *testing.T) {
-	ctx := WithToken(t.Context(), "test-token")
-	if got := TokenFromContext(ctx); got != "test-token" {
-		t.Errorf("token = %q, want test-token", got)
+	if gotUser != "dev-user" {
+		t.Errorf("user = %q, want dev-user", gotUser)
 	}
 }

@@ -58,6 +58,16 @@ func TestCheckWebSocketOrigin(t *testing.T) {
 			origin:         "https://b.com",
 			want:           true,
 		},
+		{
+			// Regression: same-origin must be allowed even when an allowlist
+			// is configured (the allowlist adds cross-origin callers, it does
+			// not replace the same-origin default).
+			name:           "same-origin allowed despite non-empty allowlist",
+			allowedOrigins: []string{"https://other.example.com"},
+			origin:         "https://dashboard.example.com",
+			host:           "dashboard.example.com",
+			want:           true,
+		},
 	}
 
 	for _, tc := range tests {
