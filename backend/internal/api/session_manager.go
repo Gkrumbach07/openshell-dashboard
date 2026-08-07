@@ -30,7 +30,7 @@ const (
 // sessionManager implements auth.SessionAuthenticator: it opens the encrypted
 // session cookie and, when the bearer inside is expired, refreshes it against
 // the IdP server-side and re-sets the cookie. The browser never sees a token.
-type sessionManager struct {
+type sessionManager struct { //nolint:govet // fieldalignment: readability over padding
 	codec *auth.SessionCodec
 	app   *App
 

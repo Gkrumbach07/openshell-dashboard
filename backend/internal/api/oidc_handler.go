@@ -19,7 +19,7 @@ import (
 // calls so a hanging or slow IdP cannot pin goroutines indefinitely.
 var oidcHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
-type discoveryDoc struct {
+type discoveryDoc struct { //nolint:govet // fieldalignment: readability over padding
 	tokenEndpoint      string
 	endSessionEndpoint string
 	fetchedAt          time.Time
@@ -159,6 +159,27 @@ func jwtExpiry(token string) int64 {
 	return claims.Exp
 }
 
+// writeOAuthError surfaces a non-2xx token-endpoint response as a 400 with the
+// provider's error/description. A non-2xx is an OAuth error (invalid_grant,
+// invalid_client, redirect_uri_mismatch, …); returning a flat 401 would loop
+// the frontend through a login that can't succeed on a misconfiguration.
+func writeOAuthError(w http.ResponseWriter, tokenResp *http.Response) {
+	var oauthErr struct {
+		Error       string `json:"error"`
+		Description string `json:"error_description"`
+	}
+	_ = json.NewDecoder(io.LimitReader(tokenResp.Body, 1<<16)).Decode(&oauthErr)
+	slog.Warn("token endpoint rejected the request", "status", tokenResp.StatusCode, "error", oauthErr.Error, "description", oauthErr.Description)
+	msg := "identity provider rejected the sign-in"
+	if oauthErr.Error != "" {
+		msg = oauthErr.Error
+		if oauthErr.Description != "" {
+			msg += ": " + oauthErr.Description
+		}
+	}
+	writeError(w, http.StatusBadRequest, "token_exchange_rejected", msg)
+}
+
 // TokenExchange swaps an authorization code for tokens via the IdP's token
 // endpoint, then seals them into the encrypted session cookie. Tokens are
 // never returned to the browser — the cookie is the session.
@@ -212,25 +233,8 @@ func (app *App) TokenExchange(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tokenResp.Body.Close()
 
-	// A non-2xx from the token endpoint is an OAuth error (invalid_grant,
-	// invalid_client, redirect_uri_mismatch, …). Surface it as a 400 with the
-	// provider's error/description instead of a flat 401 — a 401 would send
-	// the frontend into a login loop that can't succeed on a misconfiguration.
 	if tokenResp.StatusCode != http.StatusOK {
-		var oauthErr struct {
-			Error       string `json:"error"`
-			Description string `json:"error_description"`
-		}
-		_ = json.NewDecoder(io.LimitReader(tokenResp.Body, 1<<16)).Decode(&oauthErr)
-		slog.Warn("token exchange rejected", "status", tokenResp.StatusCode, "error", oauthErr.Error, "description", oauthErr.Description)
-		msg := "identity provider rejected the sign-in"
-		if oauthErr.Error != "" {
-			msg = oauthErr.Error
-			if oauthErr.Description != "" {
-				msg += ": " + oauthErr.Description
-			}
-		}
-		writeError(w, http.StatusBadRequest, "token_exchange_rejected", msg)
+		writeOAuthError(w, tokenResp)
 		return
 	}
 

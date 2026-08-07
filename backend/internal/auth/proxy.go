@@ -49,7 +49,7 @@ type Config struct {
 
 // Middleware extracts the request's bearer token and stores it on the
 // request context for the gateway client to forward.
-type Middleware struct {
+type Middleware struct { //nolint:govet // fieldalignment: readability over padding
 	cfg     Config
 	session SessionAuthenticator
 }

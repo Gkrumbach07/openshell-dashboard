@@ -85,7 +85,10 @@ func NewSessionCodec(secret []byte) (*SessionCodec, error) {
 }
 
 func (c *SessionCodec) seal(s *Session) (string, error) {
-	plaintext, err := json.Marshal(s)
+	// G117 flags marshaling a struct with a secret-named field, but this
+	// plaintext is immediately sealed with AES-256-GCM below and never leaves
+	// the process unencrypted — that is the whole point of this function.
+	plaintext, err := json.Marshal(s) //nolint:gosec // G117: sealed before use
 	if err != nil {
 		return "", err
 	}
