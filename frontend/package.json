@@ -37,6 +37,9 @@
     "README.md",
     "LICENSE"
   ],
+  "sideEffects": [
+    "**/*.css"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -53,7 +56,8 @@
     "e2e:open": "cypress open",
     "e2e:integration": "cypress run --config-file cypress.config.integration.ts",
     "e2e:integration:open": "cypress open --config-file cypress.config.integration.ts",
-    "build:lib": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json"
+    "build:lib": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && node ./scripts/copy-lib-assets.mjs",
+    "check:lib-assets": "node ./scripts/copy-lib-assets.mjs --check"
   },
   "peerDependencies": {
     "@patternfly/react-code-editor": "^6.6.0",

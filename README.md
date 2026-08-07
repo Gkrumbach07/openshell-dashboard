@@ -9,6 +9,20 @@ Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell), th
 
 The frontend's page components are self-contained and exported (`openshell-dashboard/pages`) so downstream platforms can import and wrap them.
 
+## Library / npm package
+
+Build the publishable package from `frontend/`:
+
+```bash
+cd frontend && npm run build:lib
+```
+
+That emits JS, type declarations, and **package-owned** co-located styles (and other relative static assets imported by lib modules) under `frontend/dist/`. The `"files"` field publishes `dist` only—consumers do not need `src/`.
+
+- Import pages/components as usual (`openshell-dashboard/pages`, `openshell-dashboard/components`, …). Your bundler must handle CSS imports from those modules (same requirement as loading PatternFly CSS).
+- Host apps still supply PatternFly (and other peer) stylesheets. Dependency CSS is not copied into `dist/`.
+- There is no separate CSS package export in v1; styles ship next to the compiled modules that import them.
+
 ## Quick start (local dev)
 
 Prereqs: Go 1.22+, Node 20+, `protoc` (only needed to regenerate stubs), and a running OpenShell gateway (`openshell gateway start`).
