@@ -77,16 +77,26 @@ All flags have env var fallbacks:
 |------|---------|---------|-------------|
 | `-port` | `PORT` | `8080` | BFF listen port |
 | `-gateway-url` | `OPENSHELL_GATEWAY_URL` | `localhost:50051` | Gateway gRPC endpoint (`grpcs://` prefix for TLS) |
-| `-oidc-issuer` | `OIDC_ISSUER` |: | OIDC issuer URL |
-| `-oidc-client-id` | `OIDC_CLIENT_ID` |: | OIDC client ID (public client, PKCE) |
+| | `OIDC_ISSUER` |: | OIDC issuer URL (enables standalone mode) |
+| | `OIDC_CLIENT_ID` |: | OIDC client ID |
+| | `OIDC_CLIENT_SECRET` |: | Optional client secret. Without it the BFF is a public client (PKCE only) |
+| | `OIDC_SCOPES` | `openid profile email groups` | Requested scopes. `groups` is Keycloak/Dex-shaped; Entra ID rejects it — override for other IdPs |
+| | `SESSION_SECRET` |: | Key for encrypted session cookies (standalone OIDC). **Required** unless `DEPLOYMENT_CONTEXT=dev` — the BFF fails closed without it |
+| | `DEPLOYMENT_CONTEXT` | `standalone` | `dev` permits an ephemeral session secret for local use |
 | `-static-dir` | `STATIC_DIR` |: | Serve built frontend from this directory |
-| `-auth-disabled` | `AUTH_DISABLED` | `false` | Skip OIDC validation: **dev only** |
+| `-auth-disabled` | `AUTH_DISABLED` | `false` | Skip auth: **dev only** |
 | `-gateway-ca-cert` | `GATEWAY_CA_CERT` |: | Path to CA cert for self-signed gateway TLS |
-| `-allowed-origins` | `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS origins |
+| `-allowed-origins` | `ALLOWED_ORIGINS` |: | Comma-separated extra CORS/WebSocket origins (same-origin is always allowed) |
 
 ## Auth
 
-OIDC only (no mTLS, no OpenShift OAuth). The frontend runs an Authorization Code + PKCE flow against your IdP, stores the ID token in sessionStorage, and sends it as `Authorization: Bearer` to the BFF. For terminal WebSocket handshakes, the BFF also sets a secure, HttpOnly, strict same-site cookie that is accepted only on WebSocket upgrades. The BFF validates the JWT (issuer JWKS via `go-oidc`) and forwards the same token to the gateway on every gRPC call: the gateway makes all RBAC decisions.
+OIDC only (no mTLS, no OpenShift OAuth). Three modes, one middleware:
+
+- **Standalone OIDC** (`OIDC_ISSUER` + `OIDC_CLIENT_ID` set): the frontend runs an Authorization Code + PKCE flow against your IdP; the BFF exchanges the code server-side and seals the tokens into an encrypted, HttpOnly session cookie (`__Host-openshell-session`). The browser never sees a token, and the cookie authenticates everything — REST calls and the terminal's WebSocket handshake alike. Expired sessions are refreshed against the IdP transparently, server-side (requires the IdP to issue a refresh token — some providers need `offline_access` added to `OIDC_SCOPES`), up to a 12h absolute lifetime. Any spec-compliant OIDC provider works, but defaults are Keycloak/Dex-shaped: adjust `OIDC_SCOPES` for IdPs without a `groups` scope (e.g. Entra ID), register the BFF as a confidential client and set `OIDC_CLIENT_SECRET` where possible, and ensure the **gateway's configured audience matches `OIDC_CLIENT_ID`** — the BFF forwards the ID token as the bearer, and the gateway validates its `aud` against the client ID.
+- **Federated** (behind oauth2-proxy / kube-auth-proxy): the proxy injects the user's token as `x-forwarded-access-token`; the BFF forwards it.
+- **Dev** (`AUTH_DISABLED=true`): no auth, synthetic dev-user, no tokens forwarded.
+
+The BFF never validates JWTs — it forwards the bearer to the gateway on every gRPC call, and the gateway makes all RBAC decisions. See `docs/adrs/0010-cookie-session-standalone-auth.md` for the full design.
 
 ## Make targets
 

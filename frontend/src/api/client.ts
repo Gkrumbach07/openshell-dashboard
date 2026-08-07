@@ -1,5 +1,3 @@
-import { getToken, clearToken } from '../app/authStore';
-
 export type ApiError = Error & {
   status: number;
   code?: string;
@@ -35,11 +33,9 @@ export const apiFetch = async <T>(
     ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
     ...((init?.headers as Record<string, string>) ?? {}),
   };
-  const token = getToken();
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
 
+  // Auth rides on the BFF's HttpOnly session cookie (sent automatically on
+  // same-origin requests) — no Authorization header, no token in JS.
   const response = await fetch(`${apiBasePath}${path}`, { ...init, headers });
   if (!response.ok) {
     let code: string | undefined;
@@ -58,7 +54,6 @@ export const apiFetch = async <T>(
     }
 
     if (response.status === 401) {
-      clearToken();
       if (onSessionExpired) {
         onSessionExpired();
       } else {

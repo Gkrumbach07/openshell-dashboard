@@ -75,7 +75,17 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 		CheckOrigin: app.checkWebSocketOrigin,
 	}
 
-	ws, err := upgrader.Upgrade(w, r, nil)
+	// The 101 response is built from scratch by the upgrader and ignores
+	// w.Header(). If the auth middleware refreshed the session on this
+	// request, its Set-Cookie is on w.Header() and would be silently dropped —
+	// leaving the browser holding a stale (rotated-away) refresh token. Carry
+	// those cookies onto the handshake response so the refresh actually lands.
+	var upgradeHeader http.Header
+	if cookies := w.Header().Values("Set-Cookie"); len(cookies) > 0 {
+		upgradeHeader = http.Header{"Set-Cookie": cookies}
+	}
+
+	ws, err := upgrader.Upgrade(w, r, upgradeHeader)
 	if err != nil {
 		slog.Error("websocket upgrade failed", "error", err)
 		return
@@ -150,15 +160,19 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 func (app *App) checkWebSocketOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
+		// Browsers always send Origin on a WebSocket handshake; a missing one
+		// is a non-browser client that carries no victim's cookies.
+		return true
+	}
+	// Same-origin is always allowed — independent of ALLOWED_ORIGINS, which
+	// exists to permit *additional* cross-origin callers (federated embedding).
+	if origin == "http://"+r.Host || origin == "https://"+r.Host {
 		return true
 	}
 	for _, allowed := range app.allowedOrigins {
 		if origin == allowed {
 			return true
 		}
-	}
-	if len(app.allowedOrigins) == 0 {
-		return origin == "http://"+r.Host || origin == "https://"+r.Host
 	}
 	return false
 }

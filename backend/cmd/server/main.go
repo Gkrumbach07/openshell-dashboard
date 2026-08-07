@@ -8,6 +8,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"log/slog"
 	"net/http"
@@ -57,11 +58,46 @@ func main() {
 		slog.Warn("AUTH_DISABLED=true — authentication is OFF; never use this outside local development")
 	}
 
+	// Federated mode = an auth proxy fronts the BFF (no in-app OIDC issuer).
+	// Only then is the x-forwarded-access-token header trustworthy; in
+	// standalone mode any client could forge it to bypass the session cookie.
+	federated := os.Getenv("OIDC_ISSUER") == "" && !*authDisabled
+
 	authMiddleware := auth.New(auth.Config{
-		Disabled:    *authDisabled,
-		TokenHeader: *tokenHeader,
-		UserHeader:  *userHeader,
+		Disabled:         *authDisabled,
+		TokenHeader:      *tokenHeader,
+		UserHeader:       *userHeader,
+		TrustProxyHeader: federated,
 	})
+
+	// Cookie sessions are only used in standalone OIDC mode. SESSION_SECRET
+	// must be set explicitly outside dev: an auto-generated secret means every
+	// restart invalidates all sessions, and each replica gets a different key
+	// so cookies sealed on one pod fail to decrypt on another — surfacing as
+	// intermittent random logouts. Fail closed unless DEPLOYMENT_CONTEXT=dev.
+	var sessionCodec *auth.SessionCodec
+	if issuer := os.Getenv("OIDC_ISSUER"); issuer != "" && !*authDisabled {
+		secret := os.Getenv("SESSION_SECRET")
+		if secret == "" {
+			if os.Getenv("DEPLOYMENT_CONTEXT") != "dev" {
+				slog.Error("SESSION_SECRET is required when OIDC is configured (set DEPLOYMENT_CONTEXT=dev to allow an ephemeral secret for local development)")
+				os.Exit(1)
+			}
+			generated := make([]byte, 32)
+			if _, err := rand.Read(generated); err != nil {
+				slog.Error("failed to generate a session secret", "error", err)
+				os.Exit(1)
+			}
+			secret = string(generated)
+			slog.Warn("SESSION_SECRET not set — using an ephemeral dev secret; sessions won't survive restarts")
+		}
+		codec, err := auth.NewSessionCodec([]byte(secret))
+		if err != nil {
+			slog.Error("session codec setup failed", "error", err)
+			os.Exit(1)
+		}
+		sessionCodec = codec
+	}
 
 	authCfg := api.AuthConfigResponse{
 		AuthDisabled: *authDisabled,
@@ -93,11 +129,18 @@ func main() {
 	defer gatewayClient.Close()
 
 	var allowedOrigins []string
-	if *origins != "" {
-		allowedOrigins = strings.Split(*origins, ",")
+	for _, o := range strings.Split(*origins, ",") {
+		if trimmed := strings.TrimSpace(o); trimmed != "" {
+			allowedOrigins = append(allowedOrigins, trimmed)
+		}
 	}
 
-	app := api.NewApp(gatewayClient, authMiddleware, *staticDir, allowedOrigins, authCfg)
+	app := api.NewApp(gatewayClient, authMiddleware, sessionCodec, *staticDir, allowedOrigins, authCfg)
+	// Optional confidential-client secret for the IdP token endpoint (env
+	// only — never a flag, so it can't leak into process listings).
+	if secret := os.Getenv("OIDC_CLIENT_SECRET"); secret != "" {
+		app.SetOIDCClientSecret(secret)
+	}
 
 	addr := ":" + *port
 	slog.Info("openshell-dashboard BFF listening",
