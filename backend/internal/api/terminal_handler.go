@@ -72,20 +72,10 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 	cols, rows := parseDimensions(r)
 
 	upgrader := websocket.Upgrader{
-		CheckOrigin: app.checkWebSocketOrigin,
+		CheckOrigin: checkWebSocketOrigin,
 	}
 
-	// The 101 response is built from scratch by the upgrader and ignores
-	// w.Header(). If the auth middleware refreshed the session on this
-	// request, its Set-Cookie is on w.Header() and would be silently dropped —
-	// leaving the browser holding a stale (rotated-away) refresh token. Carry
-	// those cookies onto the handshake response so the refresh actually lands.
-	var upgradeHeader http.Header
-	if cookies := w.Header().Values("Set-Cookie"); len(cookies) > 0 {
-		upgradeHeader = http.Header{"Set-Cookie": cookies}
-	}
-
-	ws, err := upgrader.Upgrade(w, r, upgradeHeader)
+	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("websocket upgrade failed", "error", err)
 		return
@@ -154,25 +144,17 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// checkWebSocketOrigin validates the Origin header against the configured
-// allowed origins. When no origins are configured (e.g. same-origin
-// deployment behind a proxy), it falls back to same-origin matching.
-func (app *App) checkWebSocketOrigin(r *http.Request) bool {
+// checkWebSocketOrigin enforces same-origin on browser WebSocket handshakes,
+// as defense-in-depth against cross-site WebSocket hijacking. The BFF is
+// same-origin-only by design (ADR 0014): browsers reach it via its own origin
+// or through a fronting proxy on that origin — there is no cross-origin
+// consumer to allow for.
+func checkWebSocketOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		// Browsers always send Origin on a WebSocket handshake; a missing one
-		// is a non-browser client that carries no victim's cookies.
+		// is a non-browser client that carries no victim's ambient credentials.
 		return true
 	}
-	// Same-origin is always allowed — independent of ALLOWED_ORIGINS, which
-	// exists to permit *additional* cross-origin callers (federated embedding).
-	if origin == "http://"+r.Host || origin == "https://"+r.Host {
-		return true
-	}
-	for _, allowed := range app.allowedOrigins {
-		if origin == allowed {
-			return true
-		}
-	}
-	return false
+	return origin == "http://"+r.Host || origin == "https://"+r.Host
 }

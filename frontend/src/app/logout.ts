@@ -1,11 +1,9 @@
 import { getAuthConfig } from '../api/auth';
 import { clearDevSession } from './authStore';
 
-// Logout per auth mode:
+// Logout per auth mode (ADR 0014):
 // - Dev (AUTH_DISABLED): the "session" is a client-side flag; clear it.
-// - Standalone OIDC: the BFF clears the HttpOnly session cookie and returns
-//   the IdP's end-session URL so the SSO session is cleared too.
-// - Federated: the auth proxy owns the session; redirect to its sign-out URL
+// - Proxied: the auth proxy owns the session; redirect to its sign-out URL
 //   (LOGOUT_URL, e.g. /oauth2/sign_out for oauth2-proxy).
 export const logout = async (): Promise<void> => {
   clearDevSession();
@@ -18,14 +16,7 @@ export const logout = async (): Promise<void> => {
       return;
     }
 
-    if (config.issuer && config.clientId) {
-      const resp = await fetch('/api/v1/auth/logout', { method: 'POST' });
-      const body = (await resp.json()) as { redirect?: string };
-      window.location.assign(body.redirect ?? '/login');
-      return;
-    }
-
-    window.location.assign(config.logoutUrl ?? '/oauth2/sign_out');
+    window.location.assign(config.logoutUrl || '/oauth2/sign_out');
   } catch {
     window.location.assign('/login');
   }
