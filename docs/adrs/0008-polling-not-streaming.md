@@ -42,9 +42,10 @@ through every proxy.
 
 An interactive shell is bidirectional and latency-sensitive; there is no
 polling equivalent. The relay lives in `terminal_handler.go`: authenticate the
-upgrade (same bearer chain as every request, including session cookies),
-resolve name → sandbox_id, bridge stdin/stdout/stderr/resize/exit between the
-WebSocket and `ExecSandboxInteractive`.
+upgrade (same bearer chain as every request — the fronting proxy validates
+the upgrade and injects the header, per ADR 0014), resolve name → sandbox_id,
+bridge stdin/stdout/stderr/resize/exit between the WebSocket and
+`ExecSandboxInteractive`.
 
 `FEATURE_TERMINAL` gates it. Standalone deployments default on. A downstream
 consumer whose proxy cannot relay WebSockets sets `FEATURE_TERMINAL=false` and

@@ -47,7 +47,7 @@ consumption site. The slot roster is part of the contract:
 | `modelPicker` | active (inference config) |
 | `sandboxMetadata` | active — must render in **both** card and table views (currently card-only: bug) |
 | `sandboxActions` | active — same both-views requirement |
-| `workspaceBinding` | **removed** — defined but never consumed; delete rather than ship dead contract |
+| `workspaceBinding` | **removed** (PR #29) — was defined but never consumed; dead contract doesn't ship |
 
 Adding a slot is a minor version; removing or changing a signature is major.
 
@@ -65,7 +65,9 @@ Served by the BFF (`/auth/config`), read via `useFeatureFlags()`. Flags exist
 for exactly one reason: a deployment's transport or platform cannot support a
 feature (`FEATURE_TERMINAL` per ADR 0008, `FEATURE_FILE_TRANSFER`, …). Flags
 are not A/B switches and not license gates. A flag nobody reads is deleted
-(`workspaceBinding`, `resourceLinks` — proposed issue).
+(`workspaceBinding`, `resourceLinks` — removed in PR #29; the roster is now
+terminal, fileTransfer, settings, globalPolicy, credentialRefresh, services,
+draftPolicy).
 
 ### 5. Runtime configuration — one seam, used everywhere
 

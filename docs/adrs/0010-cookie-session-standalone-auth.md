@@ -1,8 +1,15 @@
 # ADR 0010: Cookie-Based BFF Sessions for Standalone OIDC
 
-**Status:** Accepted
+**Status:** Superseded by [ADR 0014](0014-relay-only-bff.md) (2026-08-07)
 **Date:** 2026-08-06
 **Authors:** Gage Krumbach
+
+> **Superseded.** The requirements this ADR identified (HttpOnly cookie
+> sessions, server-side refresh with rotation safety, WebSocket coverage,
+> absolute lifetime caps) remain correct — but they are now met by an
+> external auth proxy (oauth2-proxy) in front of the BFF rather than by
+> code inside it. The BFF is relay-only per ADR 0014. Kept for the record
+> of why the sessionStorage SPA pattern was abandoned.
 
 ## Context
 

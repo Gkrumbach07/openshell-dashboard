@@ -1,75 +1,55 @@
-# ADR 0003: Token Custody, Not Token Validation
+# ADR 0003: The BFF Is a Token Relay
 
-**Status:** Accepted (v2 — supersedes "dumb pipe" framing of 2026-08-05)
+**Status:** Accepted (v3 — relay-only per ADR 0014; v2's "custody" framing applied while the BFF held sessions)
 **Date:** 2026-08-07
 **Authors:** Gage Krumbach
 
 ## Context
 
-The original version of this ADR called the BFF a "dumb pipe for tokens." That
-was accurate when the only pattern was token relay. It stopped being accurate
-the moment ADR 0010 landed: in standalone mode the BFF now runs the PKCE code
-exchange, encrypts sessions with AES-256-GCM, refreshes tokens server-side
-against the IdP, and enforces CSRF. A component that does all that is not a
-dumb pipe, and pretending it is invites scope creep in the wrong direction —
-"we already do OIDC, why not validate the JWT / check the role / mint a token?"
-
-The line that matters was never "the BFF does nothing with tokens." It is:
+v1 of this ADR called the BFF a "dumb pipe for tokens." ADR 0010 made that
+false — the BFF took custody of sessions — so v2 redrew the line at "custody
+without validation." ADR 0014 then moved custody out of the BFF entirely, to
+a fronting auth proxy. The original doctrine is true again, and this version
+states it with the boundaries that two rounds of drift taught us to make
+explicit.
 
 ## Decision
 
-**The BFF takes custody of tokens when the mode requires it, but it never
-validates them and never makes authorization decisions.**
+**The BFF relays tokens. It never acquires, stores, validates, or authorizes
+them.**
 
-Custody varies by pattern (ADR 0001):
-- **Token relay** (federated): zero custody. Read header, forward, forget.
-- **Session custodian** (standalone): full custody of *transport* — acquire
-  via PKCE, seal into a cookie, refresh, destroy on logout. The BFF is doing
-  the browser's old job more safely, not the gateway's job.
-
-What is constant across every pattern:
-
-1. **No validation.** No JWKS fetching, no signature checks, no issuer/audience
-   verification, no `go-oidc` dependency. The one JWT read that exists —
-   `jwtExpiry` pulling the unverified `exp` claim to schedule refresh — is
-   bookkeeping about custody, not validation, and must stay that way.
-2. **No authorization.** The gateway enforces RBAC (platform admin via roles
-   claim, workspace roles via membership records). The BFF never inspects
-   roles, never filters responses by user, never answers "may this user do X."
-   The frontend reads roles from `/auth/whoami` for *display* purposes only —
+1. **Relay only.** Read the bearer from `x-forwarded-access-token` or
+   `Authorization: Bearer`, store it in request context, forward it as gRPC
+   `authorization: Bearer` metadata on every call. No cookies, no session
+   state, no refresh logic, no logout flow — the fronting proxy owns all of
+   that (oauth2-proxy standalone, kube-auth-proxy federated).
+2. **No validation.** No JWKS, no signature/issuer/audience checks, no
+   `go-oidc` dependency, no JWT parsing of any kind. The gateway validates
+   against its own JWKS; a second validator would drift and its failures
+   would masquerade as gateway rejections.
+3. **No authorization.** The gateway enforces RBAC (platform role from JWT
+   claims, workspace role from membership records). The BFF never inspects
+   roles, never filters responses by user, never answers "may this user do
+   X." Frontend role display comes from the gateway's `GetCurrentUser`, and
    hiding a nav item is UX, not enforcement.
-3. **Every gRPC call carries the caller's bearer.** Per-RPC credentials from
-   request context. There is no service-account fallback, no ambient identity.
-   If there is no bearer, the request fails at the gateway — the BFF does not
-   soften this.
+4. **Every call carries the caller's bearer.** No service-account fallback,
+   no ambient identity. No bearer → the request fails, first at the BFF
+   (401), definitively at the gateway.
 
-## Why this line and not another
+## Why this holds now when it didn't before
 
-- **Validation duplicated is validation skewed.** The gateway already validates
-  against its JWKS with its own audience rules. A second validator in the BFF
-  would drift (different clock skew, different audience config) and its
-  failures would be indistinguishable from gateway rejections.
-- **Authorization duplicated is authorization bypassed.** The
-  SubjectAccessReview pattern used by k8s-backed BFFs (model-registry) makes
-  sense when the downstream *is* k8s. Ours is not — the gateway has its own
-  role model, and shadowing it in the BFF creates two sources of truth
-  (ADR 0005 Option C documents why we rejected this).
-- **Custody without validation is a coherent security posture.** oauth2-proxy
-  does exactly this: it custodies sessions and validates nothing downstream.
-  We follow the same IETF browser-based-apps BCP it does.
+v1's dumb pipe failed because standalone deployments had a real need —
+browser login — and the BFF was the only component present to meet it. The
+lesson wasn't "pipes grow custody"; it was "don't be the only component
+present." ADR 0014 fixed the deployment shape (proxy ships alongside the
+BFF), which is what makes the pure relay sustainable rather than aspirational.
 
 ## Consequences
 
-- The BFF's auth surface is bounded by ADR 0011 (BFF scope boundary). New
-  auth-adjacent features must be justified against the custody/validation
-  line, not against "we already have OIDC code."
-- Standalone-only custody code (OIDC handler, session codec, session manager)
-  should be separable from the relay path — a federated deployment should be
-  able to reason about the BFF as if the custodian code weren't there.
-  Extraction into an internal package with a narrow interface is a proposed
-  issue.
-- Defense-in-depth measures that ride on custody (CSRF origin checks, rate
-  limiting on IdP-facing endpoints per PR #25) are acceptable *in front of*
-  custody endpoints, but the primary control is always the deployment's
-  ingress — the BFF's versions exist for standalone installs with nothing in
-  front of them.
+- Auth bugs are proxy configuration or gateway configuration; BFF auth code
+  is small enough to exclude by inspection.
+- The relay works identically for opaque tokens, JWTs, and anything else a
+  proxy injects — the credential-bridge question (ADR 0005) is entirely
+  about what the *gateway* can validate, never about BFF code.
+- Scope enforcement lives in ADR 0011's never-list; proposals to "just add"
+  token awareness cite this ADR's history as the cautionary tale.

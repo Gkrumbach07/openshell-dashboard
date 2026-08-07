@@ -109,22 +109,21 @@ Key patterns:
 
 ## Auth
 
-Auth modes × patterns (ADR 0001), token custody without validation (ADR 0003), scope bounded by ADR 0011.
+Relay-only (ADR 0014): the BFF never terminates authentication. A fronting proxy (oauth2-proxy standalone, kube-auth-proxy federated) owns login/sessions/refresh/CSRF and injects the bearer. Scope bounded by ADR 0011.
 
-Bearer resolution is one precedence chain in `auth/proxy.go`, identical for all modes:
+Bearer resolution is one precedence chain in `auth/proxy.go`, identical everywhere:
 
-1. `x-forwarded-access-token` header — read ONLY when `TrustProxyHeader` (federated mode)
+1. `x-forwarded-access-token` header (injected by the fronting proxy)
 2. `Authorization: Bearer` header (API clients)
-3. Encrypted session cookie via `sessionManager.TokenFromSession` (standalone browsers, ADR 0010)
-4. No bearer → 401
+3. No bearer → 401
 
 The token lands in request context; `gateway/client.go` forwards it as gRPC `authorization: Bearer` metadata via per-RPC credentials. Gateway enforces RBAC (admin/user roles) and workspace membership — the BFF never does.
 
-The BFF does NOT validate tokens, call JWKS endpoints, or make authorization decisions. Zero dependency on `go-oidc`. (`jwtExpiry` reads the unverified `exp` claim purely to schedule refresh — that is custody bookkeeping, not validation.)
+The BFF does NOT validate tokens, call JWKS endpoints, parse JWTs, or make authorization decisions. Zero dependency on `go-oidc`. There are no OIDC endpoints, no session codec, no CSRF middleware — if you find yourself adding any of these, stop and read ADR 0014.
 
-Standalone custody machinery: `oidc_handler.go` (discovery proxy, PKCE code exchange, logout), `auth/session.go` (AES-256-GCM cookie codec, chunking), `api/session_manager.go` (transparent server-side refresh, single-flight, 12h lifetime cap). Routes (under `/api/v1/`): `auth/config`, `auth/discovery`, `auth/token-exchange` (POST), `auth/session`, `auth/logout` (POST), `auth/whoami`. There is NO `/auth/refresh` — refresh is transparent inside the middleware.
+Auth-adjacent routes (under `/api/v1/`): `auth/config` (bootstrap: authDisabled + feature flags), `auth/whoami` (gateway `GetCurrentUser`). That's all.
 
-Before adding anything auth-adjacent, check the ADR 0011 never-list: no JWT validation, no RBAC, no k8s API calls, no credential brokering, no server-side state.
+Before adding anything auth-adjacent, check the ADR 0011 never-list: no auth termination, no JWT validation, no RBAC, no k8s API calls, no credential brokering, no server-side state.
 
 ## Configuration
 
@@ -140,16 +139,9 @@ Env vars (some also available as CLI flags):
 | `AUTH_TOKEN_HEADER` | `-auth-token-header` | `x-forwarded-access-token` | Token header name |
 | `AUTH_USER_HEADER` | `-auth-user-header` | `x-auth-request-user` | User header name |
 | `ALLOWED_ORIGINS` | `-allowed-origins` | | Comma-separated CORS origins |
-| `OIDC_ISSUER` | | | OIDC issuer URL — **the mode discriminator**: set = standalone, empty = federated |
-| `OIDC_CLIENT_ID` | | | OIDC client ID (standalone mode) |
-| `OIDC_CLIENT_SECRET` | | | Optional; confidential client via `client_secret_post`. Env-only, never a flag |
-| `SESSION_SECRET` | | | Derives AES session-cookie key. Required in production standalone; ephemeral fallback only when `DEPLOYMENT_CONTEXT=dev` |
-| `ADMIN_ROLE` | `-admin-role` | `admin` | OIDC role claim for admin |
-| `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out` | Post-logout redirect URL |
-| `OIDC_SCOPES` | | `openid profile email groups` | OIDC scopes to request |
-| `OIDC_USER_ROLE` | | | OIDC role claim for standard user |
-| `DEPLOYMENT_CONTEXT` | | `standalone` | Deployment context (`standalone` or `embedded`) |
-| `FEATURE_*` | | varies | Feature flags: `FEATURE_TERMINAL`, `FEATURE_FILE_TRANSFER`, `FEATURE_SETTINGS`, `FEATURE_GLOBAL_POLICY`, `FEATURE_CREDENTIAL_REFRESH`, `FEATURE_SERVICES`, `FEATURE_DRAFT_POLICY`, `FEATURE_WORKSPACE_BINDING`, `FEATURE_RESOURCE_LINKS` |
+| `ADMIN_ROLE` | `-admin-role` | `admin` | OIDC role claim for admin (display gating only — gateway enforces) |
+| `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out` | Proxy sign-out path the frontend redirects to on logout |
+| `FEATURE_*` | | varies | Feature flags: `FEATURE_TERMINAL`, `FEATURE_FILE_TRANSFER`, `FEATURE_SETTINGS`, `FEATURE_GLOBAL_POLICY`, `FEATURE_CREDENTIAL_REFRESH`, `FEATURE_SERVICES`, `FEATURE_DRAFT_POLICY` |
 
 ## Error handling
 

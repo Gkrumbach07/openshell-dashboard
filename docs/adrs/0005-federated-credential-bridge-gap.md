@@ -91,18 +91,22 @@ Jessica Forrester, Adel Zaalouk) reframed this gap. Key outcomes:
    dashboard and the gateway are separate OIDC clients with separate
    audiences. SSO removes the second login page; it does not remove the
    second token. Two concrete mechanisms for the embedded/federated case:
-   - **Own OIDC flow** (works today): the BFF runs its session-custodian
-     pattern (ADR 0010) against the shared IdP with its own client_id.
-     Keycloak SSO makes the second flow invisible to the user.
-   - **Token exchange** (not built): the BFF swaps the incoming dashboard
-     token for a gateway-scoped token via RFC 8693 (RHAISTRAT-2183, in
-     Refinement). The cleaner long-term pattern; blocked on platform support.
+   - **Dedicated proxy flow** (works today): an oauth2-proxy instance for
+     the OpenShell BFF, configured against the shared IdP with its own
+     `client_id`/audience, injects the gateway-scoped JWT. Keycloak SSO
+     makes the second flow invisible to the user. (This is the relay-only
+     shape of ADR 0014 — the secure-agent-workspace pattern already runs
+     exactly this.)
+   - **Token exchange** (not built): swap the incoming dashboard token for a
+     gateway-scoped token via RFC 8693 (RHAISTRAT-2183, in Refinement). The
+     cleaner long-term pattern; blocked on platform support, and per ADR
+     0011 it lands in the proxy/platform layer, not in the BFF.
 4. **The spike Mrunal called for is unowned** as of Aug 7.
 
-Implication for this repo: our mode/pattern architecture (ADR 0001) already
-covers both mechanisms — own-flow is the session-custodian pattern pointed at
-a shared IdP; token exchange is a third pattern slotting into the same bearer
-resolution chain. No BFF rearchitecting is required for either outcome.
+Implication for this repo: the relay-only architecture (ADR 0001/0014)
+already covers both mechanisms — both deliver a gateway-scoped JWT in
+`x-forwarded-access-token`, which is all the BFF ever reads. No BFF
+rearchitecting is required for either outcome.
 
 ## No Decision Yet
 
