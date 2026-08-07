@@ -1,35 +1,73 @@
-# ADR 0008: Polling, Not WebSockets
+# ADR 0008: Polling for Data, WebSocket for the Terminal Only
 
-**Status:** Accepted
-**Date:** 2026-08-04
+**Status:** Accepted (v2 — supersedes "no WebSockets anywhere" of 2026-08-04)
+**Date:** 2026-08-07
 **Authors:** Gage Krumbach
 
 ## Context
 
-The OpenShell gateway has several streaming RPCs: `WatchSandbox` (server-stream), `ExecSandboxInteractive` (bidirectional), and `ForwardTcp` (bidirectional). A natural dashboard implementation would expose these as WebSocket connections from the frontend.
+The gateway has three streaming RPCs: `WatchSandbox` (server-stream),
+`ExecSandboxInteractive` (bidi), and `ForwardTcp` (bidi). The original version
+of this ADR said "no WebSockets anywhere in the stack; terminal access is via
+the CLI." Reality overruled it: the interactive terminal shipped
+(`/api/v1/workspaces/{ws}/sandboxes/{name}/terminal`, a WebSocket ⇄ gRPC
+bidi-stream relay), PR #19 authenticated it, and ADR 0010's cookie sessions
+now cover WebSocket upgrades as a first-class request type. An ADR that the
+codebase contradicts is worse than no ADR.
 
-However, downstream federation constrains this. The odh-dashboard module federation proxy cannot handle WebSocket connections — it proxies HTTP requests only.
+The original constraint was real: a downstream federation proxy may not relay
+WebSocket connections. The wrong conclusion was drawn from it — banning the
+transport instead of gating the feature.
 
 ## Decision
 
-No WebSockets anywhere in the stack. All real-time data uses HTTP polling via React Query's `refetchInterval`.
+**Polling is the default for all data. The terminal is the single sanctioned
+WebSocket, feature-flagged so deployments whose transport can't carry it turn
+it off.**
 
-| Data | Polling interval | Mechanism |
-|------|-----------------|-----------|
-| Sandbox status | 5s | React Query `refetchInterval` on `GetSandbox` |
-| Sandbox list | 10s | React Query `refetchInterval` on `ListSandboxes` |
-| Sandbox logs | 3s | React Query `refetchInterval` on `GetSandboxLogs` |
-| Gateway info | 30s | React Query `refetchInterval` on `GetGatewayInfo` |
+### Data: HTTP polling via React Query `refetchInterval`
 
-The streaming RPCs (`ExecSandboxInteractive`, `WatchSandbox`, `ForwardTcp`) are deferred — not wrapped in the BFF. Users connect to sandboxes via the CLI (`openshell sandbox connect`), which is shown in the UI as a "Connect via CLI" card with a copy-paste command.
+| Data | Interval |
+|------|----------|
+| Sandbox status | 5s |
+| Sandbox list | 10s |
+| Sandbox logs | 3s |
+| Gateway info | 30s |
 
-## Why not WebSockets for standalone mode only
+`WatchSandbox` and `ForwardTcp` remain unwrapped. Status and logs are
+polled — a dashboard does not need sub-second freshness, and polling works
+through every proxy.
 
-Adding WebSockets in standalone mode and polling in federated mode creates two code paths for the same feature. The polling approach works identically in both modes. The added complexity of maintaining WebSocket support, connection management, reconnection logic, and mode-conditional transport is not justified by the latency improvement (5s polling vs real-time) for a dashboard UI.
+### Terminal: WebSocket, because nothing else can do the job
+
+An interactive shell is bidirectional and latency-sensitive; there is no
+polling equivalent. The relay lives in `terminal_handler.go`: authenticate the
+upgrade (same bearer chain as every request, including session cookies),
+resolve name → sandbox_id, bridge stdin/stdout/stderr/resize/exit between the
+WebSocket and `ExecSandboxInteractive`.
+
+`FEATURE_TERMINAL` gates it. Standalone deployments default on. A downstream
+consumer whose proxy cannot relay WebSockets sets `FEATURE_TERMINAL=false` and
+the UI falls back to the "Connect via CLI" card. The feature flag — not the
+transport ban — is the federation-compatibility mechanism.
+
+## Why not WebSockets for status/logs too
+
+Two code paths for the same data (WS in standalone, polling in federated) is
+the complexity the original ADR rightly refused. The terminal doesn't create
+two paths — it has exactly one implementation, present or absent. That is the
+distinction that makes it acceptable where "WS for everything" is not.
 
 ## Consequences
 
-- Sandbox status changes are visible within one polling interval (5-10s). This is acceptable for a dashboard — users don't need sub-second status updates.
-- Log viewing has a 3s delay. This is noticeable but functional. The logs endpoint returns structured fields, so filtering works even with polling.
-- Terminal/exec access is out of scope for the web UI. The CLI is the right tool for interactive sandbox sessions.
-- If the federation proxy adds WebSocket support in the future, this decision can be revisited without breaking existing functionality.
+- Status/log freshness is bounded by polling intervals. Acceptable for a
+  dashboard.
+- The terminal is the only place WebSocket-specific machinery (origin checks,
+  upgrade-time cookie refresh) exists. Anyone proposing a second WebSocket
+  must bring it through an ADR revision, not a PR.
+- Whether the odh-dashboard federation proxy can relay WebSockets is an open
+  question downstream (its e2e tooling recently gained WS support for
+  `/wss/k8s` paths). If it can, federated deployments may enable
+  `FEATURE_TERMINAL`; nothing in this repo changes either way.
+- If upstream adds an events/watch UX need later, the answer starts at
+  "poll it" and must argue its way out.

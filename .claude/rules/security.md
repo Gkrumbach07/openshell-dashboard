@@ -8,9 +8,11 @@ alwaysApply: false
 
 ## Auth
 
-- Authentication is proxy-delegated (see ADR 0003): BFF reads the bearer token from a configurable header (default `x-forwarded-access-token`) or `Authorization: Bearer` and forwards it to the gateway
-- The BFF does NOT validate JWTs — it is a dumb pipe for tokens. The gateway validates against its own OIDC JWKS
-- In standalone OIDC mode, the frontend stores tokens in `sessionStorage` (`authStore.ts`) and sends as `Authorization: Bearer` — not in cookies or localStorage. sessionStorage is tab-scoped and cleared on tab close but survives page reloads within the tab
+- Auth is modes × patterns (ADR 0001): bearer resolution is one precedence chain — `x-forwarded-access-token` (only when `TrustProxyHeader`, i.e. federated mode) → `Authorization: Bearer` → encrypted session cookie → 401
+- The BFF takes custody of tokens but NEVER validates them (no JWKS, no go-oidc) and NEVER authorizes (ADR 0003, ADR 0011). The gateway validates against its own OIDC JWKS and enforces RBAC
+- In standalone OIDC mode, tokens live in an AES-256-GCM encrypted `__Host-openshell-session` cookie (HttpOnly, Secure, SameSite=Strict) managed by the BFF (ADR 0010). The browser never sees a token; `authStore.ts` holds only a dev-mode flag. Refresh is server-side and transparent; `SESSION_SECRET` derives the key and is required in production
+- The `x-forwarded-access-token` header is honored ONLY in federated mode — in standalone there is no sanitizing proxy, so honoring it would let any client forge it (`TrustProxyHeader` in `proxy.go`)
+- CSRF: SameSite=Strict primary, Origin check on mutating methods as defense-in-depth. Requests without Origin pass (non-browser clients can't carry cookies)
 - Never expose raw gRPC errors to the frontend — use `writeGrpcError()` which maps gRPC status codes to safe HTTP status codes
 - CORS configured explicitly — no wildcard origins, empty allowlist by default
 

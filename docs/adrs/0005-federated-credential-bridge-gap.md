@@ -72,6 +72,38 @@ Two-layer RBAC:
 
 Unsolved: who manages `WorkspaceMember` records in RHOAI? Someone must call `AddWorkspaceMember(sub, role)` — this needs to map from OpenShift project RBAC or RHOAI group membership, and nobody has designed that mapping yet.
 
+## Architecture thread outcomes (Aug 6-7, #team-openshell)
+
+A cross-team thread (Gage, Gordon Sim, Mrunal Patel, Derek Carr, Jason Greene,
+Jessica Forrester, Adel Zaalouk) reframed this gap. Key outcomes:
+
+1. **Standalone UI first; embedding deferred.** Derek/Jason/Jessica: treat the
+   OpenShell gateway as a distinct service ("like Argo," "like a model behind
+   MaaS") with no required kube RBAC association. Deployment topologies (SAW
+   40k gateways, non-SAW 100s per department, cross-cluster) must be
+   documented before any embed-in-RHOAI-dashboard decision. The standalone
+   dashboard — this repo — is the deliverable that makes sense today.
+2. **Shared OIDC is the recommended deployment, not a requirement.** Mrunal:
+   "OCP with external OIDC configured to use the same keycloak as the
+   OpenShell gateway. We recommend that as the way to deploy." Without it,
+   the standalone UI still works — the user just logs in separately.
+3. **Same IdP ≠ same token.** Gordon: even with a shared provider, the
+   dashboard and the gateway are separate OIDC clients with separate
+   audiences. SSO removes the second login page; it does not remove the
+   second token. Two concrete mechanisms for the embedded/federated case:
+   - **Own OIDC flow** (works today): the BFF runs its session-custodian
+     pattern (ADR 0010) against the shared IdP with its own client_id.
+     Keycloak SSO makes the second flow invisible to the user.
+   - **Token exchange** (not built): the BFF swaps the incoming dashboard
+     token for a gateway-scoped token via RFC 8693 (RHAISTRAT-2183, in
+     Refinement). The cleaner long-term pattern; blocked on platform support.
+4. **The spike Mrunal called for is unowned** as of Aug 7.
+
+Implication for this repo: our mode/pattern architecture (ADR 0001) already
+covers both mechanisms — own-flow is the session-custodian pattern pointed at
+a shared IdP; token exchange is a third pattern slotting into the same bearer
+resolution chain. No BFF rearchitecting is required for either outcome.
+
 ## No Decision Yet
 
 This ADR documents the gap and options. A decision will be made based on:
@@ -79,3 +111,5 @@ This ADR documents the gap and options. A decision will be made based on:
 2. Whether the gateway adds TokenReview support before the beta
 3. Feedback from the ACP team on their production auth architecture
 4. Timeline for Praxis integration with OpenShell (Option D)
+5. The deployment-topology documentation Derek/Mrunal called for (Aug 7) —
+   embedding decisions, and therefore the federated auth mechanism, wait on it

@@ -1,46 +1,80 @@
-# ADR 0001: Three-Mode Authentication Architecture
+# ADR 0001: Auth Modes and Auth Patterns
 
-**Status:** Accepted  
-**Date:** 2026-08-05  
+**Status:** Accepted (v2 — supersedes the 2026-08-05 version; incorporates ADR 0010)
+**Date:** 2026-08-07
 **Authors:** Gage Krumbach
 
 ## Context
 
-The OpenShell Dashboard must run in three deployment contexts with fundamentally different auth requirements:
+The dashboard runs in three deployment contexts, and early versions of this ADR
+described auth as three "modes." That framing conflated two different questions:
 
-1. **Standalone** — community deployment, no auth proxy, frontend handles login
-2. **Federated (RHOAI)** — runs inside odh-dashboard behind kube-auth-proxy, auth is handled before requests reach the BFF
-3. **Dev** — local development, no auth needed
+1. **Where is the dashboard deployed?** (a *mode* — an operator decision)
+2. **How does a bearer token reach the gateway?** (a *pattern* — an architecture)
 
-The OpenShell gateway enforces its own RBAC (workspace admin/user roles) using OIDC JWTs. This is different from other odh-dashboard BFFs (model-registry, gen-ai) whose downstream is k8s, which validates any token natively.
-
-We evaluated several approaches:
-- **Keycloak as shared IDP** — works but adds infrastructure RHOAI doesn't require
-- **Gateway TokenReview support** — ideal but requires upstream NVIDIA change
-- **BFF-side RBAC via SubjectAccessReview** — loses gateway's internal role model
-- **Proxy-delegated auth with OIDC fallback** — matches odh patterns, adds standalone OIDC
+Conflating them produced drift: the standalone flow was rewritten from
+sessionStorage tokens to encrypted session cookies (ADR 0010) without this ADR
+noticing, and mode checks are scattered across eight call sites in two languages
+with two different definitions of "standalone" (backend keys on `OIDC_ISSUER`;
+frontend keys on `issuer && clientId` — set one without the other and the two
+halves disagree; see issue backlog).
 
 ## Decision
 
-The BFF supports all three modes through a single auth middleware with no mode flag:
+Auth is described on two axes. **Modes** are deployment contexts. **Patterns**
+are token-custody strategies. Each mode binds to exactly one pattern.
 
-| Mode | How it activates | Frontend does | BFF does |
-|------|-----------------|---------------|----------|
-| Dev | `AUTH_DISABLED=true` env var | Shows "Continue as developer" | Skips token validation, injects `dev-user` |
-| Standalone OIDC | `OIDC_ISSUER` + `OIDC_CLIENT_ID` set, no proxy | PKCE login → stores JWT → sends `Authorization: Bearer` | Proxies OIDC discovery, exchanges auth code, forwards JWT to gateway |
-| Federated | Neither set, proxy injects headers | Nothing — renders directly | Reads `x-forwarded-access-token` or `Authorization: Bearer`, forwards to gateway |
+### The three modes
 
-The auth middleware (`proxy.go`) reads tokens from both `x-forwarded-access-token` (proxy mode) and `Authorization: Bearer` (standalone mode). It does not validate JWTs — it trusts the proxy in federated mode and trusts the IDP's token in standalone mode. The gateway validates the token against its own OIDC JWKS.
+| Mode | Activation | Trust boundary |
+|------|-----------|----------------|
+| **Dev** | `AUTH_DISABLED=true` | none — synthetic `dev-user`, no token ever forwarded |
+| **Standalone** | `OIDC_ISSUER` set (and not disabled) | the OIDC IdP |
+| **Federated** | neither set | the fronting auth proxy (kube-auth-proxy, oauth2-proxy) |
 
-The frontend determines mode from the `/api/v1/auth/config` response:
-- `authDisabled: true` → dev mode
-- `issuer` + `clientId` present → standalone OIDC mode
-- Neither → proxy-delegated mode (render authenticated app directly)
+### The three patterns
+
+| Pattern | Custody | Who uses it |
+|---------|---------|-------------|
+| **Token relay** | none — read a header, forward it, forget it | Federated mode (`x-forwarded-access-token`), API clients (`Authorization: Bearer`) |
+| **Session custodian** | full — BFF runs PKCE, seals tokens into an encrypted `__Host-` cookie, refreshes server-side (ADR 0010) | Standalone mode |
+| **Token exchange** | delegated — swap an incoming token for a gateway-scoped token via RFC 8693 | *Not implemented.* The future federated pattern if/when the platform provides a shared IdP with token exchange (RHAISTRAT-2183); see ADR 0005 |
+
+### Mode × pattern binding
+
+| Mode | Pattern | `TrustProxyHeader` | Session codec |
+|------|---------|--------------------|---------------|
+| Dev | none | false | nil |
+| Standalone | session custodian (+ Bearer relay for API clients) | **false** — honoring the proxy header here would let any client forge it | built |
+| Federated | token relay | true | nil |
+
+Bearer resolution is one precedence chain for all modes
+(`backend/internal/auth/proxy.go`): proxy header (if trusted) → `Authorization:
+Bearer` → session cookie → 401.
+
+### Frontend mode detection
+
+The frontend derives its mode solely from `GET /api/v1/auth/config`:
+`authDisabled` → dev; `issuer` present → standalone (login page + PKCE);
+neither → federated (render authenticated app directly). The config endpoint is
+the single source of truth — the frontend must never infer mode from its own
+environment.
 
 ## Consequences
 
-- **No provider-specific code.** The OIDC handler works with Dex, Keycloak, Okta, Entra ID, or any standard OIDC provider. The BFF never imports a provider SDK.
-- **Federated mode matches odh-dashboard patterns exactly.** Same `x-forwarded-access-token` header, same proxy-delegated trust model as model-registry, gen-ai, agent-ops.
-- **Standalone OIDC is additional scope** that model-registry doesn't need (because their downstream is k8s, not an OIDC-only gateway). This is necessary, not a hack.
-- **The credential bridge gap remains for federated mode** when the cluster uses default OpenShift OAuth (opaque tokens). The gateway can't validate opaque tokens. This works when the customer configures an external OIDC provider (Keycloak/Entra), which kube-auth-proxy supports since RHOAI 3. For clusters without external OIDC, either the gateway needs TokenReview support or the BFF must enforce RBAC via SubjectAccessReview.
-- **OIDC discovery is proxied server-side** (`/api/v1/auth/discovery`) to avoid CORS issues. This is a standard BFF pattern (Grafana, ArgoCD, Backstage all do this).
+- **One mode enum, computed once.** The scattered boolean checks
+  (`main.go`, `oidc_handler.go` ×3, `App.tsx`, `logout.ts`, `LoginPage.tsx`)
+  must collapse into a single `AuthMode` computed in `main.go` and echoed
+  verbatim in `/auth/config`. Until then the FE/BE detection mismatch
+  (`OIDC_ISSUER` set without `OIDC_CLIENT_ID` → backend standalone, frontend
+  federated, no login UI reachable) is a live bug. Tracked as a proposed issue.
+- **No provider-specific code.** Any standard OIDC IdP works (Keycloak, Dex,
+  Okta, Entra ID). The BFF never imports a provider SDK.
+- **Patterns are additive, not conditional.** A new pattern (token exchange)
+  slots into the resolution chain without touching the existing two. Mode
+  logic never leaks into handlers — handlers see "there is a bearer in the
+  context" and nothing else.
+- The gateway supports four auth modes upstream (mTLS, OIDC, Edge JWT,
+  plaintext). The dashboard supports exactly two of them: **OIDC** and
+  **unauthenticated** (dev). mTLS and Edge JWT client auth are explicitly out
+  of scope for the BFF.

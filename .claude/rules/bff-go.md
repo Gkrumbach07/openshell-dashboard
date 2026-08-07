@@ -109,16 +109,22 @@ Key patterns:
 
 ## Auth
 
-Proxy-delegated authentication (see ADR 0003). The BFF is a dumb pipe for tokens:
+Auth modes × patterns (ADR 0001), token custody without validation (ADR 0003), scope bounded by ADR 0011.
 
-1. `auth/proxy.go` reads the token from `x-forwarded-access-token` header (proxy mode) or `Authorization: Bearer` header (standalone mode)
-2. Token is stored in request context
-3. `client.go` reads token from context and forwards as gRPC `authorization: Bearer` metadata
-4. Gateway enforces RBAC (admin/user roles) and workspace membership
+Bearer resolution is one precedence chain in `auth/proxy.go`, identical for all modes:
 
-The BFF does NOT validate tokens, call JWKS endpoints, or parse JWT claims. It has zero dependency on `go-oidc`.
+1. `x-forwarded-access-token` header — read ONLY when `TrustProxyHeader` (federated mode)
+2. `Authorization: Bearer` header (API clients)
+3. Encrypted session cookie via `sessionManager.TokenFromSession` (standalone browsers, ADR 0010)
+4. No bearer → 401
 
-The standalone OIDC endpoints in `oidc_handler.go` are server-side proxies for the frontend's PKCE flow — they pass through to the IDP without inspecting tokens. Routes (under `/api/v1/`): `auth/discovery`, `auth/token-exchange`, `auth/refresh`, `auth/logout`.
+The token lands in request context; `gateway/client.go` forwards it as gRPC `authorization: Bearer` metadata via per-RPC credentials. Gateway enforces RBAC (admin/user roles) and workspace membership — the BFF never does.
+
+The BFF does NOT validate tokens, call JWKS endpoints, or make authorization decisions. Zero dependency on `go-oidc`. (`jwtExpiry` reads the unverified `exp` claim purely to schedule refresh — that is custody bookkeeping, not validation.)
+
+Standalone custody machinery: `oidc_handler.go` (discovery proxy, PKCE code exchange, logout), `auth/session.go` (AES-256-GCM cookie codec, chunking), `api/session_manager.go` (transparent server-side refresh, single-flight, 12h lifetime cap). Routes (under `/api/v1/`): `auth/config`, `auth/discovery`, `auth/token-exchange` (POST), `auth/session`, `auth/logout` (POST), `auth/whoami`. There is NO `/auth/refresh` — refresh is transparent inside the middleware.
+
+Before adding anything auth-adjacent, check the ADR 0011 never-list: no JWT validation, no RBAC, no k8s API calls, no credential brokering, no server-side state.
 
 ## Configuration
 
@@ -134,8 +140,10 @@ Env vars (some also available as CLI flags):
 | `AUTH_TOKEN_HEADER` | `-auth-token-header` | `x-forwarded-access-token` | Token header name |
 | `AUTH_USER_HEADER` | `-auth-user-header` | `x-auth-request-user` | User header name |
 | `ALLOWED_ORIGINS` | `-allowed-origins` | | Comma-separated CORS origins |
-| `OIDC_ISSUER` | | | OIDC issuer URL (standalone mode) |
+| `OIDC_ISSUER` | | | OIDC issuer URL — **the mode discriminator**: set = standalone, empty = federated |
 | `OIDC_CLIENT_ID` | | | OIDC client ID (standalone mode) |
+| `OIDC_CLIENT_SECRET` | | | Optional; confidential client via `client_secret_post`. Env-only, never a flag |
+| `SESSION_SECRET` | | | Derives AES session-cookie key. Required in production standalone; ephemeral fallback only when `DEPLOYMENT_CONTEXT=dev` |
 | `ADMIN_ROLE` | `-admin-role` | `admin` | OIDC role claim for admin |
 | `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out` | Post-logout redirect URL |
 | `OIDC_SCOPES` | | `openid profile email groups` | OIDC scopes to request |
