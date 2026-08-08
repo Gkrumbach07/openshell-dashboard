@@ -104,6 +104,30 @@ RBAC decisions.
   The secure-agent-workspace validated pattern ships exactly this setup.
   **Deployment requirement:** the BFF must only be reachable through the
   proxy — anything that can reach the BFF directly can present any header.
+
+  A verified sidecar configuration (Dex as IdP, gateway audience =
+  `client_id`):
+
+  ```
+  --provider=oidc
+  --oidc-issuer-url=https://<idp>            # same issuer the gateway trusts
+  --client-id=openshell-dashboard            # must match the gateway's audience
+  --redirect-url=https://<dashboard-host>/oauth2/callback
+  --upstream=http://127.0.0.1:8080/          # the BFF
+  --http-address=0.0.0.0:4180                # point the Service/Route here
+  --scope=openid profile email groups
+  --pass-authorization-header=true           # forwards the ID token as the bearer
+  --pass-user-headers=true                   # then set AUTH_USER_HEADER=x-forwarded-user
+  --email-domain=*
+  --reverse-proxy=true
+  --insecure-oidc-allow-unverified-email     # needed for IdPs that map a username
+                                             # into the email claim without
+                                             # email_verified (e.g. Dex's
+                                             # OpenShift connector)
+  ```
+
+  Note the client must be **confidential** (oauth2-proxy requires a client
+  secret) — a PKCE-only public client registration is not enough.
 - **Dev** (`AUTH_DISABLED=true`): no auth, synthetic dev-user, no tokens
   forwarded. `make dev-full` runs the gateway with unauthenticated calls
   allowed; Keycloak still mints real JWTs for exercising the Bearer relay
