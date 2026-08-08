@@ -1,6 +1,6 @@
 # ADR 0008: Polling for Data, WebSocket for the Terminal Only
 
-**Status:** Accepted (v2 — supersedes "no WebSockets anywhere" of 2026-08-04)
+**Status:** Accepted
 **Date:** 2026-08-07
 **Authors:** Gage Krumbach
 
@@ -11,8 +11,7 @@ The gateway has three streaming RPCs: `WatchSandbox` (server-stream),
 of this ADR said "no WebSockets anywhere in the stack; terminal access is via
 the CLI." Reality overruled it: the interactive terminal shipped
 (`/api/v1/workspaces/{ws}/sandboxes/{name}/terminal`, a WebSocket ⇄ gRPC
-bidi-stream relay), PR #19 authenticated it, and ADR 0010's cookie sessions
-now cover WebSocket upgrades as a first-class request type. An ADR that the
+bidi-stream relay), PR #19 authenticated it, and the auth architecture treats WebSocket upgrades as a first-class request type (ADR 0003). An ADR that the
 codebase contradicts is worse than no ADR.
 
 The original constraint was real: a downstream federation proxy may not relay
@@ -43,7 +42,7 @@ through every proxy.
 An interactive shell is bidirectional and latency-sensitive; there is no
 polling equivalent. The relay lives in `terminal_handler.go`: authenticate the
 upgrade (same bearer chain as every request — the fronting proxy validates
-the upgrade and injects the header, per ADR 0014), resolve name → sandbox_id,
+the upgrade and injects the header, per ADR 0003), resolve name → sandbox_id,
 bridge stdin/stdout/stderr/resize/exit between the WebSocket and
 `ExecSandboxInteractive`.
 

@@ -1,4 +1,4 @@
-# ADR 0012: The Extension Surface
+# ADR 0005: The Extension Surface
 
 **Status:** Accepted
 **Date:** 2026-08-07
@@ -6,8 +6,7 @@
 
 ## Context
 
-ADR 0002 chose npm as the consumption model and ADR 0004 made pages
-self-contained. Neither defines the *complete* contract a downstream consumer
+ADR 0002 chose npm as the consumption model. Nothing defined the *complete* contract a downstream consumer
 can rely on, and the gaps are showing: the published package is currently
 broken (co-located CSS never reaches `dist`), the root `types` field points at
 the wrong barrel, all nine peerDependencies are duplicated as regular
@@ -51,13 +50,29 @@ consumption site. The slot roster is part of the contract:
 
 Adding a slot is a minor version; removing or changing a signature is major.
 
-### 3. Navigation callbacks — routing stays the host's
+### 3. Self-contained pages with navigation callbacks — routing stays the host's
 
-Optional `onSelect` / `onViewSandbox` / `onTabChange` props with router-hook
-fallbacks (ADR 0004). Contract tightening: **every** page that navigates or
-has tabs exposes the callback (WorkspaceDetailPage currently swallows
-`onViewSandbox` and hides its tab state — bug), and callback-vs-fallback
-behavior must be identical in card and table views.
+Every page under `src/pages/` is importable and wrappable by a downstream
+consumer:
+
+- Takes explicit props (`workspace`, `sandboxName`, …) and uses internal
+  `src/api/` hooks for data — never assumes external context providers
+  beyond React Query's `QueryClientProvider` (and `AlertProvider` where
+  alerts are used)
+- No breadcrumbs, no app-shell chrome — the standalone shell adds its own,
+  downstream adds its own
+- Navigation is via optional `onSelect` / `onViewSandbox` / `onTabChange`
+  callbacks with router-hook fallbacks (`useNavigate`/`useSearchParams`).
+  Callbacks are optional rather than required because required callbacks
+  would force the standalone app to wire every page explicitly; optional
+  with fallback means pages work out of the box standalone and are
+  overridable downstream.
+
+Contract tightening: **every** page that navigates or has tabs exposes the
+callback (WorkspaceDetailPage currently swallows `onViewSandbox` and hides
+its tab state — bug), and callback-vs-fallback behavior must be identical
+in card and table views. Pages still require a Router context for the
+fallback hooks — downstream must provide one.
 
 ### 4. Feature flags — capability negotiation
 

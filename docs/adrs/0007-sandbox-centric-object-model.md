@@ -1,4 +1,4 @@
-# ADR 0009: Sandbox-Centric Object Model
+# ADR 0007: Sandbox-Centric Object Model
 
 **Status:** Accepted
 **Date:** 2026-08-04

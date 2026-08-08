@@ -1,4 +1,4 @@
-# ADR 0007: Proto Files as Source of Truth
+# ADR 0006: Proto Files as Source of Truth
 
 **Status:** Accepted
 **Date:** 2026-08-04

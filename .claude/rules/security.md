@@ -8,9 +8,9 @@ alwaysApply: false
 
 ## Auth
 
-- The BFF is relay-only (ADR 0014): it NEVER terminates authentication. A fronting auth proxy (oauth2-proxy standalone, kube-auth-proxy federated) owns login, sessions, refresh, logout, and CSRF, and injects the bearer
+- The BFF is relay-only (ADR 0003): it NEVER terminates authentication. A fronting auth proxy (oauth2-proxy standalone, kube-auth-proxy federated) owns login, sessions, refresh, logout, and CSRF, and injects the bearer
 - Bearer resolution is one precedence chain — `x-forwarded-access-token` → `Authorization: Bearer` → 401. No cookies, no session codec, no OIDC endpoints in the BFF
-- The BFF NEVER validates tokens (no JWKS, no go-oidc, no JWT parsing) and NEVER authorizes (ADR 0003, ADR 0011). The gateway validates against its own OIDC JWKS and enforces RBAC
+- The BFF NEVER validates tokens (no JWKS, no go-oidc, no JWT parsing) and NEVER authorizes (ADR 0003, ADR 0004). The gateway validates against its own OIDC JWKS and enforces RBAC
 - Deployment invariant: trusting `x-forwarded-access-token` is safe only when the proxy is the sole network path to the BFF (localhost sidecar, pod-internal port, proxy-only ingress). Manifests must enforce this; never expose the BFF port directly in an authenticated deployment
 - Never expose raw gRPC errors to the frontend — use `writeGrpcError()` which maps gRPC status codes to safe HTTP status codes
 - CORS configured explicitly — no wildcard origins, empty allowlist by default

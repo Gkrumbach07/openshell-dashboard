@@ -1,4 +1,4 @@
-# ADR 0006: Standalone Upstream Repository
+# ADR 0001: Standalone Upstream Repository
 
 **Status:** Accepted
 **Date:** 2026-08-04

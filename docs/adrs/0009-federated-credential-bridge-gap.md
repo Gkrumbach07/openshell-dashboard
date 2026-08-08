@@ -1,4 +1,4 @@
-# ADR 0005: Federated Mode Credential Bridge Gap
+# ADR 0009: Federated Mode Credential Bridge Gap
 
 **Status:** Open (unresolved)  
 **Date:** 2026-08-05  
@@ -51,7 +51,7 @@ The Red Hat AI Gateway is converging on **Praxis** — a single Rust-based data 
 
 **Timeline:** Praxis targets RHOAI 3.6 (replacing IPP). OpenShell integration is "work on exactly how they integrate later" (Ann Marie). This option is not available for the Sep 15 beta but may define the long-term architecture.
 
-**Impact on our BFF:** Our proxy-delegated design (ADR 0003) is already forward-compatible with Praxis. The BFF receives forwarded identity from Praxis the same way it receives `x-forwarded-access-token` from kube-auth-proxy.
+**Impact on our BFF:** Our relay-only design (ADR 0003) is already forward-compatible with Praxis. The BFF receives forwarded identity from Praxis the same way it receives `x-forwarded-access-token` from kube-auth-proxy.
 
 ## Gateway OIDC role mapping (how it works when it works)
 
@@ -95,15 +95,15 @@ Jessica Forrester, Adel Zaalouk) reframed this gap. Key outcomes:
      the OpenShell BFF, configured against the shared IdP with its own
      `client_id`/audience, injects the gateway-scoped JWT. Keycloak SSO
      makes the second flow invisible to the user. (This is the relay-only
-     shape of ADR 0014 — the secure-agent-workspace pattern already runs
+     shape of ADR 0003 — the secure-agent-workspace pattern already runs
      exactly this.)
    - **Token exchange** (not built): swap the incoming dashboard token for a
      gateway-scoped token via RFC 8693 (RHAISTRAT-2183, in Refinement). The
      cleaner long-term pattern; blocked on platform support, and per ADR
-     0011 it lands in the proxy/platform layer, not in the BFF.
+     0004 it lands in the proxy/platform layer, not in the BFF.
 4. **The spike Mrunal called for is unowned** as of Aug 7.
 
-Implication for this repo: the relay-only architecture (ADR 0001/0014)
+Implication for this repo: the relay-only architecture (ADR 0003)
 already covers both mechanisms — both deliver a gateway-scoped JWT in
 `x-forwarded-access-token`, which is all the BFF ever reads. No BFF
 rearchitecting is required for either outcome.

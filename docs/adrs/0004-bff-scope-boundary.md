@@ -1,6 +1,6 @@
-# ADR 0011: The BFF Scope Boundary
+# ADR 0004: The BFF Scope Boundary
 
-**Status:** Accepted (v2 — token custody removed as a job per ADR 0014)
+**Status:** Accepted
 **Date:** 2026-08-07
 **Authors:** Gage Krumbach
 
@@ -18,7 +18,7 @@ and request hardening — with pending PRs adding rate limiting and HTTPS
 enforcement on top.
 
 Each addition was locally justified. Collectively they blurred what this
-component *is*. The largest response was architectural — ADR 0014 removed
+component *is*. The largest response was architectural — ADR 0003 removed
 the entire identity layer (~1,500 lines, six endpoints, and the hardening
 that was accumulating to protect it). This ADR bounds what remains, and is
 the authority reviewers cite to keep it bounded.
@@ -37,7 +37,7 @@ the BFF is as a place to put it.
 2. **Browser-app hosting.** Static SPA serving with index fallback, the
    `/auth/config` bootstrap contract (`authDisabled`, `adminRole`,
    `logoutUrl`, feature flags), and one WebSocket origin check. Auth
-   termination, CSRF, and CORS are the fronting proxy's job (ADR 0014);
+   termination, CSRF, and CORS are the fronting proxy's job (ADR 0003);
    the BFF is same-origin behind it.
 3. **Operational surface.** Health/readiness probes, structured logging,
    graceful shutdown, gateway TLS setup.
@@ -48,7 +48,7 @@ The BFF must never:
 
 - **Terminate authentication** — no login flows, no OIDC endpoints, no
   session cookies, no refresh; the fronting proxy owns the browser
-  relationship (ADR 0014)
+  relationship (ADR 0003)
 - **Validate tokens** — no JWKS, no signature/issuer/audience checks, no
   JWT parsing (ADR 0003)
 - **Make authorization decisions** — no role checks, no SAR/SSAR, no
@@ -58,7 +58,7 @@ The BFF must never:
 - **Broker credentials** — no fetching, storing, or injecting provider
   secrets; write-only pass-through to the gateway, key names only on read
 - **Mint or exchange tokens** — RFC 8693, if it comes, lands in the proxy
-  layer or the platform, not here (ADR 0005)
+  layer or the platform, not here (ADR 0009)
 - **Manage users or workspace membership state** — the gateway owns
   membership; we call its RPCs
 - **Rate-limit or WAF** — the proxy/ingress layer owns traffic policy
@@ -69,10 +69,10 @@ The BFF must never:
 
 | Proposal | Verdict |
 |----------|---------|
-| "Add a login page for standalone" | No — ship oauth2-proxy in the deployment (ADR 0014) |
+| "Add a login page for standalone" | No — ship oauth2-proxy in the deployment (ADR 0003) |
 | "Validate the JWT so we fail fast" | No — validation duplicated is validation skewed |
 | "Check admin role to protect admin routes" | No — display-layer gating only; gateway enforces |
-| "SSAR against sandbox CRs for RHOAI tenancy" | No — rejected Option C (ADR 0005) |
+| "SSAR against sandbox CRs for RHOAI tenancy" | No — rejected Option C (ADR 0009) |
 | "BFF fetches a MaaS key and injects it as a provider credential" | No — credential brokering; gateway providers v2 / platform territory |
 | "Rate-limit the auth endpoints" | Moot — there are no auth endpoints; ingress protects what exists |
 | "Add Redis for cross-replica anything" | No — statelessness is load-bearing |
@@ -85,8 +85,8 @@ The BFF must never:
 - The BFF is deliberately boring: with auth gone, the interesting surface
   is DTO fidelity and secret hygiene (`models.From*()`), which is where
   review attention belongs.
-- PR #2 (SDK migration, ADR 0013) changes *how* job 1 talks gRPC, not the
+- PR #2 (SDK migration, ADR 0010) changes *how* job 1 talks gRPC, not the
   job list.
-- If a platform auth layer (Praxis — ADR 0005 Option D) lands in front of
+- If a platform auth layer (Praxis — ADR 0009 Option D) lands in front of
   everything, nothing here changes: the BFF was already designed as the
   thing behind a proxy.

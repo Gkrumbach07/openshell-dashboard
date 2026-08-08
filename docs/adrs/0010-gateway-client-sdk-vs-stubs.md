@@ -1,4 +1,4 @@
-# ADR 0013: Gateway Client — SDK over Generated Stubs
+# ADR 0010: Gateway Client — SDK over Generated Stubs
 
 **Status:** Proposed (accepting = merging PR #2 after conditions below)
 **Date:** 2026-08-07
@@ -18,7 +18,7 @@ lives in a personal repo (`rhuss/openshell-sdk-go`, v0.3.1) with a stated
 intent to move into the OpenShell org. One functional gap is known (global
 policy listing, SDK #44).
 
-ADR 0007 ("proto is source of truth") is *not* at stake: it governs what API
+ADR 0006 ("proto is source of truth") is *not* at stake: it governs what API
 concepts exist. Whether we reach those RPCs through our own stubs or an SDK is
 an implementation question underneath it.
 
@@ -39,7 +39,7 @@ types directly; the SDK is an implementation detail behind it.
    explicitly flagged off until it is.
 3. **Secret hygiene preserved:** the `models.From*()` secret-stripping layer
    survives the migration untouched — DTO conversion stays ours regardless
-   of what client produces the protos (ADR 0011 job 1).
+   of what client produces the protos (ADR 0004 job 1).
 
 ## Why not stay on stubs
 
@@ -61,8 +61,8 @@ into "trust a pinned artifact we control or an org-owned project."
 - `make proto` and the `proto-sync` skill retire after migration; the
   `.claude/rules/openshell-api.md` hard-facts list remains (it documents API
   semantics, not stubs).
-- `backend/proto/` goes away as a directory; ADR 0007's "source of truth"
+- `backend/proto/` goes away as a directory; ADR 0006's "source of truth"
   pointer moves to the upstream `NVIDIA/OpenShell/proto/` + SDK version pin.
-- PR #2 needs a rebase over the cookie-session auth (it predates #24); the
+- PR #2 needs a rebase over the relay-only auth (it predates PRs #24/#29); the
   per-RPC bearer forwarding moves to `sdkclient.ContextAuthProvider` and must
   be re-verified against all three auth modes before merge.

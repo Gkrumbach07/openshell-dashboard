@@ -96,7 +96,7 @@ OIDC only (no mTLS, no OpenShift OAuth). Three modes, one middleware:
 - **Federated** (behind oauth2-proxy / kube-auth-proxy): the proxy injects the user's token as `x-forwarded-access-token`; the BFF forwards it.
 - **Dev** (`AUTH_DISABLED=true`): no auth, synthetic dev-user, no tokens forwarded.
 
-The BFF never validates JWTs — it forwards the bearer to the gateway on every gRPC call, and the gateway makes all RBAC decisions. See `docs/adrs/0010-cookie-session-standalone-auth.md` for the full design.
+The BFF never validates JWTs — it forwards the bearer to the gateway on every gRPC call, and the gateway makes all RBAC decisions. See `docs/adrs/0003-auth-relay-only-bff.md` for the full design.
 
 ## Make targets
 
