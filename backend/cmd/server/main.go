@@ -13,6 +13,7 @@ package main
 import (
 	"flag"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -37,6 +38,7 @@ func envOr(key, fallback string) string {
 func main() {
 	var (
 		port          = flag.String("port", envOr("PORT", defaultPort), "listen port (env PORT)")
+		listenAddress = flag.String("listen-address", envOr("LISTEN_ADDRESS", ""), "listen address (env LISTEN_ADDRESS)")
 		gatewayURL    = flag.String("gateway-url", envOr("OPENSHELL_GATEWAY_URL", defaultGatewayURL), "OpenShell gateway gRPC endpoint (env OPENSHELL_GATEWAY_URL)")
 		gatewayCACert = flag.String("gateway-ca-cert", envOr("GATEWAY_CA_CERT", ""), "path to CA cert for gateway TLS (env GATEWAY_CA_CERT)")
 		staticDir     = flag.String("static-dir", envOr("STATIC_DIR", ""), "frontend static assets directory (env STATIC_DIR)")
@@ -88,7 +90,7 @@ func main() {
 
 	app := api.NewApp(gatewayClient, authMiddleware, *staticDir, authCfg)
 
-	addr := ":" + *port
+	addr := net.JoinHostPort(*listenAddress, *port)
 	slog.Info("openshell-dashboard BFF listening",
 		"addr", addr,
 		"gateway", *gatewayURL,
