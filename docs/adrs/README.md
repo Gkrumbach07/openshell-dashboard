@@ -1,13 +1,14 @@
 # Architecture Decision Records
 
 One decision per document. **Accepted** = in force; **Proposed** = decided
-pending conditions. Open questions that haven't reached a decision live in
-[`docs/design/`](../design/), not here.
+pending conditions. Open questions that
+haven't reached a decision are not recorded here — an ADR appears when the
+decision does.
 
 | ADR | Decision | Status |
 |-----|----------|--------|
 | [0001](0001-npm-package-consumption-model.md) | Standalone repo, consumed downstream as an npm package | Accepted |
-| [0002](0002-auth-relay-only-bff.md) | Auth: relay-only BFF behind a fronting proxy (oauth2-proxy / kube-auth-proxy) | Accepted |
+| [0002](0002-auth-relay-only-bff.md) | Auth: relay-only BFF behind a fronting proxy (e.g. oauth2-proxy) | Accepted |
 | [0003](0003-bff-scope-boundary.md) | BFF scope: three jobs and a never-list | Accepted |
 | [0004](0004-extension-surface.md) | Extension surface: five mechanisms, zero co-located CSS | Accepted |
 | [0005](0005-surface-the-api-as-is.md) | Surface the upstream API as-is — no invented endpoints or abstractions | Accepted |

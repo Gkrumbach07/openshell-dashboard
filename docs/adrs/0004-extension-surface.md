@@ -109,8 +109,8 @@ own any CSS ourselves.
 Model federation hosts, npm consumers, and the standalone app must all get
 identical behavior from identical inputs. Every ad-hoc integration point
 ("just read this global," "just this one extra CSS file") is a fork in that
-guarantee. Five mechanisms is enough to build the odh-dashboard integration
-today (proven on the `openshell-npm-integration` branch); anything they can't
+guarantee. Five mechanisms is enough to build a full platform integration
+(proven in practice); anything they can't
 express is a conversation about extending the contract, not a workaround.
 
 ## Consequences
@@ -122,6 +122,6 @@ express is a conversation about extending the contract, not a workaround.
   proposed issues.
 - The stale `FEATURE_FLAGS.md` and one-sentence README consumer docs get
   rewritten against this ADR.
-- Downstream (RHOAI) wraps these five mechanisms and nothing else. If the
-  Aug 7 topology discussions later demand deeper integration (shared
-  navigation, cross-app state), that lands here first as a contract change.
+- Downstream consumers wrap these five mechanisms and nothing else. If a
+  future integration demands deeper coupling (shared navigation, cross-app
+  state), that lands here first as a contract change.

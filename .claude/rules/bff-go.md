@@ -109,7 +109,7 @@ Key patterns:
 
 ## Auth
 
-Relay-only (ADR 0002): the BFF never terminates authentication. A fronting proxy (oauth2-proxy standalone, kube-auth-proxy federated) owns login/sessions/refresh/CSRF and injects the bearer. Scope bounded by ADR 0003.
+Relay-only (ADR 0002): the BFF never terminates authentication. A fronting proxy (oauth2-proxy standalone, the host platform's proxy when embedded) owns login/sessions/refresh/CSRF and injects the bearer. Scope bounded by ADR 0003.
 
 Bearer resolution is one precedence chain in `auth/proxy.go`, identical everywhere:
 

@@ -6,17 +6,17 @@
 
 ## Context
 
-The OpenShell Dashboard is a standalone upstream repo: an independent open-source project for anyone running an OpenShell gateway, not an RHOAI feature. It lives outside odh-dashboard (which would lock out the community and couple release cadence to RHOAI) and outside NVIDIA/OpenShell (whose Rust toolchain and CI do not fit a web app); the target home is the neutral `ai-openshell` org. The repo has zero `@odh-dashboard/*` imports.
+The OpenShell Dashboard is a standalone upstream repo: an independent open-source project for anyone running an OpenShell gateway. It lives outside any consuming platform's monorepo (which would lock out the community and couple our release cadence to theirs) and outside NVIDIA/OpenShell (whose Rust toolchain and CI do not fit a web app); the target home is the neutral `ai-openshell` org. The repo has zero imports from any downstream platform.
 
-That structure makes downstream consumption a real question: odh-dashboard (RHOAI) must consume this repo via module federation. We evaluated three consumption models:
+That structure makes downstream consumption a real question: host platforms embed these pages via module federation. We evaluated three consumption models:
 
-1. **Subtree sync** (model-registry pattern) — `package-subtree.sh` replays upstream commits into `packages/*/upstream/`, midstream writes `odh/` integration code inside the synced directory. Conflict resolution on every sync.
-2. **npm package** (mod-arch-core pattern) — upstream publishes to npm, downstream installs as a dependency. Version bumps are explicit. No sync conflicts.
-3. **Direct monorepo development** (agent-ops pattern) — develop directly in `packages/agent-ops/` in odh-dashboard. No upstream/downstream separation.
+1. **Subtree sync** — a script replays upstream commits into a vendored directory inside the consumer's monorepo; integration code is written alongside the synced tree. Conflict resolution on every sync.
+2. **npm package** — upstream publishes to npm, downstream installs as a dependency. Version bumps are explicit. No sync conflicts.
+3. **Direct monorepo development** — develop directly inside a consuming platform's monorepo. No upstream/downstream separation.
 
 ## Decision
 
-npm package, following the `mod-arch-core` precedent (`opendatahub-io/mod-arch-library`).
+npm package — the standard shared-component-library pattern.
 
 The upstream repo builds a publishable package with:
 - `tsconfig.build.json` compiling to `dist/` with `.js` + `.d.ts`
@@ -25,15 +25,15 @@ The upstream repo builds a publishable package with:
 - `peerDependencies` for react, PatternFly, react-query, react-router-dom
 - CSS files copied to `dist/` alongside compiled JS
 
-The downstream `packages/agent-ops/` in odh-dashboard installs it via `file:` protocol (dev) or npm version (production), adds webpack aliases to resolve from source (for CSS handling), and writes thin wrapper components + `extensions.ts`.
+A downstream consumer installs it via `file:` protocol (dev) or a published version (production), adds webpack aliases to resolve from source where its build needs to (CSS handling), and writes thin wrapper components around the exported pages.
 
 ## Why not subtree
 
-Our pages are self-contained with props — downstream wrappers don't need `~/app/` internal imports. Model-registry uses subtree because its wrappers reach into upstream internals (`ModelRegistryRoutes`, `AppContext`, etc.). Our slot system and prop-driven pages eliminate that need. npm is strictly simpler: version bump vs. patch-replay with conflict resolution.
+Subtree sync earns its cost only when downstream wrappers must reach into upstream internals (routes, app context, shell components). Our pages are self-contained with props, and the slot system covers injection — wrappers import only from the published barrels. npm is strictly simpler: version bump vs. patch-replay with conflict resolution.
 
 ## Why not direct monorepo
 
-The project decision is standalone upstream repo (community, NVIDIA/OpenShell ecosystem, non-RHOAI users). Direct monorepo development would lose the community story.
+The project is a standalone upstream repo for the whole OpenShell ecosystem. Direct monorepo development inside one consumer would lose the community story.
 
 ## Consequences
 

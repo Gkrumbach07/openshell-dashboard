@@ -7,7 +7,7 @@
 ## Context
 
 The dashboard runs in three deployment contexts (local dev, standalone
-community installs, federated inside RHOAI), and the OpenShell gateway
+community installs, embedded in a hosting platform), and the OpenShell gateway
 enforces its own RBAC using OIDC JWTs validated against its JWKS. Someone has
 to get a JWT from the user's browser to the gateway on every request —
 including WebSocket upgrades for the terminal.
@@ -26,7 +26,7 @@ deployment. The BFF relays bearers and does nothing else with them.
 |------|-----------|--------------------|---------------|
 | **Dev** | `AUTH_DISABLED=true` | nobody — synthetic `dev-user`, no token ever forwarded | none |
 | **Standalone** | default | **oauth2-proxy** shipped alongside the BFF (compose `auth` profile / k8s sidecar), configured against the deployment's IdP | `x-forwarded-access-token` |
-| **Federated** | default | the platform's proxy (kube-auth-proxy in RHOAI) | `x-forwarded-access-token` |
+| **Federated** | default | the host platform's auth proxy | `x-forwarded-access-token` |
 
 Standalone and federated are the **same architecture** with different proxy
 operators — the BFF cannot and need not distinguish them. The only auth
@@ -56,7 +56,7 @@ Bearer resolution (`backend/internal/auth/proxy.go`), identical everywhere:
 Unconditional trust in `x-forwarded-access-token` is safe only when the
 proxy is the **sole network path** to the BFF (localhost sidecar,
 pod-internal port, proxy-only ingress). This is the standard contract every
-`x-forwarded-*` consumer lives under — including every other RHOAI BFF.
+`x-forwarded-*` consumer lives under.
 Manifests and the README must state and implement it; never expose the BFF
 port directly in an authenticated deployment.
 
@@ -76,9 +76,8 @@ so the proxy re-authenticates, unless the host installed
   supported by the dashboard. The proxy-to-user leg is OIDC; the
   BFF-to-gateway leg is the forwarded JWT.
 - **Token exchange** (RFC 8693 — swap a platform token for a gateway-scoped
-  one, RHAISTRAT-2183): if it materializes, it lands in the proxy/platform
-  layer where auth already lives, not in the BFF. See docs/design/federated-credential-bridge.md for the
-  federated identity question it would answer.
+  one): if it materializes, it lands in the proxy/platform
+  layer where auth already lives, not in the BFF.
 
 ## History — how we got here (and why it's recorded)
 
@@ -110,7 +109,9 @@ ships alongside — is what makes the pure relay sustainable. Proposals to
   are proxy configuration or gateway configuration.
 - Any standard OIDC IdP works — via the proxy's config, not ours. The relay
   is indifferent to token format; what the *gateway* can validate is the
-  only compatibility question (see docs/design/federated-credential-bridge.md).
+  only compatibility question — a gateway validating OIDC JWTs needs the
+  fronting proxy to hand it JWTs from an issuer it trusts, which is a
+  deployment configuration concern, not BFF code.
 - `make dev-full` runs the dev gateway with unauthenticated users allowed;
   a one-command oauth2-proxy profile for a fully authenticated standalone
   stack is tracked as a follow-up.

@@ -62,7 +62,7 @@ The BFF must never:
 - **Broker credentials** — no fetching, storing, or injecting provider
   secrets; write-only pass-through to the gateway, key names only on read
 - **Mint or exchange tokens** — RFC 8693, if it comes, lands in the proxy
-  layer or the platform, not here (see docs/design/federated-credential-bridge.md)
+  layer or the platform, not here
 - **Manage users or workspace membership state** — the gateway owns
   membership; we call its RPCs
 - **Rate-limit or WAF** — the proxy/ingress layer owns traffic policy
@@ -76,8 +76,8 @@ The BFF must never:
 | "Add a login page for standalone" | No — ship oauth2-proxy in the deployment (ADR 0002) |
 | "Validate the JWT so we fail fast" | No — validation duplicated is validation skewed |
 | "Check admin role to protect admin routes" | No — display-layer gating only; gateway enforces |
-| "SSAR against sandbox CRs for RHOAI tenancy" | No — rejected Option C (see docs/design/federated-credential-bridge.md) |
-| "BFF fetches a MaaS key and injects it as a provider credential" | No — credential brokering; gateway providers v2 / platform territory |
+| "Enforce tenancy via Kubernetes SubjectAccessReview" | No — duplicates the gateway's role model; two sources of truth |
+| "BFF fetches a platform API key and injects it as a provider credential" | No — credential brokering; gateway providers / platform territory |
 | "Rate-limit the auth endpoints" | Moot — there are no auth endpoints; ingress protects what exists |
 | "Add Redis for cross-replica anything" | No — statelessness is load-bearing |
 | "Serve the SPA and inject config" | Yes — job 2 |
@@ -91,6 +91,6 @@ The BFF must never:
   review attention belongs.
 - PR #2 (SDK migration, ADR 0006) changes *how* job 1 talks gRPC, not the
   job list.
-- If a platform auth layer (Praxis — see the design note) lands in front of
-  everything, nothing here changes: the BFF was already designed as the
+- If a hosting platform later puts its own auth-owning data plane in front
+  of everything, nothing here changes: the BFF was already designed as the
   thing behind a proxy.
