@@ -142,7 +142,7 @@ make dev        # frontend dev server (:3000) + BFF (:8080)
 make dev-full   # start Keycloak + gateway, then run dev (full OIDC stack)
 make build      # docker image (multi-stage: frontend + Go binary)
 make test       # jest + go test
-make lint       # eslint + go vet
+make lint       # eslint + golangci-lint + prettier
 make typecheck  # tsc --noEmit
 ```
 
@@ -166,7 +166,7 @@ Browser ── REST ──► Go BFF ── gRPC (bearer) ──► OpenShell ga
 ```
 
 - **Proto is source of truth.** `backend/proto/` is copied from `NVIDIA/OpenShell/proto/`; `make proto` regenerates `backend/gen/`. Wrappers in `backend/internal/gateway/` cover the Phase 1 user-facing RPCs only.
-- **No WebSockets**: status uses polling (5s via React Query `refetchInterval`).
+- **Polling for status**: sandbox state uses polling (5s via React Query `refetchInterval`). WebSockets are used only for the interactive terminal.
 - **Secrets never reach the browser**: provider credentials are write-only; the BFF serializes only credential key names.
 - **No sandbox stop/start**: the OpenShell lifecycle is create → ready/error → delete. The UI reflects the API as-is.
 - Sandbox **policy is required at create**: the form ships client-side starter templates (the gateway has no server-side policy library).
