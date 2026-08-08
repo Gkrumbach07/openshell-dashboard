@@ -209,7 +209,7 @@ const AppRoutes: React.FC = () => {
     );
   }
 
-  // Every non-dev deployment sits behind an auth proxy (ADR 0014): the proxy
+  // Every non-dev deployment sits behind an auth proxy (ADR 0003): the proxy
   // authenticated this request before it reached us, so render directly.
   return <AuthenticatedApp />;
 };

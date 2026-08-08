@@ -2,7 +2,7 @@
 // (optionally) the built static assets, talking to the OpenShell gateway over
 // gRPC with per-request bearer token forwarding.
 //
-// The BFF is a token relay (ADR 0014): authentication is owned by an external
+// The BFF is a token relay (ADR 0003): authentication is owned by an external
 // auth proxy (oauth2-proxy, kube-auth-proxy, ...) which injects the user's
 // bearer token as an HTTP header. The BFF reads that header — or an explicit
 // Authorization: Bearer from API clients — and forwards the token to the

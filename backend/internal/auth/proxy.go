@@ -8,7 +8,7 @@
 //  2. An explicit `Authorization: Bearer` header (API clients, tests).
 //
 // There is deliberately no third source: the BFF holds no sessions and runs
-// no OIDC flows (ADR 0014). Deployments that need browser login put an auth
+// no OIDC flows (ADR 0003). Deployments that need browser login put an auth
 // proxy in front; the proxy authenticates WebSocket upgrades too, since it
 // injects the token header on the upgrade request like any other.
 package auth

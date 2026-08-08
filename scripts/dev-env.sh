@@ -460,7 +460,7 @@ bind_address = "0.0.0.0:${GATEWAY_GRPC_PORT}"
 compute_drivers = ["podman"]
 
 [openshell.gateway.auth]
-# Dev environment only (ADR 0014): the BFF runs with AUTH_DISABLED=true and
+# Dev environment only (ADR 0003): the BFF runs with AUTH_DISABLED=true and
 # forwards no bearer, so the gateway must accept unauthenticated calls. Real
 # Keycloak JWTs still validate via the OIDC flags — exercise the relay path
 # with: curl -H "Authorization: Bearer \$TOKEN" localhost:8080/api/v1/...
@@ -606,7 +606,7 @@ write_env_file() {
 OPENSHELL_DIR=${OPENSHELL_DIR}
 OPENSHELL_GATEWAY_URL=localhost:${GATEWAY_GRPC_PORT}
 GATEWAY_CA_CERT=${PKI_DIR}/ca.crt
-# The BFF is a token relay (ADR 0014) — it runs no OIDC flows of its own.
+# The BFF is a token relay (ADR 0003) — it runs no OIDC flows of its own.
 # Local dev uses dev mode against a gateway that allows unauthenticated
 # calls; to test real browser auth, put oauth2-proxy in front of the BFF
 # pointed at the Keycloak realm this script starts (see README "Auth").

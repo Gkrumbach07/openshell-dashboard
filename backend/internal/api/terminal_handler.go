@@ -146,7 +146,7 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 
 // checkWebSocketOrigin enforces same-origin on browser WebSocket handshakes,
 // as defense-in-depth against cross-site WebSocket hijacking. The BFF is
-// same-origin-only by design (ADR 0014): browsers reach it via its own origin
+// same-origin-only by design (ADR 0003): browsers reach it via its own origin
 // or through a fronting proxy on that origin — there is no cross-origin
 // consumer to allow for.
 func checkWebSocketOrigin(r *http.Request) bool {
