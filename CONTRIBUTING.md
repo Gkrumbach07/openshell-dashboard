@@ -25,7 +25,7 @@ You need a running OpenShell gateway. Either `openshell gateway start` (Podman) 
 2. Make your changes
 3. Run the full check suite locally:
    ```bash
-   make lint        # eslint + go vet
+   make lint        # eslint + golangci-lint + prettier
    make typecheck   # tsc --noEmit
    make test        # jest + go test
    ```
@@ -74,7 +74,7 @@ This is a legal requirement for Apache 2.0 licensed projects. CI will reject uns
 
 ### API rules
 
-**The proto files are the source of truth** (see ADR 0007). Do not invent RPCs, fields, or lifecycle states. If a UI concept has no backing RPC, open an issue — do not fabricate an endpoint.
+**The proto files are the source of truth** (see `.claude/rules/openshell-api.md`). Do not invent RPCs, fields, or lifecycle states. If a UI concept has no backing RPC, open an issue — do not fabricate an endpoint.
 
 Common mistakes to avoid:
 - No sandbox stop/start/suspend (lifecycle is create → ready/error → delete)

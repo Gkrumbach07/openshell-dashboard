@@ -6,7 +6,7 @@ Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell). Go
 
 ```
 frontend/           React + TypeScript + PatternFly 6
-  src/app/          App shell, routing (App.tsx), layout; oidc/ subdir for auth
+  src/app/          App shell, routing (App.tsx), layout, theme
   src/pages/        Page components — flat files, exported for downstream
   src/components/   Shared components
   src/api/          REST client (client.ts), hooks, queryKeys.ts
