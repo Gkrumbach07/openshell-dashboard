@@ -1,4 +1,4 @@
-# ADR 0005: The Extension Surface
+# ADR 0004: The Extension Surface
 
 **Status:** Accepted
 **Date:** 2026-08-07
@@ -6,7 +6,7 @@
 
 ## Context
 
-ADR 0002 chose npm as the consumption model. Nothing defined the *complete* contract a downstream consumer
+ADR 0001 chose npm as the consumption model. Nothing defined the *complete* contract a downstream consumer
 can rely on, and the gaps are showing: the published package is currently
 broken (co-located CSS never reaches `dist`), the root `types` field points at
 the wrong barrel, all nine peerDependencies are duplicated as regular
@@ -78,7 +78,7 @@ fallback hooks — downstream must provide one.
 
 Served by the BFF (`/auth/config`), read via `useFeatureFlags()`. Flags exist
 for exactly one reason: a deployment's transport or platform cannot support a
-feature (`FEATURE_TERMINAL` per ADR 0008, `FEATURE_FILE_TRANSFER`, …). Flags
+feature (`FEATURE_TERMINAL` for WebSocket-incapable transports per ADR 0003, `FEATURE_FILE_TRANSFER`, …). Flags
 are not A/B switches and not license gates. A flag nobody reads is deleted
 (`workspaceBinding`, `resourceLinks` — removed in PR #29; the roster is now
 terminal, fileTransfer, settings, globalPolicy, credentialRefresh, services,

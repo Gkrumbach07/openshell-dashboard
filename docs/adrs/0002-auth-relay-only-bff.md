@@ -1,4 +1,4 @@
-# ADR 0003: Auth — Relay-Only BFF Behind a Fronting Proxy
+# ADR 0002: Auth — Relay-Only BFF Behind a Fronting Proxy
 
 **Status:** Accepted
 **Date:** 2026-08-07
@@ -77,7 +77,7 @@ so the proxy re-authenticates, unless the host installed
   BFF-to-gateway leg is the forwarded JWT.
 - **Token exchange** (RFC 8693 — swap a platform token for a gateway-scoped
   one, RHAISTRAT-2183): if it materializes, it lands in the proxy/platform
-  layer where auth already lives, not in the BFF. See ADR 0009 for the
+  layer where auth already lives, not in the BFF. See docs/design/federated-credential-bridge.md for the
   federated identity question it would answer.
 
 ## History — how we got here (and why it's recorded)
@@ -110,9 +110,9 @@ ships alongside — is what makes the pure relay sustainable. Proposals to
   are proxy configuration or gateway configuration.
 - Any standard OIDC IdP works — via the proxy's config, not ours. The relay
   is indifferent to token format; what the *gateway* can validate is the
-  only compatibility question (ADR 0009).
+  only compatibility question (see docs/design/federated-credential-bridge.md).
 - `make dev-full` runs the dev gateway with unauthenticated users allowed;
   a one-command oauth2-proxy profile for a fully authenticated standalone
   stack is tracked as a follow-up.
-- The scope boundary (ADR 0004) enforces this: "no auth termination" leads
+- The scope boundary (ADR 0003) enforces this: "no auth termination" leads
   its never-list.

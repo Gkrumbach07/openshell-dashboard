@@ -1,4 +1,4 @@
-# ADR 0002: npm Package as Downstream Consumption Model
+# ADR 0001: Standalone Repo, Consumed Downstream as an npm Package
 
 **Status:** Accepted  
 **Date:** 2026-08-05  
@@ -6,7 +6,9 @@
 
 ## Context
 
-The OpenShell Dashboard is a standalone upstream repo that must be consumed downstream by odh-dashboard (RHOAI) via module federation. We evaluated three consumption models:
+The OpenShell Dashboard is a standalone upstream repo: an independent open-source project for anyone running an OpenShell gateway, not an RHOAI feature. It lives outside odh-dashboard (which would lock out the community and couple release cadence to RHOAI) and outside NVIDIA/OpenShell (whose Rust toolchain and CI do not fit a web app); the target home is the neutral `ai-openshell` org. The repo has zero `@odh-dashboard/*` imports.
+
+That structure makes downstream consumption a real question: odh-dashboard (RHOAI) must consume this repo via module federation. We evaluated three consumption models:
 
 1. **Subtree sync** (model-registry pattern) — `package-subtree.sh` replays upstream commits into `packages/*/upstream/`, midstream writes `odh/` integration code inside the synced directory. Conflict resolution on every sync.
 2. **npm package** (mod-arch-core pattern) — upstream publishes to npm, downstream installs as a dependency. Version bumps are explicit. No sync conflicts.
