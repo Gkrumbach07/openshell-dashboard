@@ -68,10 +68,15 @@ Custom hooks for shared UI patterns live in `src/hooks/` (e.g., `useBulkDelete`,
 ## PatternFly 6
 
 - Barrel imports: `import { Button, Modal } from '@patternfly/react-core'`
-- Layout via PF components: `Stack`, `Flex`, `Grid`, `Split`, `Gallery`
-- Semantic tokens for any custom SCSS: `var(--pf-t--global--spacer--md)`
-- No inline styles with hardcoded values
-- No MUI — PatternFly only
+- No MUI, no custom design system
+- No co-located CSS files (break Module Federation theming)
+- No inline styles
+
+### Styling hierarchy (prefer top, fallback down)
+
+1. **PF component props** — `<Flex gap={{ default: 'gapSm' }}>`, `<FlexItem flex={{ default: 'flex_1' }}>`, `<Content component="p">`, `<Title size={TitleSizes.md}>`. Always the first choice.
+2. **PF utility classes** — `pf-v6-u-text-truncate`, `pf-v6-u-font-family-monospace`, etc. Use only when no component prop exists for the style (e.g., `min-width: 0` for flex truncation).
+3. Never write custom CSS files, inline styles, or `style={{}}` props.
 
 ## Navigation
 

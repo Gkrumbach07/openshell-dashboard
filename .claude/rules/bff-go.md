@@ -109,7 +109,7 @@ Key patterns:
 
 ## Auth
 
-Relay-only (ADR 0002): the BFF never terminates authentication. A fronting proxy (oauth2-proxy standalone, the host platform's proxy when embedded) owns login/sessions/refresh/CSRF and injects the bearer. Scope bounded by ADR 0003.
+Relay-only (ADR 0002): the BFF never terminates authentication. A fronting proxy (oauth2-proxy standalone, the host platform's proxy when embedded) owns login/sessions/refresh/CSRF and injects the bearer.
 
 Bearer resolution is one precedence chain in `auth/proxy.go`, identical everywhere:
 
@@ -123,7 +123,7 @@ The BFF does NOT validate tokens, call JWKS endpoints, parse JWTs, or make autho
 
 Auth-adjacent routes (under `/api/v1/`): `auth/config` (bootstrap: authDisabled + feature flags), `auth/whoami` (gateway `GetCurrentUser`). That's all.
 
-Before adding anything auth-adjacent, check the ADR 0003 never-list: no auth termination, no JWT validation, no RBAC, no k8s API calls, no credential brokering, no server-side state.
+Before adding anything auth-adjacent, check ADR 0002: no auth termination, no JWT validation, no RBAC, no k8s API calls, no credential brokering, no server-side state.
 
 ## Configuration
 

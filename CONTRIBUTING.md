@@ -63,7 +63,7 @@ This is a legal requirement for Apache 2.0 licensed projects. CI will reject uns
 - PatternFly 6 exclusively — no MUI, no custom design system, no inline styles with hardcoded values
 - Data fetching via React Query (`@tanstack/react-query`)
 - `data-testid` on interactive elements
-- Pages must be self-contained and exportable (see ADR 0004)
+- Pages must be self-contained and exportable (see ADR 0001)
 
 ### Backend (Go BFF)
 

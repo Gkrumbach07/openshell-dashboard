@@ -57,7 +57,7 @@ export default SandboxListPage;
 ```
 
 Key patterns:
-- Optional navigation callbacks (`onSelect`, `onViewSandbox`, `onTabChange`) that fall back to `useNavigate` when not provided (see ADR 0004)
+- Optional navigation callbacks (`onSelect`, `onViewSandbox`, `onTabChange`) that fall back to `useNavigate` when not provided (see ADR 0001)
 - `data-testid` on interactive elements
 - No breadcrumbs in pages — the app shell adds its own
 
