@@ -16,47 +16,29 @@ import (
 
 // App wires the gateway client, auth middleware, and REST routes.
 type App struct { //nolint:govet // fieldalignment: readability over padding
-	gateway  gateway.Interface
-	auth     *auth.Middleware
-	sessions *auth.SessionCodec
+	gateway gateway.Interface
+	auth    *auth.Middleware
 	// authConfig is serialized to the browser via GET /auth/config — never
 	// put secrets in it.
-	authConfig AuthConfigResponse
-	// oidcClientSecret authenticates the BFF to the IdP token endpoint as a
-	// confidential client (client_secret_post). Empty = public client (PKCE
-	// only). Kept outside authConfig so it cannot leak to the frontend.
-	oidcClientSecret string
-	staticDir        string
-	allowedOrigins   []string
-	maxUploadSize    int64
-	execTimeout      uint32
+	authConfig    AuthConfigResponse
+	staticDir     string
+	maxUploadSize int64
+	execTimeout   uint32
 }
 
-// SetOIDCClientSecret configures confidential-client authentication for
-// token-endpoint calls. Optional; without it the BFF acts as a public client.
-func (app *App) SetOIDCClientSecret(secret string) {
-	app.oidcClientSecret = secret
-}
-
-// NewApp builds the application. sessions may be nil, which disables cookie
-// sessions (federated and dev deployments don't need them).
-func NewApp(gw gateway.Interface, authMiddleware *auth.Middleware, sessions *auth.SessionCodec, staticDir string, allowedOrigins []string, authCfg AuthConfigResponse) *App {
+// NewApp builds the application.
+func NewApp(gw gateway.Interface, authMiddleware *auth.Middleware, staticDir string, authCfg AuthConfigResponse) *App {
 	app := &App{
-		gateway:        gw,
-		auth:           authMiddleware,
-		sessions:       sessions,
-		authConfig:     authCfg,
-		staticDir:      staticDir,
-		allowedOrigins: allowedOrigins,
+		gateway:    gw,
+		auth:       authMiddleware,
+		authConfig: authCfg,
+		staticDir:  staticDir,
 	}
 	if app.maxUploadSize == 0 {
 		app.maxUploadSize = 64 << 20 // 64 MiB
 	}
 	if app.execTimeout == 0 {
 		app.execTimeout = 30
-	}
-	if sessions != nil && authMiddleware != nil {
-		authMiddleware.SetSessionAuthenticator(&sessionManager{codec: sessions, app: app})
 	}
 	return app
 }
@@ -67,17 +49,10 @@ func (app *App) Routes() http.Handler {
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
-	r.Use(app.corsMiddleware)
-	r.Use(app.csrfMiddleware)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// Public: frontend bootstrap config and OIDC endpoints, no token needed.
+		// Public: frontend bootstrap config, no token needed.
 		r.Get("/auth/config", app.GetAuthConfig)
-		r.Get("/auth/discovery", app.GetOIDCDiscovery)
-		r.Post("/auth/token-exchange", app.TokenExchange)
-		// Logout is POST: it clears the session (state-changing), so it must
-		// pass the CSRF Origin check rather than be triggerable by a bare GET.
-		r.Post("/auth/logout", app.Logout)
 		// BFF liveness (does not call the gateway).
 		r.Get("/healthz", app.GetHealthz)
 		r.Get("/readyz", app.GetReadyz)
@@ -85,7 +60,6 @@ func (app *App) Routes() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(app.auth.Handler)
 
-			r.Get("/auth/session", app.GetSession)
 			r.Get("/auth/whoami", app.GetWhoAmI)
 			r.Get("/gateway", app.GetGateway)
 			r.Get("/draft-summary", app.GetDraftSummary)
@@ -165,59 +139,6 @@ func (app *App) Routes() http.Handler {
 	}
 
 	return r
-}
-
-// csrfMiddleware rejects cross-origin mutating requests. Cookie-based
-// sessions reintroduce CSRF exposure that Bearer headers never had;
-// SameSite=Strict on the session cookie is the primary defense, and this
-// Origin check is defense-in-depth. Requests without an Origin header
-// (curl, server-to-server) pass — they cannot carry a browser's cookies.
-func (app *App) csrfMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch:
-			origin := r.Header.Get("Origin")
-			if origin != "" && !app.originAllowed(origin, requestOrigin(r)) {
-				writeError(w, http.StatusForbidden, "cross_origin_rejected", "cross-origin request rejected")
-				return
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (app *App) originAllowed(origin, requestOrigin string) bool {
-	// Full-origin (scheme+host) match, so http:// can't pass for an https
-	// request. requestOrigin is the BFF's own scheme://host for this request.
-	if origin == requestOrigin {
-		return true
-	}
-	for _, allowed := range app.allowedOrigins {
-		if origin == allowed {
-			return true
-		}
-	}
-	return false
-}
-
-func (app *App) corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		for _, allowed := range app.allowedOrigins {
-			if origin == allowed {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Vary", "Origin")
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-				break
-			}
-		}
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // serveStatic serves the built frontend with SPA fallback to index.html.

@@ -24,13 +24,6 @@ func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
 	}
 }
 
-// noStore marks a response as uncacheable — used on auth endpoints, whose
-// bodies and Set-Cookie headers must never be stored by a proxy or the
-// browser cache.
-func noStore(w http.ResponseWriter) {
-	w.Header().Set("Cache-Control", "no-store")
-}
-
 func writeError(w http.ResponseWriter, statusCode int, code, message string) {
 	writeJSON(w, statusCode, ErrorResponse{Code: code, Message: message})
 }

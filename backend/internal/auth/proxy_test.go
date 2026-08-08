@@ -6,11 +6,10 @@ import (
 	"testing"
 )
 
-func TestHandler_Federated_TrustsProxyHeader(t *testing.T) {
+func TestHandler_ProxyHeader(t *testing.T) {
 	m := New(Config{
-		TokenHeader:      "x-forwarded-access-token",
-		UserHeader:       "x-auth-request-user",
-		TrustProxyHeader: true,
+		TokenHeader: "x-forwarded-access-token",
+		UserHeader:  "x-auth-request-user",
 	})
 
 	var gotToken, gotUser string
@@ -37,29 +36,7 @@ func TestHandler_Federated_TrustsProxyHeader(t *testing.T) {
 	}
 }
 
-func TestHandler_Standalone_IgnoresProxyHeader(t *testing.T) {
-	// No TrustProxyHeader: standalone mode. A forged x-forwarded-access-token
-	// must not be honored — only the cookie session (or a real Bearer) counts.
-	m := New(Config{TokenHeader: "x-forwarded-access-token"})
-	m.SetSessionAuthenticator(&staticSessionAuth{token: "session-jwt"})
-
-	var gotToken string
-	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		gotToken = TokenFromContext(r.Context())
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("x-forwarded-access-token", "forged-proxy-token")
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if gotToken != "session-jwt" {
-		t.Fatalf("token = %q, want session-jwt — forged proxy header must be ignored in standalone mode", gotToken)
-	}
-}
-
-func TestHandler_AuthEnabled_MissingToken(t *testing.T) {
+func TestHandler_MissingToken(t *testing.T) {
 	m := New(Config{})
 
 	handler := m.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -76,7 +53,7 @@ func TestHandler_AuthEnabled_MissingToken(t *testing.T) {
 	}
 }
 
-func TestHandler_AuthEnabled_BearerFallback(t *testing.T) {
+func TestHandler_BearerFallback(t *testing.T) {
 	m := New(Config{})
 
 	var gotToken string
@@ -95,37 +72,8 @@ func TestHandler_AuthEnabled_BearerFallback(t *testing.T) {
 	}
 }
 
-type staticSessionAuth struct{ token string }
-
-func (s *staticSessionAuth) TokenFromSession(http.ResponseWriter, *http.Request) string {
-	return s.token
-}
-
-func TestHandler_AuthEnabled_SessionFallback(t *testing.T) {
+func TestHandler_ProxyHeaderBeatsBearer(t *testing.T) {
 	m := New(Config{})
-	m.SetSessionAuthenticator(&staticSessionAuth{token: "session-jwt"})
-
-	var gotToken string
-	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		gotToken = TokenFromContext(r.Context())
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
-	}
-	if gotToken != "session-jwt" {
-		t.Errorf("token = %q, want session-jwt", gotToken)
-	}
-}
-
-func TestHandler_Federated_HeaderBeatsSession(t *testing.T) {
-	m := New(Config{TrustProxyHeader: true})
-	m.SetSessionAuthenticator(&staticSessionAuth{token: "session-jwt"})
 
 	var gotToken string
 	handler := m.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -134,30 +82,31 @@ func TestHandler_Federated_HeaderBeatsSession(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("x-forwarded-access-token", "proxy-jwt")
+	req.Header.Set("Authorization", "Bearer bearer-jwt")
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
 
 	if gotToken != "proxy-jwt" {
-		t.Errorf("token = %q, want proxy-jwt (trusted proxy header takes precedence)", gotToken)
+		t.Errorf("token = %q, want proxy-jwt (proxy header takes precedence)", gotToken)
 	}
 }
 
-func TestHandler_AuthEnabled_EmptySessionRejected(t *testing.T) {
+func TestHandler_MalformedAuthorizationRejected(t *testing.T) {
 	m := New(Config{})
-	m.SetSessionAuthenticator(&staticSessionAuth{token: ""})
 
 	handler := m.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("handler should not be called")
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", w.Code)
+		t.Fatalf("status = %d, want 401 for non-Bearer Authorization", w.Code)
 	}
 }
 

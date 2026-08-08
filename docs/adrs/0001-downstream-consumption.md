@@ -92,12 +92,13 @@ nobody reads is deleted.
 HTTP call in the package goes through the configured client — a bypass is a
 bug, not an exception.
 
-### CSS policy: none
+### CSS policy: minimal
 
-Components ship **zero co-located CSS files**. Styling is PatternFly 6
-components, utility classes, and design tokens. Third-party CSS a component
-genuinely requires (`@xterm/xterm/css/xterm.css` in the terminal) is
-documented in the README as a consumer bundler requirement.
+Co-located CSS is kept to a minimum — only layout rules with no PatternFly
+utility equivalent (e.g. `flex: 1`, `min-width: 0`). All values use
+PatternFly design tokens. Third-party CSS a component genuinely requires
+(`@xterm/xterm/css/xterm.css` in the terminal) is documented in the README
+as a consumer bundler requirement.
 
 ## Why a closed surface
 
