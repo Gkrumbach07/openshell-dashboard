@@ -1,4 +1,4 @@
-# ADR 0005: Surface the Upstream API As-Is
+# ADR 0004: Surface the Upstream API As-Is
 
 **Status:** Accepted
 **Date:** 2026-08-07
@@ -45,7 +45,7 @@ Concretely:
   field annotations, …). It is loaded into every AI coding session and is
   the checklist for review.
 - **Where "the API" physically lives is an implementation detail** — today
-  it is proto files synced into `backend/proto/`; under ADR 0006 it becomes
+  it is proto files synced into `backend/proto/`; under ADR 0005 it becomes
   the pinned `openshell-sdk-go` version, generated from the same upstream
   protos. The principle is unchanged by the mechanism: before writing any
   wrapper, handler, or TypeScript type, read the actual upstream definition.

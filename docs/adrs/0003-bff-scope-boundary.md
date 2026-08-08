@@ -89,7 +89,7 @@ The BFF must never:
 - The BFF is deliberately boring: with auth gone, the interesting surface
   is DTO fidelity and secret hygiene (`models.From*()`), which is where
   review attention belongs.
-- PR #2 (SDK migration, ADR 0006) changes *how* job 1 talks gRPC, not the
+- PR #2 (SDK migration, ADR 0005) changes *how* job 1 talks gRPC, not the
   job list.
 - If a hosting platform later puts its own auth-owning data plane in front
   of everything, nothing here changes: the BFF was already designed as the

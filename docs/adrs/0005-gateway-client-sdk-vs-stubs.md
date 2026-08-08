@@ -1,4 +1,4 @@
-# ADR 0006: Gateway Client — SDK over Generated Stubs
+# ADR 0005: Gateway Client — SDK over Generated Stubs
 
 **Status:** Proposed (accepting = merging PR #2 after conditions below)
 **Date:** 2026-08-07
@@ -18,7 +18,7 @@ lives in a personal repo (`rhuss/openshell-sdk-go`, v0.3.1) with a stated
 intent to move into the OpenShell org. One functional gap is known (global
 policy listing, SDK #44).
 
-ADR 0005 ("surface the API as-is") is *not* at stake: it governs what API
+ADR 0004 ("surface the API as-is") is *not* at stake: it governs what API
 concepts exist. Whether we reach those RPCs through our own stubs or an SDK is
 an implementation question underneath it.
 
@@ -61,7 +61,7 @@ into "trust a pinned artifact we control or an org-owned project."
 - `make proto` and the `proto-sync` skill retire after migration; the
   `.claude/rules/openshell-api.md` hard-facts list remains (it documents API
   semantics, not stubs).
-- `backend/proto/` goes away as a directory; ADR 0005's "source of truth"
+- `backend/proto/` goes away as a directory; ADR 0004's "source of truth"
   pointer moves to the upstream `NVIDIA/OpenShell/proto/` + SDK version pin.
 - PR #2 needs a rebase over the relay-only auth (it predates PRs #24/#29); the
   per-RPC bearer forwarding moves to `sdkclient.ContextAuthProvider` and must
