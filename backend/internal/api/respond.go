@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -29,14 +30,18 @@ func writeError(w http.ResponseWriter, statusCode int, code, message string) {
 }
 
 // writeGrpcError maps a gateway gRPC error onto a safe HTTP error response.
+// It extracts the original gRPC status via the GRPCStatus() interface to get
+// the clean gateway message, bypassing status.FromError's behavior of replacing
+// the message with the full error chain (grpc-go v1.82+).
 func writeGrpcError(w http.ResponseWriter, err error) {
-	st, ok := status.FromError(err)
-	if !ok {
-		slog.Error("gateway call failed", "error", err)
+	var gs interface{ GRPCStatus() *status.Status }
+	if !errors.As(err, &gs) {
+		slog.Error("gateway call failed (non-gRPC)", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal error")
 		return
 	}
-	slog.Warn("gateway error", "code", st.Code().String(), "message", st.Message())
+	st := gs.GRPCStatus()
+	slog.Warn("gateway error", "code", st.Code().String(), "message", st.Message(), "full_error", err.Error())
 	switch st.Code() {
 	case codes.NotFound:
 		writeError(w, http.StatusNotFound, "not_found", st.Message())
