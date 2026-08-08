@@ -26,8 +26,7 @@ import GlobalPolicyPage from '../pages/GlobalPolicyPage';
 import SettingsPage from '../pages/SettingsPage';
 import { AlertProvider } from './AlertContext';
 import AppLayout from './AppLayout';
-import AuthCallbackPage from './AuthCallbackPage';
-import { useAuthConfig, useSession } from '../api/auth';
+import { useAuthConfig } from '../api/auth';
 import { useUserRole } from '../api/rbac';
 import { isDevSession } from './authStore';
 
@@ -185,12 +184,6 @@ const AuthenticatedApp: React.FC = () => (
 const AppRoutes: React.FC = () => {
   const { data: config, isLoading } = useAuthConfig();
   const [devAuthenticated, setDevAuthenticated] = useState(isDevSession());
-  const standalone = Boolean(
-    config && !config.authDisabled && config.issuer && config.clientId,
-  );
-  // The session lives in an HttpOnly cookie, so login state is probed via the
-  // BFF rather than read from browser storage.
-  const session = useSession(standalone);
 
   if (isLoading) {
     return null;
@@ -216,44 +209,8 @@ const AppRoutes: React.FC = () => {
     );
   }
 
-  // Standalone OIDC mode: issuer/clientId configured, frontend handles login.
-  if (standalone && config) {
-    if (session.isLoading) {
-      return null;
-    }
-    // A 401 resolves to { authenticated: false }, so isSuccess alone would
-    // wave an unauthenticated user through — read the explicit flag. A
-    // post-retry transient error leaves data undefined and falls through to
-    // the login page (the terminal fallback when the BFF is unreachable).
-    const authenticated = session.data?.authenticated === true;
-    return (
-      <Routes>
-        <Route path="/auth/callback" element={<AuthCallbackPage />} />
-        <Route
-          path="/login"
-          element={
-            authenticated ? (
-              <Navigate to="/workspaces" replace />
-            ) : (
-              <LoginPage config={config} />
-            )
-          }
-        />
-        <Route
-          path="*"
-          element={
-            authenticated ? (
-              <AuthenticatedApp />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-      </Routes>
-    );
-  }
-
-  // Proxy-delegated mode: no issuer configured, auth proxy handles login.
+  // Every non-dev deployment sits behind an auth proxy (ADR 0014): the proxy
+  // authenticated this request before it reached us, so render directly.
   return <AuthenticatedApp />;
 };
 

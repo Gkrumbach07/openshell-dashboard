@@ -4,7 +4,6 @@ import type { CredentialInputSlot, ModelPickerSlot } from './types';
 export type SlotDefinitions = {
   credentialInput?: CredentialInputSlot;
   modelPicker?: ModelPickerSlot;
-  workspaceBinding?: (workspace: string) => React.ReactNode;
   sandboxMetadata?: (workspace: string, sandbox: string) => React.ReactNode;
   sandboxActions?: (workspace: string, sandbox: string) => React.ReactNode;
 };

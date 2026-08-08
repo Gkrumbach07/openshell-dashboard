@@ -1,3 +1,5 @@
+import { isDevSession } from '../app/authStore';
+
 export type ApiError = Error & {
   status: number;
   code?: string;
@@ -16,6 +18,7 @@ const buildError = (
 
 let apiBasePath = '';
 let onSessionExpired: (() => void) | null = null;
+let reloadedFor401 = false;
 
 export const setApiBasePath = (basePath: string): void => {
   apiBasePath = basePath.replace(/\/+$/, '');
@@ -34,8 +37,8 @@ export const apiFetch = async <T>(
     ...((init?.headers as Record<string, string>) ?? {}),
   };
 
-  // Auth rides on the BFF's HttpOnly session cookie (sent automatically on
-  // same-origin requests) — no Authorization header, no token in JS.
+  // Auth is injected by the deployment's auth proxy (ADR 0014) — no
+  // Authorization header, no token in JS.
   const response = await fetch(`${apiBasePath}${path}`, { ...init, headers });
   if (!response.ok) {
     let code: string | undefined;
@@ -56,8 +59,16 @@ export const apiFetch = async <T>(
     if (response.status === 401) {
       if (onSessionExpired) {
         onSessionExpired();
-      } else {
+      } else if (isDevSession()) {
+        // Dev mode registers a /login route; send the user back to it.
         window.location.assign('/login');
+      } else if (!reloadedFor401) {
+        // Proxied deployments have no /login route — the auth proxy owns
+        // sign-in. Reload the page so the proxy can re-authenticate the
+        // browser (it intercepts the document request and redirects to the
+        // IdP). Guarded so repeated API 401s in one page life can't loop.
+        reloadedFor401 = true;
+        window.location.reload();
       }
       throw buildError(401, code, 'Session expired');
     }

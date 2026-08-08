@@ -24,26 +24,19 @@ func (app *App) GetGateway(w http.ResponseWriter, r *http.Request) {
 
 // FeatureFlags controls which optional features the frontend should render.
 type FeatureFlags struct {
-	DeploymentContext string `json:"deploymentContext"`
-	Terminal          bool   `json:"terminal"`
-	FileTransfer      bool   `json:"fileTransfer"`
-	Settings          bool   `json:"settings"`
-	GlobalPolicy      bool   `json:"globalPolicy"`
-	CredentialRefresh bool   `json:"credentialRefresh"`
-	Services          bool   `json:"services"`
-	DraftPolicy       bool   `json:"draftPolicy"`
-	WorkspaceBinding  bool   `json:"workspaceBinding"`
-	ResourceLinks     bool   `json:"resourceLinks"`
+	Terminal          bool `json:"terminal"`
+	FileTransfer      bool `json:"fileTransfer"`
+	Settings          bool `json:"settings"`
+	GlobalPolicy      bool `json:"globalPolicy"`
+	CredentialRefresh bool `json:"credentialRefresh"`
+	Services          bool `json:"services"`
+	DraftPolicy       bool `json:"draftPolicy"`
 }
 
 // AuthConfigResponse tells the frontend whether auth is enabled and which
 // features are available.
 type AuthConfigResponse struct {
-	Issuer       string       `json:"issuer,omitempty"`
-	ClientID     string       `json:"clientId,omitempty"`
-	Scopes       string       `json:"scopes,omitempty"`
 	AdminRole    string       `json:"adminRole,omitempty"`
-	UserRole     string       `json:"userRole,omitempty"`
 	LogoutURL    string       `json:"logoutUrl,omitempty"`
 	Features     FeatureFlags `json:"features"`
 	AuthDisabled bool         `json:"authDisabled"`
@@ -69,10 +62,13 @@ func (app *App) GetAuthConfig(w http.ResponseWriter, _ *http.Request) {
 // GetCurrentUser or when auth is disabled.
 func (app *App) GetWhoAmI(w http.ResponseWriter, r *http.Request) {
 	if app.auth.Disabled() {
+		// The dev user's roles must include the *configured* admin role —
+		// hardcoding gateway-default role names here made admin pages
+		// silently inaccessible whenever ADMIN_ROLE differed.
 		writeJSON(w, http.StatusOK, models.CurrentUser{
 			Subject:     "dev-user",
 			DisplayName: "Development User",
-			Roles:       []string{"openshell-admin", "openshell-user"},
+			Roles:       []string{app.authConfig.AdminRole},
 		})
 		return
 	}

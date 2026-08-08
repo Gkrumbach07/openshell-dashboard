@@ -25,8 +25,8 @@ The `/api/v1/auth/config` response includes a `features` object:
 ```json
 {
   "authDisabled": false,
-  "issuer": "https://...",
-  "clientId": "openshell-dashboard",
+  "adminRole": "admin",
+  "logoutUrl": "/oauth2/sign_out",
   "features": {
     "terminal": true,
     "fileTransfer": true,

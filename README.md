@@ -28,9 +28,9 @@ make dev
 
 Open http://localhost:3000, click **Continue as developer**, and you're in.
 
-### Local dev with OIDC (full auth stack)
+### Local dev with an OIDC gateway (full stack)
 
-To test with real OIDC authentication against a local Keycloak and OpenShell gateway, use the included dev environment script. This sets up self-signed TLS, a Keycloak instance in Podman, and builds the gateway from source.
+To develop against a gateway that has real OIDC configured (Keycloak), use the included dev environment script. This sets up self-signed TLS, a Keycloak instance in Podman, and builds the gateway from source. The dashboard itself runs in dev mode (the gateway allows unauthenticated calls locally); Keycloak mints real JWTs for exercising the Bearer relay path with curl or the OpenShell CLI. To test the full browser-auth flow, put oauth2-proxy in front of the BFF (see Auth below).
 
 **Additional prereqs:** Podman (with `podman machine start` on macOS), Rust toolchain (`cargo`), and the [OpenShell](https://github.com/NVIDIA/OpenShell) repo cloned locally.
 
@@ -77,26 +77,61 @@ All flags have env var fallbacks:
 |------|---------|---------|-------------|
 | `-port` | `PORT` | `8080` | BFF listen port |
 | `-gateway-url` | `OPENSHELL_GATEWAY_URL` | `localhost:50051` | Gateway gRPC endpoint (`grpcs://` prefix for TLS) |
-| | `OIDC_ISSUER` |: | OIDC issuer URL (enables standalone mode) |
-| | `OIDC_CLIENT_ID` |: | OIDC client ID |
-| | `OIDC_CLIENT_SECRET` |: | Optional client secret. Without it the BFF is a public client (PKCE only) |
-| | `OIDC_SCOPES` | `openid profile email groups` | Requested scopes. `groups` is Keycloak/Dex-shaped; Entra ID rejects it — override for other IdPs |
-| | `SESSION_SECRET` |: | Key for encrypted session cookies (standalone OIDC). **Required** unless `DEPLOYMENT_CONTEXT=dev` — the BFF fails closed without it |
-| | `DEPLOYMENT_CONTEXT` | `standalone` | `dev` permits an ephemeral session secret for local use |
 | `-static-dir` | `STATIC_DIR` |: | Serve built frontend from this directory |
 | `-auth-disabled` | `AUTH_DISABLED` | `false` | Skip auth: **dev only** |
+| `-auth-token-header` | `AUTH_TOKEN_HEADER` | `x-forwarded-access-token` | Header the auth proxy injects the bearer into |
+| `-auth-user-header` | `AUTH_USER_HEADER` | `x-auth-request-user` | Header the auth proxy injects the username into |
+| `-admin-role` | `ADMIN_ROLE` | `admin` | Role name the frontend treats as platform admin (display gating only) |
+| `-logout-url` | `LOGOUT_URL` | `/oauth2/sign_out` | Auth proxy sign-out URL the frontend redirects to on logout |
 | `-gateway-ca-cert` | `GATEWAY_CA_CERT` |: | Path to CA cert for self-signed gateway TLS |
-| `-allowed-origins` | `ALLOWED_ORIGINS` |: | Comma-separated extra CORS/WebSocket origins (same-origin is always allowed) |
 
 ## Auth
 
-OIDC only (no mTLS, no OpenShift OAuth). Three modes, one middleware:
+**The BFF is a token relay.** It runs no OIDC flows, holds no sessions, and
+never validates tokens. Browser authentication is owned by an auth proxy in
+front of it; the BFF reads the bearer the proxy injects
+(`x-forwarded-access-token`, configurable) — or an explicit `Authorization:
+Bearer` from API clients — and forwards it to the gateway on every gRPC
+call. The gateway validates the JWT against its own OIDC JWKS and makes all
+RBAC decisions.
 
-- **Standalone OIDC** (`OIDC_ISSUER` + `OIDC_CLIENT_ID` set): the frontend runs an Authorization Code + PKCE flow against your IdP; the BFF exchanges the code server-side and seals the tokens into an encrypted, HttpOnly session cookie (`__Host-openshell-session`). The browser never sees a token, and the cookie authenticates everything — REST calls and the terminal's WebSocket handshake alike. Expired sessions are refreshed against the IdP transparently, server-side (requires the IdP to issue a refresh token — some providers need `offline_access` added to `OIDC_SCOPES`), up to a 12h absolute lifetime. Any spec-compliant OIDC provider works, but defaults are Keycloak/Dex-shaped: adjust `OIDC_SCOPES` for IdPs without a `groups` scope (e.g. Entra ID), register the BFF as a confidential client and set `OIDC_CLIENT_SECRET` where possible, and ensure the **gateway's configured audience matches `OIDC_CLIENT_ID`** — the BFF forwards the ID token as the bearer, and the gateway validates its `aud` against the client ID.
-- **Federated** (behind oauth2-proxy / kube-auth-proxy): the proxy injects the user's token as `x-forwarded-access-token`; the BFF forwards it.
-- **Dev** (`AUTH_DISABLED=true`): no auth, synthetic dev-user, no tokens forwarded.
+- **Production / standalone with auth:** run [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/)
+  (or kube-auth-proxy on OpenShift) in front of the BFF, registered as an
+  OIDC client with the **same IdP the gateway trusts**, with an audience the
+  gateway accepts. oauth2-proxy handles login, cookie sessions, refresh, and
+  sign-out (`/oauth2/sign_out` — the BFF's default `LOGOUT_URL`), and it
+  authenticates WebSocket upgrades (the terminal) like any other request.
+  The secure-agent-workspace validated pattern ships exactly this setup.
+  **Deployment requirement:** the BFF must only be reachable through the
+  proxy — anything that can reach the BFF directly can present any header.
 
-The BFF never validates JWTs — it forwards the bearer to the gateway on every gRPC call, and the gateway makes all RBAC decisions. See `docs/adrs/0010-cookie-session-standalone-auth.md` for the full design.
+  A verified sidecar configuration (Dex as IdP, gateway audience =
+  `client_id`):
+
+  ```
+  --provider=oidc
+  --oidc-issuer-url=https://<idp>            # same issuer the gateway trusts
+  --client-id=openshell-dashboard            # must match the gateway's audience
+  --redirect-url=https://<dashboard-host>/oauth2/callback
+  --upstream=http://127.0.0.1:8080/          # the BFF
+  --http-address=0.0.0.0:4180                # point the Service/Route here
+  --scope=openid profile email groups
+  --pass-authorization-header=true           # forwards the ID token as the bearer
+  --pass-user-headers=true                   # then set AUTH_USER_HEADER=x-forwarded-user
+  --email-domain=*
+  --reverse-proxy=true
+  --insecure-oidc-allow-unverified-email     # needed for IdPs that map a username
+                                             # into the email claim without
+                                             # email_verified (e.g. Dex's
+                                             # OpenShift connector)
+  ```
+
+  Note the client must be **confidential** (oauth2-proxy requires a client
+  secret) — a PKCE-only public client registration is not enough.
+- **Dev** (`AUTH_DISABLED=true`): no auth, synthetic dev-user, no tokens
+  forwarded. `make dev-full` runs the gateway with unauthenticated calls
+  allowed; Keycloak still mints real JWTs for exercising the Bearer relay
+  path with curl or the CLI.
 
 ## Make targets
 

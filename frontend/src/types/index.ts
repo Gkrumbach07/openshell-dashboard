@@ -308,8 +308,6 @@ export type GatewayInfo = {
 
 // --- Auth / misc ---
 
-export type DeploymentContext = 'standalone' | 'managed' | 'openshift';
-
 export type FeatureFlags = {
   terminal: boolean;
   fileTransfer: boolean;
@@ -318,18 +316,11 @@ export type FeatureFlags = {
   credentialRefresh: boolean;
   services: boolean;
   draftPolicy: boolean;
-  deploymentContext: DeploymentContext;
-  workspaceBinding: boolean;
-  resourceLinks: boolean;
 };
 
 export type AuthConfig = {
   authDisabled: boolean;
-  issuer?: string;
-  clientId?: string;
-  scopes?: string;
   adminRole?: string;
-  userRole?: string;
   logoutUrl?: string;
   features: FeatureFlags;
 };
