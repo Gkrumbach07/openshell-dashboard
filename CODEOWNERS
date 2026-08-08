@@ -1,0 +1,13 @@
+# OpenShell Dashboard code owners
+# These users will be automatically requested for review on PRs.
+
+# Default owners for everything
+* @Gkrumbach07
+
+# Architecture decisions require explicit review
+docs/adrs/ @Gkrumbach07
+
+# Auth and security changes require explicit review
+backend/internal/auth/ @Gkrumbach07
+frontend/src/app/oidc/ @Gkrumbach07
+.claude/rules/security.md @Gkrumbach07

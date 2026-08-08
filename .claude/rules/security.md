@@ -8,26 +8,29 @@ alwaysApply: false
 
 ## Auth
 
-- Authentication is delegated to an external auth proxy (oauth2-proxy, kube-rbac-proxy, etc.)
-- The BFF reads the bearer token from a configurable header (default `x-forwarded-access-token`) and forwards it to the gateway
-- The BFF does NOT perform OIDC validation — the auth proxy handles that
-- Never expose raw gRPC errors to the frontend — map to safe HTTP status codes
-- CORS configured explicitly — no wildcard origins, empty default
+- The BFF is relay-only (ADR 0002): it NEVER terminates authentication. A fronting auth proxy (oauth2-proxy standalone, the host platform's proxy when embedded) owns login, sessions, refresh, logout, and CSRF, and injects the bearer
+- Bearer resolution is one precedence chain — `x-forwarded-access-token` → `Authorization: Bearer` → 401. No cookies, no session codec, no OIDC endpoints in the BFF
+- The BFF NEVER validates tokens (no JWKS, no go-oidc, no JWT parsing) and NEVER authorizes (ADR 0002). The gateway validates against its own OIDC JWKS and enforces RBAC
+- Deployment invariant: trusting `x-forwarded-access-token` is safe only when the proxy is the sole network path to the BFF (localhost sidecar, pod-internal port, proxy-only ingress). Manifests must enforce this; never expose the BFF port directly in an authenticated deployment
+- Never expose raw gRPC errors to the frontend — use `writeGrpcError()` which maps gRPC status codes to safe HTTP status codes
+- The BFF has no CORS middleware — it is accessed same-origin (behind a proxy or via webpack dev server proxy)
 
 ## Secrets
 
 - API keys, tokens, and credentials are NEVER returned to the frontend
 - Provider credentials are write-only from the dashboard perspective
-- The gateway marks secret fields with `[(openshell.options.v1.secret) = true]` — the BFF must strip these before returning to the browser
+- The gateway marks secret fields with `[(openshell.options.v1.secret) = true]` — the BFF's `models.From*()` functions must strip these before returning to the browser
+- The `models.FromProvider()` function returns only credential key names, never values
 
 ## Input validation
 
 - Validate all user input at the BFF layer before forwarding to gRPC
-- Sandbox names: DNS-1123 label format
+- Sandbox names: DNS-1123 label format (`validDNS1123()` in `respond.go`)
 - Workspace names: DNS-1123 label format
-- Policy YAML: validate structure before sending to gateway
+- Policy YAML: validate structure via `models.ParsePolicy()` before sending to gateway
+- Request bodies: use `decodeBody()` which enforces `MaxBytesReader` and `DisallowUnknownFields`
 
 ## No inline credentials
 
-- Gateway URL, auth header names — all from env vars or flags, never hardcoded
+- Gateway URL, OIDC issuer, auth header names — all from env vars or flags, never hardcoded
 - No `.env` files committed

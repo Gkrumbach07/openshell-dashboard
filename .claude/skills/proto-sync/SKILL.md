@@ -7,6 +7,8 @@ description: Sync proto files from NVIDIA/OpenShell and regenerate Go stubs. Use
 
 Sync proto files from the upstream OpenShell repo and regenerate Go stubs.
 
+> **Note:** ADR 0003 proposes migrating the BFF to `openshell-sdk-go` (PR #2). If that lands, this skill retires — `backend/proto/` and `backend/gen/` go away, and API updates become an SDK version bump. Until then, this is the process.
+
 ## Steps
 
 ### 1. Fetch latest protos

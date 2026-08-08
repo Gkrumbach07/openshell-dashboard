@@ -7,10 +7,10 @@ description: Full development workflow for OpenShell Dashboard. Implements the c
 
 ## Before coding
 
-1. Read the relevant planning docs if unsure about architecture:
-   - `brain/openshell-dashboard/architecture.md` — repo structure, auth, real-time approach
-   - `brain/openshell-dashboard/api-surface.md` — which RPCs to use, phased scope
-   - `brain/openshell-dashboard/ux-views.md` — what each view should contain
+1. Read the relevant docs if unsure about architecture:
+   - `CLAUDE.md` — project structure, architecture rules with ADR links
+   - `docs/adrs/` — Architecture Decision Records
+   - `backend/proto/` — source of truth for what RPCs exist (see `.claude/rules/openshell-api.md`)
 
 2. Check if the change touches the BFF, frontend, or both.
 
@@ -25,11 +25,19 @@ description: Full development workflow for OpenShell Dashboard. Implements the c
 Run in order, fix failures before proceeding:
 
 ```bash
+make lint       # eslint + Prettier check + go vet
+make typecheck  # tsc --noEmit
+make test       # jest + go test
+```
+
+Or individually:
+
+```bash
 # Frontend
-cd frontend && npm run lint && npm run typecheck && npm run test
+cd frontend && npm run lint && npm run format:check && npm run typecheck && npm test
 
 # Backend
-cd backend && golangci-lint run ./... && go test ./...
+cd backend && go vet ./... && go test ./...
 ```
 
 ## For UI changes

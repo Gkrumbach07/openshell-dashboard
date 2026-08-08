@@ -73,10 +73,3 @@ const flags = useFeatureFlags();
 
 When consumed via module federation, the downstream wrapper can override flags by passing them as props to the page components, or by configuring the BFF sidecar's env vars in the deployment manifest.
 
-## Implementation steps
-
-1. Add `FeatureFlags` struct to `backend/internal/api/app.go` parsed from env vars
-2. Include in `AuthConfigResponse` served by `GET /api/v1/auth/config`
-3. Add `features` to the `AuthConfig` TypeScript type
-4. Create `useFeatureFlags()` hook
-5. Gate: Terminal tab, Files tab, Services tab, Proposals tab, Settings nav, Global Policy nav, credential refresh UI on ProviderDetailPage

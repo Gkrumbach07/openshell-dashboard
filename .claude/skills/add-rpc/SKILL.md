@@ -5,26 +5,30 @@ description: Add a new OpenShell gRPC RPC to the dashboard. Creates the gateway 
 
 # Add RPC
 
-Wire a new OpenShell gRPC RPC through the full stack: gateway wrapper → REST handler → API hook → types.
+Wire a new OpenShell gRPC RPC through the full stack: gateway wrapper → Interface update → models DTO → REST handler → route → frontend API function → hook → types.
 
 ## Arguments
 
-`$ARGUMENTS` — RPC name from `backend/proto/openshell.proto` (e.g., `CreateWorkspace`, `ListProviders`)
+`$ARGUMENTS` — RPC name from `backend/proto/openshell.proto` (or `inference.proto`). Example: `CreateWorkspace`, `ListProviders`
 
 ## Steps
 
 ### 1. Find the RPC in the proto
 
-Read `backend/proto/openshell.proto` (or `inference.proto`). Find the request/response message types. Note workspace scoping and auth requirements.
+Read `backend/proto/openshell.proto` (or `inference.proto`). Find the request/response message types. Note:
+- Workspace scoping (does the request have a `workspace` field?)
+- Auth requirements (check `authorization` option: `workspace_role` vs `global_role`)
+- Whether it uses `sandbox_id` (UUID) vs `name` (see `.claude/rules/openshell-api.md` rule 6)
+- Secret fields annotated with `[(openshell.options.v1.secret) = true]`
 
 ### 2. Gateway wrapper
 
-Add a method to the appropriate file in `backend/internal/gateway/`:
+Add a method to the appropriate file in `backend/internal/gateway/`. Use the correct generated package (`openshellv1`, `datamodelv1`, `sandboxv1`, `inferencev1`):
 
 ```go
 // backend/internal/gateway/workspaces.go
-func (c *Client) CreateWorkspace(ctx context.Context, name string, labels map[string]string) (*pb.Workspace, error) {
-    resp, err := c.openshell.CreateWorkspace(ctx, &pb.CreateWorkspaceRequest{
+func (c *Client) CreateWorkspace(ctx context.Context, name string, labels map[string]string) (*datamodelv1.Workspace, error) {
+    resp, err := c.openshell.CreateWorkspace(ctx, &openshellv1.CreateWorkspaceRequest{
         Name:   name,
         Labels: labels,
     })
@@ -35,49 +39,83 @@ func (c *Client) CreateWorkspace(ctx context.Context, name string, labels map[st
 }
 ```
 
-### 3. REST handler
+### 3. Update gateway Interface
 
-Add a handler in `backend/internal/api/`:
+Add the method signature to `backend/internal/gateway/interface.go`. This is required for test mocking:
 
 ```go
-func (app *App) CreateWorkspaceHandler(w http.ResponseWriter, r *http.Request) {
-    var req CreateWorkspaceRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        app.badRequest(w, err)
-        return
+CreateWorkspace(ctx context.Context, name string, labels map[string]string) (*datamodelv1.Workspace, error)
+```
+
+### 4. Add models DTO
+
+Add a `From*()` function in `backend/internal/models/` to convert the proto response to a JSON-safe DTO. **Never serialize proto types directly** — always go through models:
+
+```go
+// backend/internal/models/models.go
+type Workspace struct {
+    Name      string            `json:"name"`
+    Labels    map[string]string `json:"labels"`
+    CreatedAt string            `json:"createdAt"`
+}
+
+func FromWorkspace(w *datamodelv1.Workspace) Workspace {
+    return Workspace{
+        Name:      w.Metadata.Name,
+        Labels:    w.Metadata.Labels,
+        CreatedAt: w.Metadata.CreatedAtMs, // convert as needed
     }
-    workspace, err := app.gateway.CreateWorkspace(r.Context(), req.Name, req.Labels)
-    if err != nil {
-        app.handleGRPCError(w, err)
-        return
-    }
-    app.writeJSON(w, http.StatusCreated, workspace)
 }
 ```
 
-Register the route in `app.go`.
+For request bodies: simple request structs go in the handler file (e.g., `CreateWorkspaceRequest` in `workspaces_handler.go`). Complex ones that need builder logic go in `models/builders.go` (e.g., `CreateSandboxRequest` which needs `BuildSandboxSpec()`).
 
-### 4. Frontend API function
-
-Add to `frontend/src/api/`:
-
-```typescript
-export const createWorkspace = (name: string): Promise<Workspace> =>
-  restCREATE('/api/v1/workspaces', { name });
+```go
+// In the handler file for simple cases:
+type CreateWorkspaceRequest struct {
+    Name   string            `json:"name"`
+    Labels map[string]string `json:"labels"`
+}
 ```
 
-### 5. Frontend hook
+### 5. REST handler
 
-Add to `frontend/src/api/` or `frontend/src/pages/`:
+Add a handler in `backend/internal/api/`. Use package-level helpers from `respond.go`:
 
-```typescript
-export const useCreateWorkspace = () =>
-  useMutation({
-    mutationFn: (name: string) => createWorkspace(name),
-  });
+```go
+// backend/internal/api/workspaces_handler.go
+func (app *App) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
+    var body models.CreateWorkspaceRequest
+    if !decodeBody(w, r, &body) {
+        return
+    }
+    if !validDNS1123(body.Name) {
+        writeError(w, http.StatusBadRequest, "invalid_name", "name must be a valid DNS-1123 label")
+        return
+    }
+    workspace, err := app.gateway.CreateWorkspace(r.Context(), body.Name, body.Labels)
+    if err != nil {
+        writeGrpcError(w, err)
+        return
+    }
+    writeJSON(w, http.StatusCreated, models.FromWorkspace(workspace))
+}
 ```
 
-### 6. TypeScript type
+Key patterns:
+- No `Handler` suffix on method names
+- `decodeBody(w, r, &dst)` for request parsing (returns false on error, writes response itself)
+- `writeGrpcError(w, err)` for gateway errors
+- `writeJSON(w, statusCode, models.From*(...))` — always convert through models
+- `validDNS1123(name)` for resource name validation
+
+Register the route in `app.go`:
+
+```go
+r.Post("/api/v1/workspaces", app.CreateWorkspace)
+```
+
+### 6. Frontend types
 
 Add to `frontend/src/types/`:
 
@@ -89,7 +127,51 @@ export type Workspace = {
 };
 ```
 
-### 7. Verify
+### 7. Frontend API function
+
+Add to the appropriate file in `frontend/src/api/`. Use `get`, `post`, `put`, `del` from `./client`:
+
+```typescript
+import { post } from './client';
+import type { Workspace } from '../types/workspace';
+
+export const createWorkspace = (name: string): Promise<Workspace> =>
+  post<Workspace>('/api/v1/workspaces', { name });
+```
+
+### 8. Frontend hook
+
+Add query/mutation hooks using the centralized `queryKeys` from `./queryKeys`:
+
+```typescript
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { createWorkspace } from './workspaces';
+import { workspaceKeys } from './queryKeys';
+
+export const useCreateWorkspace = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => createWorkspace(name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: workspaceKeys.all }),
+  });
+};
+```
+
+For query hooks, use `queryKeys` factories. Check `queryKeys.ts` for available keys — not all resources have a `list()` method (e.g., `workspaceKeys` has `all`, `detail(name)`, `members(workspace)` but no `list()`):
+
+```typescript
+export const useWorkspaces = () =>
+  useQuery({
+    queryKey: workspaceKeys.all,
+    queryFn: () => listWorkspaces(),
+  });
+```
+
+### 9. Update test mock
+
+Add the new method to `backend/internal/api/mock_gateway_test.go`.
+
+### 10. Verify
 
 ```bash
 cd backend && go build ./... && go test ./...

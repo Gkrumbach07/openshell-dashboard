@@ -20,10 +20,11 @@ const SandboxList: React.FC<SandboxListProps> = ({ workspace, onSelect }) => { .
 export default SandboxList;
 ```
 
-- `~/` path alias maps to `frontend/src/`
+- Use relative imports (`../api/sandboxes`), not the `~/` path alias
 - PascalCase files for components, camelCase for hooks
 - `data-testid` on interactive and testable elements
-- Import directly from source modules, not barrel `index.ts` re-exports
+- Pages are flat files in `src/pages/` (no subdirectories)
+- Barrel exports in `src/pages/index.ts` and `src/components/index.ts` are for downstream npm consumers
 
 ## Page components must be exportable
 
@@ -35,15 +36,28 @@ Every page under `src/pages/` is designed to be imported by a downstream consume
 
 ## Hooks
 
-Data fetching uses React Query (`@tanstack/react-query`):
+Data fetching uses React Query (`@tanstack/react-query`) with centralized query keys from `src/api/queryKeys.ts`:
 
 ```tsx
-export const useSandboxes = (workspace: string) =>
+import { sandboxKeys } from './queryKeys';
+
+export const useSandboxes = (workspace: string, labelSelector?: string) =>
   useQuery({
-    queryKey: ['sandboxes', workspace],
-    queryFn: () => api.listSandboxes(workspace),
+    queryKey: sandboxKeys.list(workspace, labelSelector),
+    queryFn: () => listSandboxes(workspace, labelSelector),
   });
 ```
+
+API client functions use `get`, `post`, `put`, `del` from `./client`:
+
+```tsx
+import { get, post, del } from './client';
+
+export const listSandboxes = (workspace: string): Promise<Sandbox[]> =>
+  get<Sandbox[]>(`/api/v1/workspaces/${workspace}/sandboxes`);
+```
+
+Custom hooks for shared UI patterns live in `src/hooks/` (e.g., `useBulkDelete`, `useListPage`, `useTableSelection`).
 
 ## TypeScript
 
@@ -54,10 +68,15 @@ export const useSandboxes = (workspace: string) =>
 ## PatternFly 6
 
 - Barrel imports: `import { Button, Modal } from '@patternfly/react-core'`
-- Layout via PF components: `Stack`, `Flex`, `Grid`, `Split`, `Gallery`
-- Semantic tokens for any custom SCSS: `var(--pf-t--global--spacer--md)`
-- No inline styles with hardcoded values
-- No MUI — PatternFly only
+- No MUI, no custom design system
+- No co-located CSS files (break Module Federation theming)
+- No inline styles
+
+### Styling hierarchy (prefer top, fallback down)
+
+1. **PF component props** — `<Flex gap={{ default: 'gapSm' }}>`, `<FlexItem flex={{ default: 'flex_1' }}>`, `<Content component="p">`, `<Title size={TitleSizes.md}>`. Always the first choice.
+2. **PF utility classes** — `pf-v6-u-text-truncate`, `pf-v6-u-font-family-monospace`, etc. Use only when no component prop exists for the style (e.g., `min-width: 0` for flex truncation).
+3. Never write custom CSS files, inline styles, or `style={{}}` props.
 
 ## Navigation
 

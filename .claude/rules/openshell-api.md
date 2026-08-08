@@ -12,7 +12,7 @@ alwaysApply: false
 
 | Service | Proto | What we use |
 |---------|-------|-------------|
-| `openshell.v1.OpenShell` (63 RPCs) | openshell.proto | Sandbox, workspace, member, provider, profile, policy, draft policy, logs, SSH, services |
+| `openshell.v1.OpenShell` (64 RPCs) | openshell.proto | Sandbox, workspace, member, provider, profile, policy, draft policy, logs, SSH, services |
 | `openshell.inference.v1.Inference` (4 RPCs) | inference.proto | Inference route CRUD |
 
 Skip `GatewayInterceptor`, `SupervisorMiddleware`, `ComputeDriver` — internal/operator only.

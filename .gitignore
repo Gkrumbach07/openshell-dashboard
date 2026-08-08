@@ -23,3 +23,4 @@ frontend/cypress/screenshots/
 # Env files are never committed
 .env
 .env.*
+.claude/worktrees/
