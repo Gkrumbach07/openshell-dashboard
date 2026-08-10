@@ -316,6 +316,7 @@ export type FeatureFlags = {
   credentialRefresh: boolean;
   services: boolean;
   draftPolicy: boolean;
+  liveUpdates: boolean;
 };
 
 export type AuthConfig = {

@@ -9,5 +9,6 @@ recorded here — an ADR appears when the decision does.
 | [0001](0001-downstream-consumption.md) | Downstream consumption: npm package + a five-mechanism extension surface | Accepted |
 | [0002](0002-auth-relay-only-bff.md) | Auth: relay-only BFF behind a fronting proxy (e.g. oauth2-proxy) | Accepted |
 | [0003](0003-gateway-client-sdk-vs-stubs.md) | Gateway client: openshell-sdk-go over generated stubs | **Proposed** |
+| [0004](0004-live-updates-watch-relay.md) | Live updates: WatchSandbox WebSocket relay with polling fallback | Accepted |
 
 From here forward, ADRs are append-only: supersede, don't rewrite.

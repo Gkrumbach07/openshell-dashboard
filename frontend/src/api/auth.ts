@@ -37,6 +37,7 @@ export const useFeatureFlags = () => {
     credentialRefresh: true,
     services: true,
     draftPolicy: true,
+    liveUpdates: true,
   };
   return data?.features ?? defaults;
 };

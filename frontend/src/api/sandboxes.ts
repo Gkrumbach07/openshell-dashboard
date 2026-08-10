@@ -52,11 +52,17 @@ export const useSandboxes = (workspace: string, labelSelector?: string) =>
     refetchInterval: SANDBOX_POLL_MS,
   });
 
-export const useSandbox = (workspace: string, name: string) =>
+// When `live` is true, a watch WebSocket (useSandboxWatch) is pushing
+// sandbox snapshots into this cache, so interval polling is disabled.
+export const useSandbox = (
+  workspace: string,
+  name: string,
+  opts?: { live?: boolean },
+) =>
   useQuery({
     queryKey: sandboxKeys.detail(workspace, name),
     queryFn: () => getSandbox(workspace, name),
-    refetchInterval: SANDBOX_POLL_MS,
+    refetchInterval: opts?.live ? false : SANDBOX_POLL_MS,
   });
 
 export const useCreateSandbox = (workspace: string) => {

@@ -29,18 +29,22 @@ type SandboxLogs struct {
 	BufferTotal uint32    `json:"bufferTotal"`
 }
 
+func FromLogLine(line *openshellv1.SandboxLogLine) LogLine {
+	return LogLine{
+		SandboxID:   line.GetSandboxId(),
+		TimestampMs: line.GetTimestampMs(),
+		Level:       line.GetLevel(),
+		Target:      line.GetTarget(),
+		Message:     line.GetMessage(),
+		Source:      line.GetSource(),
+		Fields:      line.GetFields(),
+	}
+}
+
 func FromSandboxLogs(resp *openshellv1.GetSandboxLogsResponse) SandboxLogs {
 	out := SandboxLogs{Logs: []LogLine{}, BufferTotal: resp.GetBufferTotal()}
 	for _, line := range resp.GetLogs() {
-		out.Logs = append(out.Logs, LogLine{
-			SandboxID:   line.SandboxId,
-			TimestampMs: line.TimestampMs,
-			Level:       line.Level,
-			Target:      line.Target,
-			Message:     line.Message,
-			Source:      line.Source,
-			Fields:      line.Fields,
-		})
+		out.Logs = append(out.Logs, FromLogLine(line))
 	}
 	return out
 }

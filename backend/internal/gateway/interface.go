@@ -16,6 +16,7 @@ type Interface interface {
 	GetGatewayInfo(ctx context.Context) (*openshellv1.GetGatewayInfoResponse, error)
 	GetCurrentUser(ctx context.Context) (*openshellv1.GetCurrentUserResponse, error)
 	ExecSandboxInteractive(ctx context.Context) (openshellv1.OpenShell_ExecSandboxInteractiveClient, error)
+	WatchSandbox(ctx context.Context, req *openshellv1.WatchSandboxRequest) (openshellv1.OpenShell_WatchSandboxClient, error)
 
 	// Sandboxes
 	CreateSandbox(ctx context.Context, workspace, name string, spec *openshellv1.SandboxSpec, labels, annotations map[string]string) (*openshellv1.Sandbox, error)

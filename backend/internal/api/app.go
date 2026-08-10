@@ -89,6 +89,9 @@ func (app *App) Routes() http.Handler {
 					r.Delete("/sandboxes/{name}", app.DeleteSandbox)
 					r.Get("/sandboxes/{name}/logs", app.GetSandboxLogs)
 					r.Get("/sandboxes/{name}/terminal", app.Terminal)
+					if app.authConfig.Features.LiveUpdates {
+						r.Get("/sandboxes/{name}/watch", app.WatchSandbox)
+					}
 					r.Get("/sandboxes/{name}/providers", app.ListSandboxProviders)
 					r.Post("/sandboxes/{name}/providers/{provider}", app.AttachSandboxProvider)
 					r.Delete("/sandboxes/{name}/providers/{provider}", app.DetachSandboxProvider)

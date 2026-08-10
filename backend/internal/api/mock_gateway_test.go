@@ -16,6 +16,7 @@ type mockGateway struct {
 	getGatewayInfoFn            func(ctx context.Context) (*openshellv1.GetGatewayInfoResponse, error)
 	getCurrentUserFn            func(ctx context.Context) (*openshellv1.GetCurrentUserResponse, error)
 	execSandboxInteractiveFn    func(ctx context.Context) (openshellv1.OpenShell_ExecSandboxInteractiveClient, error)
+	watchSandboxFn              func(ctx context.Context, req *openshellv1.WatchSandboxRequest) (openshellv1.OpenShell_WatchSandboxClient, error)
 	createSandboxFn             func(ctx context.Context, workspace, name string, spec *openshellv1.SandboxSpec, labels, annotations map[string]string) (*openshellv1.Sandbox, error)
 	getSandboxFn                func(ctx context.Context, workspace, name string) (*openshellv1.Sandbox, error)
 	listSandboxesFn             func(ctx context.Context, workspace string, limit, offset uint32, labelSelector string) ([]*openshellv1.Sandbox, error)
@@ -82,6 +83,9 @@ func (m *mockGateway) GetCurrentUser(ctx context.Context) (*openshellv1.GetCurre
 }
 func (m *mockGateway) ExecSandboxInteractive(ctx context.Context) (openshellv1.OpenShell_ExecSandboxInteractiveClient, error) {
 	return m.execSandboxInteractiveFn(ctx)
+}
+func (m *mockGateway) WatchSandbox(ctx context.Context, req *openshellv1.WatchSandboxRequest) (openshellv1.OpenShell_WatchSandboxClient, error) {
+	return m.watchSandboxFn(ctx, req)
 }
 func (m *mockGateway) CreateSandbox(ctx context.Context, workspace, name string, spec *openshellv1.SandboxSpec, labels, annotations map[string]string) (*openshellv1.Sandbox, error) {
 	return m.createSandboxFn(ctx, workspace, name, spec, labels, annotations)

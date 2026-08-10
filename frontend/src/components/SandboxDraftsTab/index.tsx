@@ -26,14 +26,16 @@ import type { PolicyChunk } from '../../types';
 type SandboxDraftsTabProps = {
   workspace: string;
   sandboxName: string;
+  isLive?: boolean;
 };
 
 const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
   workspace,
   sandboxName,
+  isLive = false,
 }) => {
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
-  const drafts = useDraftPolicy(workspace, sandboxName);
+  const drafts = useDraftPolicy(workspace, sandboxName, { live: isLive });
   const actions = useDraftActions(workspace, sandboxName);
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');

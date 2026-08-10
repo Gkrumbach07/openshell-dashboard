@@ -17,6 +17,7 @@ Flags are set as **BFF environment variables** and exposed to the frontend via `
 | `FEATURE_CREDENTIAL_REFRESH` | `true` | Credential refresh configure/rotate/delete on provider detail. Disable if refresh is managed externally. |
 | `FEATURE_SERVICES` | `true` | Sandbox services (expose/list/delete). Disable if service routing is not available. |
 | `FEATURE_DRAFT_POLICY` | `true` | Draft policy advisor inbox (approve/reject/edit/undo). Disable if the policy advisor is not configured. |
+| `FEATURE_LIVE_UPDATES` | `true` | Live sandbox/draft updates via a WatchSandbox WebSocket relay ([ADR 0004](docs/adrs/0004-live-updates-watch-relay.md)). When on, the sandbox detail page swaps polling for pushed events; polling resumes automatically if the socket cannot connect. Disable in federated deployments where the proxy can't upgrade WS. |
 
 ### Frontend consumption
 
@@ -34,7 +35,8 @@ The `/api/v1/auth/config` response includes a `features` object:
     "globalPolicy": true,
     "credentialRefresh": true,
     "services": true,
-    "draftPolicy": true
+    "draftPolicy": true,
+    "liveUpdates": true
   }
 }
 ```

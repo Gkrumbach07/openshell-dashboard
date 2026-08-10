@@ -31,6 +31,7 @@ type FeatureFlags struct {
 	CredentialRefresh bool `json:"credentialRefresh"`
 	Services          bool `json:"services"`
 	DraftPolicy       bool `json:"draftPolicy"`
+	LiveUpdates       bool `json:"liveUpdates"`
 }
 
 // AuthConfigResponse tells the frontend whether auth is enabled and which

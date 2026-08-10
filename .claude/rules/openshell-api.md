@@ -39,4 +39,4 @@ User-facing RPCs require `Bearer` (OIDC JWT). `Health` is unauthenticated. Sandb
 
 ## Streaming RPCs
 
-`ExecSandboxInteractive` (bidi) — implemented via WebSocket relay in `terminal_handler.go`. `WatchSandbox` (server-stream) and `ForwardTcp` (bidi) — deferred; use `GetSandboxLogs` + `GetSandbox` polling instead.
+`ExecSandboxInteractive` (bidi) — implemented via WebSocket relay in `terminal_handler.go`. `WatchSandbox` (server-stream) — implemented via WebSocket relay in `watch_handler.go`, gated by `FEATURE_LIVE_UPDATES` with React Query polling as fallback (ADR 0004). `ForwardTcp` (bidi) — deferred.

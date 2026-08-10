@@ -78,6 +78,7 @@ func main() {
 			CredentialRefresh: envOr("FEATURE_CREDENTIAL_REFRESH", "true") == "true",
 			Services:          envOr("FEATURE_SERVICES", "true") == "true",
 			DraftPolicy:       envOr("FEATURE_DRAFT_POLICY", "true") == "true",
+			LiveUpdates:       envOr("FEATURE_LIVE_UPDATES", "true") == "true",
 		},
 	}
 

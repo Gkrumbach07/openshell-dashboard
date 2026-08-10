@@ -40,6 +40,7 @@ import SandboxTerminalTab from '../components/sandbox/SandboxTerminalTab';
 import PolicyRuleEditor from '../components/PolicyRuleEditor';
 import SandboxProvidersTab from '../components/sandbox/SandboxProvidersTab';
 import SandboxServicesTab from '../components/sandbox/SandboxServicesTab';
+import { useSandboxWatch } from '../hooks/useSandboxWatch';
 import { formatTimestamp } from '../utils/formatters';
 
 type SandboxDetailPageProps = {
@@ -51,10 +52,13 @@ type SandboxDetailPageProps = {
 
 const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
   const { workspace, sandboxName } = props;
-  const sandbox = useSandbox(workspace, sandboxName);
+  const { isLive } = useSandboxWatch(workspace, sandboxName);
+  const sandbox = useSandbox(workspace, sandboxName, { live: isLive });
   const features = useFeatureFlags();
   const policyQuery = useSandboxPolicy(workspace, sandboxName);
-  const draftsQuery = useDraftPolicy(workspace, sandboxName);
+  const draftsQuery = useDraftPolicy(workspace, sandboxName, {
+    live: isLive,
+  });
   const providerExpiry = useProviderExpiry(workspace);
   const [searchParams, setSearchParams] = useSearchParams();
   const resolvedTab = props.activeTab ?? (searchParams.get('tab') || 'details');
@@ -126,6 +130,17 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
           <FlexItem>
             <PhaseLabel phase={data.status.phase} />
           </FlexItem>
+          {features.liveUpdates && (
+            <FlexItem>
+              <Label
+                isCompact
+                color={isLive ? 'green' : 'grey'}
+                data-testid="live-updates-indicator"
+              >
+                {isLive ? 'Live' : 'Polling'}
+              </Label>
+            </FlexItem>
+          )}
         </Flex>
       </PageSection>
       <SandboxAttention
@@ -319,6 +334,7 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
                 <SandboxDraftsTab
                   workspace={workspace}
                   sandboxName={sandboxName}
+                  isLive={isLive}
                 />
               </div>
             </Tab>

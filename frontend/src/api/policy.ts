@@ -161,11 +161,17 @@ export const useDeleteGlobalPolicy = () => {
   });
 };
 
-export const useDraftPolicy = (workspace: string, name: string) =>
+// When `live` is true, a watch WebSocket (useSandboxWatch) is pushing
+// invalidations, so interval polling is disabled and acts only as fallback.
+export const useDraftPolicy = (
+  workspace: string,
+  name: string,
+  opts?: { live?: boolean },
+) =>
   useQuery({
     queryKey: policyKeys.drafts(workspace, name),
     queryFn: () => getDraftPolicy(workspace, name),
-    refetchInterval: DRAFT_POLL_MS,
+    refetchInterval: opts?.live ? false : DRAFT_POLL_MS,
   });
 
 // Draft decisions invalidate both the inbox and the policy view (approvals
