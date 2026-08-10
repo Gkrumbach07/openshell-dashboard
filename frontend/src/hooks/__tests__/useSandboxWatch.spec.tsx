@@ -91,16 +91,18 @@ describe('useSandboxWatch', () => {
       ws.onmessage?.({ data: JSON.stringify({ type: 'sandbox', sandbox }) }),
     );
 
-    expect(queryClient.getQueryData(sandboxKeys.detail('default', 'sb1'))).toEqual(
-      sandbox,
-    );
+    expect(
+      queryClient.getQueryData(sandboxKeys.detail('default', 'sb1')),
+    ).toEqual(sandbox);
 
     act(() => jest.advanceTimersByTime(300));
     const invalidatedKeys = invalidateSpy.mock.calls.map(
       ([filters]) => filters?.queryKey,
     );
     expect(invalidatedKeys).toContainEqual(policyKeys.drafts('default', 'sb1'));
-    expect(invalidatedKeys).toContainEqual(policyKeys.sandbox('default', 'sb1'));
+    expect(invalidatedKeys).toContainEqual(
+      policyKeys.sandbox('default', 'sb1'),
+    );
     expect(invalidatedKeys).toContainEqual(
       policyKeys.draftHistory('default', 'sb1'),
     );
@@ -114,7 +116,9 @@ describe('useSandboxWatch', () => {
 
     act(() => {
       for (let i = 0; i < 5; i += 1) {
-        ws.onmessage?.({ data: JSON.stringify({ type: 'warning', warning: 'lag' }) });
+        ws.onmessage?.({
+          data: JSON.stringify({ type: 'warning', warning: 'lag' }),
+        });
       }
       jest.advanceTimersByTime(300);
     });

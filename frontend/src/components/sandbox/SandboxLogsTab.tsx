@@ -65,7 +65,9 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
   );
 
   const logText = useMemo(() => {
-    const logLines = stream.isStreaming ? stream.lines : (logs.data?.logs ?? []);
+    const logLines = stream.isStreaming
+      ? stream.lines
+      : (logs.data?.logs ?? []);
     if (logLines.length === 0) return 'No log lines match the current filters.';
     return logLines.map(formatLogLine).join('\n');
   }, [stream.isStreaming, stream.lines, logs.data]);

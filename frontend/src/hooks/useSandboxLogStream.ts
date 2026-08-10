@@ -55,7 +55,9 @@ export const useSandboxLogStream = (
         const line = event.log;
         setLines((prev) => {
           const next = [...prev, line];
-          return next.length > maxLines ? next.slice(next.length - maxLines) : next;
+          return next.length > maxLines
+            ? next.slice(next.length - maxLines)
+            : next;
         });
       },
       onLiveChange: (live) => {

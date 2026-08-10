@@ -117,6 +117,21 @@ func readWatchEvent(t *testing.T, ws *websocket.Conn) models.WatchEvent {
 	return evt
 }
 
+// requireWatchRequest asserts the relay resolved name → id and opened the
+// stream with the right follow options.
+func requireWatchRequest(t *testing.T, fake *e2eOpenShellServer) {
+	t.Helper()
+	select {
+	case req := <-fake.watchRequests:
+		if req.GetId() != "e2e-id-1" || !req.GetFollowStatus() || !req.GetFollowLogs() ||
+			req.GetLogTailLines() != 50 || req.GetLogMinLevel() != "INFO" {
+			t.Errorf("watch request = %+v, want id=e2e-id-1 followStatus followLogs lines=50 level=INFO", req)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("gateway never received a WatchSandbox request")
+	}
+}
+
 func TestE2EWatchRelaysSnapshotsAndLogs(t *testing.T) {
 	wsBase, fake := startE2EStack(t)
 
@@ -129,17 +144,7 @@ func TestE2EWatchRelaysSnapshotsAndLogs(t *testing.T) {
 	}
 	defer ws.Close()
 
-	// The relay must resolve name → id and open the stream with the right
-	// follow options.
-	select {
-	case req := <-fake.watchRequests:
-		if req.GetId() != "e2e-id-1" || !req.GetFollowStatus() || !req.GetFollowLogs() ||
-			req.GetLogTailLines() != 50 || req.GetLogMinLevel() != "INFO" {
-			t.Errorf("watch request = %+v, want id=e2e-id-1 followStatus followLogs lines=50 level=INFO", req)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("gateway never received a WatchSandbox request")
-	}
+	requireWatchRequest(t, fake)
 
 	// Initial snapshot arrives through the whole chain.
 	first := readWatchEvent(t, ws)

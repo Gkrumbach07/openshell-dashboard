@@ -84,7 +84,9 @@ describe('useSandboxLogStream', () => {
       ws.onmessage?.({ data: logFrame('first') });
       ws.onmessage?.({ data: logFrame('second') });
       // Non-log frames are ignored by this hook.
-      ws.onmessage?.({ data: JSON.stringify({ type: 'warning', warning: 'x' }) });
+      ws.onmessage?.({
+        data: JSON.stringify({ type: 'warning', warning: 'x' }),
+      });
     });
     expect(result.current.lines.map((l) => l.message)).toEqual([
       'first',

@@ -9,11 +9,11 @@ import (
 // exactly one payload field is set. Payloads go through the From*()
 // converters so secret-field stripping applies — never serialize raw proto.
 type WatchEvent struct {
-	Type              string             `json:"type"`
 	Sandbox           *Sandbox           `json:"sandbox,omitempty"`
 	Log               *LogLine           `json:"log,omitempty"`
-	Warning           string             `json:"warning,omitempty"`
 	DraftPolicyUpdate *DraftPolicyUpdate `json:"draftPolicyUpdate,omitempty"`
+	Type              string             `json:"type"`
+	Warning           string             `json:"warning,omitempty"`
 }
 
 // DraftPolicyUpdate mirrors openshell.v1.DraftPolicyUpdate. The gateway does
