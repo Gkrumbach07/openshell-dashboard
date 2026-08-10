@@ -34,8 +34,6 @@ import StatusDot from '../StatusDot';
 import { formatAge, formatUptime } from '../../utils/formatters';
 import { useSlots } from '../../slots';
 import { Label } from '@patternfly/react-core';
-import './SandboxCard.css';
-
 type SandboxCardProps = {
   sandbox: Sandbox;
   draftSummary?: DraftSandboxSummary;
@@ -84,7 +82,7 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
               alignItems={{ default: 'alignItemsFlexStart' }}
               gap={{ default: 'gapMd' }}
             >
-              <FlexItem style={{ flex: 1, minWidth: 0 }}>
+              <FlexItem flex={{ default: 'flex_1' }} style={{ minWidth: 0 }}>
                 <Stack>
                   <StackItem>
                     <Flex
@@ -100,7 +98,7 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
                           variant="link"
                           isInline
                           onClick={() => onSelect?.(metadata.name)}
-                          className="sandbox-card__name-button"
+                          className="pf-v6-u-font-size-sm"
                           data-testid={`sandbox-card-name-${metadata.name}`}
                         >
                           {metadata.name}
@@ -119,7 +117,7 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
                   <StackItem>
                     <Content
                       component="small"
-                      className="pf-v6-u-text-truncate pf-v6-u-font-family-monospace sandbox-card__image"
+                      className="pf-v6-u-text-truncate pf-v6-u-font-family-monospace pf-v6-u-display-block"
                     >
                       {spec.image || '-'}
                     </Content>
@@ -263,7 +261,7 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
               </Button>
             </FlexItem>
           )}
-          <FlexItem style={{ flex: 1 }} />
+          <FlexItem flex={{ default: 'flex_1' }} />
           <FlexItem>
             <Button
               variant="link"

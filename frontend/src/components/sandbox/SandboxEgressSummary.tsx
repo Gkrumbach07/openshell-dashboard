@@ -11,7 +11,6 @@ import {
 } from '@patternfly/react-core';
 import { SecurityIcon } from '@patternfly/react-icons';
 
-import './SandboxEgressSummary.css';
 import type {
   NetworkPolicyRule,
   SandboxPolicy,
@@ -105,18 +104,28 @@ const EgressRuleList: React.FC<{ rules: [string, NetworkPolicyRule][] }> = ({
             alignItems={{ default: 'alignItemsCenter' }}
             gap={{ default: 'gapSm' }}
             flexWrap={{ default: 'nowrap' }}
-            className="egress-rule"
+            className="pf-v6-u-py-sm"
           >
-            <FlexItem className="pf-v6-u-text-truncate egress-rule__name">
+            <FlexItem
+              flex={{ default: 'flex_1' }}
+              className="pf-v6-u-text-truncate pf-v6-u-font-family-monospace"
+              style={{ minWidth: 0 }}
+            >
               {name}
             </FlexItem>
-            <FlexItem className="egress-rule__count">
+            <FlexItem
+              grow={{ default: 'grow' }}
+              className="pf-v6-u-flex-shrink-0"
+            >
               <Content component="small">
                 {hosts} host{hosts > 1 ? 's' : ''}
                 {bins > 0 && ` · ${bins} binar${bins > 1 ? 'ies' : 'y'}`}
               </Content>
             </FlexItem>
-            <FlexItem className="egress-rule__label">
+            <FlexItem
+              grow={{ default: 'grow' }}
+              className="pf-v6-u-flex-shrink-0"
+            >
               <Label color={getEnforcementColor(enforcement)} isCompact>
                 {enforcement}
               </Label>
@@ -145,28 +154,29 @@ const SandboxEgressSummary: React.FC<SandboxEgressSummaryProps> = ({
         gap={{ default: 'gapSm' }}
         flexWrap={{ default: 'nowrap' }}
       >
-        <FlexItem style={{ flexShrink: 0 }}>
+        <FlexItem className="pf-v6-u-flex-shrink-0">
           <SecurityIcon style={{ color: summary.iconColor }} />
         </FlexItem>
         <FlexItem style={{ minWidth: 0 }}>
           {summary.version > 0 ? (
             <span>
               <strong>Policy v{summary.version} enforced</strong>
-              <span
-                style={{ color: 'var(--pf-t--global--text--color--subtle)' }}
+              <Content
+                component="small"
+                className="pf-v6-u-display-inline pf-v6-u-text-color-subtle"
               >
                 {' · '}
                 {summary.subtitle || 'no egress'}
-              </span>
+              </Content>
             </span>
           ) : (
-            <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
+            <Content component="small" className="pf-v6-u-text-color-subtle">
               No policy loaded
-            </span>
+            </Content>
           )}
         </FlexItem>
         {pendingDrafts > 0 && (
-          <FlexItem style={{ flexShrink: 0 }}>
+          <FlexItem className="pf-v6-u-flex-shrink-0">
             <Label color="yellow" isCompact>
               {pendingDrafts} proposed
             </Label>

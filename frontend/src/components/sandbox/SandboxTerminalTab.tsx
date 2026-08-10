@@ -12,6 +12,7 @@ import { TAB_CONTENT_HEIGHT, TERMINAL_FONT_SIZE } from '../../constants';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { getApiBasePath } from '../../api/client';
 import '@xterm/xterm/css/xterm.css';
 
 // xterm.js theme requires literal color values (rendered on canvas, not CSS).
@@ -59,7 +60,8 @@ const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({
     terminalRef.current = terminal;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandboxName)}/terminal?cols=${terminal.cols}&rows=${terminal.rows}`;
+    const basePath = getApiBasePath();
+    const wsUrl = `${protocol}//${window.location.host}${basePath}/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandboxName)}/terminal?cols=${terminal.cols}&rows=${terminal.rows}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;

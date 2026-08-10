@@ -71,6 +71,81 @@ func TestWriteGrpcErrorNonGRPC(t *testing.T) {
 	}
 }
 
+func TestWriteGrpcErrorWrapped(t *testing.T) {
+	// Simulate the real scenario: gateway layer wraps gRPC errors with fmt.Errorf.
+	// The GRPCStatus() interface should still extract the clean original message.
+	tests := []struct {
+		name        string
+		err         error
+		wantCode    string
+		wantMessage string
+		wantHTTP    int
+	}{
+		{
+			name:        "wrapped AlreadyExists",
+			err:         fmt.Errorf("create sandbox %q in workspace %q: %w", "prueba", "default", status.Error(codes.AlreadyExists, "sandbox 'prueba' already exists")),
+			wantHTTP:    http.StatusConflict,
+			wantCode:    "already_exists",
+			wantMessage: "sandbox 'prueba' already exists",
+		},
+		{
+			name:        "wrapped NotFound short message",
+			err:         fmt.Errorf("get sandbox %q in workspace %q: %w", "x", "prod", status.Error(codes.NotFound, "not found")),
+			wantHTTP:    http.StatusNotFound,
+			wantCode:    "not_found",
+			wantMessage: "not found",
+		},
+		{
+			name:        "wrapped InvalidArgument",
+			err:         fmt.Errorf("create sandbox %q: %w", "bad/name", status.Error(codes.InvalidArgument, "sandbox name must be a valid DNS-1123 label")),
+			wantHTTP:    http.StatusBadRequest,
+			wantCode:    "invalid_argument",
+			wantMessage: "sandbox name must be a valid DNS-1123 label",
+		},
+		{
+			name:        "wrapped PermissionDenied short",
+			err:         fmt.Errorf("delete sandbox %q: %w", "x", status.Error(codes.PermissionDenied, "denied")),
+			wantHTTP:    http.StatusForbidden,
+			wantCode:    "permission_denied",
+			wantMessage: "denied",
+		},
+		{
+			name:        "double-wrapped error preserves original message",
+			err:         fmt.Errorf("handler: %w", fmt.Errorf("gateway call: %w", status.Error(codes.NotFound, "workspace not found"))),
+			wantHTTP:    http.StatusNotFound,
+			wantCode:    "not_found",
+			wantMessage: "workspace not found",
+		},
+		{
+			name:        "wrapped Unavailable returns generic message",
+			err:         fmt.Errorf("list sandboxes in workspace %q: %w", "default", status.Error(codes.Unavailable, "connection refused")),
+			wantHTTP:    http.StatusBadGateway,
+			wantCode:    "gateway_unavailable",
+			wantMessage: "OpenShell gateway is unreachable",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			writeGrpcError(w, tc.err)
+
+			if w.Code != tc.wantHTTP {
+				t.Errorf("HTTP status = %d, want %d", w.Code, tc.wantHTTP)
+			}
+			var body ErrorResponse
+			if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if body.Code != tc.wantCode {
+				t.Errorf("error code = %q, want %q", body.Code, tc.wantCode)
+			}
+			if body.Message != tc.wantMessage {
+				t.Errorf("message = %q, want %q", body.Message, tc.wantMessage)
+			}
+		})
+	}
+}
+
 func TestDecodeBody(t *testing.T) {
 	tests := []struct {
 		name    string
