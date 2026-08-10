@@ -55,8 +55,21 @@ func watchTestServer(t *testing.T, gw *mockGateway) *httptest.Server {
 	return server
 }
 
+// watchRequestOrFail returns the request the relay opened its stream with,
+// delivered over a channel because the mock runs on the server goroutine.
+func watchRequestOrFail(t *testing.T, reqCh <-chan *openshellv1.WatchSandboxRequest) *openshellv1.WatchSandboxRequest {
+	t.Helper()
+	select {
+	case req := <-reqCh:
+		return req
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch stream was never opened")
+		return nil
+	}
+}
+
 func TestWatchSandboxRelaysEvents(t *testing.T) {
-	var gotReq *openshellv1.WatchSandboxRequest
+	reqCh := make(chan *openshellv1.WatchSandboxRequest, 1)
 	gw := &mockGateway{
 		getSandboxFn: func(_ context.Context, _, _ string) (*openshellv1.Sandbox, error) {
 			return &openshellv1.Sandbox{
@@ -64,7 +77,7 @@ func TestWatchSandboxRelaysEvents(t *testing.T) {
 			}, nil
 		},
 		watchSandboxFn: func(ctx context.Context, req *openshellv1.WatchSandboxRequest) (openshellv1.OpenShell_WatchSandboxClient, error) {
-			gotReq = req
+			reqCh <- req
 			return &fakeWatchStream{
 				ctx: ctx,
 				events: []*openshellv1.SandboxStreamEvent{
@@ -112,6 +125,7 @@ func TestWatchSandboxRelaysEvents(t *testing.T) {
 		t.Errorf("second frame = %+v, want warning 'lagged'", second)
 	}
 
+	gotReq := watchRequestOrFail(t, reqCh)
 	if gotReq.GetId() != "sb-id-1" {
 		t.Errorf("watch request id = %q, want sb-id-1 (resolved from name)", gotReq.GetId())
 	}
@@ -124,7 +138,7 @@ func TestWatchSandboxRelaysEvents(t *testing.T) {
 }
 
 func TestWatchSandboxLogParams(t *testing.T) {
-	var gotReq *openshellv1.WatchSandboxRequest
+	reqCh := make(chan *openshellv1.WatchSandboxRequest, 1)
 	gw := &mockGateway{
 		getSandboxFn: func(_ context.Context, _, _ string) (*openshellv1.Sandbox, error) {
 			return &openshellv1.Sandbox{
@@ -132,7 +146,7 @@ func TestWatchSandboxLogParams(t *testing.T) {
 			}, nil
 		},
 		watchSandboxFn: func(ctx context.Context, req *openshellv1.WatchSandboxRequest) (openshellv1.OpenShell_WatchSandboxClient, error) {
-			gotReq = req
+			reqCh <- req
 			return &fakeWatchStream{ctx: ctx}, nil
 		},
 	}
@@ -144,15 +158,9 @@ func TestWatchSandboxLogParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial failed: %v", err)
 	}
-	ws.Close()
+	defer ws.Close()
 
-	deadline := time.Now().Add(2 * time.Second)
-	for gotReq == nil && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if gotReq == nil {
-		t.Fatal("watch stream was never opened")
-	}
+	gotReq := watchRequestOrFail(t, reqCh)
 	if !gotReq.GetFollowLogs() || gotReq.GetLogTailLines() != 50 ||
 		gotReq.GetLogMinLevel() != "WARN" || len(gotReq.GetLogSources()) != 1 || gotReq.GetLogSources()[0] != "sandbox" {
 		t.Errorf("watch request = %+v, want followLogs with lines=50 level=WARN source=sandbox", gotReq)
