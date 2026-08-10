@@ -6,6 +6,7 @@ import {
   Checkbox,
   FormSelect,
   FormSelectOption,
+  Label,
   Toolbar,
   ToolbarContent,
   ToolbarGroup,
@@ -14,6 +15,7 @@ import {
 import { LogViewer, LogViewerSearch } from '@patternfly/react-log-viewer';
 
 import { useSandboxLogs } from '../../api/sandboxes';
+import { useSandboxLogStream } from '../../hooks/useSandboxLogStream';
 import type { LogLine } from '../../types';
 
 type SandboxLogsTabProps = {
@@ -39,6 +41,18 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
   const [source, setSource] = useState('');
   const [lines, setLines] = useState(DEFAULT_LOG_LINES);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  // Streamed lines over the watch WebSocket replace polling while the
+  // socket is healthy (ADR 0004); the polled query below is the fallback.
+  const stream = useSandboxLogStream(
+    workspace,
+    sandboxName,
+    {
+      lines: Number(lines),
+      level: level || undefined,
+      sources: source ? [source] : undefined,
+    },
+    true,
+  );
   const logs = useSandboxLogs(
     workspace,
     sandboxName,
@@ -47,14 +61,14 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
       level: level || undefined,
       sources: source ? [source] : undefined,
     },
-    autoRefresh,
+    autoRefresh && !stream.isStreaming,
   );
 
   const logText = useMemo(() => {
-    const logLines = logs.data?.logs ?? [];
+    const logLines = stream.isStreaming ? stream.lines : (logs.data?.logs ?? []);
     if (logLines.length === 0) return 'No log lines match the current filters.';
     return logLines.map(formatLogLine).join('\n');
-  }, [logs.data]);
+  }, [stream.isStreaming, stream.lines, logs.data]);
 
   const toolbar = (
     <Toolbar aria-label="Log filters">
@@ -100,13 +114,19 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
             </FormSelect>
           </ToolbarItem>
           <ToolbarItem alignSelf="center">
-            <Checkbox
-              id="logs-auto-refresh"
-              data-testid="logs-auto-refresh"
-              label="Auto-refresh (5s)"
-              isChecked={autoRefresh}
-              onChange={(_event, checked) => setAutoRefresh(checked)}
-            />
+            {stream.isStreaming ? (
+              <Label isCompact color="green" data-testid="logs-live-indicator">
+                Live
+              </Label>
+            ) : (
+              <Checkbox
+                id="logs-auto-refresh"
+                data-testid="logs-auto-refresh"
+                label="Auto-refresh (5s)"
+                isChecked={autoRefresh}
+                onChange={(_event, checked) => setAutoRefresh(checked)}
+              />
+            )}
           </ToolbarItem>
           {(level !== '' || source !== '' || lines !== '200') && (
             <ToolbarItem>
@@ -133,7 +153,8 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
     </Toolbar>
   );
 
-  if (logs.isError) {
+  // A failed poll only matters when the stream isn't delivering lines.
+  if (logs.isError && !stream.isStreaming) {
     return (
       <Alert
         variant="danger"
@@ -151,7 +172,7 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
 
   return (
     <LogViewer
-      data={logs.isLoading ? 'Loading...' : logText}
+      data={logs.isLoading && !stream.isStreaming ? 'Loading...' : logText}
       theme="dark"
       height={TAB_CONTENT_HEIGHT}
       toolbar={toolbar}

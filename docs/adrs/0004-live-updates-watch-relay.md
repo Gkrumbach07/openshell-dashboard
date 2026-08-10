@@ -34,9 +34,12 @@ fallback.**
   `models.From*()` so secret-stripping applies. Ping/pong keepalive detects
   half-dead proxy connections — unlike the terminal, a watch stream can be
   legitimately silent for minutes.
-- The frontend `useSandboxWatch` hook owns the socket. React Query remains
-  the single source of truth: snapshot events are pushed into the sandbox
-  detail cache, everything else becomes debounced query invalidation.
+- The frontend `useSandboxWatch` hook owns the detail page's socket. React
+  Query remains the single source of truth: snapshot events are pushed into
+  the sandbox detail cache, everything else becomes debounced query
+  invalidation. The logs tab opens its own socket with `logs=true`
+  (`useSandboxLogStream`) so log streaming only runs while that tab is
+  mounted; both hooks share one reconnecting-socket helper (`watchSocket.ts`).
 - Queries accept `{ live }` and disable `refetchInterval` while the socket
   is open. Flag off, socket down, or repeated connect failures → intervals
   resume. There is no third mode: WebSocket-when-possible, polling otherwise.

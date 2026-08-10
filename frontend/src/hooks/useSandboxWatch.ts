@@ -3,25 +3,10 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useFeatureFlags } from '../api/auth';
 import { policyKeys, sandboxKeys } from '../api/queryKeys';
-import type { LogLine, Sandbox } from '../types';
+import { openWatchSocket, watchSocketUrl } from './watchSocket';
 
-export type SandboxWatchEvent = {
-  type: 'sandbox' | 'log' | 'warning' | 'draftPolicyUpdate';
-  sandbox?: Sandbox;
-  log?: LogLine;
-  warning?: string;
-  draftPolicyUpdate?: {
-    draftVersion: number;
-    newChunks: number;
-    totalPending: number;
-  };
-};
+export type { SandboxWatchEvent } from './watchSocket';
 
-const RECONNECT_BASE_MS = 1_000;
-const RECONNECT_MAX_MS = 30_000;
-// After this many failed connects in a row, stop retrying — the proxy likely
-// cannot upgrade WebSockets and polling has already taken over.
-const MAX_CONSECUTIVE_FAILURES = 5;
 // Gateway watch-bus events can burst (one per draft mutation); coalesce
 // refetches into one.
 const INVALIDATE_DEBOUNCE_MS = 250;
@@ -49,10 +34,6 @@ export const useSandboxWatch = (
   useEffect(() => {
     if (!enabled) return undefined;
 
-    let ws: WebSocket | null = null;
-    let disposed = false;
-    let failures = 0;
-    let reconnectTimer: number | undefined;
     let invalidateTimer: number | undefined;
 
     const invalidateSoon = () => {
@@ -71,62 +52,28 @@ export const useSandboxWatch = (
       }, INVALIDATE_DEBOUNCE_MS);
     };
 
-    const connect = () => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const url = `${protocol}//${window.location.host}/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/watch`;
-      ws = new WebSocket(url);
-
-      ws.onopen = () => {
-        failures = 0;
-        setIsLive(true);
-      };
-
-      ws.onmessage = (event) => {
-        let parsed: SandboxWatchEvent;
-        try {
-          parsed = JSON.parse(event.data as string) as SandboxWatchEvent;
-        } catch {
-          return;
-        }
-        if (parsed.type === 'sandbox' && parsed.sandbox) {
+    const handle = openWatchSocket({
+      url: watchSocketUrl(workspace, name),
+      onEvent: (event) => {
+        if (event.type === 'sandbox' && event.sandbox) {
           queryClient.setQueryData(
             sandboxKeys.detail(workspace, name),
-            parsed.sandbox,
+            event.sandbox,
           );
           invalidateSoon();
         } else if (
-          parsed.type === 'draftPolicyUpdate' ||
-          parsed.type === 'warning'
+          event.type === 'draftPolicyUpdate' ||
+          event.type === 'warning'
         ) {
           invalidateSoon();
         }
-      };
-
-      ws.onclose = () => {
-        setIsLive(false);
-        if (disposed) return;
-        failures += 1;
-        if (failures > MAX_CONSECUTIVE_FAILURES) return;
-        const backoff = Math.min(
-          RECONNECT_BASE_MS * 2 ** (failures - 1),
-          RECONNECT_MAX_MS,
-        );
-        const delay = backoff * (0.5 + Math.random() * 0.5);
-        reconnectTimer = window.setTimeout(connect, delay);
-      };
-
-      ws.onerror = () => {
-        ws?.close();
-      };
-    };
-
-    connect();
+      },
+      onLiveChange: setIsLive,
+    });
 
     return () => {
-      disposed = true;
-      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       if (invalidateTimer !== undefined) window.clearTimeout(invalidateTimer);
-      ws?.close();
+      handle.dispose();
       setIsLive(false);
     };
   }, [enabled, workspace, name, queryClient]);
