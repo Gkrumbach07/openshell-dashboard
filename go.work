@@ -1,0 +1,15 @@
+// Local-development-only Go workspace. It makes downstream-bff resolve
+// backend-v2 from source in this checkout instead of fetching a published
+// module version, so the two can be iterated on together before backend-v2
+// has ever cut a release. It does NOT affect either module's own go.mod/
+// go.sum — CI and any real downstream consumer builds each module normally
+// (`GOWORK=off go build ./...` from within a module dir, or simply not
+// having a go.work file), resolving backend-v2 the real way: a pinned,
+// tagged, checksummed version. See backend-v2/README.md and
+// downstream-bff/README.md for the full versioning story.
+go 1.26.5
+
+use (
+	./backend-v2
+	./downstream-bff
+)
