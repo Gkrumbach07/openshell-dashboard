@@ -24,6 +24,8 @@ export const setApiBasePath = (basePath: string): void => {
   apiBasePath = basePath.replace(/\/+$/, '');
 };
 
+export const getApiBasePath = (): string => apiBasePath;
+
 export const setSessionExpiredHandler = (handler: () => void): void => {
   onSessionExpired = handler;
 };
