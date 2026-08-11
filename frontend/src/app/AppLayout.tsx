@@ -246,7 +246,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         brandImageAlt="OpenShell Dashboard"
       >
         <Content>
-          <DescriptionList isCompact>
+          <DescriptionList
+            isCompact
+            isAutoFit
+            autoFitMinModifier={{ default: '200px' }}
+          >
             <DescriptionListGroup>
               <DescriptionListTerm>Dashboard version</DescriptionListTerm>
               <DescriptionListDescription>
