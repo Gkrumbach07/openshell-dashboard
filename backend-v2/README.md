@@ -58,8 +58,9 @@ backend-v2/
 
 There's also `../downstream-bff/`, a *separate Go module* that actually
 consumes this one as a dependency — see its README for how it decides,
-per domain, when a full anti-corruption layer is worth the extra code
-versus consuming these types directly.
+per domain, between reusing this package's exported `Service`/`Handler`
+unmodified versus decorating `Service` versus declaring its own superset
+interface for a capability this package doesn't have.
 
 `pkg/gateway` and `pkg/models` are not domain packages — they're
 cross-cutting (every domain service talks through the same gateway
@@ -164,12 +165,14 @@ is a separate team/repo you don't control. `../downstream-bff/` shows the
 downstream-side mitigation that doesn't depend on upstream behaving: each
 domain gets its own package, so a breaking change here is contained to that
 package (plus the one line in the consumer's composition root that always
-has to construct the concrete service, ACL or not). A full
-anti-corruption layer — separate local interface, separate DTOs, one
-adapter file — is a further escalation worth reaching for only when you
-need to keep your own external contract stable independent of upstream, or
-intend to swap the implementation outright; see `downstream-bff/README.md`
-for why that wasn't the default choice there.
+has to construct the concrete service). A full anti-corruption layer —
+separate local interface, separate DTOs, one adapter file — is a further
+escalation worth reaching for only when you need to keep your own external
+contract stable independent of upstream, or intend to swap the
+implementation outright — that wasn't the default choice there, but the
+same local-interface tool gets reused for a different reason: exposing a
+capability (`RestartSandbox`) this package doesn't have at all. See
+`downstream-bff/README.md`.
 
 ## Auth
 

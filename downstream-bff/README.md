@@ -1,5 +1,20 @@
 # downstream-bff — a real, separate consumer of backend-v2
 
+**WARNING: VIBECODED. ONLY FOR DEMONSTRATION PURPOSES**
+
+## To test
+
+```
+go run cmd/api
+```
+
+Making requests to `localhost:8081` with any Bearer Token auth will work.
+
+- `POST localhost:8081/api/v1/workspaces/test/sandboxes/wow/restart`
+  - This is one of the example routes that is an extra implementation in downstream, but doesn't exist in upstream.
+
+## Description
+
 This is what "downstream reuses the BFF" looks like when downstream is a
 genuinely different Go module (different repo/team in a real setup), not
 just a package inside `backend-v2`. It's a second, independently
@@ -11,64 +26,82 @@ builds without `backend-v2` being published anywhere yet.
 ## What it does differently from backend-v2
 
 - **Sandbox**: adds a per-workspace sandbox quota (`SANDBOX_QUOTA_PER_WORKSPACE`,
-  default 2) — a feature backend-v2 has no concept of — via
-  `pkg/sandboxes.QuotaEnforcer`.
-- **Provider**: no customization; consumes `backend-v2/pkg/provider.Service`
-  directly.
+  default 2, `pkg/sandboxes.QuotaEnforcer`) AND a `RestartSandbox` capability
+  that doesn't exist on backend-v2 at all (`pkg/sandboxes.ExtendedService` /
+  `NewRestarter`) — exposed as `POST .../sandboxes/{name}/restart`.
+- **Provider**: no customization; reuses `backend-v2/pkg/provider.NewProviderHandler`
+  directly — no local package for it at all.
 - **Auth**: none — reuses `backend-v2/pkg/auth` wholesale. Same relay model,
   same middleware, zero reimplementation.
 - **Gateway**: reuses `backend-v2/pkg/gateway.Fake` wholesale for the demo;
   a real deployment would construct a real gRPC client the same way
   backend-v2's own `cmd/api/main.go` would.
 
-## Consuming an upstream domain: one pattern, used for both
+## Two consumption patterns, side by side
 
-`pkg/sandboxes/` (customized, has a decorator) and `pkg/providers/`
-(uncustomized, thin pass-through) both consume backend-v2's types
-*directly* — `sandbox.Service` / `provider.Service`, `models.Sandbox` /
-`models.CreateSandboxRequest`, no local interface, no translated DTOs, no
-adapter file.
+**Provider — reuse upstream's handler unmodified.** No local package, no
+local interface:
 
-```
-pkg/sandboxes/
-  quota.go     QuotaEnforcer — embeds sandbox.Service (upstream's interface) directly
-  handler.go   HTTP layer — depends on sandbox.Service directly
-pkg/providers/
-  handler.go   HTTP layer — depends on provider.Service directly, no decorator
+```go
+// cmd/api/main.go
+providerService := upstreamprovider.NewService(gw)
+providerHandler := upstreamprovider.NewProviderHandler(base, providerService)
 ```
 
-An earlier version of this module gave `sandboxes` (then called
-`provisioning`) a full anti-corruption layer: its own `Provisioner`
-interface, its own `Sandbox`/`CreateRequest` types, and an `adapter.go`
-translating between the two. That was cut. Reasoning:
+This is the default: if a domain needs no new capability and no behavior
+change, there's nothing to write. Reuse backend-v2's exported
+`Service`/`Handler` pair as-is.
 
-- **The package boundary already does the containment.** A breaking change
-  to `sandbox.Service` or `models.Sandbox` can only affect files inside
-  `pkg/sandboxes/` (two of them) plus the one line in `cmd/api/main.go`
-  that constructs the concrete service — and that composition-root
-  reference exists *regardless* of whether an adapter sits behind it. The
-  adapter added a translation layer without actually shrinking the set of
-  files that would need to change.
-- **The decorator didn't need a second interface.** `QuotaEnforcer` embeds
-  `sandbox.Service` — upstream's interface — directly, the same
-  embed-the-interface-by-value technique `backend-v2/examples/audit` uses
-  in-process. Additive changes to `sandbox.Service` still forward for free;
-  inventing a parallel local interface bought nothing beyond what
-  embedding the real one already gives.
-- **YAGNI on the two things a real ACL is actually for.** A full
-  ACL (separate local DTOs) earns its keep when you need to (a) keep your
-  own external API contract byte-stable while upstream's internal
-  representation changes underneath you, or (b) swap the underlying
-  implementation entirely someday (different vendor, a fork). Neither is a
-  real requirement here today. If either becomes one, promoting
-  `pkg/sandboxes` back to own its own types is a contained, mechanical
-  change — it's not something you have to guess up front.
+**Sandbox — rewritten handler, because it needs a method upstream doesn't
+have.** `RestartSandbox` isn't part of `backend-v2/pkg/sandbox.Service` and
+never will be — it's not upstream's concern. So this BFF declares its own
+superset interface (`pkg/sandboxes/restart.go`):
 
-**Rule of thumb, revised**: default to consuming upstream types directly,
-one package per domain. Reach for a full ACL (own interface + own DTOs +
-adapter) only when you have a concrete reason — a stable public contract to
-protect, or a real intent to swap implementations — not preemptively for
-every dependency.
+```go
+type ExtendedService interface {
+    sandbox.Service          // embeds upstream's interface — inherits its 4 methods
+    RestartSandbox(ctx context.Context, workspace, name string) error
+}
+```
+
+`restarter` implements the new method by composing upstream's *existing*
+methods (`Get` → `Delete` → `Create`) — no upstream API change was needed
+to add this feature at all. `pkg/sandboxes/handler.go` depends on
+`ExtendedService`, not `sandbox.Service`, and registers one extra route
+(`/restart`) that calls the new method. This is *why* the handler had to be
+rewritten rather than reused: `backend-v2.SandboxHandler` has no field, no
+route, and no way to reach a method it doesn't know exists.
+
+Composition in `main.go` — decorators stack, each stage's output type
+matching the next stage's input:
+
+```go
+var sandboxService sandbox.Service = sandbox.NewService(gw)               // backend-v2 default impl
+sandboxService = sandboxes.NewQuotaEnforcer(sandboxService, limit)        // still sandbox.Service
+extendedSandboxService := sandboxes.NewRestarter(sandboxService)          // now ExtendedService
+sandboxHandler := sandboxes.NewHandler(base, extendedSandboxService)      // needs ExtendedService
+```
+
+Verified: quota is still enforced *through* a restart (it internally
+deletes then re-creates, both of which still flow through
+`QuotaEnforcer`), and `RestartSandbox` works even though `backend-v2`
+has zero knowledge it exists.
+
+## The rule this leaves us with
+
+- **No new capability, no behavior change** → reuse upstream's
+  `Service`/`Handler` directly. (Provider.)
+- **Behavior change on an existing method, same signature** → decorate
+  `sandbox.Service` (embed it, override the methods that change). Upstream's
+  handler still works unmodified since `Service`'s *shape* didn't change.
+  (Quota — `CreateSandbox`/`DeleteSandbox` still have the same signatures.)
+- **A genuinely new method** → declare a local interface that embeds
+  upstream's and adds it, decorate up to that new interface, and write a
+  (small) handler against the new interface for the routes upstream's
+  handler structurally cannot expose. (Restart.)
+
+Only the third case requires both a new interface *and* a rewritten
+handler. The first two need neither.
 
 ## Building this right now: `go.work`
 
