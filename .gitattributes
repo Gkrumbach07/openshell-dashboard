@@ -1,0 +1,3 @@
+# Auto-collapse generated files in GitHub PR diffs
+package-lock.json linguist-generated=true
+frontend/package-lock.json linguist-generated=true
