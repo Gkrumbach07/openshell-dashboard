@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -216,5 +217,106 @@ func TestWriteError(t *testing.T) {
 	}
 	if body.Message != "test message" {
 		t.Errorf("message = %q, want test message", body.Message)
+	}
+}
+
+func TestWriteSDKError(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		wantHTTP    int
+		wantCode    string
+		wantMessage string
+	}{
+		{
+			name:        "NotFound",
+			err:         &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "sandbox not found"},
+			wantHTTP:    http.StatusNotFound,
+			wantCode:    "not_found",
+			wantMessage: "sandbox not found",
+		},
+		{
+			name:        "AlreadyExists",
+			err:         &openshell.StatusError{Code: openshell.ErrorAlreadyExists, Message: "already exists"},
+			wantHTTP:    http.StatusConflict,
+			wantCode:    "already_exists",
+			wantMessage: "already exists",
+		},
+		{
+			name:        "InvalidArgument",
+			err:         &openshell.StatusError{Code: openshell.ErrorInvalidArgument, Message: "bad input"},
+			wantHTTP:    http.StatusBadRequest,
+			wantCode:    "invalid_argument",
+			wantMessage: "bad input",
+		},
+		{
+			name:        "PermissionDenied",
+			err:         &openshell.StatusError{Code: openshell.ErrorPermissionDenied, Message: "denied"},
+			wantHTTP:    http.StatusForbidden,
+			wantCode:    "permission_denied",
+			wantMessage: "denied",
+		},
+		{
+			name:        "Unauthenticated",
+			err:         &openshell.StatusError{Code: openshell.ErrorUnauthenticated, Message: "no token"},
+			wantHTTP:    http.StatusUnauthorized,
+			wantCode:    "unauthenticated",
+			wantMessage: "no token",
+		},
+		{
+			name:        "Unavailable uses generic message",
+			err:         &openshell.StatusError{Code: openshell.ErrorUnavailable, Message: "connection refused"},
+			wantHTTP:    http.StatusBadGateway,
+			wantCode:    "gateway_unavailable",
+			wantMessage: "OpenShell gateway is unreachable",
+		},
+		{
+			name:        "Conflict",
+			err:         &openshell.StatusError{Code: openshell.ErrorConflict, Message: "version mismatch"},
+			wantHTTP:    http.StatusConflict,
+			wantCode:    "conflict",
+			wantMessage: "version mismatch",
+		},
+		{
+			name:        "fallback FailedPrecondition via raw gRPC",
+			err:         status.Error(codes.FailedPrecondition, "sandbox not ready"),
+			wantHTTP:    http.StatusBadRequest,
+			wantCode:    "invalid_argument",
+			wantMessage: "sandbox not ready",
+		},
+		{
+			name:        "fallback ResourceExhausted via raw gRPC",
+			err:         status.Error(codes.ResourceExhausted, "rate limited"),
+			wantHTTP:    http.StatusTooManyRequests,
+			wantCode:    "resource_exhausted",
+			wantMessage: "rate limited",
+		},
+		{
+			name:        "unknown error returns 500",
+			err:         fmt.Errorf("something unexpected"),
+			wantHTTP:    http.StatusInternalServerError,
+			wantCode:    "internal",
+			wantMessage: "internal error",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			writeSDKError(w, tc.err)
+
+			if w.Code != tc.wantHTTP {
+				t.Errorf("HTTP status = %d, want %d", w.Code, tc.wantHTTP)
+			}
+			var body ErrorResponse
+			if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if body.Code != tc.wantCode {
+				t.Errorf("error code = %q, want %q", body.Code, tc.wantCode)
+			}
+			if body.Message != tc.wantMessage {
+				t.Errorf("message = %q, want %q", body.Message, tc.wantMessage)
+			}
+		})
 	}
 }
