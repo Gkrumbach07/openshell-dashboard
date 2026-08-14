@@ -12,6 +12,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -62,6 +63,13 @@ func main() {
 	if *gatewayURL == defaultGatewayURL {
 		slog.Warn("gateway URL is the default — verify OPENSHELL_GATEWAY_URL is configured correctly", "url", *gatewayURL)
 	}
+	if *gatewayCACert != "" && !(strings.HasPrefix(*gatewayURL, "grpcs://") || strings.HasPrefix(*gatewayURL, "https://")) {
+		slog.Warn(
+			"gateway CA cert is set but gateway URL has no TLS scheme; use grpcs:// or https:// for TLS gateways",
+			"url", *gatewayURL,
+			"caCert", *gatewayCACert,
+		)
+	}
 	if *authDisabled {
 		slog.Warn("AUTH_DISABLED=true — authentication is OFF; never use this outside local development")
 	}
@@ -95,12 +103,27 @@ func main() {
 	defer gatewayClient.Close()
 
 	useTLS := strings.HasPrefix(*gatewayURL, "grpcs://") || strings.HasPrefix(*gatewayURL, "https://")
+	sdkAddress := *gatewayURL
+	switch {
+	case strings.HasPrefix(sdkAddress, "grpcs://"):
+		sdkAddress = "https://" + strings.TrimPrefix(sdkAddress, "grpcs://")
+	case strings.HasPrefix(sdkAddress, "grpc://"):
+		sdkAddress = "http://" + strings.TrimPrefix(sdkAddress, "grpc://")
+	case !strings.HasPrefix(sdkAddress, "https://") && !strings.HasPrefix(sdkAddress, "http://"):
+		scheme := "http"
+		if useTLS {
+			scheme = "https"
+		}
+		sdkAddress = fmt.Sprintf("%s://%s", scheme, sdkAddress)
+	}
 	sdkCfg := openshell.Config{
-		Address: *gatewayURL,
+		Address: sdkAddress,
 		Auth:    sdkclient.ContextAuthProvider{RequireTLS: useTLS},
 	}
 	if useTLS && *gatewayCACert != "" {
 		sdkCfg.TLS = &openshell.TLSConfig{CAFile: *gatewayCACert}
+	} else if !useTLS {
+		sdkCfg.TLS = &openshell.TLSConfig{Insecure: true}
 	}
 	sdkClient, err := openshell.NewClient(sdkCfg)
 	if err != nil {
