@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
@@ -9,8 +10,8 @@ import (
 
 func TestBuildSDKSandboxSpecBasic(t *testing.T) {
 	req := CreateSandboxRequest{
-		Name:  "test-sandbox",
-		Image: "ubuntu:latest",
+		Name:   "test-sandbox",
+		Image:  "ubuntu:latest",
 		Policy: json.RawMessage(`{"version":1,"filesystem":{"includeWorkdir":true}}`),
 	}
 	spec, err := BuildSDKSandboxSpec(req)
@@ -108,5 +109,120 @@ func TestFromSDKSandboxPhaseMapping(t *testing.T) {
 				t.Errorf("phase %q: got %q, want %q", tc.phase, result.Status.Phase, tc.want)
 			}
 		})
+	}
+}
+
+func TestFromSDKProviderStripsCredentials(t *testing.T) {
+	got := FromSDKProvider(&openshell.Provider{
+		Name: "claude-prov",
+		Type: "claude",
+		Spec: openshell.ProviderSpec{
+			Credentials: map[string]string{"api_key": "sk-secret"},
+			Config:      map[string]string{"region": "us"},
+		},
+	})
+	if got.Type != "claude" {
+		t.Errorf("type = %q", got.Type)
+	}
+	if got.Config["region"] != "us" {
+		t.Errorf("config = %v", got.Config)
+	}
+	if len(got.CredentialNames) != 1 || got.CredentialNames[0] != "api_key" {
+		t.Errorf("credentialNames = %v, want [api_key]", got.CredentialNames)
+	}
+	raw, _ := json.Marshal(got)
+	if strings.Contains(string(raw), "sk-secret") {
+		t.Errorf("leaked credential value: %s", raw)
+	}
+}
+
+func TestFromSDKProviderNil(t *testing.T) {
+	got := FromSDKProvider(nil)
+	if got.Type != "" || got.Metadata.Name != "" {
+		t.Errorf("expected empty provider, got %+v", got)
+	}
+}
+
+func TestFromSDKRefreshStatusStrategies(t *testing.T) {
+	tests := []struct {
+		want     string
+		strategy openshell.RefreshStrategy
+	}{
+		{want: "STATIC", strategy: openshell.RefreshStrategyStatic},
+		{want: "EXTERNAL", strategy: openshell.RefreshStrategyExternal},
+		{want: "OAUTH2_REFRESH_TOKEN", strategy: openshell.RefreshStrategyOAuth2RefreshToken},
+		{want: "OAUTH2_CLIENT_CREDENTIALS", strategy: openshell.RefreshStrategyOAuth2ClientCredentials},
+		{want: "GOOGLE_SERVICE_ACCOUNT_JWT", strategy: openshell.RefreshStrategyGoogleServiceAccountJWT},
+		{want: "AWS_STS_ASSUME_ROLE", strategy: "AWSStsAssumeRole"},
+		{want: "UNSPECIFIED", strategy: "nope"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.want, func(t *testing.T) {
+			got := FromSDKRefreshStatus(&openshell.RefreshStatus{
+				CredentialKey: "api_key",
+				Strategy:      tc.strategy,
+				Status:        "active",
+			})
+			if got.Strategy != tc.want {
+				t.Errorf("strategy = %q, want %q", got.Strategy, tc.want)
+			}
+		})
+	}
+}
+
+func TestFromSDKProviderProfileCategories(t *testing.T) {
+	tests := []struct {
+		want     string
+		category openshell.ProfileCategory
+	}{
+		{want: "OTHER", category: openshell.ProfileCategoryOther},
+		{want: "INFERENCE", category: openshell.ProfileCategoryInference},
+		{want: "AGENT", category: openshell.ProfileCategoryAgent},
+		{want: "SOURCE_CONTROL", category: openshell.ProfileCategorySourceControl},
+		{want: "MESSAGING", category: openshell.ProfileCategoryMessaging},
+		{want: "DATA", category: openshell.ProfileCategoryData},
+		{want: "KNOWLEDGE", category: openshell.ProfileCategoryKnowledge},
+		{want: "UNSPECIFIED", category: "nope"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.want, func(t *testing.T) {
+			got := FromSDKProviderProfile(&openshell.ProviderProfile{
+				ID:       "p",
+				Category: tc.category,
+				Endpoints: []openshell.NetworkEndpoint{
+					{Host: "api.example.com", Port: 443},
+				},
+			})
+			if got.Category != tc.want {
+				t.Errorf("category = %q, want %q", got.Category, tc.want)
+			}
+			if len(got.Endpoints) != 1 || got.Endpoints[0] != "api.example.com:443" {
+				t.Errorf("endpoints = %v, want [api.example.com:443]", got.Endpoints)
+			}
+		})
+	}
+}
+
+func TestParseSDKProfileCategory(t *testing.T) {
+	if ParseSDKProfileCategory("INFERENCE") != openshell.ProfileCategoryInference {
+		t.Error("INFERENCE should map to ProfileCategoryInference")
+	}
+	if ParseSDKProfileCategory("unknown") != openshell.ProfileCategoryOther {
+		t.Error("unknown should default to Other")
+	}
+}
+
+func TestFromSDKDiagnostics(t *testing.T) {
+	got := FromSDKDiagnostics([]openshell.ProfileDiagnostic{
+		{Source: "import", ProfileID: "custom-llm", Field: "credentials[0].name", Message: "name is required", Severity: "error"},
+	})
+	if len(got) != 1 {
+		t.Fatalf("got %d, want 1", len(got))
+	}
+	if got[0].ProfileID != "custom-llm" || got[0].Severity != "error" {
+		t.Errorf("diagnostic = %+v", got[0])
+	}
+	if len(FromSDKDiagnostics(nil)) != 0 {
+		t.Error("nil diagnostics should yield empty slice")
 	}
 }

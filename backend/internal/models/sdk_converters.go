@@ -190,9 +190,9 @@ type sdkProcessJSON struct {
 }
 
 type sdkNetworkPolicyRuleJSON struct {
-	Name      string                      `json:"name,omitempty"`
-	Endpoints []sdkNetworkEndpointJSON    `json:"endpoints,omitempty"`
-	Binaries  []sdkNetworkBinaryJSON      `json:"binaries,omitempty"`
+	Name      string                   `json:"name,omitempty"`
+	Endpoints []sdkNetworkEndpointJSON `json:"endpoints,omitempty"`
+	Binaries  []sdkNetworkBinaryJSON   `json:"binaries,omitempty"`
 }
 
 type sdkNetworkEndpointJSON struct {
@@ -242,4 +242,166 @@ func marshalSDKNetworkRule(rule openshell.NetworkPolicyRule) sdkNetworkPolicyRul
 		rj.Binaries = append(rj.Binaries, sdkNetworkBinaryJSON{Path: b.Path})
 	}
 	return rj
+}
+
+// awsStsAssumeRole is defined in SDK types but not re-exported from openshell/v1.
+const awsStsAssumeRole openshell.RefreshStrategy = "AWSStsAssumeRole"
+
+// FromSDKProvider converts an SDK Provider to the JSON DTO. Credential values
+// and handles are secret — only key names are surfaced.
+func FromSDKProvider(provider *openshell.Provider) Provider {
+	if provider == nil {
+		return Provider{}
+	}
+	out := Provider{
+		Metadata: ObjectMeta{
+			ID:              provider.ID,
+			Name:            provider.Name,
+			Workspace:       provider.Workspace,
+			Labels:          provider.Labels,
+			Annotations:     provider.Annotations,
+			CreatedAtMs:     timeToMs(provider.CreatedAt),
+			ResourceVersion: provider.ResourceVersion,
+		},
+		Type:             provider.Type,
+		Config:           provider.Spec.Config,
+		ProfileWorkspace: provider.Spec.ProfileWorkspace,
+	}
+	if provider.DeletionTimestamp != nil {
+		out.Metadata.DeletionTimestampMs = provider.DeletionTimestamp.UnixMilli()
+	}
+	if len(provider.Spec.CredentialExpiresAt) > 0 {
+		out.CredentialExpiresAtMs = make(map[string]int64, len(provider.Spec.CredentialExpiresAt))
+		for k, t := range provider.Spec.CredentialExpiresAt {
+			out.CredentialExpiresAtMs[k] = timeToMs(t)
+		}
+	}
+	for name := range provider.Spec.Credentials {
+		out.CredentialNames = append(out.CredentialNames, name)
+	}
+	return out
+}
+
+// FromSDKRefreshStatus converts an SDK RefreshStatus to the JSON DTO.
+func FromSDKRefreshStatus(status *openshell.RefreshStatus) CredentialRefreshStatus {
+	if status == nil {
+		return CredentialRefreshStatus{}
+	}
+	return CredentialRefreshStatus{
+		CredentialKey:   status.CredentialKey,
+		Strategy:        sdkRefreshStrategyString(status.Strategy),
+		Status:          status.Status,
+		ExpiresAtMs:     timeToMs(status.ExpiresAt),
+		NextRefreshAtMs: timeToMs(status.NextRefreshAt),
+		LastRefreshAtMs: timeToMs(status.LastRefreshAt),
+		LastError:       status.LastError,
+	}
+}
+
+func sdkRefreshStrategyString(s openshell.RefreshStrategy) string {
+	switch s {
+	case openshell.RefreshStrategyStatic:
+		return "STATIC"
+	case openshell.RefreshStrategyExternal:
+		return "EXTERNAL"
+	case openshell.RefreshStrategyOAuth2RefreshToken:
+		return "OAUTH2_REFRESH_TOKEN"
+	case openshell.RefreshStrategyOAuth2ClientCredentials:
+		return "OAUTH2_CLIENT_CREDENTIALS"
+	case openshell.RefreshStrategyGoogleServiceAccountJWT:
+		return "GOOGLE_SERVICE_ACCOUNT_JWT"
+	case awsStsAssumeRole:
+		return "AWS_STS_ASSUME_ROLE"
+	}
+	return "UNSPECIFIED"
+}
+
+// FromSDKProviderProfile converts an SDK ProviderProfile to the JSON DTO.
+func FromSDKProviderProfile(profile *openshell.ProviderProfile) ProviderProfile {
+	if profile == nil {
+		return ProviderProfile{Credentials: []ProfileCredential{}}
+	}
+	out := ProviderProfile{
+		ID:               profile.ID,
+		DisplayName:      profile.DisplayName,
+		Description:      profile.Description,
+		Category:         sdkProfileCategoryString(profile.Category),
+		Credentials:      []ProfileCredential{},
+		InferenceCapable: profile.InferenceCapable,
+		Source:           profile.Source,
+		Scope:            profile.Scope,
+		ResourceVersion:  profile.ResourceVersion,
+	}
+	for _, cred := range profile.Credentials {
+		out.Credentials = append(out.Credentials, ProfileCredential{
+			Name:        cred.Name,
+			Description: cred.Description,
+			EnvVars:     cred.EnvVars,
+			Required:    cred.Required,
+			AuthStyle:   cred.AuthStyle,
+		})
+	}
+	for _, endpoint := range profile.Endpoints {
+		if endpoint.Port > 0 {
+			out.Endpoints = append(out.Endpoints, fmt.Sprintf("%s:%d", endpoint.Host, endpoint.Port))
+		} else if endpoint.Host != "" {
+			out.Endpoints = append(out.Endpoints, endpoint.Host)
+		}
+	}
+	return out
+}
+
+func sdkProfileCategoryString(c openshell.ProfileCategory) string {
+	switch c {
+	case openshell.ProfileCategoryOther:
+		return "OTHER"
+	case openshell.ProfileCategoryInference:
+		return "INFERENCE"
+	case openshell.ProfileCategoryAgent:
+		return "AGENT"
+	case openshell.ProfileCategorySourceControl:
+		return "SOURCE_CONTROL"
+	case openshell.ProfileCategoryMessaging:
+		return "MESSAGING"
+	case openshell.ProfileCategoryData:
+		return "DATA"
+	case openshell.ProfileCategoryKnowledge:
+		return "KNOWLEDGE"
+	}
+	return "UNSPECIFIED"
+}
+
+// ParseSDKProfileCategory maps the frontend UPPER_SNAKE category to the SDK type.
+func ParseSDKProfileCategory(s string) openshell.ProfileCategory {
+	switch s {
+	case "INFERENCE":
+		return openshell.ProfileCategoryInference
+	case "AGENT":
+		return openshell.ProfileCategoryAgent
+	case "SOURCE_CONTROL":
+		return openshell.ProfileCategorySourceControl
+	case "MESSAGING":
+		return openshell.ProfileCategoryMessaging
+	case "DATA":
+		return openshell.ProfileCategoryData
+	case "KNOWLEDGE":
+		return openshell.ProfileCategoryKnowledge
+	default:
+		return openshell.ProfileCategoryOther
+	}
+}
+
+// FromSDKDiagnostics converts SDK profile diagnostics to JSON DTOs.
+func FromSDKDiagnostics(diagnostics []openshell.ProfileDiagnostic) []ProviderProfileDiagnostic {
+	out := make([]ProviderProfileDiagnostic, 0, len(diagnostics))
+	for _, d := range diagnostics {
+		out = append(out, ProviderProfileDiagnostic{
+			Source:    d.Source,
+			ProfileID: d.ProfileID,
+			Field:     d.Field,
+			Message:   d.Message,
+			Severity:  d.Severity,
+		})
+	}
+	return out
 }
