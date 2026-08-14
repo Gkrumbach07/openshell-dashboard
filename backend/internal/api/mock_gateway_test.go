@@ -244,5 +244,9 @@ func (m *mockGateway) DeleteInferenceRoute(ctx context.Context, workspace, route
 }
 
 func newTestApp(gw *mockGateway) *App {
-	return &App{gateway: gw}
+	return &App{gateway: gw, sdk: &mockSDK{}}
+}
+
+func newTestAppWithSDK(sdk *mockSDK) *App {
+	return &App{sdk: sdk}
 }
