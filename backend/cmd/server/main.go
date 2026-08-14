@@ -16,11 +16,15 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
+
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/api"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/gateway"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/sdkclient"
 )
 
 const (
@@ -88,7 +92,22 @@ func main() {
 	}
 	defer gatewayClient.Close()
 
-	app := api.NewApp(gatewayClient, authMiddleware, *staticDir, authCfg)
+	useTLS := strings.HasPrefix(*gatewayURL, "grpcs://") || strings.HasPrefix(*gatewayURL, "https://")
+	sdkCfg := openshell.Config{
+		Address: *gatewayURL,
+		Auth:    sdkclient.ContextAuthProvider{RequireTLS: useTLS},
+	}
+	if *gatewayCACert != "" {
+		sdkCfg.TLS = &openshell.TLSConfig{CAFile: *gatewayCACert}
+	}
+	sdkClient, err := openshell.NewClient(sdkCfg)
+	if err != nil {
+		slog.Error("SDK client setup failed", "error", err)
+		os.Exit(1)
+	}
+	defer sdkClient.Close()
+
+	app := api.NewApp(gatewayClient, sdkClient, authMiddleware, *staticDir, authCfg)
 
 	addr := net.JoinHostPort(*listenAddress, *port)
 	slog.Info("openshell-dashboard BFF listening",

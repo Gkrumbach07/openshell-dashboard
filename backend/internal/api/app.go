@@ -10,6 +10,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/gateway"
 )
@@ -17,6 +19,7 @@ import (
 // App wires the gateway client, auth middleware, and REST routes.
 type App struct { //nolint:govet // fieldalignment: readability over padding
 	gateway gateway.Interface
+	sdk     openshell.ClientInterface
 	auth    *auth.Middleware
 	// authConfig is serialized to the browser via GET /auth/config — never
 	// put secrets in it.
@@ -27,9 +30,10 @@ type App struct { //nolint:govet // fieldalignment: readability over padding
 }
 
 // NewApp builds the application.
-func NewApp(gw gateway.Interface, authMiddleware *auth.Middleware, staticDir string, authCfg AuthConfigResponse) *App {
+func NewApp(gw gateway.Interface, sdkClient openshell.ClientInterface, authMiddleware *auth.Middleware, staticDir string, authCfg AuthConfigResponse) *App {
 	app := &App{
 		gateway:    gw,
+		sdk:        sdkClient,
 		auth:       authMiddleware,
 		authConfig: authCfg,
 		staticDir:  staticDir,
