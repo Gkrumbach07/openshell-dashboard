@@ -9,26 +9,25 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"google.golang.org/grpc/codes"
-	grpcstatus "google.golang.org/grpc/status"
 
-	datamodelv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/datamodelv1"
-	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 func TestListProviders(t *testing.T) {
-	app := newTestApp(&mockGateway{
-		listProvidersFn: func(_ context.Context, _ string, _, _ uint32) ([]*datamodelv1.Provider, error) {
-			return []*datamodelv1.Provider{
-				{
-					Metadata:    &datamodelv1.ObjectMeta{Name: "claude-prov"},
-					Type:        "claude",
+	sdk := &mockSDK{}
+	sdk.providers.listFn = func(_ context.Context, _ string, _ ...openshell.ListOptions) ([]*openshell.Provider, error) {
+		return []*openshell.Provider{
+			{
+				Name: "claude-prov",
+				Type: "claude",
+				Spec: openshell.ProviderSpec{
 					Credentials: map[string]string{"api_key": "secret"},
 					Config:      map[string]string{"region": "us"},
 				},
-			}, nil
-		},
-	})
+			},
+		}, nil
+	}
+	app := newTestAppWithSDK(sdk)
 	r := chi.NewRouter()
 	r.Get("/workspaces/{workspace}/providers", app.ListProviders)
 
@@ -47,7 +46,6 @@ func TestListProviders(t *testing.T) {
 	if len(body) != 1 {
 		t.Fatalf("got %d providers, want 1", len(body))
 	}
-	// Credentials should be stripped — only names appear
 	raw, _ := json.Marshal(body[0])
 	if strings.Contains(string(raw), "secret") {
 		t.Errorf("response leaked credential value: %s", raw)
@@ -61,10 +59,29 @@ func TestListProviders(t *testing.T) {
 	}
 }
 
+func TestListProvidersUnavailable(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.providers.listFn = func(_ context.Context, _ string, _ ...openshell.ListOptions) ([]*openshell.Provider, error) {
+		return nil, &openshell.StatusError{Code: openshell.ErrorUnavailable, Message: "gateway down"}
+	}
+	app := newTestAppWithSDK(sdk)
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/providers", app.ListProviders)
+
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/providers", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", w.Code)
+	}
+}
+
 func TestCreateProvider(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
+		createFn   func(ctx context.Context, workspace string, provider *openshell.Provider) (*openshell.Provider, error)
 		wantCode   string
 		wantStatus int
 	}{
@@ -91,15 +108,21 @@ func TestCreateProvider(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "invalid_body",
 		},
+		{
+			name: "already exists",
+			body: `{"name":"my-provider","type":"claude"}`,
+			createFn: func(_ context.Context, _ string, _ *openshell.Provider) (*openshell.Provider, error) {
+				return nil, &openshell.StatusError{Code: openshell.ErrorAlreadyExists, Message: "exists"}
+			},
+			wantStatus: http.StatusConflict,
+			wantCode:   "already_exists",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mock := &mockGateway{
-				createProviderFn: func(_ context.Context, _ string, prov *datamodelv1.Provider) (*datamodelv1.Provider, error) {
-					return prov, nil
-				},
-			}
-			app := newTestApp(mock)
+			sdk := &mockSDK{}
+			sdk.providers.createFn = tc.createFn
+			app := newTestAppWithSDK(sdk)
 			r := chi.NewRouter()
 			r.Post("/workspaces/{workspace}/providers", app.CreateProvider)
 
@@ -126,31 +149,30 @@ func TestCreateProvider(t *testing.T) {
 
 func TestGetProvider(t *testing.T) {
 	tests := []struct {
-		mockFn     func(ctx context.Context, workspace, name string) (*datamodelv1.Provider, error)
+		getFn      func(ctx context.Context, workspace, name string) (*openshell.Provider, error)
 		name       string
 		wantStatus int
 	}{
 		{
 			name: "success",
-			mockFn: func(_ context.Context, _, name string) (*datamodelv1.Provider, error) {
-				return &datamodelv1.Provider{
-					Metadata: &datamodelv1.ObjectMeta{Name: name},
-					Type:     "claude",
-				}, nil
+			getFn: func(_ context.Context, _, name string) (*openshell.Provider, error) {
+				return &openshell.Provider{Name: name, Type: "claude"}, nil
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
 			name: "not found",
-			mockFn: func(_ context.Context, _, _ string) (*datamodelv1.Provider, error) {
-				return nil, grpcstatus.Error(codes.NotFound, "provider not found")
+			getFn: func(_ context.Context, _, _ string) (*openshell.Provider, error) {
+				return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "provider not found"}
 			},
 			wantStatus: http.StatusNotFound,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestApp(&mockGateway{getProviderFn: tc.mockFn})
+			sdk := &mockSDK{}
+			sdk.providers.getFn = tc.getFn
+			app := newTestAppWithSDK(sdk)
 			r := chi.NewRouter()
 			r.Get("/workspaces/{workspace}/providers/{name}", app.GetProvider)
 
@@ -166,19 +188,21 @@ func TestGetProvider(t *testing.T) {
 }
 
 func TestUpdateProvider(t *testing.T) {
-	mock := &mockGateway{
-		getProviderFn: func(_ context.Context, _, _ string) (*datamodelv1.Provider, error) {
-			return &datamodelv1.Provider{
-				Metadata: &datamodelv1.ObjectMeta{Name: "claude-prov"},
-				Type:     "claude",
-				Config:   map[string]string{"region": "us"},
-			}, nil
-		},
-		updateProviderFn: func(_ context.Context, _ string, prov *datamodelv1.Provider, _ map[string]int64) (*datamodelv1.Provider, error) {
-			return prov, nil
-		},
+	sdk := &mockSDK{}
+	sdk.providers.getFn = func(_ context.Context, _, _ string) (*openshell.Provider, error) {
+		return &openshell.Provider{
+			Name: "claude-prov",
+			Type: "claude",
+			Spec: openshell.ProviderSpec{Config: map[string]string{"region": "us"}},
+		}, nil
 	}
-	app := newTestApp(mock)
+	sdk.providers.updateFn = func(_ context.Context, _ string, prov *openshell.Provider) (*openshell.Provider, error) {
+		if prov.Spec.Config["region"] != "eu" {
+			t.Errorf("merged config region = %q, want eu", prov.Spec.Config["region"])
+		}
+		return prov, nil
+	}
+	app := newTestAppWithSDK(sdk)
 	r := chi.NewRouter()
 	r.Put("/workspaces/{workspace}/providers/{name}", app.UpdateProvider)
 
@@ -194,11 +218,7 @@ func TestUpdateProvider(t *testing.T) {
 }
 
 func TestDeleteProvider(t *testing.T) {
-	app := newTestApp(&mockGateway{
-		deleteProviderFn: func(_ context.Context, _, _ string) (bool, error) {
-			return true, nil
-		},
-	})
+	app := newTestAppWithSDK(&mockSDK{})
 	r := chi.NewRouter()
 	r.Delete("/workspaces/{workspace}/providers/{name}", app.DeleteProvider)
 
@@ -209,36 +229,139 @@ func TestDeleteProvider(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["deleted"] != true {
+		t.Errorf("deleted = %v, want true", resp["deleted"])
+	}
+}
+
+func TestConfigureProviderRefresh(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantCode   string
+		wantStatus int
+	}{
+		{
+			name:       "success oauth2",
+			body:       `{"credentialKey":"api_key","strategy":"oauth2-refresh-token"}`,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "aws sts accepted",
+			body:       `{"credentialKey":"role","strategy":"aws-sts-assume-role"}`,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "missing key",
+			body:       `{"credentialKey":"","strategy":"static"}`,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "invalid_request",
+		},
+		{
+			name:       "unknown strategy",
+			body:       `{"credentialKey":"api_key","strategy":"nope"}`,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "invalid_strategy",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newTestAppWithSDK(&mockSDK{})
+			r := chi.NewRouter()
+			r.Post("/workspaces/{workspace}/providers/{name}/refresh", app.ConfigureProviderRefresh)
+
+			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/providers/claude-prov/refresh", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != tc.wantStatus {
+				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
+			}
+			if tc.wantCode != "" {
+				var errResp ErrorResponse
+				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+					t.Fatalf("decode error response: %v", err)
+				}
+				if errResp.Code != tc.wantCode {
+					t.Errorf("code = %q, want %q", errResp.Code, tc.wantCode)
+				}
+			}
+		})
+	}
+}
+
+func TestRotateAndDeleteProviderRefresh(t *testing.T) {
+	app := newTestAppWithSDK(&mockSDK{})
+	r := chi.NewRouter()
+	r.Post("/workspaces/{workspace}/providers/{name}/refresh/rotate", app.RotateProviderCredential)
+	r.Delete("/workspaces/{workspace}/providers/{name}/refresh", app.DeleteProviderRefresh)
+
+	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/providers/claude-prov/refresh/rotate", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("rotate missing key status = %d, want 400", w.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/workspaces/default/providers/claude-prov/refresh", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("delete missing key status = %d, want 400", w.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/workspaces/default/providers/claude-prov/refresh/rotate", strings.NewReader(`{"credentialKey":"api_key"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("rotate status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/workspaces/default/providers/claude-prov/refresh?credentialKey=api_key", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("delete status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
 }
 
 func TestGetProviderProfile(t *testing.T) {
 	tests := []struct {
-		mockFn     func(ctx context.Context, id, workspace string) (*openshellv1.ProviderProfile, error)
+		getFn      func(ctx context.Context, workspace, id string) (*openshell.ProviderProfile, error)
 		name       string
 		wantStatus int
 	}{
 		{
 			name: "success",
-			mockFn: func(_ context.Context, id, _ string) (*openshellv1.ProviderProfile, error) {
-				return &openshellv1.ProviderProfile{
-					Id:          id,
+			getFn: func(_ context.Context, _, id string) (*openshell.ProviderProfile, error) {
+				return &openshell.ProviderProfile{
+					ID:          id,
 					DisplayName: "Claude",
-					Category:    openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_INFERENCE,
+					Category:    openshell.ProfileCategoryInference,
 				}, nil
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
 			name: "not found",
-			mockFn: func(_ context.Context, _, _ string) (*openshellv1.ProviderProfile, error) {
-				return nil, grpcstatus.Error(codes.NotFound, "profile not found")
+			getFn: func(_ context.Context, _, _ string) (*openshell.ProviderProfile, error) {
+				return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "profile not found"}
 			},
 			wantStatus: http.StatusNotFound,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestApp(&mockGateway{getProviderProfileFn: tc.mockFn})
+			sdk := &mockSDK{}
+			sdk.providers.profiles.getFn = tc.getFn
+			app := newTestAppWithSDK(sdk)
 			r := chi.NewRouter()
 			r.Get("/workspaces/{workspace}/provider-profiles/{profileId}", app.GetProviderProfile)
 
@@ -250,6 +373,26 @@ func TestGetProviderProfile(t *testing.T) {
 				t.Errorf("status = %d, want %d", w.Code, tc.wantStatus)
 			}
 		})
+	}
+}
+
+func TestGetProviderProfileArgOrder(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.providers.profiles.getFn = func(_ context.Context, workspace, id string) (*openshell.ProviderProfile, error) {
+		if workspace != "default" || id != "claude" {
+			t.Errorf("Get args workspace=%q id=%q, want default/claude", workspace, id)
+		}
+		return &openshell.ProviderProfile{ID: id, DisplayName: "Claude"}, nil
+	}
+	app := newTestAppWithSDK(sdk)
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/provider-profiles/{profileId}", app.GetProviderProfile)
+
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/provider-profiles/claude", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
 	}
 }
 
@@ -292,19 +435,7 @@ func TestImportProviderProfiles(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mock := &mockGateway{
-				importProviderProfilesFn: func(_ context.Context, _ string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.ImportProviderProfilesResponse, error) {
-					result := make([]*openshellv1.ProviderProfile, 0, len(profiles))
-					for _, item := range profiles {
-						result = append(result, item.Profile)
-					}
-					return &openshellv1.ImportProviderProfilesResponse{
-						Profiles: result,
-						Imported: true,
-					}, nil
-				},
-			}
-			app := newTestApp(mock)
+			app := newTestAppWithSDK(&mockSDK{})
 			r := chi.NewRouter()
 			r.Post("/workspaces/{workspace}/provider-profiles", app.ImportProviderProfiles)
 
@@ -330,18 +461,17 @@ func TestImportProviderProfiles(t *testing.T) {
 }
 
 func TestImportProviderProfilesResponse(t *testing.T) {
-	mock := &mockGateway{
-		importProviderProfilesFn: func(_ context.Context, _ string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.ImportProviderProfilesResponse, error) {
-			return &openshellv1.ImportProviderProfilesResponse{
-				Profiles: []*openshellv1.ProviderProfile{profiles[0].Profile},
-				Imported: true,
-				Diagnostics: []*openshellv1.ProviderProfileDiagnostic{
-					{ProfileId: "custom-llm", Field: "credentials", Message: "consider adding env_vars", Severity: "warning"},
-				},
-			}, nil
-		},
+	sdk := &mockSDK{}
+	sdk.providers.profiles.importFn = func(_ context.Context, _ string, items []openshell.ProfileImportItem) (*openshell.ImportResult, error) {
+		return &openshell.ImportResult{
+			Profiles: []openshell.ProviderProfile{items[0].Profile},
+			Imported: true,
+			Diagnostics: []openshell.ProfileDiagnostic{
+				{ProfileID: "custom-llm", Field: "credentials", Message: "consider adding env_vars", Severity: "warning"},
+			},
+		}, nil
 	}
-	app := newTestApp(mock)
+	app := newTestAppWithSDK(sdk)
 	r := chi.NewRouter()
 	r.Post("/workspaces/{workspace}/provider-profiles", app.ImportProviderProfiles)
 
@@ -393,15 +523,7 @@ func TestUpdateProviderProfile(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mock := &mockGateway{
-				updateProviderProfileFn: func(_ context.Context, _, _ string, item *openshellv1.ProviderProfileImportItem, _ uint64) (*openshellv1.UpdateProviderProfilesResponse, error) {
-					return &openshellv1.UpdateProviderProfilesResponse{
-						Profile: item.Profile,
-						Updated: true,
-					}, nil
-				},
-			}
-			app := newTestApp(mock)
+			app := newTestAppWithSDK(&mockSDK{})
 			r := chi.NewRouter()
 			r.Put("/workspaces/{workspace}/provider-profiles/{profileId}", app.UpdateProviderProfile)
 
@@ -427,11 +549,14 @@ func TestUpdateProviderProfile(t *testing.T) {
 }
 
 func TestDeleteProviderProfile(t *testing.T) {
-	app := newTestApp(&mockGateway{
-		deleteProviderProfileFn: func(_ context.Context, _, _ string) (bool, error) {
-			return true, nil
-		},
-	})
+	sdk := &mockSDK{}
+	sdk.providers.profiles.deleteFn = func(_ context.Context, workspace, id string) (bool, error) {
+		if workspace != "default" || id != "custom-llm" {
+			t.Errorf("Delete args workspace=%q id=%q, want default/custom-llm", workspace, id)
+		}
+		return true, nil
+	}
+	app := newTestAppWithSDK(sdk)
 	r := chi.NewRouter()
 	r.Delete("/workspaces/{workspace}/provider-profiles/{profileId}", app.DeleteProviderProfile)
 
@@ -452,14 +577,7 @@ func TestDeleteProviderProfile(t *testing.T) {
 }
 
 func TestLintProviderProfiles(t *testing.T) {
-	mock := &mockGateway{
-		lintProviderProfilesFn: func(_ context.Context, _ string, _ []*openshellv1.ProviderProfileImportItem) (*openshellv1.LintProviderProfilesResponse, error) {
-			return &openshellv1.LintProviderProfilesResponse{
-				Valid: true,
-			}, nil
-		},
-	}
-	app := newTestApp(mock)
+	app := newTestAppWithSDK(&mockSDK{})
 	r := chi.NewRouter()
 	r.Post("/workspaces/{workspace}/provider-profiles/lint", app.LintProviderProfiles)
 

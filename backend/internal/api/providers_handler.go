@@ -2,24 +2,24 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
-	sandboxv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/sandboxv1"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
 
 func (app *App) ListProviders(w http.ResponseWriter, r *http.Request) {
-	providers, err := app.gateway.ListProviders(r.Context(), chi.URLParam(r, "workspace"), 0, 0)
+	providers, err := app.sdk.Providers().List(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	out := make([]models.Provider, 0, len(providers))
 	for _, provider := range providers {
-		out = append(out, models.FromProvider(provider))
+		out = append(out, models.FromSDKProvider(provider))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -33,31 +33,40 @@ func (app *App) CreateProvider(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_provider", "name and type are required")
 		return
 	}
-	provider := models.ToProviderProto(body)
-	created, err := app.gateway.CreateProvider(r.Context(), chi.URLParam(r, "workspace"), provider)
+	provider := &openshell.Provider{
+		Name:   body.Name,
+		Type:   body.Type,
+		Labels: body.Labels,
+		Spec: openshell.ProviderSpec{
+			Credentials: body.Credentials,
+			Config:      body.Config,
+		},
+	}
+	created, err := app.sdk.Providers().Create(r.Context(), chi.URLParam(r, "workspace"), provider)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, models.FromProvider(created))
+	writeJSON(w, http.StatusCreated, models.FromSDKProvider(created))
 }
 
 func (app *App) GetProvider(w http.ResponseWriter, r *http.Request) {
-	provider, err := app.gateway.GetProvider(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	provider, err := app.sdk.Providers().Get(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromProvider(provider))
+	writeJSON(w, http.StatusOK, models.FromSDKProvider(provider))
 }
 
 func (app *App) DeleteProvider(w http.ResponseWriter, r *http.Request) {
-	deleted, err := app.gateway.DeleteProvider(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
-	if err != nil {
-		writeGrpcError(w, err)
+	if err := app.sdk.Providers().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name")); err != nil {
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	// SDK Delete returns nil error only on successful deletion. If the provider
+	// doesn't exist, NotFound is returned (mapped to 404 by writeSDKError).
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // UpdateProviderBody is the update-provider body. Only non-nil maps are
@@ -76,48 +85,57 @@ func (app *App) UpdateProvider(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	name := chi.URLParam(r, "name")
 
-	existing, err := app.gateway.GetProvider(r.Context(), workspace, name)
+	provider, err := app.sdk.Providers().Get(r.Context(), workspace, name)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 
-	provider := existing
 	if body.Credentials != nil {
-		provider.Credentials = body.Credentials
+		provider.Spec.Credentials = body.Credentials
 	}
 	if body.Config != nil {
-		provider.Config = body.Config
+		provider.Spec.Config = body.Config
+	}
+	if body.CredentialExpiresAtMs != nil {
+		expires := make(map[string]time.Time, len(body.CredentialExpiresAtMs))
+		for k, ms := range body.CredentialExpiresAtMs {
+			expires[k] = time.UnixMilli(ms)
+		}
+		provider.Spec.CredentialExpiresAt = expires
 	}
 
-	updated, err := app.gateway.UpdateProvider(r.Context(), workspace, provider, body.CredentialExpiresAtMs)
+	updated, err := app.sdk.Providers().Update(r.Context(), workspace, provider)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromProvider(updated))
+	writeJSON(w, http.StatusOK, models.FromSDKProvider(updated))
 }
 
 func (app *App) GetProviderRefreshStatus(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.GetProviderRefreshStatus(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), "")
+	statuses, err := app.sdk.Providers().Refresh().GetStatus(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), "")
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	out := make([]models.CredentialRefreshStatus, 0, len(resp.GetCredentials()))
-	for _, cred := range resp.GetCredentials() {
-		out = append(out, models.FromCredentialRefreshStatus(cred))
+	out := make([]models.CredentialRefreshStatus, 0, len(statuses))
+	for _, s := range statuses {
+		out = append(out, models.FromSDKRefreshStatus(s))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
-var refreshStrategyMap = map[string]openshellv1.ProviderCredentialRefreshStrategy{
-	"oauth2-refresh-token":       openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_REFRESH_TOKEN,
-	"oauth2-client-credentials":  openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_CLIENT_CREDENTIALS,
-	"google-service-account-jwt": openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_GOOGLE_SERVICE_ACCOUNT_JWT,
-	"aws-sts-assume-role":        openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_AWS_STS_ASSUME_ROLE,
-	"static":                     openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_STATIC,
-	"external":                   openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_EXTERNAL,
+// awsStsAssumeRole is defined in SDK types but not re-exported from openshell/v1.
+const awsStsAssumeRole openshell.RefreshStrategy = "AWSStsAssumeRole"
+
+var refreshStrategyMap = map[string]openshell.RefreshStrategy{
+	"oauth2-refresh-token":       openshell.RefreshStrategyOAuth2RefreshToken,
+	"oauth2-client-credentials":  openshell.RefreshStrategyOAuth2ClientCredentials,
+	"google-service-account-jwt": openshell.RefreshStrategyGoogleServiceAccountJWT,
+	"aws-sts-assume-role":        awsStsAssumeRole,
+	"static":                     openshell.RefreshStrategyStatic,
+	"external":                   openshell.RefreshStrategyExternal,
 }
 
 type ConfigureProviderRefreshBody struct {
@@ -142,21 +160,23 @@ func (app *App) ConfigureProviderRefresh(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid_strategy", "unknown refresh strategy: "+body.Strategy)
 		return
 	}
-	resp, err := app.gateway.ConfigureProviderRefresh(
-		r.Context(),
-		chi.URLParam(r, "workspace"),
-		chi.URLParam(r, "name"),
-		body.CredentialKey,
-		strategy,
-		body.Material,
-		body.SecretMaterialKeys,
-		body.ExpiresAtMs,
-	)
+	cfg := &openshell.RefreshConfig{
+		Provider:           chi.URLParam(r, "name"),
+		CredentialKey:      body.CredentialKey,
+		Strategy:           strategy,
+		Material:           body.Material,
+		SecretMaterialKeys: body.SecretMaterialKeys,
+	}
+	if body.ExpiresAtMs != nil {
+		t := time.UnixMilli(*body.ExpiresAtMs)
+		cfg.ExpiresAt = &t
+	}
+	status, err := app.sdk.Providers().Refresh().Configure(r.Context(), chi.URLParam(r, "workspace"), cfg)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromCredentialRefreshStatus(resp.GetStatus()))
+	writeJSON(w, http.StatusOK, models.FromSDKRefreshStatus(status))
 }
 
 type RotateProviderCredentialBody struct {
@@ -172,17 +192,17 @@ func (app *App) RotateProviderCredential(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid_request", "credentialKey is required")
 		return
 	}
-	resp, err := app.gateway.RotateProviderCredential(
+	status, err := app.sdk.Providers().Refresh().Rotate(
 		r.Context(),
 		chi.URLParam(r, "workspace"),
 		chi.URLParam(r, "name"),
 		body.CredentialKey,
 	)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromCredentialRefreshStatus(resp.GetStatus()))
+	writeJSON(w, http.StatusOK, models.FromSDKRefreshStatus(status))
 }
 
 func (app *App) DeleteProviderRefresh(w http.ResponseWriter, r *http.Request) {
@@ -191,14 +211,14 @@ func (app *App) DeleteProviderRefresh(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "credentialKey query parameter is required")
 		return
 	}
-	deleted, err := app.gateway.DeleteProviderRefresh(
+	deleted, err := app.sdk.Providers().Refresh().Delete(
 		r.Context(),
 		chi.URLParam(r, "workspace"),
 		chi.URLParam(r, "name"),
 		credentialKey,
 	)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
@@ -207,25 +227,25 @@ func (app *App) DeleteProviderRefresh(w http.ResponseWriter, r *http.Request) {
 // ListProviderProfiles returns the provider type profiles whose credential
 // schemas drive the Add Provider form.
 func (app *App) ListProviderProfiles(w http.ResponseWriter, r *http.Request) {
-	profiles, err := app.gateway.ListProviderProfiles(r.Context(), chi.URLParam(r, "workspace"), 0, 0)
+	profiles, err := app.sdk.Providers().Profiles().List(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	out := make([]models.ProviderProfile, 0, len(profiles))
 	for _, profile := range profiles {
-		out = append(out, models.FromProviderProfile(profile))
+		out = append(out, models.FromSDKProviderProfile(profile))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
 func (app *App) GetProviderProfile(w http.ResponseWriter, r *http.Request) {
-	profile, err := app.gateway.GetProviderProfile(r.Context(), chi.URLParam(r, "profileId"), chi.URLParam(r, "workspace"))
+	profile, err := app.sdk.Providers().Profiles().Get(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "profileId"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromProviderProfile(profile))
+	writeJSON(w, http.StatusOK, models.FromSDKProviderProfile(profile))
 }
 
 type ImportProfileCredentialBody struct {
@@ -256,20 +276,10 @@ type ImportProviderProfilesBody struct {
 	Profiles []ImportProfileBody `json:"profiles"`
 }
 
-var profileCategoryMap = map[string]openshellv1.ProviderProfileCategory{
-	"OTHER":          openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_OTHER,
-	"INFERENCE":      openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_INFERENCE,
-	"AGENT":          openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_AGENT,
-	"SOURCE_CONTROL": openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_SOURCE_CONTROL,
-	"MESSAGING":      openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_MESSAGING,
-	"DATA":           openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_DATA,
-	"KNOWLEDGE":      openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_KNOWLEDGE,
-}
-
-func toProfileImportItem(body ImportProfileBody) *openshellv1.ProviderProfileImportItem {
-	creds := make([]*openshellv1.ProviderProfileCredential, 0, len(body.Credentials))
+func toSDKProfileImportItem(body ImportProfileBody) openshell.ProfileImportItem {
+	creds := make([]openshell.ProfileCredential, 0, len(body.Credentials))
 	for _, c := range body.Credentials {
-		creds = append(creds, &openshellv1.ProviderProfileCredential{
+		creds = append(creds, openshell.ProfileCredential{
 			Name:        c.Name,
 			Description: c.Description,
 			EnvVars:     c.EnvVars,
@@ -277,23 +287,19 @@ func toProfileImportItem(body ImportProfileBody) *openshellv1.ProviderProfileImp
 			AuthStyle:   c.AuthStyle,
 		})
 	}
-	endpoints := make([]*sandboxv1.NetworkEndpoint, 0, len(body.Endpoints))
+	endpoints := make([]openshell.NetworkEndpoint, 0, len(body.Endpoints))
 	for _, e := range body.Endpoints {
-		endpoints = append(endpoints, &sandboxv1.NetworkEndpoint{
+		endpoints = append(endpoints, openshell.NetworkEndpoint{
 			Host: e.Host,
 			Port: e.Port,
 		})
 	}
-	cat := openshellv1.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_OTHER
-	if c, ok := profileCategoryMap[body.Category]; ok {
-		cat = c
-	}
-	return &openshellv1.ProviderProfileImportItem{
-		Profile: &openshellv1.ProviderProfile{
-			Id:               body.ID,
+	return openshell.ProfileImportItem{
+		Profile: openshell.ProviderProfile{
+			ID:               body.ID,
 			DisplayName:      body.DisplayName,
 			Description:      body.Description,
-			Category:         cat,
+			Category:         models.ParseSDKProfileCategory(body.Category),
 			Credentials:      creds,
 			Endpoints:        endpoints,
 			InferenceCapable: body.InferenceCapable,
@@ -311,27 +317,27 @@ func (app *App) ImportProviderProfiles(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "at least one profile is required")
 		return
 	}
-	items := make([]*openshellv1.ProviderProfileImportItem, 0, len(body.Profiles))
+	items := make([]openshell.ProfileImportItem, 0, len(body.Profiles))
 	for _, p := range body.Profiles {
 		if p.ID == "" || p.DisplayName == "" {
 			writeError(w, http.StatusBadRequest, "invalid_profile", "id and displayName are required")
 			return
 		}
-		items = append(items, toProfileImportItem(p))
+		items = append(items, toSDKProfileImportItem(p))
 	}
-	resp, err := app.gateway.ImportProviderProfiles(r.Context(), chi.URLParam(r, "workspace"), items)
+	resp, err := app.sdk.Providers().Profiles().Import(r.Context(), chi.URLParam(r, "workspace"), items)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	profiles := make([]models.ProviderProfile, 0, len(resp.GetProfiles()))
-	for _, p := range resp.GetProfiles() {
-		profiles = append(profiles, models.FromProviderProfile(p))
+	profiles := make([]models.ProviderProfile, 0, len(resp.Profiles))
+	for i := range resp.Profiles {
+		profiles = append(profiles, models.FromSDKProviderProfile(&resp.Profiles[i]))
 	}
 	writeJSON(w, http.StatusCreated, models.ImportProviderProfilesResult{
-		Diagnostics: models.FromDiagnostics(resp.GetDiagnostics()),
+		Diagnostics: models.FromSDKDiagnostics(resp.Diagnostics),
 		Profiles:    profiles,
-		Imported:    resp.GetImported(),
+		Imported:    resp.Imported,
 	})
 }
 
@@ -351,28 +357,33 @@ func (app *App) UpdateProviderProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.Profile.ID = profileID
-	item := toProfileImportItem(body.Profile)
-	resp, err := app.gateway.UpdateProviderProfile(r.Context(), chi.URLParam(r, "workspace"), profileID, item, body.ExpectedResourceVersion)
+	resp, err := app.sdk.Providers().Profiles().Update(
+		r.Context(),
+		chi.URLParam(r, "workspace"),
+		profileID,
+		body.ExpectedResourceVersion,
+		toSDKProfileImportItem(body.Profile),
+	)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	var profile *models.ProviderProfile
-	if resp.GetProfile() != nil {
-		p := models.FromProviderProfile(resp.GetProfile())
+	if resp.Profile != nil {
+		p := models.FromSDKProviderProfile(resp.Profile)
 		profile = &p
 	}
 	writeJSON(w, http.StatusOK, models.UpdateProviderProfileResult{
-		Diagnostics: models.FromDiagnostics(resp.GetDiagnostics()),
+		Diagnostics: models.FromSDKDiagnostics(resp.Diagnostics),
 		Profile:     profile,
-		Updated:     resp.GetUpdated(),
+		Updated:     resp.Updated,
 	})
 }
 
 func (app *App) DeleteProviderProfile(w http.ResponseWriter, r *http.Request) {
-	deleted, err := app.gateway.DeleteProviderProfile(r.Context(), chi.URLParam(r, "profileId"), chi.URLParam(r, "workspace"))
+	deleted, err := app.sdk.Providers().Profiles().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "profileId"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
@@ -387,17 +398,17 @@ func (app *App) LintProviderProfiles(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	items := make([]*openshellv1.ProviderProfileImportItem, 0, len(body.Profiles))
+	items := make([]openshell.ProfileImportItem, 0, len(body.Profiles))
 	for _, p := range body.Profiles {
-		items = append(items, toProfileImportItem(p))
+		items = append(items, toSDKProfileImportItem(p))
 	}
-	resp, err := app.gateway.LintProviderProfiles(r.Context(), chi.URLParam(r, "workspace"), items)
+	resp, err := app.sdk.Providers().Profiles().Lint(r.Context(), chi.URLParam(r, "workspace"), items)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.LintProviderProfilesResult{
-		Diagnostics: models.FromDiagnostics(resp.GetDiagnostics()),
-		Valid:       resp.GetValid(),
+		Diagnostics: models.FromSDKDiagnostics(resp.Diagnostics),
+		Valid:       resp.Valid,
 	})
 }
