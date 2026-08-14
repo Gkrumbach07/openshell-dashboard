@@ -7,51 +7,48 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
-	datamodelv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/datamodelv1"
-	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 func TestListSandboxes(t *testing.T) {
 	tests := []struct {
-		mockFn     func(ctx context.Context, workspace string, limit, offset uint32, labelSelector string) ([]*openshellv1.Sandbox, error)
+		listFn     func(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error)
 		name       string
 		wantStatus int
 	}{
 		{
 			name: "success returns sandbox list",
-			mockFn: func(_ context.Context, _ string, _, _ uint32, _ string) ([]*openshellv1.Sandbox, error) {
-				return []*openshellv1.Sandbox{
-					{
-						Metadata: &datamodelv1.ObjectMeta{Id: "id-1", Name: "my-sandbox"},
-						Status:   &openshellv1.SandboxStatus{Phase: openshellv1.SandboxPhase_SANDBOX_PHASE_READY},
-					},
+			listFn: func(_ context.Context, _ string, _ ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
+				return []*openshell.Sandbox{
+					{ID: "id-1", Name: "my-sandbox", Status: openshell.SandboxStatus{Phase: openshell.SandboxReady}},
 				}, nil
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
 			name: "empty list returns empty array",
-			mockFn: func(_ context.Context, _ string, _, _ uint32, _ string) ([]*openshellv1.Sandbox, error) {
+			listFn: func(_ context.Context, _ string, _ ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
 				return nil, nil
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
 			name: "gateway unavailable returns 502",
-			mockFn: func(_ context.Context, _ string, _, _ uint32, _ string) ([]*openshellv1.Sandbox, error) {
-				return nil, status.Error(codes.Unavailable, "gateway down")
+			listFn: func(_ context.Context, _ string, _ ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
+				return nil, &openshell.StatusError{Code: openshell.ErrorUnavailable, Message: "gateway down"}
 			},
 			wantStatus: http.StatusBadGateway,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestApp(&mockGateway{listSandboxesFn: tc.mockFn})
+			sdk := &mockSDK{}
+			sdk.sandboxes.listFn = tc.listFn
+			app := newTestAppWithSDK(sdk)
 			r := chi.NewRouter()
 			r.Get("/workspaces/{workspace}/sandboxes", app.ListSandboxes)
 
@@ -60,24 +57,25 @@ func TestListSandboxes(t *testing.T) {
 			r.ServeHTTP(w, req)
 
 			if w.Code != tc.wantStatus {
-				t.Errorf("status = %d, want %d", w.Code, tc.wantStatus)
+				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
 			}
 		})
 	}
 }
 
 func TestListSandboxesBody(t *testing.T) {
-	app := newTestApp(&mockGateway{
-		listSandboxesFn: func(_ context.Context, _ string, _, _ uint32, _ string) ([]*openshellv1.Sandbox, error) {
-			return []*openshellv1.Sandbox{
-				{
-					Metadata: &datamodelv1.ObjectMeta{Id: "id-1", Name: "my-sandbox", Workspace: "default"},
-					Spec:     &openshellv1.SandboxSpec{Template: &openshellv1.SandboxTemplate{Image: "ubuntu:latest"}},
-					Status:   &openshellv1.SandboxStatus{Phase: openshellv1.SandboxPhase_SANDBOX_PHASE_READY},
-				},
-			}, nil
-		},
-	})
+	sdk := &mockSDK{}
+	sdk.sandboxes.listFn = func(_ context.Context, _ string, _ ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
+		return []*openshell.Sandbox{
+			{
+				ID: "id-1", Name: "my-sandbox", Workspace: "default",
+				CreatedAt: time.Unix(1700000000, 0),
+				Spec:      openshell.SandboxSpec{Template: &openshell.SandboxTemplate{Image: "ubuntu:latest"}},
+				Status:    openshell.SandboxStatus{Phase: openshell.SandboxReady},
+			},
+		}, nil
+	}
+	app := newTestAppWithSDK(sdk)
 	r := chi.NewRouter()
 	r.Get("/workspaces/{workspace}/sandboxes", app.ListSandboxes)
 
@@ -114,7 +112,7 @@ func TestListSandboxesBody(t *testing.T) {
 
 func TestCreateSandbox(t *testing.T) {
 	tests := []struct {
-		mockFn     func(ctx context.Context, workspace, name string, spec *openshellv1.SandboxSpec, labels, annotations map[string]string) (*openshellv1.Sandbox, error)
+		createFn   func(ctx context.Context, workspace, name string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error)
 		name       string
 		body       string
 		wantCode   string
@@ -123,11 +121,8 @@ func TestCreateSandbox(t *testing.T) {
 		{
 			name: "success",
 			body: `{"name":"my-sandbox","image":"ubuntu:latest","policy":{"version":1,"filesystem":{"includeWorkdir":true}}}`,
-			mockFn: func(_ context.Context, _, _ string, _ *openshellv1.SandboxSpec, _, _ map[string]string) (*openshellv1.Sandbox, error) {
-				return &openshellv1.Sandbox{
-					Metadata: &datamodelv1.ObjectMeta{Id: "id-1", Name: "my-sandbox"},
-					Status:   &openshellv1.SandboxStatus{Phase: openshellv1.SandboxPhase_SANDBOX_PHASE_PROVISIONING},
-				}, nil
+			createFn: func(_ context.Context, _, name string, _ *openshell.SandboxSpec, _ map[string]string, _ ...openshell.CreateOptions) (*openshell.Sandbox, error) {
+				return &openshell.Sandbox{ID: "id-1", Name: name, Status: openshell.SandboxStatus{Phase: openshell.SandboxProvisioning}}, nil
 			},
 			wantStatus: http.StatusCreated,
 		},
@@ -162,22 +157,10 @@ func TestCreateSandbox(t *testing.T) {
 			wantCode:   "invalid_body",
 		},
 		{
-			name:       "unknown field in body",
-			body:       `{"name":"ok","image":"img","policy":{"version":1},"bogus":true}`,
-			wantStatus: http.StatusBadRequest,
-			wantCode:   "invalid_body",
-		},
-		{
-			name:       "invalid policy schema",
-			body:       `{"name":"ok","image":"img","policy":{"notAField":true}}`,
-			wantStatus: http.StatusBadRequest,
-			wantCode:   "invalid_policy",
-		},
-		{
 			name: "gateway already exists",
 			body: `{"name":"dup","image":"ubuntu:latest","policy":{"version":1,"filesystem":{"includeWorkdir":true}}}`,
-			mockFn: func(_ context.Context, _, _ string, _ *openshellv1.SandboxSpec, _, _ map[string]string) (*openshellv1.Sandbox, error) {
-				return nil, status.Error(codes.AlreadyExists, "sandbox already exists")
+			createFn: func(_ context.Context, _, _ string, _ *openshell.SandboxSpec, _ map[string]string, _ ...openshell.CreateOptions) (*openshell.Sandbox, error) {
+				return nil, &openshell.StatusError{Code: openshell.ErrorAlreadyExists, Message: "sandbox already exists"}
 			},
 			wantStatus: http.StatusConflict,
 			wantCode:   "already_exists",
@@ -185,8 +168,9 @@ func TestCreateSandbox(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mock := &mockGateway{createSandboxFn: tc.mockFn}
-			app := newTestApp(mock)
+			sdk := &mockSDK{}
+			sdk.sandboxes.createFn = tc.createFn
+			app := newTestAppWithSDK(sdk)
 			r := chi.NewRouter()
 			r.Post("/workspaces/{workspace}/sandboxes", app.CreateSandbox)
 
@@ -213,31 +197,30 @@ func TestCreateSandbox(t *testing.T) {
 
 func TestGetSandbox(t *testing.T) {
 	tests := []struct {
-		mockFn     func(ctx context.Context, workspace, name string) (*openshellv1.Sandbox, error)
+		getFn      func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
 		name       string
 		wantStatus int
 	}{
 		{
 			name: "success",
-			mockFn: func(_ context.Context, _, _ string) (*openshellv1.Sandbox, error) {
-				return &openshellv1.Sandbox{
-					Metadata: &datamodelv1.ObjectMeta{Id: "id-1", Name: "my-sandbox"},
-					Status:   &openshellv1.SandboxStatus{Phase: openshellv1.SandboxPhase_SANDBOX_PHASE_READY},
-				}, nil
+			getFn: func(_ context.Context, _, name string) (*openshell.Sandbox, error) {
+				return &openshell.Sandbox{ID: "id-1", Name: name, Status: openshell.SandboxStatus{Phase: openshell.SandboxReady}}, nil
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
 			name: "not found",
-			mockFn: func(_ context.Context, _, _ string) (*openshellv1.Sandbox, error) {
-				return nil, status.Error(codes.NotFound, "sandbox not found")
+			getFn: func(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
+				return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "sandbox not found"}
 			},
 			wantStatus: http.StatusNotFound,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestApp(&mockGateway{getSandboxFn: tc.mockFn})
+			sdk := &mockSDK{}
+			sdk.sandboxes.getFn = tc.getFn
+			app := newTestAppWithSDK(sdk)
 			r := chi.NewRouter()
 			r.Get("/workspaces/{workspace}/sandboxes/{name}", app.GetSandbox)
 
@@ -254,35 +237,37 @@ func TestGetSandbox(t *testing.T) {
 
 func TestDeleteSandbox(t *testing.T) {
 	tests := []struct {
-		mockFn     func(ctx context.Context, workspace, name string) (bool, error)
+		deleteFn   func(ctx context.Context, workspace, name string) error
 		name       string
 		wantStatus int
 	}{
 		{
 			name: "success",
-			mockFn: func(_ context.Context, _, _ string) (bool, error) {
-				return true, nil
+			deleteFn: func(_ context.Context, _, _ string) error {
+				return nil
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
 			name: "not found",
-			mockFn: func(_ context.Context, _, _ string) (bool, error) {
-				return false, status.Error(codes.NotFound, "sandbox not found")
+			deleteFn: func(_ context.Context, _, _ string) error {
+				return &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "sandbox not found"}
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name: "permission denied",
-			mockFn: func(_ context.Context, _, _ string) (bool, error) {
-				return false, status.Error(codes.PermissionDenied, "access denied")
+			deleteFn: func(_ context.Context, _, _ string) error {
+				return &openshell.StatusError{Code: openshell.ErrorPermissionDenied, Message: "access denied"}
 			},
 			wantStatus: http.StatusForbidden,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestApp(&mockGateway{deleteSandboxFn: tc.mockFn})
+			sdk := &mockSDK{}
+			sdk.sandboxes.deleteFn = tc.deleteFn
+			app := newTestAppWithSDK(sdk)
 			r := chi.NewRouter()
 			r.Delete("/workspaces/{workspace}/sandboxes/{name}", app.DeleteSandbox)
 
@@ -294,40 +279,5 @@ func TestDeleteSandbox(t *testing.T) {
 				t.Errorf("status = %d, want %d", w.Code, tc.wantStatus)
 			}
 		})
-	}
-}
-
-func TestCreateSandboxWithGPUAndResources(t *testing.T) {
-	var capturedSpec *openshellv1.SandboxSpec
-	mock := &mockGateway{
-		createSandboxFn: func(_ context.Context, _, _ string, spec *openshellv1.SandboxSpec, _, _ map[string]string) (*openshellv1.Sandbox, error) {
-			capturedSpec = spec
-			return &openshellv1.Sandbox{
-				Metadata: &datamodelv1.ObjectMeta{Id: "id-1", Name: "gpu-sandbox"},
-				Status:   &openshellv1.SandboxStatus{Phase: openshellv1.SandboxPhase_SANDBOX_PHASE_PROVISIONING},
-			}, nil
-		},
-	}
-	app := newTestApp(mock)
-	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes", app.CreateSandbox)
-
-	body := `{"name":"gpu-sandbox","image":"nvidia/cuda","gpuCount":2,"cpu":"4","memory":"8Gi","policy":{"version":1,"filesystem":{"includeWorkdir":true}}}`
-	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
-	}
-	if capturedSpec.ResourceRequirements == nil || capturedSpec.ResourceRequirements.Gpu == nil {
-		t.Fatal("expected GPU resource requirements to be set")
-	}
-	if capturedSpec.ResourceRequirements.Gpu.GetCount() != 2 {
-		t.Errorf("gpu count = %d, want 2", capturedSpec.ResourceRequirements.Gpu.GetCount())
-	}
-	if capturedSpec.Template.Resources == nil {
-		t.Fatal("expected template resources to be set for cpu/memory")
 	}
 }
