@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -11,6 +12,9 @@ import (
 
 // FromSDKSandbox converts an SDK Sandbox to the JSON DTO the frontend expects.
 func FromSDKSandbox(sandbox *openshell.Sandbox) Sandbox {
+	if sandbox == nil {
+		return Sandbox{}
+	}
 	out := Sandbox{
 		Metadata: ObjectMeta{
 			ID:              sandbox.ID,
@@ -244,8 +248,9 @@ func marshalSDKNetworkRule(rule openshell.NetworkPolicyRule) sdkNetworkPolicyRul
 	return rj
 }
 
-// awsStsAssumeRole is defined in SDK types but not re-exported from openshell/v1.
-const awsStsAssumeRole openshell.RefreshStrategy = "AWSStsAssumeRole"
+// RefreshStrategyAWSStsAssumeRole is defined in SDK types but not re-exported
+// from openshell/v1.
+const RefreshStrategyAWSStsAssumeRole openshell.RefreshStrategy = "AWSStsAssumeRole"
 
 // FromSDKProvider converts an SDK Provider to the JSON DTO. Credential values
 // and handles are secret — only key names are surfaced.
@@ -276,8 +281,21 @@ func FromSDKProvider(provider *openshell.Provider) Provider {
 			out.CredentialExpiresAtMs[k] = timeToMs(t)
 		}
 	}
+	// Gateway responses omit Spec.Credentials (write-only). Names live on
+	// CredentialHandles after create. Union both so mocks and live reads work.
+	names := make(map[string]struct{}, len(provider.Spec.Credentials)+len(provider.Spec.CredentialHandles))
 	for name := range provider.Spec.Credentials {
-		out.CredentialNames = append(out.CredentialNames, name)
+		names[name] = struct{}{}
+	}
+	for name := range provider.Spec.CredentialHandles {
+		names[name] = struct{}{}
+	}
+	if len(names) > 0 {
+		out.CredentialNames = make([]string, 0, len(names))
+		for name := range names {
+			out.CredentialNames = append(out.CredentialNames, name)
+		}
+		slices.Sort(out.CredentialNames)
 	}
 	return out
 }
@@ -310,7 +328,7 @@ func sdkRefreshStrategyString(s openshell.RefreshStrategy) string {
 		return "OAUTH2_CLIENT_CREDENTIALS"
 	case openshell.RefreshStrategyGoogleServiceAccountJWT:
 		return "GOOGLE_SERVICE_ACCOUNT_JWT"
-	case awsStsAssumeRole:
+	case RefreshStrategyAWSStsAssumeRole:
 		return "AWS_STS_ASSUME_ROLE"
 	}
 	return "UNSPECIFIED"

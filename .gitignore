@@ -4,6 +4,7 @@ frontend/dist/
 
 # Go
 backend/bin/
+backend/server
 
 # Editor / OS
 .DS_Store

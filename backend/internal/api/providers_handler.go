@@ -126,14 +126,11 @@ func (app *App) GetProviderRefreshStatus(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, out)
 }
 
-// awsStsAssumeRole is defined in SDK types but not re-exported from openshell/v1.
-const awsStsAssumeRole openshell.RefreshStrategy = "AWSStsAssumeRole"
-
 var refreshStrategyMap = map[string]openshell.RefreshStrategy{
 	"oauth2-refresh-token":       openshell.RefreshStrategyOAuth2RefreshToken,
 	"oauth2-client-credentials":  openshell.RefreshStrategyOAuth2ClientCredentials,
 	"google-service-account-jwt": openshell.RefreshStrategyGoogleServiceAccountJWT,
-	"aws-sts-assume-role":        awsStsAssumeRole,
+	"aws-sts-assume-role":        models.RefreshStrategyAWSStsAssumeRole,
 	"static":                     openshell.RefreshStrategyStatic,
 	"external":                   openshell.RefreshStrategyExternal,
 }
