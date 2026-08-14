@@ -40,7 +40,7 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func main() {
+func main() { //nolint:gocyclo // main is inherently branchy due to flag/config handling
 	var (
 		port              = flag.String("port", envOr("PORT", defaultPort), "listen port (env PORT)")
 		listenAddress     = flag.String("listen-address", envOr("LISTEN_ADDRESS", ""), "listen address (env LISTEN_ADDRESS)")
@@ -63,7 +63,7 @@ func main() {
 	if *gatewayURL == defaultGatewayURL {
 		slog.Warn("gateway URL is the default — verify OPENSHELL_GATEWAY_URL is configured correctly", "url", *gatewayURL)
 	}
-	if *gatewayCACert != "" && !(strings.HasPrefix(*gatewayURL, "grpcs://") || strings.HasPrefix(*gatewayURL, "https://")) {
+	if *gatewayCACert != "" && !strings.HasPrefix(*gatewayURL, "grpcs://") && !strings.HasPrefix(*gatewayURL, "https://") {
 		slog.Warn(
 			"gateway CA cert is set but gateway URL has no TLS scheme; use grpcs:// or https:// for TLS gateways",
 			"url", *gatewayURL,

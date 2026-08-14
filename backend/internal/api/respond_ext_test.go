@@ -222,11 +222,11 @@ func TestWriteError(t *testing.T) {
 
 func TestWriteSDKError(t *testing.T) {
 	tests := []struct {
-		name        string
 		err         error
-		wantHTTP    int
+		name        string
 		wantCode    string
 		wantMessage string
+		wantHTTP    int
 	}{
 		{
 			name:        "NotFound",

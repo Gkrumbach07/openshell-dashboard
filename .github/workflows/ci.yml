@@ -60,7 +60,7 @@ jobs:
           working-directory: backend
           version: v2.12.2
       - if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/main'
-        run: cd backend && go test -race -count=1 -coverprofile=coverage.out ./...
+        run: cd backend && GOLANG_PROTOBUF_REGISTRATION_CONFLICT=warn go test -race -count=1 -coverprofile=coverage.out ./...
 
   e2e:
     runs-on: ubuntu-latest
@@ -142,7 +142,7 @@ jobs:
         run: |
           cd backend && go build -o ../bin/server ./cmd/server
           cd ..
-          AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:8080 PORT=9080 ./bin/server &
+          GOLANG_PROTOBUF_REGISTRATION_CONFLICT=warn AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:8080 PORT=9080 ./bin/server &
           timeout 30 bash -c 'until curl -sf http://localhost:9080/api/v1/healthz; do sleep 1; done'
           echo "BFF is healthy"
 
