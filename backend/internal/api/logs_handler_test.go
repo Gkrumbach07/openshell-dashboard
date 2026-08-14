@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
 	datamodelv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/datamodelv1"
 	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
@@ -100,7 +103,7 @@ func TestGetSandboxLogs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			app := newTestApp(&mockGateway{
-				getSandboxFn:    tc.getSandboxFn,
+				getSandboxFn:     tc.getSandboxFn,
 				getSandboxLogsFn: tc.getLogsFn,
 			})
 			r := chi.NewRouter()
@@ -174,5 +177,67 @@ func TestGetSandboxLogsBody(t *testing.T) {
 	}
 	if fields["dst_host"] != "api.example.com" {
 		t.Errorf("dst_host = %v", fields["dst_host"])
+	}
+}
+
+func TestListSandboxProviders(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.sandboxes.listProvidersFn = func(_ context.Context, _, sandboxName string) ([]*openshell.Provider, error) {
+		return []*openshell.Provider{
+			{Name: "claude-prov", Type: "claude", Spec: openshell.ProviderSpec{Credentials: map[string]string{"api_key": "secret"}}},
+		}, nil
+	}
+	app := newTestAppWithSDK(sdk)
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/providers", app.ListSandboxProviders)
+
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/providers", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "secret") {
+		t.Errorf("leaked credential: %s", w.Body.String())
+	}
+}
+
+func TestAttachDetachSandboxProvider(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.sandboxes.attachFn = func(_ context.Context, workspace, sandboxName, providerName string, _ uint64) (*openshell.AttachProviderResult, error) {
+		if workspace != "default" || sandboxName != "my-sandbox" || providerName != "claude-prov" {
+			t.Errorf("attach args = %s/%s/%s", workspace, sandboxName, providerName)
+		}
+		return &openshell.AttachProviderResult{Attached: true, Sandbox: &openshell.Sandbox{Name: sandboxName}}, nil
+	}
+	sdk.sandboxes.detachFn = func(_ context.Context, _, sandboxName, _ string, _ uint64) (*openshell.DetachProviderResult, error) {
+		return &openshell.DetachProviderResult{Detached: true, Sandbox: &openshell.Sandbox{Name: sandboxName}}, nil
+	}
+	app := newTestAppWithSDK(sdk)
+	r := chi.NewRouter()
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/providers/{provider}", app.AttachSandboxProvider)
+	r.Delete("/workspaces/{workspace}/sandboxes/{name}/providers/{provider}", app.DetachSandboxProvider)
+
+	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/providers/claude-prov", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("attach status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	var attach map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&attach); err != nil {
+		t.Fatalf("decode attach: %v", err)
+	}
+	if attach["attached"] != true {
+		t.Errorf("attached = %v", attach["attached"])
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/workspaces/default/sandboxes/my-sandbox/providers/claude-prov", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("detach status = %d, want 200; body: %s", w.Code, w.Body.String())
 	}
 }

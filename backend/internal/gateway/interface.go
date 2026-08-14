@@ -33,23 +33,6 @@ type Interface interface {
 	RemoveWorkspaceMember(ctx context.Context, workspace, principalSubject string) (bool, error)
 	ListWorkspaceMembers(ctx context.Context, workspace string, limit, offset uint32) ([]*openshellv1.WorkspaceMember, error)
 
-	// Providers
-	CreateProvider(ctx context.Context, workspace string, provider *datamodelv1.Provider) (*datamodelv1.Provider, error)
-	GetProvider(ctx context.Context, workspace, name string) (*datamodelv1.Provider, error)
-	ListProviders(ctx context.Context, workspace string, limit, offset uint32) ([]*datamodelv1.Provider, error)
-	DeleteProvider(ctx context.Context, workspace, name string) (bool, error)
-	UpdateProvider(ctx context.Context, workspace string, provider *datamodelv1.Provider, credentialExpiresAtMs map[string]int64) (*datamodelv1.Provider, error)
-	GetProviderRefreshStatus(ctx context.Context, workspace, provider, credentialKey string) (*openshellv1.GetProviderRefreshStatusResponse, error)
-	ConfigureProviderRefresh(ctx context.Context, workspace, provider, credentialKey string, strategy openshellv1.ProviderCredentialRefreshStrategy, material map[string]string, secretMaterialKeys []string, expiresAtMs *int64) (*openshellv1.ConfigureProviderRefreshResponse, error)
-	RotateProviderCredential(ctx context.Context, workspace, provider, credentialKey string) (*openshellv1.RotateProviderCredentialResponse, error)
-	DeleteProviderRefresh(ctx context.Context, workspace, provider, credentialKey string) (bool, error)
-	ListProviderProfiles(ctx context.Context, workspace string, limit, offset uint32) ([]*openshellv1.ProviderProfile, error)
-	GetProviderProfile(ctx context.Context, id, workspace string) (*openshellv1.ProviderProfile, error)
-	ImportProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.ImportProviderProfilesResponse, error)
-	UpdateProviderProfile(ctx context.Context, workspace, id string, profile *openshellv1.ProviderProfileImportItem, expectedResourceVersion uint64) (*openshellv1.UpdateProviderProfilesResponse, error)
-	DeleteProviderProfile(ctx context.Context, id, workspace string) (bool, error)
-	LintProviderProfiles(ctx context.Context, workspace string, profiles []*openshellv1.ProviderProfileImportItem) (*openshellv1.LintProviderProfilesResponse, error)
-
 	// Policies
 	UpdateSandboxPolicy(ctx context.Context, workspace, name string, policy *sandboxv1.SandboxPolicy, expectedResourceVersion uint64) (*openshellv1.UpdateConfigResponse, error)
 	SetGlobalPolicy(ctx context.Context, policy *sandboxv1.SandboxPolicy) (*openshellv1.UpdateConfigResponse, error)
@@ -68,11 +51,8 @@ type Interface interface {
 	ClearDraftChunks(ctx context.Context, workspace, name string) (*openshellv1.ClearDraftChunksResponse, error)
 	GetDraftHistory(ctx context.Context, workspace, name string) (*openshellv1.GetDraftHistoryResponse, error)
 
-	// Logs / sandbox providers
+	// Logs
 	GetSandboxLogs(ctx context.Context, workspace, sandboxID string, lines uint32, sinceMs int64, sources []string, minLevel string) (*openshellv1.GetSandboxLogsResponse, error)
-	ListSandboxProviders(ctx context.Context, workspace, sandboxName string) (*openshellv1.ListSandboxProvidersResponse, error)
-	AttachSandboxProvider(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshellv1.AttachSandboxProviderResponse, error)
-	DetachSandboxProvider(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshellv1.DetachSandboxProviderResponse, error)
 
 	// Services
 	ExposeService(ctx context.Context, workspace, sandbox, service string, targetPort uint32, domain bool) (*openshellv1.ServiceEndpointResponse, error)

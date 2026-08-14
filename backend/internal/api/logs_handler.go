@@ -53,14 +53,14 @@ func (app *App) GetSandboxLogs(w http.ResponseWriter, r *http.Request) {
 
 // ListSandboxProviders lists provider records attached to a sandbox.
 func (app *App) ListSandboxProviders(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.ListSandboxProviders(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	providers, err := app.sdk.Sandboxes().ListProviders(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	out := make([]models.Provider, 0, len(resp.GetProviders()))
-	for _, provider := range resp.GetProviders() {
-		out = append(out, models.FromProvider(provider))
+	out := make([]models.Provider, 0, len(providers))
+	for _, provider := range providers {
+		out = append(out, models.FromSDKProvider(provider))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -77,15 +77,22 @@ func (app *App) AttachSandboxProvider(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength > 0 && !decodeBody(w, r, &body) {
 		return
 	}
-	resp, err := app.gateway.AttachSandboxProvider(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "provider"), body.ExpectedResourceVersion)
+	result, err := app.sdk.Sandboxes().AttachProvider(
+		r.Context(),
+		chi.URLParam(r, "workspace"),
+		chi.URLParam(r, "name"),
+		chi.URLParam(r, "provider"),
+		body.ExpectedResourceVersion,
+	)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"attached": resp.GetAttached(),
-		"sandbox":  models.FromSandbox(resp.GetSandbox()),
-	})
+	out := map[string]any{"attached": result.Attached}
+	if result.Sandbox != nil {
+		out["sandbox"] = models.FromSDKSandbox(result.Sandbox)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // DetachSandboxProvider detaches a provider from a sandbox.
@@ -94,13 +101,20 @@ func (app *App) DetachSandboxProvider(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength > 0 && !decodeBody(w, r, &body) {
 		return
 	}
-	resp, err := app.gateway.DetachSandboxProvider(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "provider"), body.ExpectedResourceVersion)
+	result, err := app.sdk.Sandboxes().DetachProvider(
+		r.Context(),
+		chi.URLParam(r, "workspace"),
+		chi.URLParam(r, "name"),
+		chi.URLParam(r, "provider"),
+		body.ExpectedResourceVersion,
+	)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"detached": resp.GetDetached(),
-		"sandbox":  models.FromSandbox(resp.GetSandbox()),
-	})
+	out := map[string]any{"detached": result.Detached}
+	if result.Sandbox != nil {
+		out["sandbox"] = models.FromSDKSandbox(result.Sandbox)
+	}
+	writeJSON(w, http.StatusOK, out)
 }

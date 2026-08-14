@@ -598,3 +598,48 @@ func TestLintProviderProfiles(t *testing.T) {
 		t.Errorf("valid = %v, want true", resp["valid"])
 	}
 }
+
+func TestGetProviderRefreshStatus(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.providers.refresh.getStatusFn = func(_ context.Context, _, _, _ string) ([]*openshell.RefreshStatus, error) {
+		return []*openshell.RefreshStatus{
+			{CredentialKey: "api_key", Strategy: openshell.RefreshStrategyStatic, Status: "active"},
+		}, nil
+	}
+	app := newTestAppWithSDK(sdk)
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/providers/{name}/refresh-status", app.GetProviderRefreshStatus)
+
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/providers/claude-prov/refresh-status", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	var body []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body) != 1 || body[0]["credentialKey"] != "api_key" || body[0]["strategy"] != "STATIC" {
+		t.Errorf("body = %v", body)
+	}
+}
+
+func TestListProviderProfiles(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.providers.profiles.listFn = func(_ context.Context, _ string, _ ...openshell.ListOptions) ([]*openshell.ProviderProfile, error) {
+		return []*openshell.ProviderProfile{
+			{ID: "claude", DisplayName: "Claude", Category: openshell.ProfileCategoryInference},
+		}, nil
+	}
+	app := newTestAppWithSDK(sdk)
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/provider-profiles", app.ListProviderProfiles)
+
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/provider-profiles", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+}
