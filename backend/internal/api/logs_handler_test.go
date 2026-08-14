@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 
 	datamodelv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/datamodelv1"
 	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
@@ -184,7 +185,15 @@ func TestListSandboxProviders(t *testing.T) {
 	sdk := &mockSDK{}
 	sdk.sandboxes.listProvidersFn = func(_ context.Context, _, sandboxName string) ([]*openshell.Provider, error) {
 		return []*openshell.Provider{
-			{Name: "claude-prov", Type: "claude", Spec: openshell.ProviderSpec{Credentials: map[string]string{"api_key": "secret"}}},
+			{
+				Name: "claude-prov",
+				Type: "claude",
+				Spec: openshell.ProviderSpec{
+					CredentialHandles: map[string]types.CredentialHandle{
+						"api_key": {Driver: "vault", Handle: "vault://must-not-leak"},
+					},
+				},
+			},
 		}, nil
 	}
 	app := newTestAppWithSDK(sdk)
@@ -197,16 +206,31 @@ func TestListSandboxProviders(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
 	}
-	if strings.Contains(w.Body.String(), "secret") {
-		t.Errorf("leaked credential: %s", w.Body.String())
+	body := w.Body.String()
+	if strings.Contains(body, "must-not-leak") {
+		t.Errorf("leaked credential handle: %s", body)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d providers, want 1", len(got))
+	}
+	names, _ := got[0]["credentialNames"].([]any)
+	if len(names) != 1 || names[0] != "api_key" {
+		t.Errorf("credentialNames = %v, want [api_key]", got[0]["credentialNames"])
 	}
 }
 
 func TestAttachDetachSandboxProvider(t *testing.T) {
 	sdk := &mockSDK{}
-	sdk.sandboxes.attachFn = func(_ context.Context, workspace, sandboxName, providerName string, _ uint64) (*openshell.AttachProviderResult, error) {
+	sdk.sandboxes.attachFn = func(_ context.Context, workspace, sandboxName, providerName string, expectedRV uint64) (*openshell.AttachProviderResult, error) {
 		if workspace != "default" || sandboxName != "my-sandbox" || providerName != "claude-prov" {
 			t.Errorf("attach args = %s/%s/%s", workspace, sandboxName, providerName)
+		}
+		if expectedRV != 42 {
+			t.Errorf("expectedResourceVersion = %d, want 42", expectedRV)
 		}
 		return &openshell.AttachProviderResult{Attached: true, Sandbox: &openshell.Sandbox{Name: sandboxName}}, nil
 	}
@@ -218,7 +242,7 @@ func TestAttachDetachSandboxProvider(t *testing.T) {
 	r.Post("/workspaces/{workspace}/sandboxes/{name}/providers/{provider}", app.AttachSandboxProvider)
 	r.Delete("/workspaces/{workspace}/sandboxes/{name}/providers/{provider}", app.DetachSandboxProvider)
 
-	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/providers/claude-prov", strings.NewReader(`{}`))
+	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/providers/claude-prov", strings.NewReader(`{"expectedResourceVersion":42}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
