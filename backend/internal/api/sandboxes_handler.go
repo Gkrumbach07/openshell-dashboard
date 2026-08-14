@@ -79,5 +79,7 @@ func (app *App) DeleteSandbox(w http.ResponseWriter, r *http.Request) {
 		writeSDKError(w, err)
 		return
 	}
+	// SDK Delete returns nil error only on successful deletion. If the sandbox
+	// doesn't exist, NotFound is returned (mapped to 404 by writeSDKError).
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }

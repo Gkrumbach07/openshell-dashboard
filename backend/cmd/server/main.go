@@ -99,7 +99,7 @@ func main() {
 		Address: *gatewayURL,
 		Auth:    sdkclient.ContextAuthProvider{RequireTLS: useTLS},
 	}
-	if *gatewayCACert != "" {
+	if useTLS && *gatewayCACert != "" {
 		sdkCfg.TLS = &openshell.TLSConfig{CAFile: *gatewayCACert}
 	}
 	sdkClient, err := openshell.NewClient(sdkCfg)
