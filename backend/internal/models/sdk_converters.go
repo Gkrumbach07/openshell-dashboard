@@ -167,17 +167,17 @@ func marshalSDKPolicy(p *openshell.SandboxPolicy) json.RawMessage {
 // --- JSON serialization types for SDK policy (camelCase for frontend) ---
 
 type sdkPolicyJSON struct {
-	Version         uint32                              `json:"version,omitempty"`
+	NetworkPolicies map[string]sdkNetworkPolicyRuleJSON `json:"networkPolicies,omitempty"`
 	Filesystem      *sdkFilesystemJSON                  `json:"filesystem,omitempty"`
 	Landlock        *sdkLandlockJSON                    `json:"landlock,omitempty"`
 	Process         *sdkProcessJSON                     `json:"process,omitempty"`
-	NetworkPolicies map[string]sdkNetworkPolicyRuleJSON `json:"networkPolicies,omitempty"`
+	Version         uint32                              `json:"version,omitempty"`
 }
 
 type sdkFilesystemJSON struct {
-	IncludeWorkdir bool     `json:"includeWorkdir,omitempty"`
 	ReadOnly       []string `json:"readOnly,omitempty"`
 	ReadWrite      []string `json:"readWrite,omitempty"`
+	IncludeWorkdir bool     `json:"includeWorkdir,omitempty"`
 }
 
 type sdkLandlockJSON struct {
@@ -197,11 +197,11 @@ type sdkNetworkPolicyRuleJSON struct {
 
 type sdkNetworkEndpointJSON struct {
 	Host        string `json:"host,omitempty"`
-	Port        uint32 `json:"port,omitempty"`
 	Protocol    string `json:"protocol,omitempty"`
-	Tls         string `json:"tls,omitempty"`
+	TLS         string `json:"tls,omitempty"`
 	Enforcement string `json:"enforcement,omitempty"`
 	Access      string `json:"access,omitempty"`
+	Port        uint32 `json:"port,omitempty"`
 }
 
 type sdkNetworkBinaryJSON struct {
@@ -215,7 +215,7 @@ func parseSDKNetworkRule(rj sdkNetworkPolicyRuleJSON) openshell.NetworkPolicyRul
 			Host:        ej.Host,
 			Port:        ej.Port,
 			Protocol:    ej.Protocol,
-			TLS:         ej.Tls,
+			TLS:         ej.TLS,
 			Enforcement: ej.Enforcement,
 			Access:      ej.Access,
 		})
@@ -233,7 +233,7 @@ func marshalSDKNetworkRule(rule openshell.NetworkPolicyRule) sdkNetworkPolicyRul
 			Host:        ep.Host,
 			Port:        ep.Port,
 			Protocol:    ep.Protocol,
-			Tls:         ep.TLS,
+			TLS:         ep.TLS,
 			Enforcement: ep.Enforcement,
 			Access:      ep.Access,
 		})
