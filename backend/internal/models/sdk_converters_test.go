@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
 
 func TestBuildSDKSandboxSpecBasic(t *testing.T) {
@@ -88,6 +89,13 @@ func TestBuildSDKSandboxSpecInvalidPolicy(t *testing.T) {
 	}
 }
 
+func TestFromSDKSandboxNil(t *testing.T) {
+	got := FromSDKSandbox(nil)
+	if got.Metadata.Name != "" || got.Status.Phase != "" {
+		t.Errorf("expected empty sandbox, got %+v", got)
+	}
+}
+
 func TestFromSDKSandboxPhaseMapping(t *testing.T) {
 	cases := []struct {
 		phase openshell.SandboxPhase
@@ -136,6 +144,25 @@ func TestFromSDKProviderStripsCredentials(t *testing.T) {
 	}
 }
 
+func TestFromSDKProviderCredentialNamesFromHandles(t *testing.T) {
+	got := FromSDKProvider(&openshell.Provider{
+		Name: "claude-prov",
+		Type: "claude",
+		Spec: openshell.ProviderSpec{
+			CredentialHandles: map[string]types.CredentialHandle{
+				"api_key": {Driver: "vault", Handle: "vault://must-not-leak"},
+			},
+		},
+	})
+	if len(got.CredentialNames) != 1 || got.CredentialNames[0] != "api_key" {
+		t.Errorf("credentialNames = %v, want [api_key]", got.CredentialNames)
+	}
+	raw, _ := json.Marshal(got)
+	if strings.Contains(string(raw), "vault://must-not-leak") || strings.Contains(string(raw), "vault") {
+		t.Errorf("leaked credential handle: %s", raw)
+	}
+}
+
 func TestFromSDKProviderNil(t *testing.T) {
 	got := FromSDKProvider(nil)
 	if got.Type != "" || got.Metadata.Name != "" {
@@ -153,7 +180,7 @@ func TestFromSDKRefreshStatusStrategies(t *testing.T) {
 		{want: "OAUTH2_REFRESH_TOKEN", strategy: openshell.RefreshStrategyOAuth2RefreshToken},
 		{want: "OAUTH2_CLIENT_CREDENTIALS", strategy: openshell.RefreshStrategyOAuth2ClientCredentials},
 		{want: "GOOGLE_SERVICE_ACCOUNT_JWT", strategy: openshell.RefreshStrategyGoogleServiceAccountJWT},
-		{want: "AWS_STS_ASSUME_ROLE", strategy: "AWSStsAssumeRole"},
+		{want: "AWS_STS_ASSUME_ROLE", strategy: RefreshStrategyAWSStsAssumeRole},
 		{want: "UNSPECIFIED", strategy: "nope"},
 	}
 	for _, tc := range tests {

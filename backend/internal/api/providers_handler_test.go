@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
 
 func TestListProviders(t *testing.T) {
@@ -161,6 +162,21 @@ func TestGetProvider(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 		{
+			name: "handles-only returns credentialNames",
+			getFn: func(_ context.Context, _, name string) (*openshell.Provider, error) {
+				return &openshell.Provider{
+					Name: name,
+					Type: "claude",
+					Spec: openshell.ProviderSpec{
+						CredentialHandles: map[string]types.CredentialHandle{
+							"api_key": {Driver: "vault", Handle: "vault://must-not-leak"},
+						},
+					},
+				}, nil
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
 			name: "not found",
 			getFn: func(_ context.Context, _, _ string) (*openshell.Provider, error) {
 				return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "provider not found"}
@@ -183,6 +199,20 @@ func TestGetProvider(t *testing.T) {
 			if w.Code != tc.wantStatus {
 				t.Errorf("status = %d, want %d", w.Code, tc.wantStatus)
 			}
+			if tc.name == "handles-only returns credentialNames" && w.Code == http.StatusOK {
+				var body map[string]any
+				if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
+				names, _ := body["credentialNames"].([]any)
+				if len(names) != 1 || names[0] != "api_key" {
+					t.Errorf("credentialNames = %v, want [api_key]", body["credentialNames"])
+				}
+				raw, _ := json.Marshal(body)
+				if strings.Contains(string(raw), "must-not-leak") {
+					t.Errorf("leaked credential handle: %s", raw)
+				}
+			}
 		})
 	}
 }
@@ -193,12 +223,24 @@ func TestUpdateProvider(t *testing.T) {
 		return &openshell.Provider{
 			Name: "claude-prov",
 			Type: "claude",
-			Spec: openshell.ProviderSpec{Config: map[string]string{"region": "us"}},
+			Spec: openshell.ProviderSpec{
+				Config:      map[string]string{"region": "us"},
+				Credentials: map[string]string{"api_key": "existing-secret"},
+				CredentialHandles: map[string]types.CredentialHandle{
+					"api_key": {Driver: "vault", Handle: "vault://existing"},
+				},
+			},
 		}, nil
 	}
 	sdk.providers.updateFn = func(_ context.Context, _ string, prov *openshell.Provider) (*openshell.Provider, error) {
 		if prov.Spec.Config["region"] != "eu" {
 			t.Errorf("merged config region = %q, want eu", prov.Spec.Config["region"])
+		}
+		if prov.Spec.Credentials["api_key"] != "existing-secret" {
+			t.Errorf("credentials wiped: %v", prov.Spec.Credentials)
+		}
+		if _, ok := prov.Spec.CredentialHandles["api_key"]; !ok {
+			t.Errorf("handles wiped: %v", prov.Spec.CredentialHandles)
 		}
 		return prov, nil
 	}
@@ -641,5 +683,15 @@ func TestListProviderProfiles(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	var profiles []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&profiles); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(profiles) != 1 {
+		t.Fatalf("got %d profiles, want 1", len(profiles))
+	}
+	if profiles[0]["id"] != "claude" || profiles[0]["category"] != "INFERENCE" {
+		t.Errorf("profile = %v, want id=claude category=INFERENCE", profiles[0])
 	}
 }
