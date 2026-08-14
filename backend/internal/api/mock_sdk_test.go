@@ -29,10 +29,13 @@ func (m *mockSDK) Close() error                             { return nil }
 
 // mockSDKSandboxes provides injectable sandbox operations.
 type mockSDKSandboxes struct {
-	listFn   func(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error)
-	createFn func(ctx context.Context, workspace, name string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error)
-	getFn    func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
-	deleteFn func(ctx context.Context, workspace, name string) error
+	listFn          func(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error)
+	createFn        func(ctx context.Context, workspace, name string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error)
+	getFn           func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
+	deleteFn        func(ctx context.Context, workspace, name string) error
+	attachFn        func(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshell.AttachProviderResult, error)
+	detachFn        func(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshell.DetachProviderResult, error)
+	listProvidersFn func(ctx context.Context, workspace, sandboxName string) ([]*openshell.Provider, error)
 }
 
 func (m *mockSDKSandboxes) List(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
@@ -63,16 +66,25 @@ func (m *mockSDKSandboxes) Delete(ctx context.Context, workspace, name string) e
 	return nil
 }
 
-func (m *mockSDKSandboxes) AttachProvider(_ context.Context, _, _, _ string, _ uint64) (*openshell.AttachProviderResult, error) {
-	panic("not implemented")
+func (m *mockSDKSandboxes) AttachProvider(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshell.AttachProviderResult, error) {
+	if m.attachFn != nil {
+		return m.attachFn(ctx, workspace, sandboxName, providerName, expectedResourceVersion)
+	}
+	return &openshell.AttachProviderResult{Attached: true, Sandbox: &openshell.Sandbox{Name: sandboxName}}, nil
 }
 
-func (m *mockSDKSandboxes) DetachProvider(_ context.Context, _, _, _ string, _ uint64) (*openshell.DetachProviderResult, error) {
-	panic("not implemented")
+func (m *mockSDKSandboxes) DetachProvider(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshell.DetachProviderResult, error) {
+	if m.detachFn != nil {
+		return m.detachFn(ctx, workspace, sandboxName, providerName, expectedResourceVersion)
+	}
+	return &openshell.DetachProviderResult{Detached: true, Sandbox: &openshell.Sandbox{Name: sandboxName}}, nil
 }
 
-func (m *mockSDKSandboxes) ListProviders(_ context.Context, _, _ string) ([]*openshell.Provider, error) {
-	panic("not implemented")
+func (m *mockSDKSandboxes) ListProviders(ctx context.Context, workspace, sandboxName string) ([]*openshell.Provider, error) {
+	if m.listProvidersFn != nil {
+		return m.listProvidersFn(ctx, workspace, sandboxName)
+	}
+	return nil, nil
 }
 
 func (m *mockSDKSandboxes) Watch(_ context.Context, _, _ string, _ ...openshell.WatchOptions) (openshell.WatchInterface[*openshell.Sandbox], error) {
