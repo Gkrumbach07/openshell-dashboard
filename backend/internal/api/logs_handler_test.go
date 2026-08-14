@@ -183,7 +183,7 @@ func TestGetSandboxLogsBody(t *testing.T) {
 
 func TestListSandboxProviders(t *testing.T) {
 	sdk := &mockSDK{}
-	sdk.sandboxes.listProvidersFn = func(_ context.Context, _, sandboxName string) ([]*openshell.Provider, error) {
+	sdk.sandboxes.listProvidersFn = func(_ context.Context, _, _ string) ([]*openshell.Provider, error) {
 		return []*openshell.Provider{
 			{
 				Name: "claude-prov",
