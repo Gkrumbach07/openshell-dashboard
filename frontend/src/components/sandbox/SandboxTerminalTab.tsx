@@ -44,9 +44,11 @@ const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({
     setExitCode(null);
 
     const terminal = new Terminal({
-      cursorBlink: true,
+      cursorBlink: false,
       fontSize: TERMINAL_FONT_SIZE,
-      fontFamily: 'var(--pf-t--global--font--family--mono)',
+      lineHeight: 1.35,
+      letterSpacing: 0,
+      fontFamily: "'JetBrains Mono', var(--pf-t--global--font--family--mono)",
       theme: {
         background: TERMINAL_BG,
         foreground: TERMINAL_FG,
