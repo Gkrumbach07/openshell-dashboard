@@ -105,6 +105,21 @@ func writeSDKError(w http.ResponseWriter, err error) {
 		slog.Warn("gateway error", "code", "Unavailable", "message", msg)
 		writeError(w, http.StatusBadGateway, "gateway_unavailable", "OpenShell gateway is unreachable")
 	default:
+		// Fallback: check for raw gRPC status codes not covered by SDK helpers
+		// (FailedPrecondition, OutOfRange, ResourceExhausted).
+		st, ok := status.FromError(err)
+		if ok {
+			switch st.Code() {
+			case codes.FailedPrecondition, codes.OutOfRange:
+				slog.Warn("gateway error", "code", st.Code().String(), "message", st.Message())
+				writeError(w, http.StatusBadRequest, "invalid_argument", st.Message())
+				return
+			case codes.ResourceExhausted:
+				slog.Warn("gateway error", "code", "ResourceExhausted", "message", st.Message())
+				writeError(w, http.StatusTooManyRequests, "resource_exhausted", st.Message())
+				return
+			}
+		}
 		slog.Error("gateway call failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal error")
 	}
