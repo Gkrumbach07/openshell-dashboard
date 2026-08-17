@@ -33,6 +33,59 @@ func (app *App) execContext(parent context.Context) (context.Context, context.Ca
 	return context.WithTimeout(parent, time.Duration(timeout)*time.Second)
 }
 
+func resolveUploadDest(w http.ResponseWriter, destQuery, filename string) (string, bool) {
+	if filename == "." || filename == ".." || filename == "/" {
+		writeError(w, http.StatusBadRequest, "invalid_filename", "invalid filename")
+		return "", false
+	}
+	dest := destQuery
+	if dest == "" {
+		dest = defaultUploadDir
+	}
+	if !validateFilePath(dest) {
+		writeError(w, http.StatusBadRequest, "invalid_path", "invalid destination directory")
+		return "", false
+	}
+	destPath := filepath.Join(dest, filename)
+	if !validateFilePath(destPath) {
+		writeError(w, http.StatusBadRequest, "invalid_path", "invalid destination path")
+		return "", false
+	}
+	return destPath, true
+}
+
+type uploadSession interface {
+	io.Reader
+	io.Writer
+	Close() error
+	ExitCode() (int, error)
+}
+
+func pipeUpload(session uploadSession, fileBytes []byte) (stdout string, exitCode int, err error) {
+	var stdoutBuf bytes.Buffer
+	drainDone := make(chan struct{})
+	go func() {
+		defer close(drainDone)
+		_, _ = io.Copy(&stdoutBuf, session)
+	}()
+
+	if _, writeErr := session.Write(fileBytes); writeErr != nil && writeErr != io.EOF {
+		_ = session.Close()
+		<-drainDone
+		return stdoutBuf.String(), 0, writeErr
+	}
+	if closeErr := session.Close(); closeErr != nil {
+		<-drainDone
+		return stdoutBuf.String(), 0, closeErr
+	}
+	<-drainDone
+
+	if code, exitErr := session.ExitCode(); exitErr == nil {
+		exitCode = code
+	}
+	return stdoutBuf.String(), exitCode, nil
+}
+
 func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	name := chi.URLParam(r, "name")
@@ -53,23 +106,8 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	filename := filepath.Base(header.Filename)
-	if filename == "." || filename == ".." || filename == "/" {
-		writeError(w, http.StatusBadRequest, "invalid_filename", "invalid filename")
-		return
-	}
-
-	dest := r.URL.Query().Get("dest")
-	if dest == "" {
-		dest = defaultUploadDir
-	}
-	if !validateFilePath(dest) {
-		writeError(w, http.StatusBadRequest, "invalid_path", "invalid destination directory")
-		return
-	}
-	destPath := filepath.Join(dest, filename)
-	if !validateFilePath(destPath) {
-		writeError(w, http.StatusBadRequest, "invalid_path", "invalid destination path")
+	destPath, ok := resolveUploadDest(w, r.URL.Query().Get("dest"), filepath.Base(header.Filename))
+	if !ok {
 		return
 	}
 
@@ -91,32 +129,13 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var stdoutBuf bytes.Buffer
-	drainDone := make(chan struct{})
-	go func() {
-		defer close(drainDone)
-		_, _ = io.Copy(&stdoutBuf, session)
-	}()
-
-	if _, writeErr := session.Write(fileBytes); writeErr != nil && writeErr != io.EOF {
-		_ = session.Close()
-		<-drainDone
-		writeSDKError(w, writeErr)
+	stdout, exitCode, pipeErr := pipeUpload(session, fileBytes)
+	if pipeErr != nil {
+		writeSDKError(w, pipeErr)
 		return
-	}
-	if closeErr := session.Close(); closeErr != nil {
-		<-drainDone
-		writeSDKError(w, closeErr)
-		return
-	}
-	<-drainDone
-
-	exitCode := 0
-	if code, exitErr := session.ExitCode(); exitErr == nil {
-		exitCode = code
 	}
 	if exitCode != 0 {
-		slog.Error("file upload failed", "path", destPath, "exitCode", exitCode, "stdout", stdoutBuf.String())
+		slog.Error("file upload failed", "path", destPath, "exitCode", exitCode, "stdout", stdout)
 		writeError(w, http.StatusBadGateway, "upload_failed", "file upload failed")
 		return
 	}
@@ -125,7 +144,7 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 		"exitCode": 0,
 		"path":     destPath,
 		"size":     len(fileBytes),
-		"stdout":   stdoutBuf.String(),
+		"stdout":   stdout,
 		"success":  true,
 	})
 }
