@@ -15,7 +15,17 @@ import (
 
 func TestGetSandboxPolicy(t *testing.T) {
 	sdk := &mockSDK{}
-	sdk.policy.getStatusFn = func(_ context.Context, _, _ string, _ ...openshell.GetStatusOption) (*openshell.PolicyStatusResult, error) {
+	sdk.policy.getStatusFn = func(_ context.Context, _, _ string, opts ...openshell.GetStatusOption) (*openshell.PolicyStatusResult, error) {
+		if len(opts) > 0 {
+			return &openshell.PolicyStatusResult{
+				ActiveVersion: 2,
+				Revision: openshell.SandboxPolicyRevision{
+					Version:    1,
+					PolicyHash: "old",
+					Status:     openshell.PolicyLoadStatusLoaded,
+				},
+			}, nil
+		}
 		return &openshell.PolicyStatusResult{
 			ActiveVersion: 2,
 			Revision: openshell.SandboxPolicyRevision{
@@ -42,8 +52,8 @@ func TestGetSandboxPolicy(t *testing.T) {
 		t.Errorf("activeVersion = %v, want 2", body["activeVersion"])
 	}
 	revisions, _ := body["revisions"].([]any)
-	if len(revisions) != 1 {
-		t.Errorf("got %d revisions, want 1 (latest only)", len(revisions))
+	if len(revisions) != 2 {
+		t.Errorf("got %d revisions, want 2", len(revisions))
 	}
 }
 
