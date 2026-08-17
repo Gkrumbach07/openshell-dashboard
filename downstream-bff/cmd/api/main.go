@@ -1,91 +1,89 @@
-// Command api is the entrypoint for downstream-bff: a separate BFF, in its
-// own Go module, that CONSUMES backend-v2 as a dependency instead of
-// forking it. It reuses backend-v2's auth middleware and gateway wholesale
-// (pkg/auth, pkg/gateway — generic infra, low compatibility risk).
-//
-// Two different consumption patterns are shown side by side:
-//
-//   - Provider: no customization needed, so this BFF reuses backend-v2's
-//     provider.NewProviderHandler directly — no local package, no local
-//     interface, zero duplicate code.
-//   - Sandbox: decorated with a quota feature (pkg/sandboxes.QuotaEnforcer)
-//     AND a genuinely new capability, RestartSandbox, that doesn't exist on
-//     backend-v2's sandbox.Service at all (pkg/sandboxes.ExtendedService /
-//     NewRestarter). Because the handler needs to expose a method upstream
-//     doesn't have, it can't reuse backend-v2's SandboxHandler — it's
-//     rewritten in pkg/sandboxes/handler.go against this BFF's own
-//     ExtendedService interface instead.
-//
-// See ../README.md for the versioning/pinning story: in a real multi-repo
-// setup, the `require` line in go.mod below is what pins the exact
-// backend-v2 release this BFF was built and tested against.
-package main
+package api
 
 import (
-	"log/slog"
+	"context"
+	"errors"
+	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	upstreamauth "github.com/Gkrumbach07/openshell-dashboard/backend-v2/pkg/auth"
-	upstreamgateway "github.com/Gkrumbach07/openshell-dashboard/backend-v2/pkg/gateway"
-	upstreamhttpx "github.com/Gkrumbach07/openshell-dashboard/backend-v2/pkg/httpx"
-	upstreamprovider "github.com/Gkrumbach07/openshell-dashboard/backend-v2/pkg/provider"
-	"github.com/Gkrumbach07/openshell-dashboard/backend-v2/pkg/sandbox"
-
-	"github.com/Gkrumbach07/openshell-dashboard/downstream-bff/internal/config"
-	"github.com/Gkrumbach07/openshell-dashboard/downstream-bff/pkg/sandboxes"
+	"github.com/go-chi/chi/v5"
+	upstreamServer "github.com/myorg/upstream-bff/pkg/server"
+	upstreamServices "github.com/myorg/upstream-bff/pkg/services"
 )
 
-func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	slog.SetDefault(logger)
+// Downstream Custom Handler for brand new endpoints
+type DownstreamCustomHandler struct{}
 
-	cfg := config.Load()
-
-	if cfg.AuthDisabled {
-		logger.Warn("AUTH_DISABLED=true — authentication is OFF; never use this outside local development")
-	}
-
-	// Reused wholesale from backend-v2 — same relay-only model, same
-	// context-based token plumbing, zero reimplementation.
-	authMW := upstreamauth.New(upstreamauth.Config{
-		Disabled:    cfg.AuthDisabled,
-		TokenHeader: cfg.TokenHeader,
-		UserHeader:  cfg.UserHeader,
+func (h *DownstreamCustomHandler) RegisterRoutes(r chi.Router) {
+	r.Get("/analytics", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "analytics data"}`))
 	})
-	gw := upstreamgateway.NewFake(logger)
-	base := upstreamhttpx.NewHandler(logger)
+}
 
-	// Sandbox: consume upstream's Service, decorate with the quota feature
-	// (still typed sandbox.Service — QuotaEnforcer adds no new methods),
-	// then adapt into ExtendedService to add RestartSandbox — a capability
-	// backend-v2 doesn't have. sandboxes.NewHandler depends on
-	// ExtendedService, not sandbox.Service, because it needs to expose
-	// the extra method.
-	sandboxService := sandbox.NewService(gw)
-	sandboxService = sandboxes.NewQuotaEnforcer(sandboxService, cfg.SandboxQuotaPerWorkspace)
-	extendedSandboxService := sandboxes.NewRestarter(sandboxService)
-	sandboxHandler := sandboxes.NewHandler(base, extendedSandboxService)
+func main() {
+	// 1. Instantiate Upstream Services (or custom downstream overrides)
+	baseGateway := upstreamServices.NewGatewayService()
+	baseProvider := upstreamServices.NewProviderService()
 
-	// Provider: no customization planned, no local interface, no local
-	// handler — reuse backend-v2's exported handler unmodified.
-	providerService := upstreamprovider.NewService(gw)
-	providerHandler := upstreamprovider.NewProviderHandler(base, providerService)
+	// Optional: Decorate or override a service
+	customProvider := &DownstreamProviderService{Provider: baseProvider}
 
-	mux := http.NewServeMux()
-	sandboxHandler.RegisterRoutes(mux, "/api/v1/workspaces/{workspace}/sandboxes")
-	providerHandler.RegisterRoutes(mux, "/api/v1/workspaces/{workspace}/providers")
-
-	root := authMW.Handler(mux)
-
-	logger.Info(
-		"downstream-bff listening",
-		"addr", ":"+cfg.Port,
-		"sandboxQuotaPerWorkspace", cfg.SandboxQuotaPerWorkspace,
-		"authDisabled", cfg.AuthDisabled,
-	)
-	if err := http.ListenAndServe(":"+cfg.Port, root); err != nil { //nolint:gosec // demo server, no timeouts needed
-		logger.Error("server exited", "error", err)
-		os.Exit(1)
+	svcs := upstreamServer.Services{
+		Gateway:  baseGateway,
+		Provider: customProvider, // Custom override
+		Sandbox:  upstreamServices.NewSandboxService(),
 	}
+
+	// 2. Build the Base Upstream Chi Router
+	router := upstreamServices.NewUpstreamRouter(svcs)
+
+	// 3. EXTENSIBILITY: Downstream adds custom routes directly to the router!
+	// Option A: Add a brand new top-level subroute group
+	customHandler := &DownstreamCustomHandler{}
+	router.Route("/api/custom", customHandler.RegisterRoutes)
+
+	// Option B: Inject custom endpoints directly into an existing upstream route path
+	router.Route("/api/gateway", customHandler.RegisterRoutes)
+
+	// 4. Downstream configures and owns the http.Server instance
+	httpServer := &http.Server{
+		Addr:         ":8080",
+		Handler:      router, // Passes the fully composed Chi router
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	// can write goroutines here for soft termination or server close operations
+	go func() {
+		log.Println("Server starting on :8080...")
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("HTTP server failed unexpectedly: %v", err)
+		}
+	}()
+
+	stopChan := make(chan os.Signal, 1)
+	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
+
+	sig := <-stopChan
+	log.Printf("Received signal: %v. Initiating soft termination...\n", sig)
+
+	// timeout for closing server
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 5. Shutdown the HTTP server (stops accepting new connections, finishes active ones)
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP server forced to shutdown: %v", err)
+	} else {
+		log.Println("HTTP server stopped gracefully.")
+	}
+
+	// 6. Perform extra downstream/upstream teardown tasks here
+	performCustomTeardown()
+
+	log.Println("Process exited cleanly.")
 }
