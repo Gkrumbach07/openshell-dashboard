@@ -12,15 +12,38 @@ import (
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
 
-// GetSandboxPolicy returns the latest revision and active version for a sandbox.
-// Policy().List has no sandbox-name filter, so revision history is the latest only.
+// GetSandboxPolicy returns the latest revision, active version, and revision
+// history for a sandbox. Policy().List omits ListSandboxPoliciesRequest.Name
+// (SDK gap), so history is reconstructed with GetStatus(WithVersion).
 func (app *App) GetSandboxPolicy(w http.ResponseWriter, r *http.Request) {
-	status, err := app.sdk.Policy().GetStatus(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	workspace := chi.URLParam(r, "workspace")
+	name := chi.URLParam(r, "name")
+	ctx := r.Context()
+
+	status, err := app.sdk.Policy().GetStatus(ctx, workspace, name)
 	if err != nil {
 		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromSDKPolicyStatus(status))
+
+	latest := models.FromSDKPolicyRevision(&status.Revision)
+	view := models.SandboxPolicyView{
+		ActiveVersion: status.ActiveVersion,
+		Latest:        &latest,
+		Revisions:     make([]models.PolicyRevision, 0, status.Revision.Version),
+	}
+	for v := uint32(1); v <= status.Revision.Version; v++ {
+		if v == status.Revision.Version {
+			view.Revisions = append(view.Revisions, latest)
+			continue
+		}
+		revStatus, revErr := app.sdk.Policy().GetStatus(ctx, workspace, name, openshell.WithVersion(v))
+		if revErr != nil {
+			continue
+		}
+		view.Revisions = append(view.Revisions, models.FromSDKPolicyRevision(&revStatus.Revision))
+	}
+	writeJSON(w, http.StatusOK, view)
 }
 
 // UpdatePolicyRequest carries the full replacement policy as JSON.

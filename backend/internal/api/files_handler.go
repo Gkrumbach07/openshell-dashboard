@@ -1,13 +1,16 @@
 package api
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -22,12 +25,24 @@ func validateFilePath(p string) bool {
 	return filepath.IsAbs(cleaned)
 }
 
+func (app *App) execContext(parent context.Context) (context.Context, context.CancelFunc) {
+	timeout := app.execTimeout
+	if timeout == 0 {
+		timeout = 30
+	}
+	return context.WithTimeout(parent, time.Duration(timeout)*time.Second)
+}
+
 func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	name := chi.URLParam(r, "name")
 
-	r.Body = http.MaxBytesReader(w, r.Body, app.maxUploadSize)
-	if parseErr := r.ParseMultipartForm(app.maxUploadSize); parseErr != nil { //nolint:gosec // bounded by MaxBytesReader
+	maxSize := app.maxUploadSize
+	if maxSize == 0 {
+		maxSize = 64 << 20
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
+	if parseErr := r.ParseMultipartForm(maxSize); parseErr != nil { //nolint:gosec // bounded by MaxBytesReader
 		writeError(w, http.StatusBadRequest, "invalid_upload", "failed to parse multipart form")
 		return
 	}
@@ -58,37 +73,55 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmp, err := os.CreateTemp("", "upload-*")
+	fileBytes, err := io.ReadAll(file)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "temp_error", "failed to create temp file")
-		return
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-
-	size, err := io.Copy(tmp, file)
-	if err != nil {
-		tmp.Close()
 		writeError(w, http.StatusInternalServerError, "read_error", "failed to read uploaded file")
 		return
 	}
-	if err := tmp.Close(); err != nil {
-		writeError(w, http.StatusInternalServerError, "temp_error", "failed to close temp file")
-		return
-	}
 
-	if err := app.sdk.Files().Upload(r.Context(), workspace, name, tmpName, destPath); err != nil {
+	// Files().Upload is a stub in this SDK build (defaultSSHTransport.available
+	// is always false). Pipe bytes into dd via Interactive stdin, matching the
+	// pre-migration ExecSandbox contract.
+	ctx, cancel := app.execContext(r.Context())
+	defer cancel()
+
+	session, err := app.sdk.Exec().Interactive(ctx, workspace, name, []string{"dd", "of=" + destPath, "bs=4096"}, defaultTerminalCols, defaultTerminalRows)
+	if err != nil {
 		writeSDKError(w, err)
 		return
 	}
 
-	// Preserve the existing JSON contract (previously populated from Exec dd).
+	var stdoutBuf bytes.Buffer
+	drainDone := make(chan struct{})
+	go func() {
+		defer close(drainDone)
+		_, _ = io.Copy(&stdoutBuf, session)
+	}()
+
+	if _, writeErr := session.Write(fileBytes); writeErr != nil && writeErr != io.EOF {
+		_ = session.Close()
+		<-drainDone
+		writeSDKError(w, writeErr)
+		return
+	}
+	if closeErr := session.Close(); closeErr != nil {
+		<-drainDone
+		writeSDKError(w, closeErr)
+		return
+	}
+	<-drainDone
+
+	exitCode := 0
+	if code, exitErr := session.ExitCode(); exitErr == nil {
+		exitCode = code
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"exitCode": 0,
+		"exitCode": exitCode,
 		"path":     destPath,
-		"size":     size,
-		"stdout":   "",
-		"success":  true,
+		"size":     len(fileBytes),
+		"stdout":   stdoutBuf.String(),
+		"success":  exitCode == 0,
 	})
 }
 
@@ -102,29 +135,23 @@ func (app *App) DownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmp, err := os.CreateTemp("", "download-*")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "temp_error", "failed to create temp file")
-		return
-	}
-	tmpName := tmp.Name()
-	tmp.Close()
-	defer os.Remove(tmpName)
+	ctx, cancel := app.execContext(r.Context())
+	defer cancel()
 
-	if err := app.sdk.Files().Download(r.Context(), workspace, name, filePath, tmpName); err != nil {
+	result, err := app.sdk.Exec().Run(ctx, workspace, name, []string{"cat", filePath})
+	if err != nil {
 		writeSDKError(w, err)
 		return
 	}
-
-	data, err := os.ReadFile(tmpName)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "read_error", "failed to read downloaded file")
+	if result.ExitCode != 0 {
+		slog.Error("file download failed", "path", filePath, "exitCode", result.ExitCode, "stderr", string(result.Stderr))
+		writeError(w, http.StatusNotFound, "file_not_found", "file download failed")
 		return
 	}
 
 	filename := filepath.Base(filePath)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	_, _ = w.Write(data) //nolint:gosec // Content-Type is application/octet-stream, not HTML
+	w.Header().Set("Content-Length", strconv.Itoa(len(result.Stdout)))
+	_, _ = w.Write(result.Stdout) //nolint:gosec // Content-Type is application/octet-stream, not HTML
 }

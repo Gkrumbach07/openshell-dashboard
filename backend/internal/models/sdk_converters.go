@@ -524,8 +524,8 @@ func FromSDKPolicyRevision(revision *openshell.SandboxPolicyRevision) PolicyRevi
 	return out
 }
 
-// FromSDKPolicyStatus builds the sandbox policy view from GetStatus.
-// Policy().List has no sandbox-name filter, so revision history is the latest only.
+// FromSDKPolicyStatus maps GetStatus into the dashboard view. Revisions is left
+// empty — the handler fills history via GetStatus(WithVersion).
 func FromSDKPolicyStatus(status *openshell.PolicyStatusResult) SandboxPolicyView {
 	if status == nil {
 		return SandboxPolicyView{Revisions: []PolicyRevision{}}
@@ -534,7 +534,7 @@ func FromSDKPolicyStatus(status *openshell.PolicyStatusResult) SandboxPolicyView
 	return SandboxPolicyView{
 		ActiveVersion: status.ActiveVersion,
 		Latest:        &latest,
-		Revisions:     []PolicyRevision{latest},
+		Revisions:     []PolicyRevision{},
 	}
 }
 

@@ -287,8 +287,8 @@ func TestFromSDKPolicyStatusLatestOnly(t *testing.T) {
 	if view.ActiveVersion != 3 || view.Latest == nil || view.Latest.Status != "LOADED" {
 		t.Errorf("view = %+v", view)
 	}
-	if len(view.Revisions) != 1 {
-		t.Errorf("revisions = %d, want 1", len(view.Revisions))
+	if len(view.Revisions) != 0 {
+		t.Errorf("revisions = %d, want 0 (handler fills history)", len(view.Revisions))
 	}
 }
 
