@@ -535,13 +535,13 @@ func (m *mockSDKHealth) GetCurrentUser(ctx context.Context) (*openshell.CurrentU
 }
 
 type mockInteractiveSession struct {
-	mu         sync.Mutex
+	reads      chan []byte
 	written    []byte
 	resizes    [][2]uint32
-	reads      chan []byte
-	closeReads sync.Once
-	closed     bool
 	exit       int
+	closeReads sync.Once
+	mu         sync.Mutex
+	closed     bool
 }
 
 func newTestAppWithSDK(sdk *mockSDK) *App {
