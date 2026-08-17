@@ -540,8 +540,8 @@ type mockInteractiveSession struct {
 	resizes    [][2]uint32
 	reads      chan []byte
 	closeReads sync.Once
-	exit       int
 	closed     bool
+	exit       int
 }
 
 func newTestAppWithSDK(sdk *mockSDK) *App {
