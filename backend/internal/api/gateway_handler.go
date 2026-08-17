@@ -14,12 +14,12 @@ func (app *App) GetHealthz(w http.ResponseWriter, _ *http.Request) {
 
 // GetGateway returns gateway status, version, and compute drivers.
 func (app *App) GetGateway(w http.ResponseWriter, r *http.Request) {
-	info, err := app.gateway.GetGatewayInfo(r.Context())
+	info, err := app.sdk.Health().GetGatewayInfo(r.Context())
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromGatewayInfo(info))
+	writeJSON(w, http.StatusOK, models.FromSDKGatewayInfo(info))
 }
 
 // FeatureFlags controls which optional features the frontend should render.
@@ -44,8 +44,7 @@ type AuthConfigResponse struct {
 
 // GetReadyz checks gateway reachability — used by orchestrators for readiness probes.
 func (app *App) GetReadyz(w http.ResponseWriter, r *http.Request) {
-	_, err := app.gateway.Health(r.Context())
-	if err != nil {
+	if _, err := app.sdk.Health().Check(r.Context()); err != nil {
 		writeError(w, http.StatusServiceUnavailable, "not_ready", "gateway unreachable")
 		return
 	}
@@ -73,20 +72,20 @@ func (app *App) GetWhoAmI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := app.gateway.GetCurrentUser(r.Context())
+	user, err := app.sdk.Health().GetCurrentUser(r.Context())
 	if err == nil {
-		writeJSON(w, http.StatusOK, models.FromCurrentUser(resp))
+		writeJSON(w, http.StatusOK, models.FromSDKCurrentUser(user))
 		return
 	}
 
-	user := auth.UserFromContext(r.Context())
-	if user != "" {
+	proxyUser := auth.UserFromContext(r.Context())
+	if proxyUser != "" {
 		writeJSON(w, http.StatusOK, models.CurrentUser{
-			Subject:     user,
-			DisplayName: user,
+			Subject:     proxyUser,
+			DisplayName: proxyUser,
 		})
 		return
 	}
 
-	writeGrpcError(w, err)
+	writeSDKError(w, err)
 }

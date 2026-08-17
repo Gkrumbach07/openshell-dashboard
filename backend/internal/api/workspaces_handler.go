@@ -6,6 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
 
@@ -16,14 +18,18 @@ type CreateWorkspaceRequest struct {
 }
 
 func (app *App) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
-	workspaces, err := app.gateway.ListWorkspaces(r.Context(), 0, 0, r.URL.Query().Get("labelSelector"))
+	var opts []openshell.ListOptions
+	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
+		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
+	}
+	workspaces, err := app.sdk.Workspaces().List(r.Context(), opts...)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	out := make([]models.Workspace, 0, len(workspaces))
 	for _, ws := range workspaces {
-		out = append(out, models.FromWorkspace(ws))
+		out = append(out, models.FromSDKWorkspace(ws))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -37,30 +43,29 @@ func (app *App) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_name", "workspace name must be a valid DNS-1123 label")
 		return
 	}
-	workspace, err := app.gateway.CreateWorkspace(r.Context(), body.Name, body.Labels)
+	workspace, err := app.sdk.Workspaces().Create(r.Context(), body.Name, body.Labels)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, models.FromWorkspace(workspace))
+	writeJSON(w, http.StatusCreated, models.FromSDKWorkspace(workspace))
 }
 
 func (app *App) GetWorkspace(w http.ResponseWriter, r *http.Request) {
-	workspace, err := app.gateway.GetWorkspace(r.Context(), chi.URLParam(r, "workspace"))
+	workspace, err := app.sdk.Workspaces().Get(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromWorkspace(workspace))
+	writeJSON(w, http.StatusOK, models.FromSDKWorkspace(workspace))
 }
 
 func (app *App) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
-	deleted, err := app.gateway.DeleteWorkspace(r.Context(), chi.URLParam(r, "workspace"))
-	if err != nil {
-		writeGrpcError(w, err)
+	if err := app.sdk.Workspaces().Delete(r.Context(), chi.URLParam(r, "workspace")); err != nil {
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // AddMemberRequest is the add-member body. Role is USER or ADMIN.
@@ -70,14 +75,14 @@ type AddMemberRequest struct {
 }
 
 func (app *App) ListMembers(w http.ResponseWriter, r *http.Request) {
-	members, err := app.gateway.ListWorkspaceMembers(r.Context(), chi.URLParam(r, "workspace"), 0, 0)
+	members, err := app.sdk.Workspaces().ListMembers(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	out := make([]models.WorkspaceMember, 0, len(members))
 	for _, member := range members {
-		out = append(out, models.FromWorkspaceMember(member))
+		out = append(out, models.FromSDKWorkspaceMember(member))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -91,17 +96,17 @@ func (app *App) AddMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_subject", "principalSubject is required")
 		return
 	}
-	role, ok := models.WorkspaceRoleFromString(body.Role)
+	role, ok := models.SDKWorkspaceRoleFromString(body.Role)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid_role", "role must be USER or ADMIN")
 		return
 	}
-	member, err := app.gateway.AddWorkspaceMember(r.Context(), chi.URLParam(r, "workspace"), body.PrincipalSubject, role)
+	member, err := app.sdk.Workspaces().AddMember(r.Context(), chi.URLParam(r, "workspace"), body.PrincipalSubject, role)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, models.FromWorkspaceMember(member))
+	writeJSON(w, http.StatusCreated, models.FromSDKWorkspaceMember(member))
 }
 
 func (app *App) RemoveMember(w http.ResponseWriter, r *http.Request) {
@@ -111,10 +116,9 @@ func (app *App) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_subject", "invalid member subject")
 		return
 	}
-	removed, err := app.gateway.RemoveWorkspaceMember(r.Context(), chi.URLParam(r, "workspace"), subject)
-	if err != nil {
-		writeGrpcError(w, err)
+	if err := app.sdk.Workspaces().RemoveMember(r.Context(), chi.URLParam(r, "workspace"), subject); err != nil {
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"removed": removed})
+	writeJSON(w, http.StatusOK, map[string]bool{"removed": true})
 }

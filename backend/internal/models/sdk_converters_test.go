@@ -253,3 +253,74 @@ func TestFromSDKDiagnostics(t *testing.T) {
 		t.Error("nil diagnostics should yield empty slice")
 	}
 }
+
+func TestSDKWorkspaceRoleFromString(t *testing.T) {
+	role, ok := SDKWorkspaceRoleFromString("USER")
+	if !ok || role != openshell.WorkspaceRoleUser {
+		t.Errorf("USER = %q ok=%v", role, ok)
+	}
+	role, ok = SDKWorkspaceRoleFromString("ADMIN")
+	if !ok || role != openshell.WorkspaceRoleAdmin {
+		t.Errorf("ADMIN = %q ok=%v", role, ok)
+	}
+	if _, ok := SDKWorkspaceRoleFromString("nope"); ok {
+		t.Error("expected invalid role to fail")
+	}
+}
+
+func TestFromSDKWorkspacePhaseMapping(t *testing.T) {
+	got := FromSDKWorkspace(&openshell.Workspace{Name: "ws", Phase: openshell.WorkspaceActive})
+	if got.Phase != "ACTIVE" || got.Metadata.Name != "ws" {
+		t.Errorf("got %+v", got)
+	}
+	got = FromSDKWorkspace(&openshell.Workspace{Name: "ws", Phase: openshell.WorkspaceUnknown})
+	if got.Phase != "UNSPECIFIED" {
+		t.Errorf("unknown phase = %q, want UNSPECIFIED", got.Phase)
+	}
+}
+
+func TestFromSDKPolicyStatusLatestOnly(t *testing.T) {
+	view := FromSDKPolicyStatus(&openshell.PolicyStatusResult{
+		ActiveVersion: 3,
+		Revision:      openshell.SandboxPolicyRevision{Version: 3, Status: openshell.PolicyLoadStatusLoaded},
+	})
+	if view.ActiveVersion != 3 || view.Latest == nil || view.Latest.Status != "LOADED" {
+		t.Errorf("view = %+v", view)
+	}
+	if len(view.Revisions) != 1 {
+		t.Errorf("revisions = %d, want 1", len(view.Revisions))
+	}
+}
+
+func TestFromSDKSandboxLogs(t *testing.T) {
+	got := FromSDKSandboxLogs(&openshell.LogResult{
+		BufferTotal: 4,
+		Lines: []openshell.LogLine{
+			{Message: "hi", Level: "INFO", Source: "gateway"},
+		},
+	})
+	if got.BufferTotal != 4 || len(got.Logs) != 1 || got.Logs[0].Message != "hi" {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestFromSDKGatewayInfo(t *testing.T) {
+	got := FromSDKGatewayInfo(&openshell.GatewayInfo{
+		Status:         openshell.ServiceStatusHealthy,
+		Version:        "1.2.3",
+		ComputeDrivers: []openshell.ComputeDriverInfo{{Name: "podman"}},
+	})
+	if got.Status != "HEALTHY" || got.GatewayVersion != "1.2.3" || len(got.ComputeDrivers) != 1 {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestParseSDKNetworkPolicyRule(t *testing.T) {
+	rule, err := ParseSDKNetworkPolicyRule(json.RawMessage(`{"name":"allow-api","endpoints":[{"host":"api.example.com","port":443}]}`))
+	if err != nil {
+		t.Fatalf("ParseSDKNetworkPolicyRule: %v", err)
+	}
+	if rule.Name != "allow-api" || len(rule.Endpoints) != 1 || rule.Endpoints[0].Host != "api.example.com" {
+		t.Errorf("rule = %+v", rule)
+	}
+}

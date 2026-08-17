@@ -3,16 +3,18 @@ package api
 import (
 	"net/http"
 
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
 
 func (app *App) GetGlobalSettings(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.GetGatewaySettings(r.Context())
+	config, err := app.sdk.Config().GetGateway(r.Context())
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromGatewaySettings(resp))
+	writeJSON(w, http.StatusOK, models.FromSDKGatewaySettings(config))
 }
 
 type SetSettingRequest struct {
@@ -29,8 +31,12 @@ func (app *App) SetGlobalSetting(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_setting", "key is required")
 		return
 	}
-	if err := app.gateway.SetSetting(r.Context(), body.Key, body.Value); err != nil {
-		writeGrpcError(w, err)
+	if _, err := app.sdk.Config().Update(r.Context(), "", &openshell.ConfigUpdate{
+		SettingKey:   body.Key,
+		SettingValue: &openshell.SettingValue{Type: openshell.SettingValueString, StringVal: body.Value},
+		Global:       true,
+	}); err != nil {
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"updated": true})
@@ -42,8 +48,12 @@ func (app *App) DeleteGlobalSetting(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_setting", "key query parameter is required")
 		return
 	}
-	if err := app.gateway.DeleteSetting(r.Context(), key); err != nil {
-		writeGrpcError(w, err)
+	if _, err := app.sdk.Config().Update(r.Context(), "", &openshell.ConfigUpdate{
+		SettingKey:    key,
+		DeleteSetting: true,
+		Global:        true,
+	}); err != nil {
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})

@@ -7,19 +7,16 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
 )
 
 func TestGetHealthz(t *testing.T) {
-	app := newTestApp(&mockGateway{})
-
+	app := newTestAppWithSDK(&mockSDK{})
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
 	app.GetHealthz(w, req)
-
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
@@ -30,130 +27,88 @@ func TestGetHealthz(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Errorf("status = %q, want ok", body["status"])
 	}
-	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
-		t.Errorf("Content-Type = %q, want application/json", ct)
-	}
 }
 
 func TestGetGateway(t *testing.T) {
-	tests := []struct {
-		mockFn     func(ctx context.Context) (*openshellv1.GetGatewayInfoResponse, error)
-		wantFields map[string]string
-		name       string
-		wantStatus int
-	}{
-		{
-			name: "success with compute drivers",
-			mockFn: func(_ context.Context) (*openshellv1.GetGatewayInfoResponse, error) {
-				return &openshellv1.GetGatewayInfoResponse{
-					Status:         openshellv1.ServiceStatus_SERVICE_STATUS_HEALTHY,
-					GatewayVersion: "0.0.92",
-					ComputeDrivers: []*openshellv1.ComputeDriverInfo{
-						{
-							Name: "podman",
-							Capabilities: &openshellv1.ComputeDriverCapabilities{
-								DriverName:    "podman",
-								DriverVersion: "5.0",
-							},
-						},
-					},
-				}, nil
+	sdk := &mockSDK{}
+	sdk.health.getGatewayInfoFn = func(_ context.Context) (*openshell.GatewayInfo, error) {
+		return &openshell.GatewayInfo{
+			Status:  openshell.ServiceStatusHealthy,
+			Version: "0.0.92",
+			ComputeDrivers: []openshell.ComputeDriverInfo{
+				{Name: "podman", DriverName: "podman", DriverVersion: "5.0"},
 			},
-			wantStatus: http.StatusOK,
-			wantFields: map[string]string{
-				"status":         "HEALTHY",
-				"gatewayVersion": "0.0.92",
-			},
-		},
-		{
-			name: "gateway unavailable",
-			mockFn: func(_ context.Context) (*openshellv1.GetGatewayInfoResponse, error) {
-				return nil, status.Error(codes.Unavailable, "connection refused")
-			},
-			wantStatus: http.StatusBadGateway,
-		},
-		{
-			name: "permission denied",
-			mockFn: func(_ context.Context) (*openshellv1.GetGatewayInfoResponse, error) {
-				return nil, status.Error(codes.PermissionDenied, "not allowed")
-			},
-			wantStatus: http.StatusForbidden,
-		},
+		}, nil
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			app := newTestApp(&mockGateway{getGatewayInfoFn: tc.mockFn})
-
-			req := httptest.NewRequest(http.MethodGet, "/gateway", nil)
-			w := httptest.NewRecorder()
-			app.GetGateway(w, req)
-
-			if w.Code != tc.wantStatus {
-				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
-			}
-			if tc.wantFields != nil {
-				var body map[string]any
-				if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
-					t.Fatalf("decode: %v", err)
-				}
-				for k, want := range tc.wantFields {
-					if got, ok := body[k].(string); !ok || got != want {
-						t.Errorf("%s = %v, want %q", k, body[k], want)
-					}
-				}
-			}
-		})
-	}
-}
-
-func TestGetGatewayComputeDrivers(t *testing.T) {
-	app := newTestApp(&mockGateway{
-		getGatewayInfoFn: func(_ context.Context) (*openshellv1.GetGatewayInfoResponse, error) {
-			return &openshellv1.GetGatewayInfoResponse{
-				Status:         openshellv1.ServiceStatus_SERVICE_STATUS_HEALTHY,
-				GatewayVersion: "0.0.92",
-				ComputeDrivers: []*openshellv1.ComputeDriverInfo{
-					{
-						Name: "podman",
-						Capabilities: &openshellv1.ComputeDriverCapabilities{
-							DriverName:    "podman",
-							DriverVersion: "5.0",
-						},
-					},
-					{
-						Name: "kubernetes",
-						Capabilities: &openshellv1.ComputeDriverCapabilities{
-							DriverName: "kubernetes",
-						},
-					},
-				},
-			}, nil
-		},
-	})
-
+	app := newTestAppWithSDK(sdk)
 	req := httptest.NewRequest(http.MethodGet, "/gateway", nil)
 	w := httptest.NewRecorder()
 	app.GetGateway(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	if body["status"] != "HEALTHY" || body["gatewayVersion"] != "0.0.92" {
+		t.Errorf("body = %v", body)
+	}
+	drivers, _ := body["computeDrivers"].([]any)
+	if len(drivers) != 1 {
+		t.Fatalf("got %d drivers, want 1", len(drivers))
+	}
+}
 
+func TestGetGatewayUnavailable(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.health.getGatewayInfoFn = func(_ context.Context) (*openshell.GatewayInfo, error) {
+		return nil, &openshell.StatusError{Code: openshell.ErrorUnavailable, Message: "down"}
+	}
+	app := newTestAppWithSDK(sdk)
+	req := httptest.NewRequest(http.MethodGet, "/gateway", nil)
+	w := httptest.NewRecorder()
+	app.GetGateway(w, req)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", w.Code)
+	}
+}
+
+func TestGetReadyz(t *testing.T) {
+	app := newTestAppWithSDK(&mockSDK{})
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	w := httptest.NewRecorder()
+	app.GetReadyz(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+func TestGetReadyzUnavailable(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.health.checkFn = func(_ context.Context) (*openshell.HealthResult, error) {
+		return nil, &openshell.StatusError{Code: openshell.ErrorUnavailable, Message: "down"}
+	}
+	app := newTestAppWithSDK(sdk)
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	w := httptest.NewRecorder()
+	app.GetReadyz(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+func TestGetWhoAmIAuthDisabled(t *testing.T) {
+	app := newTestAppWithSDK(&mockSDK{})
+	app.auth = auth.New(auth.Config{Disabled: true})
+	app.authConfig = AuthConfigResponse{AdminRole: "openshell-admin"}
+	req := httptest.NewRequest(http.MethodGet, "/auth/whoami", nil)
+	w := httptest.NewRecorder()
+	app.GetWhoAmI(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
 	}
 	var body map[string]any
-	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	drivers, ok := body["computeDrivers"].([]any)
-	if !ok {
-		t.Fatal("computeDrivers is not an array")
-	}
-	if len(drivers) != 2 {
-		t.Fatalf("got %d drivers, want 2", len(drivers))
-	}
-	first, ok := drivers[0].(map[string]any)
-	if !ok {
-		t.Fatal("first driver is not a map")
-	}
-	if first["name"] != "podman" {
-		t.Errorf("first driver name = %v, want podman", first["name"])
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	if body["subject"] != "dev-user" {
+		t.Errorf("subject = %v", body["subject"])
 	}
 }

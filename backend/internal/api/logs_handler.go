@@ -3,14 +3,17 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
 
-// GetSandboxLogs serves the polled logs view. GetSandboxLogs (gRPC) takes
-// sandbox_id, not name — the BFF resolves name → metadata.id via GetSandbox.
+// GetSandboxLogs serves the polled logs view. The SDK resolves sandbox name
+// to sandbox_id internally.
 //
 // Query params: lines (default 200), sinceMs, source (repeatable:
 // gateway|sandbox), level (min level, e.g. INFO).
@@ -18,37 +21,35 @@ func (app *App) GetSandboxLogs(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	name := chi.URLParam(r, "name")
 
-	sandbox, err := app.gateway.GetSandbox(r.Context(), workspace, name)
-	if err != nil {
-		writeGrpcError(w, err)
-		return
-	}
-	sandboxID := sandbox.GetMetadata().GetId()
-	if sandboxID == "" {
-		writeError(w, http.StatusNotFound, "not_found", "sandbox has no id")
-		return
-	}
-
 	query := r.URL.Query()
+	var opts []openshell.LogOption
+
 	lines := uint32(200)
 	if raw := query.Get("lines"); raw != "" {
 		if parsed, parseErr := strconv.ParseUint(raw, 10, 32); parseErr == nil {
 			lines = uint32(parsed)
 		}
 	}
-	var sinceMs int64
+	opts = append(opts, openshell.WithLogLines(lines))
+
 	if raw := query.Get("sinceMs"); raw != "" {
-		if parsed, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil {
-			sinceMs = parsed
+		if ms, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil {
+			opts = append(opts, openshell.WithLogSince(time.UnixMilli(ms)))
 		}
 	}
+	if sources := query["source"]; len(sources) > 0 {
+		opts = append(opts, openshell.WithLogSources(sources...))
+	}
+	if level := query.Get("level"); level != "" {
+		opts = append(opts, openshell.WithLogMinLevel(level))
+	}
 
-	resp, err := app.gateway.GetSandboxLogs(r.Context(), workspace, sandboxID, lines, sinceMs, query["source"], query.Get("level"))
+	result, err := app.sdk.Sandboxes().GetLogs(r.Context(), workspace, name, opts...)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromSandboxLogs(resp))
+	writeJSON(w, http.StatusOK, models.FromSDKSandboxLogs(result))
 }
 
 // ListSandboxProviders lists provider records attached to a sandbox.

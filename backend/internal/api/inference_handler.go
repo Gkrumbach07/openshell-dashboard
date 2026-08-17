@@ -5,18 +5,20 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
 
 // GetInferenceRoute fetches the workspace inference route. ?route=sandbox-system
 // targets the system route; default is the user-facing inference.local route.
 func (app *App) GetInferenceRoute(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.GetInferenceRoute(r.Context(), chi.URLParam(r, "workspace"), r.URL.Query().Get("route"))
+	route, err := app.sdk.Inference().GetRoute(r.Context(), chi.URLParam(r, "workspace"), r.URL.Query().Get("route"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromInferenceRoute(resp))
+	writeJSON(w, http.StatusOK, models.FromSDKInferenceRoute(route))
 }
 
 // SetInferenceRouteRequest configures how inference.local resolves for the
@@ -39,20 +41,25 @@ func (app *App) SetInferenceRoute(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_route", "providerName and modelId are required")
 		return
 	}
-	resp, err := app.gateway.SetInferenceRoute(r.Context(), chi.URLParam(r, "workspace"), body.RouteName, body.ProviderName, body.ModelID, body.TimeoutSecs, body.NoVerify)
+	route, err := app.sdk.Inference().SetRoute(r.Context(), chi.URLParam(r, "workspace"), &openshell.InferenceRouteConfig{
+		RouteName:    body.RouteName,
+		ProviderName: body.ProviderName,
+		ModelID:      body.ModelID,
+		TimeoutSecs:  body.TimeoutSecs,
+		NoVerify:     body.NoVerify,
+	})
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromSetInferenceRoute(resp))
+	writeJSON(w, http.StatusOK, models.FromSDKInferenceRoute(route))
 }
 
 // DeleteInferenceRoute removes the workspace inference route.
 func (app *App) DeleteInferenceRoute(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.DeleteInferenceRoute(r.Context(), chi.URLParam(r, "workspace"), r.URL.Query().Get("route"))
-	if err != nil {
-		writeGrpcError(w, err)
+	if err := app.sdk.Inference().DeleteRoute(r.Context(), chi.URLParam(r, "workspace"), r.URL.Query().Get("route")); err != nil {
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": resp.GetDeleted()})
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
