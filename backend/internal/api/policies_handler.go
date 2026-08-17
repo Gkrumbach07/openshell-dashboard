@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 
@@ -26,22 +27,39 @@ func (app *App) GetSandboxPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	view := models.FromSDKPolicyStatus(status)
 	latest := models.FromSDKPolicyRevision(&status.Revision)
-	view := models.SandboxPolicyView{
-		ActiveVersion: status.ActiveVersion,
-		Latest:        &latest,
-		Revisions:     make([]models.PolicyRevision, 0, status.Revision.Version),
+	n := status.Revision.Version
+	view.Revisions = make([]models.PolicyRevision, 0, n)
+
+	// Policy().List omits sandbox name, so history is GetStatus(WithVersion)
+	// per revision. Fetch older versions in parallel; keep latest from the
+	// first GetStatus to avoid a redundant round-trip.
+	if n > 1 {
+		historical := make([]models.PolicyRevision, n-1)
+		var wg sync.WaitGroup
+		for v := uint32(1); v < n; v++ {
+			wg.Add(1)
+			go func(v uint32) {
+				defer wg.Done()
+				revStatus, revErr := app.sdk.Policy().GetStatus(ctx, workspace, name, openshell.WithVersion(v))
+				if revErr != nil {
+					slog.Warn("sandbox policy revision unavailable",
+						"workspace", workspace, "sandbox", name, "version", v, "error", revErr)
+					return
+				}
+				historical[v-1] = models.FromSDKPolicyRevision(&revStatus.Revision)
+			}(v)
+		}
+		wg.Wait()
+		for _, rev := range historical {
+			if rev.Version != 0 {
+				view.Revisions = append(view.Revisions, rev)
+			}
+		}
 	}
-	for v := uint32(1); v <= status.Revision.Version; v++ {
-		if v == status.Revision.Version {
-			view.Revisions = append(view.Revisions, latest)
-			continue
-		}
-		revStatus, revErr := app.sdk.Policy().GetStatus(ctx, workspace, name, openshell.WithVersion(v))
-		if revErr != nil {
-			continue
-		}
-		view.Revisions = append(view.Revisions, models.FromSDKPolicyRevision(&revStatus.Revision))
+	if n >= 1 {
+		view.Revisions = append(view.Revisions, latest)
 	}
 	writeJSON(w, http.StatusOK, view)
 }
