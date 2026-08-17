@@ -11,12 +11,19 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	sdktypes "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
+
+func policyStatusVersion(opts []openshell.GetStatusOption) uint32 {
+	cfg := sdktypes.ApplyGetStatusOptions(opts)
+	return (&cfg).Version()
+}
 
 func TestGetSandboxPolicy(t *testing.T) {
 	sdk := &mockSDK{}
 	sdk.policy.getStatusFn = func(_ context.Context, _, _ string, opts ...openshell.GetStatusOption) (*openshell.PolicyStatusResult, error) {
-		if len(opts) > 0 {
+		switch policyStatusVersion(opts) {
+		case 1:
 			return &openshell.PolicyStatusResult{
 				ActiveVersion: 2,
 				Revision: openshell.SandboxPolicyRevision{
@@ -25,15 +32,16 @@ func TestGetSandboxPolicy(t *testing.T) {
 					Status:     openshell.PolicyLoadStatusLoaded,
 				},
 			}, nil
+		default:
+			return &openshell.PolicyStatusResult{
+				ActiveVersion: 2,
+				Revision: openshell.SandboxPolicyRevision{
+					Version:    2,
+					PolicyHash: "abc123",
+					Status:     openshell.PolicyLoadStatusLoaded,
+				},
+			}, nil
 		}
-		return &openshell.PolicyStatusResult{
-			ActiveVersion: 2,
-			Revision: openshell.SandboxPolicyRevision{
-				Version:    2,
-				PolicyHash: "abc123",
-				Status:     openshell.PolicyLoadStatusLoaded,
-			},
-		}, nil
 	}
 	app := newTestAppWithSDK(sdk)
 	r := chi.NewRouter()
@@ -54,6 +62,59 @@ func TestGetSandboxPolicy(t *testing.T) {
 	revisions, _ := body["revisions"].([]any)
 	if len(revisions) != 2 {
 		t.Errorf("got %d revisions, want 2", len(revisions))
+	}
+}
+
+func TestGetSandboxPolicySkipsMissingRevision(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.policy.getStatusFn = func(_ context.Context, _, _ string, opts ...openshell.GetStatusOption) (*openshell.PolicyStatusResult, error) {
+		switch policyStatusVersion(opts) {
+		case 1:
+			return &openshell.PolicyStatusResult{
+				ActiveVersion: 3,
+				Revision: openshell.SandboxPolicyRevision{
+					Version:    1,
+					PolicyHash: "v1",
+					Status:     openshell.PolicyLoadStatusLoaded,
+				},
+			}, nil
+		case 2:
+			return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "revision 2 gone"}
+		default:
+			return &openshell.PolicyStatusResult{
+				ActiveVersion: 3,
+				Revision: openshell.SandboxPolicyRevision{
+					Version:    3,
+					PolicyHash: "v3",
+					Status:     openshell.PolicyLoadStatusLoaded,
+				},
+			}, nil
+		}
+	}
+	app := newTestAppWithSDK(sdk)
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/policy", app.GetSandboxPolicy)
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/policy", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	revisions, _ := body["revisions"].([]any)
+	if len(revisions) != 2 {
+		t.Fatalf("got %d revisions, want 2 (v1 + latest; v2 skipped)", len(revisions))
+	}
+	first, _ := revisions[0].(map[string]any)
+	if first["policyHash"] != "v1" {
+		t.Errorf("first revision hash = %v, want v1", first["policyHash"])
+	}
+	second, _ := revisions[1].(map[string]any)
+	if second["policyHash"] != "v3" {
+		t.Errorf("last revision hash = %v, want v3", second["policyHash"])
 	}
 }
 

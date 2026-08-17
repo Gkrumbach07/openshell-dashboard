@@ -4,34 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
-
-type mockInteractiveSession struct {
-	written []byte
-	closed  bool
-	exit    int
-}
-
-func (m *mockInteractiveSession) Read(_ []byte) (int, error) { return 0, io.EOF }
-func (m *mockInteractiveSession) Write(p []byte) (int, error) {
-	m.written = append(m.written, p...)
-	return len(p), nil
-}
-func (m *mockInteractiveSession) Resize(_, _ uint32) error { return nil }
-func (m *mockInteractiveSession) ExitCode() (int, error)   { return m.exit, nil }
-func (m *mockInteractiveSession) Close() error {
-	m.closed = true
-	return nil
-}
 
 func TestValidateFilePath(t *testing.T) {
 	tests := []struct {
@@ -66,8 +49,8 @@ func TestUploadFile(t *testing.T) {
 	session := &mockInteractiveSession{}
 	sdk := &mockSDK{}
 	sdk.exec.interactiveFn = func(_ context.Context, _, _ string, command []string, _, _ uint32, _ ...openshell.ExecOptions) (openshell.InteractiveSession, error) {
-		if len(command) < 2 || command[0] != "dd" {
-			t.Errorf("command = %v, want dd", command)
+		if len(command) != 3 || command[0] != "dd" || command[1] != "of=/sandbox/hello.txt" || command[2] != "bs=4096" {
+			t.Errorf("command = %v, want dd of=/sandbox/hello.txt bs=4096", command)
 		}
 		return session, nil
 	}
@@ -95,10 +78,14 @@ func TestUploadFile(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d; body: %s", w.Code, w.Body.String())
 	}
-	if string(session.written) != "hello" {
-		t.Errorf("written = %q, want hello", session.written)
+	session.mu.Lock()
+	written := string(session.written)
+	closed := session.closed
+	session.mu.Unlock()
+	if written != "hello" {
+		t.Errorf("written = %q, want hello", written)
 	}
-	if !session.closed {
+	if !closed {
 		t.Error("session not closed")
 	}
 	var resp map[string]any
@@ -145,5 +132,71 @@ func TestDownloadFileNotFound(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", w.Code)
+	}
+}
+
+func TestUploadFileFailed(t *testing.T) {
+	session := &mockInteractiveSession{exit: 1}
+	sdk := &mockSDK{}
+	sdk.exec.interactiveFn = func(_ context.Context, _, _ string, _ []string, _, _ uint32, _ ...openshell.ExecOptions) (openshell.InteractiveSession, error) {
+		return session, nil
+	}
+	app := newTestAppWithSDK(sdk)
+	r := chi.NewRouter()
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
+
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	part, err := mw.CreateFormFile("file", "hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/sb/files", body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502; body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "upload_failed") {
+		t.Errorf("body = %s, want upload_failed", w.Body.String())
+	}
+}
+
+func TestUploadFileInteractiveError(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.exec.interactiveFn = func(_ context.Context, _, _ string, _ []string, _, _ uint32, _ ...openshell.ExecOptions) (openshell.InteractiveSession, error) {
+		return nil, fmt.Errorf("exec unavailable")
+	}
+	app := newTestAppWithSDK(sdk)
+	r := chi.NewRouter()
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
+
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	part, err := mw.CreateFormFile("file", "hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/sb/files", body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body: %s", w.Code, w.Body.String())
 	}
 }

@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"io"
+	"sync"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
@@ -530,6 +532,59 @@ func (m *mockSDKHealth) GetCurrentUser(ctx context.Context) (*openshell.CurrentU
 		return m.getCurrentUserFn(ctx)
 	}
 	return &openshell.CurrentUser{Subject: "test-user"}, nil
+}
+
+type mockInteractiveSession struct {
+	mu         sync.Mutex
+	written    []byte
+	resizes    [][2]uint32
+	closed     bool
+	exit       int
+	reads      chan []byte
+	closeReads sync.Once
+}
+
+func (m *mockInteractiveSession) Read(p []byte) (int, error) {
+	if m.reads == nil {
+		return 0, io.EOF
+	}
+	data, ok := <-m.reads
+	if !ok {
+		return 0, io.EOF
+	}
+	return copy(p, data), nil
+}
+
+func (m *mockInteractiveSession) Write(p []byte) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.written = append(m.written, p...)
+	return len(p), nil
+}
+
+func (m *mockInteractiveSession) Resize(cols, rows uint32) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.resizes = append(m.resizes, [2]uint32{cols, rows})
+	return nil
+}
+
+func (m *mockInteractiveSession) ExitCode() (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.exit, nil
+}
+
+func (m *mockInteractiveSession) Close() error {
+	m.mu.Lock()
+	m.closed = true
+	m.mu.Unlock()
+	m.closeReads.Do(func() {
+		if m.reads != nil {
+			close(m.reads)
+		}
+	})
+	return nil
 }
 
 type mockSDKExec struct {

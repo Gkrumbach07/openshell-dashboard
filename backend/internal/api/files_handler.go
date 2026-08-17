@@ -115,13 +115,18 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	if code, exitErr := session.ExitCode(); exitErr == nil {
 		exitCode = code
 	}
+	if exitCode != 0 {
+		slog.Error("file upload failed", "path", destPath, "exitCode", exitCode, "stdout", stdoutBuf.String())
+		writeError(w, http.StatusBadGateway, "upload_failed", "file upload failed")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"exitCode": exitCode,
+		"exitCode": 0,
 		"path":     destPath,
 		"size":     len(fileBytes),
 		"stdout":   stdoutBuf.String(),
-		"success":  exitCode == 0,
+		"success":  true,
 	})
 }
 
