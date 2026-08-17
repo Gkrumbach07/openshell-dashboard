@@ -538,10 +538,14 @@ type mockInteractiveSession struct {
 	mu         sync.Mutex
 	written    []byte
 	resizes    [][2]uint32
-	closed     bool
-	exit       int
 	reads      chan []byte
 	closeReads sync.Once
+	exit       int
+	closed     bool
+}
+
+func newTestAppWithSDK(sdk *mockSDK) *App {
+	return &App{sdk: sdk}
 }
 
 func (m *mockInteractiveSession) Read(p []byte) (int, error) {

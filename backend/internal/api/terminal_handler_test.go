@@ -70,22 +70,43 @@ func TestCheckWebSocketOrigin(t *testing.T) {
 	}
 }
 
-func TestTerminalRelay(t *testing.T) {
-	session := &mockInteractiveSession{reads: make(chan []byte, 1)}
-	session.reads <- []byte("hi")
-
-	sdk := &mockSDK{}
-	var gotCols, gotRows uint32
-	sdk.exec.interactiveFn = func(_ context.Context, workspace, name string, command []string, cols, rows uint32, _ ...openshell.ExecOptions) (openshell.InteractiveSession, error) {
+func stubInteractive(t *testing.T, session openshell.InteractiveSession, gotCols, gotRows *uint32) func(context.Context, string, string, []string, uint32, uint32, ...openshell.ExecOptions) (openshell.InteractiveSession, error) {
+	t.Helper()
+	return func(_ context.Context, workspace, name string, command []string, cols, rows uint32, _ ...openshell.ExecOptions) (openshell.InteractiveSession, error) {
 		if workspace != "default" || name != "sb" {
 			t.Errorf("sandbox = %s/%s", workspace, name)
 		}
 		if len(command) != 1 || command[0] != defaultShell {
 			t.Errorf("command = %v", command)
 		}
-		gotCols, gotRows = cols, rows
+		*gotCols, *gotRows = cols, rows
 		return session, nil
 	}
+}
+
+func waitSessionIO(session *mockInteractiveSession, timeout time.Duration) (string, [][2]uint32) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		session.mu.Lock()
+		ok := string(session.written) == "ls\n" && len(session.resizes) == 1
+		session.mu.Unlock()
+		if ok {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	return string(session.written), append([][2]uint32(nil), session.resizes...)
+}
+
+func TestTerminalRelay(t *testing.T) {
+	session := &mockInteractiveSession{reads: make(chan []byte, 1)}
+	session.reads <- []byte("hi")
+
+	var gotCols, gotRows uint32
+	sdk := &mockSDK{}
+	sdk.exec.interactiveFn = stubInteractive(t, session, &gotCols, &gotRows)
 
 	app := newTestAppWithSDK(sdk)
 	r := chi.NewRouter()
@@ -116,21 +137,7 @@ func TestTerminalRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		session.mu.Lock()
-		ok := string(session.written) == "ls\n" && len(session.resizes) == 1
-		session.mu.Unlock()
-		if ok {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	session.mu.Lock()
-	written := string(session.written)
-	resizes := append([][2]uint32(nil), session.resizes...)
-	session.mu.Unlock()
+	written, resizes := waitSessionIO(session, 2*time.Second)
 	if written != "ls\n" {
 		t.Errorf("written = %q, want ls\\n", written)
 	}
