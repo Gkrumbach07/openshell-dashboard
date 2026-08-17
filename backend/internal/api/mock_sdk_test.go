@@ -7,24 +7,31 @@ import (
 )
 
 // mockSDK is a mock of openshell.ClientInterface for testing.
-// Sandboxes() and Providers() are wired; other sub-clients panic if called.
 type mockSDK struct {
-	sandboxes mockSDKSandboxes
-	providers mockSDKProviders
+	sandboxes  mockSDKSandboxes
+	providers  mockSDKProviders
+	workspaces mockSDKWorkspaces
+	policy     mockSDKPolicy
+	config     mockSDKConfig
+	services   mockSDKServices
+	inference  mockSDKInference
+	health     mockSDKHealth
+	exec       mockSDKExec
+	files      mockSDKFiles
 }
 
 func (m *mockSDK) Sandboxes() openshell.SandboxInterface    { return &m.sandboxes }
 func (m *mockSDK) Providers() openshell.ProviderInterface   { return &m.providers }
-func (m *mockSDK) Services() openshell.ServiceInterface     { panic("not implemented") }
-func (m *mockSDK) Exec() openshell.ExecInterface            { panic("not implemented") }
-func (m *mockSDK) Files() openshell.FileInterface           { panic("not implemented") }
-func (m *mockSDK) Health() openshell.HealthInterface        { panic("not implemented") }
+func (m *mockSDK) Services() openshell.ServiceInterface     { return &m.services }
+func (m *mockSDK) Exec() openshell.ExecInterface            { return &m.exec }
+func (m *mockSDK) Files() openshell.FileInterface           { return &m.files }
+func (m *mockSDK) Health() openshell.HealthInterface        { return &m.health }
 func (m *mockSDK) SSH() openshell.SSHInterface              { panic("not implemented") }
 func (m *mockSDK) TCP() openshell.TCPInterface              { panic("not implemented") }
-func (m *mockSDK) Config() openshell.ConfigInterface        { panic("not implemented") }
-func (m *mockSDK) Policy() openshell.PolicyInterface        { panic("not implemented") }
-func (m *mockSDK) Workspaces() openshell.WorkspaceInterface { panic("not implemented") }
-func (m *mockSDK) Inference() openshell.InferenceInterface  { panic("not implemented") }
+func (m *mockSDK) Config() openshell.ConfigInterface        { return &m.config }
+func (m *mockSDK) Policy() openshell.PolicyInterface        { return &m.policy }
+func (m *mockSDK) Workspaces() openshell.WorkspaceInterface { return &m.workspaces }
+func (m *mockSDK) Inference() openshell.InferenceInterface  { return &m.inference }
 func (m *mockSDK) Close() error                             { return nil }
 
 // mockSDKSandboxes provides injectable sandbox operations.
@@ -36,6 +43,7 @@ type mockSDKSandboxes struct {
 	attachFn        func(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshell.AttachProviderResult, error)
 	detachFn        func(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshell.DetachProviderResult, error)
 	listProvidersFn func(ctx context.Context, workspace, sandboxName string) ([]*openshell.Provider, error)
+	getLogsFn       func(ctx context.Context, workspace, name string, opts ...openshell.LogOption) (*openshell.LogResult, error)
 }
 
 func (m *mockSDKSandboxes) List(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
@@ -95,12 +103,11 @@ func (m *mockSDKSandboxes) WaitReady(_ context.Context, _, _ string, _ ...opensh
 	panic("not implemented")
 }
 
-func (m *mockSDKSandboxes) WaitDeleted(_ context.Context, _, _ string, _ ...openshell.WaitOptions) error {
-	panic("not implemented")
-}
-
-func (m *mockSDKSandboxes) GetLogs(_ context.Context, _, _ string, _ ...openshell.LogOption) (*openshell.LogResult, error) {
-	panic("not implemented")
+func (m *mockSDKSandboxes) GetLogs(ctx context.Context, workspace, name string, opts ...openshell.LogOption) (*openshell.LogResult, error) {
+	if m.getLogsFn != nil {
+		return m.getLogsFn(ctx, workspace, name, opts...)
+	}
+	return &openshell.LogResult{}, nil
 }
 
 func (m *mockSDKSandboxes) Start(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
@@ -259,4 +266,314 @@ func (m *mockSDKProfiles) Delete(ctx context.Context, workspace, id string) (boo
 		return m.deleteFn(ctx, workspace, id)
 	}
 	return true, nil
+}
+
+type mockSDKWorkspaces struct {
+	createFn       func(ctx context.Context, name string, labels map[string]string) (*openshell.Workspace, error)
+	getFn          func(ctx context.Context, name string) (*openshell.Workspace, error)
+	listFn         func(ctx context.Context, opts ...openshell.ListOptions) ([]*openshell.Workspace, error)
+	deleteFn       func(ctx context.Context, name string) error
+	addMemberFn    func(ctx context.Context, workspace, principalSubject string, role openshell.WorkspaceRole) (*openshell.WorkspaceMember, error)
+	removeMemberFn func(ctx context.Context, workspace, principalSubject string) error
+	listMembersFn  func(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.WorkspaceMember, error)
+}
+
+func (m *mockSDKWorkspaces) Create(ctx context.Context, name string, labels map[string]string) (*openshell.Workspace, error) {
+	if m.createFn != nil {
+		return m.createFn(ctx, name, labels)
+	}
+	return &openshell.Workspace{Name: name, Labels: labels, Phase: openshell.WorkspaceActive}, nil
+}
+
+func (m *mockSDKWorkspaces) Get(ctx context.Context, name string) (*openshell.Workspace, error) {
+	if m.getFn != nil {
+		return m.getFn(ctx, name)
+	}
+	return &openshell.Workspace{Name: name, Phase: openshell.WorkspaceActive}, nil
+}
+
+func (m *mockSDKWorkspaces) List(ctx context.Context, opts ...openshell.ListOptions) ([]*openshell.Workspace, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, opts...)
+	}
+	return nil, nil
+}
+
+func (m *mockSDKWorkspaces) Delete(ctx context.Context, name string) error {
+	if m.deleteFn != nil {
+		return m.deleteFn(ctx, name)
+	}
+	return nil
+}
+
+func (m *mockSDKWorkspaces) AddMember(ctx context.Context, workspace, principalSubject string, role openshell.WorkspaceRole) (*openshell.WorkspaceMember, error) {
+	if m.addMemberFn != nil {
+		return m.addMemberFn(ctx, workspace, principalSubject, role)
+	}
+	return &openshell.WorkspaceMember{PrincipalSubject: principalSubject, Role: role}, nil
+}
+
+func (m *mockSDKWorkspaces) RemoveMember(ctx context.Context, workspace, principalSubject string) error {
+	if m.removeMemberFn != nil {
+		return m.removeMemberFn(ctx, workspace, principalSubject)
+	}
+	return nil
+}
+
+func (m *mockSDKWorkspaces) ListMembers(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.WorkspaceMember, error) {
+	if m.listMembersFn != nil {
+		return m.listMembersFn(ctx, workspace, opts...)
+	}
+	return nil, nil
+}
+
+type mockSDKPolicy struct {
+	getDraftFn   func(ctx context.Context, workspace, sandboxName string, opts ...openshell.GetDraftOption) (*openshell.DraftPolicy, error)
+	approveFn    func(ctx context.Context, workspace, sandboxName, chunkID string) (*openshell.ApproveResult, error)
+	rejectFn     func(ctx context.Context, workspace, sandboxName, chunkID, reason string) error
+	approveAllFn func(ctx context.Context, workspace, sandboxName string, opts ...openshell.ApproveAllOption) (*openshell.ApproveAllResult, error)
+	clearFn      func(ctx context.Context, workspace, sandboxName string) (*openshell.ClearResult, error)
+	historyFn    func(ctx context.Context, workspace, sandboxName string) ([]openshell.DraftHistoryEntry, error)
+	getStatusFn  func(ctx context.Context, workspace, sandboxName string, opts ...openshell.GetStatusOption) (*openshell.PolicyStatusResult, error)
+	listFn       func(ctx context.Context, workspace string, opts ...openshell.ListPolicyOption) ([]openshell.SandboxPolicyRevision, error)
+	editFn       func(ctx context.Context, workspace, sandboxName, chunkID string, proposedRule *openshell.NetworkPolicyRule) error
+	undoFn       func(ctx context.Context, workspace, sandboxName, chunkID string) (*openshell.UndoResult, error)
+}
+
+func (m *mockSDKPolicy) GetDraft(ctx context.Context, workspace, sandboxName string, opts ...openshell.GetDraftOption) (*openshell.DraftPolicy, error) {
+	if m.getDraftFn != nil {
+		return m.getDraftFn(ctx, workspace, sandboxName, opts...)
+	}
+	return &openshell.DraftPolicy{}, nil
+}
+
+func (m *mockSDKPolicy) ApproveDraftChunk(ctx context.Context, workspace, sandboxName, chunkID string) (*openshell.ApproveResult, error) {
+	if m.approveFn != nil {
+		return m.approveFn(ctx, workspace, sandboxName, chunkID)
+	}
+	return &openshell.ApproveResult{}, nil
+}
+
+func (m *mockSDKPolicy) RejectDraftChunk(ctx context.Context, workspace, sandboxName, chunkID, reason string) error {
+	if m.rejectFn != nil {
+		return m.rejectFn(ctx, workspace, sandboxName, chunkID, reason)
+	}
+	return nil
+}
+
+func (m *mockSDKPolicy) ApproveAllDraftChunks(ctx context.Context, workspace, sandboxName string, opts ...openshell.ApproveAllOption) (*openshell.ApproveAllResult, error) {
+	if m.approveAllFn != nil {
+		return m.approveAllFn(ctx, workspace, sandboxName, opts...)
+	}
+	return &openshell.ApproveAllResult{}, nil
+}
+
+func (m *mockSDKPolicy) ClearDraftChunks(ctx context.Context, workspace, sandboxName string) (*openshell.ClearResult, error) {
+	if m.clearFn != nil {
+		return m.clearFn(ctx, workspace, sandboxName)
+	}
+	return &openshell.ClearResult{}, nil
+}
+
+func (m *mockSDKPolicy) GetDraftHistory(ctx context.Context, workspace, sandboxName string) ([]openshell.DraftHistoryEntry, error) {
+	if m.historyFn != nil {
+		return m.historyFn(ctx, workspace, sandboxName)
+	}
+	return nil, nil
+}
+
+func (m *mockSDKPolicy) GetStatus(ctx context.Context, workspace, sandboxName string, opts ...openshell.GetStatusOption) (*openshell.PolicyStatusResult, error) {
+	if m.getStatusFn != nil {
+		return m.getStatusFn(ctx, workspace, sandboxName, opts...)
+	}
+	return &openshell.PolicyStatusResult{}, nil
+}
+
+func (m *mockSDKPolicy) List(ctx context.Context, workspace string, opts ...openshell.ListPolicyOption) ([]openshell.SandboxPolicyRevision, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, workspace, opts...)
+	}
+	return nil, nil
+}
+
+func (m *mockSDKPolicy) EditDraftChunk(ctx context.Context, workspace, sandboxName, chunkID string, proposedRule *openshell.NetworkPolicyRule) error {
+	if m.editFn != nil {
+		return m.editFn(ctx, workspace, sandboxName, chunkID, proposedRule)
+	}
+	return nil
+}
+
+func (m *mockSDKPolicy) UndoDraftChunk(ctx context.Context, workspace, sandboxName, chunkID string) (*openshell.UndoResult, error) {
+	if m.undoFn != nil {
+		return m.undoFn(ctx, workspace, sandboxName, chunkID)
+	}
+	return &openshell.UndoResult{}, nil
+}
+
+type mockSDKConfig struct {
+	getSandboxFn func(ctx context.Context, workspace, sandboxName string) (*openshell.SandboxConfig, error)
+	getGatewayFn func(ctx context.Context) (*openshell.GatewayConfig, error)
+	updateFn     func(ctx context.Context, workspace string, update *openshell.ConfigUpdate) (*openshell.ConfigUpdateResult, error)
+}
+
+func (m *mockSDKConfig) GetSandbox(ctx context.Context, workspace, sandboxName string) (*openshell.SandboxConfig, error) {
+	if m.getSandboxFn != nil {
+		return m.getSandboxFn(ctx, workspace, sandboxName)
+	}
+	return &openshell.SandboxConfig{}, nil
+}
+
+func (m *mockSDKConfig) GetGateway(ctx context.Context) (*openshell.GatewayConfig, error) {
+	if m.getGatewayFn != nil {
+		return m.getGatewayFn(ctx)
+	}
+	return &openshell.GatewayConfig{}, nil
+}
+
+func (m *mockSDKConfig) Update(ctx context.Context, workspace string, update *openshell.ConfigUpdate) (*openshell.ConfigUpdateResult, error) {
+	if m.updateFn != nil {
+		return m.updateFn(ctx, workspace, update)
+	}
+	return &openshell.ConfigUpdateResult{}, nil
+}
+
+type mockSDKServices struct {
+	exposeFn func(ctx context.Context, workspace, sandboxName, serviceName string, targetPort uint32, domain bool) (*openshell.ServiceEndpoint, error)
+	getFn    func(ctx context.Context, workspace, sandboxName, serviceName string) (*openshell.ServiceEndpoint, error)
+	listFn   func(ctx context.Context, workspace, sandboxName string, opts ...openshell.ListOptions) ([]*openshell.ServiceEndpoint, error)
+	deleteFn func(ctx context.Context, workspace, sandboxName, serviceName string) error
+}
+
+func (m *mockSDKServices) Expose(ctx context.Context, workspace, sandboxName, serviceName string, targetPort uint32, domain bool) (*openshell.ServiceEndpoint, error) {
+	if m.exposeFn != nil {
+		return m.exposeFn(ctx, workspace, sandboxName, serviceName, targetPort, domain)
+	}
+	return &openshell.ServiceEndpoint{SandboxName: sandboxName, ServiceName: serviceName, TargetPort: targetPort, Domain: domain}, nil
+}
+
+func (m *mockSDKServices) Get(ctx context.Context, workspace, sandboxName, serviceName string) (*openshell.ServiceEndpoint, error) {
+	if m.getFn != nil {
+		return m.getFn(ctx, workspace, sandboxName, serviceName)
+	}
+	return &openshell.ServiceEndpoint{SandboxName: sandboxName, ServiceName: serviceName}, nil
+}
+
+func (m *mockSDKServices) List(ctx context.Context, workspace, sandboxName string, opts ...openshell.ListOptions) ([]*openshell.ServiceEndpoint, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, workspace, sandboxName, opts...)
+	}
+	return nil, nil
+}
+
+func (m *mockSDKServices) Delete(ctx context.Context, workspace, sandboxName, serviceName string) error {
+	if m.deleteFn != nil {
+		return m.deleteFn(ctx, workspace, sandboxName, serviceName)
+	}
+	return nil
+}
+
+type mockSDKInference struct {
+	setFn    func(ctx context.Context, workspace string, config *openshell.InferenceRouteConfig) (*openshell.InferenceRoute, error)
+	getFn    func(ctx context.Context, workspace, routeName string) (*openshell.InferenceRoute, error)
+	deleteFn func(ctx context.Context, workspace, routeName string) error
+}
+
+func (m *mockSDKInference) SetRoute(ctx context.Context, workspace string, config *openshell.InferenceRouteConfig) (*openshell.InferenceRoute, error) {
+	if m.setFn != nil {
+		return m.setFn(ctx, workspace, config)
+	}
+	return &openshell.InferenceRoute{
+		RouteName:    config.RouteName,
+		ProviderName: config.ProviderName,
+		ModelID:      config.ModelID,
+		TimeoutSecs:  config.TimeoutSecs,
+		Workspace:    workspace,
+	}, nil
+}
+
+func (m *mockSDKInference) GetRoute(ctx context.Context, workspace, routeName string) (*openshell.InferenceRoute, error) {
+	if m.getFn != nil {
+		return m.getFn(ctx, workspace, routeName)
+	}
+	return &openshell.InferenceRoute{RouteName: routeName, Workspace: workspace}, nil
+}
+
+func (m *mockSDKInference) DeleteRoute(ctx context.Context, workspace, routeName string) error {
+	if m.deleteFn != nil {
+		return m.deleteFn(ctx, workspace, routeName)
+	}
+	return nil
+}
+
+type mockSDKHealth struct {
+	checkFn          func(ctx context.Context) (*openshell.HealthResult, error)
+	getGatewayInfoFn func(ctx context.Context) (*openshell.GatewayInfo, error)
+	getCurrentUserFn func(ctx context.Context) (*openshell.CurrentUser, error)
+}
+
+func (m *mockSDKHealth) Check(ctx context.Context) (*openshell.HealthResult, error) {
+	if m.checkFn != nil {
+		return m.checkFn(ctx)
+	}
+	return &openshell.HealthResult{Healthy: true}, nil
+}
+
+func (m *mockSDKHealth) GetGatewayInfo(ctx context.Context) (*openshell.GatewayInfo, error) {
+	if m.getGatewayInfoFn != nil {
+		return m.getGatewayInfoFn(ctx)
+	}
+	return &openshell.GatewayInfo{Status: openshell.ServiceStatusHealthy}, nil
+}
+
+func (m *mockSDKHealth) GetCurrentUser(ctx context.Context) (*openshell.CurrentUser, error) {
+	if m.getCurrentUserFn != nil {
+		return m.getCurrentUserFn(ctx)
+	}
+	return &openshell.CurrentUser{Subject: "test-user"}, nil
+}
+
+type mockSDKExec struct {
+	runFn         func(ctx context.Context, workspace, sandboxName string, command []string, opts ...openshell.ExecOptions) (*openshell.ExecResult, error)
+	streamFn      func(ctx context.Context, workspace, sandboxName string, command []string, opts ...openshell.ExecOptions) (openshell.ExecStream, error)
+	interactiveFn func(ctx context.Context, workspace, sandboxName string, command []string, cols, rows uint32, opts ...openshell.ExecOptions) (openshell.InteractiveSession, error)
+}
+
+func (m *mockSDKExec) Run(ctx context.Context, workspace, sandboxName string, command []string, opts ...openshell.ExecOptions) (*openshell.ExecResult, error) {
+	if m.runFn != nil {
+		return m.runFn(ctx, workspace, sandboxName, command, opts...)
+	}
+	return &openshell.ExecResult{}, nil
+}
+
+func (m *mockSDKExec) Stream(ctx context.Context, workspace, sandboxName string, command []string, opts ...openshell.ExecOptions) (openshell.ExecStream, error) {
+	if m.streamFn != nil {
+		return m.streamFn(ctx, workspace, sandboxName, command, opts...)
+	}
+	panic("not implemented")
+}
+
+func (m *mockSDKExec) Interactive(ctx context.Context, workspace, sandboxName string, command []string, cols, rows uint32, opts ...openshell.ExecOptions) (openshell.InteractiveSession, error) {
+	if m.interactiveFn != nil {
+		return m.interactiveFn(ctx, workspace, sandboxName, command, cols, rows, opts...)
+	}
+	panic("not implemented")
+}
+
+type mockSDKFiles struct {
+	uploadFn   func(ctx context.Context, workspace, sandboxName, localPath, remotePath string) error
+	downloadFn func(ctx context.Context, workspace, sandboxName, remotePath, localPath string) error
+}
+
+func (m *mockSDKFiles) Upload(ctx context.Context, workspace, sandboxName, localPath, remotePath string) error {
+	if m.uploadFn != nil {
+		return m.uploadFn(ctx, workspace, sandboxName, localPath, remotePath)
+	}
+	return nil
+}
+
+func (m *mockSDKFiles) Download(ctx context.Context, workspace, sandboxName, remotePath, localPath string) error {
+	if m.downloadFn != nil {
+		return m.downloadFn(ctx, workspace, sandboxName, remotePath, localPath)
+	}
+	return nil
 }

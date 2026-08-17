@@ -3,8 +3,8 @@ package api
 import (
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -25,13 +25,6 @@ func validateFilePath(p string) bool {
 func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	name := chi.URLParam(r, "name")
-
-	sandbox, err := app.gateway.GetSandbox(r.Context(), workspace, name)
-	if err != nil {
-		writeGrpcError(w, err)
-		return
-	}
-	sandboxID := sandbox.GetMetadata().GetId()
 
 	r.Body = http.MaxBytesReader(w, r.Body, app.maxUploadSize)
 	if parseErr := r.ParseMultipartForm(app.maxUploadSize); parseErr != nil { //nolint:gosec // bounded by MaxBytesReader
@@ -65,29 +58,37 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileBytes, err := io.ReadAll(file)
+	tmp, err := os.CreateTemp("", "upload-*")
 	if err != nil {
+		writeError(w, http.StatusInternalServerError, "temp_error", "failed to create temp file")
+		return
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	size, err := io.Copy(tmp, file)
+	if err != nil {
+		tmp.Close()
 		writeError(w, http.StatusInternalServerError, "read_error", "failed to read uploaded file")
 		return
 	}
-
-	stdout, stderr, exitCode, err := app.gateway.ExecSandbox(r.Context(), sandboxID,
-		[]string{"dd", "of=" + destPath, "bs=4096"},
-		fileBytes, "", app.execTimeout)
-	if err != nil {
-		writeGrpcError(w, err)
+	if err := tmp.Close(); err != nil {
+		writeError(w, http.StatusInternalServerError, "temp_error", "failed to close temp file")
 		return
 	}
 
-	if len(stderr) > 0 {
-		slog.Warn("file upload stderr", "path", destPath, "stderr", string(stderr))
+	if err := app.sdk.Files().Upload(r.Context(), workspace, name, tmpName, destPath); err != nil {
+		writeSDKError(w, err)
+		return
 	}
+
+	// Preserve the existing JSON contract (previously populated from Exec dd).
 	writeJSON(w, http.StatusOK, map[string]any{
-		"exitCode": exitCode,
+		"exitCode": 0,
 		"path":     destPath,
-		"size":     len(fileBytes),
-		"stdout":   string(stdout),
-		"success":  exitCode == 0,
+		"size":     size,
+		"stdout":   "",
+		"success":  true,
 	})
 }
 
@@ -101,28 +102,29 @@ func (app *App) DownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sandbox, err := app.gateway.GetSandbox(r.Context(), workspace, name)
+	tmp, err := os.CreateTemp("", "download-*")
 	if err != nil {
-		writeGrpcError(w, err)
+		writeError(w, http.StatusInternalServerError, "temp_error", "failed to create temp file")
 		return
 	}
-	sandboxID := sandbox.GetMetadata().GetId()
+	tmpName := tmp.Name()
+	tmp.Close()
+	defer os.Remove(tmpName)
 
-	stdout, stderr, exitCode, err := app.gateway.ExecSandbox(r.Context(), sandboxID,
-		[]string{"cat", filePath}, nil, "", app.execTimeout)
-	if err != nil {
-		writeGrpcError(w, err)
+	if err := app.sdk.Files().Download(r.Context(), workspace, name, filePath, tmpName); err != nil {
+		writeSDKError(w, err)
 		return
 	}
-	if exitCode != 0 {
-		slog.Error("file download failed", "path", filePath, "exitCode", exitCode, "stderr", string(stderr))
-		writeError(w, http.StatusNotFound, "file_not_found", "file download failed")
+
+	data, err := os.ReadFile(tmpName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read_error", "failed to read downloaded file")
 		return
 	}
 
 	filename := filepath.Base(filePath)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", strconv.Itoa(len(stdout)))
-	_, _ = w.Write(stdout) //nolint:gosec // Content-Type is application/octet-stream, not HTML
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	_, _ = w.Write(data) //nolint:gosec // Content-Type is application/octet-stream, not HTML
 }

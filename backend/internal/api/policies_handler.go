@@ -7,41 +7,23 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
 
-// GetSandboxPolicy returns the latest revision, active version, and revision
-// history for a sandbox (GetSandboxPolicyStatus + ListSandboxPolicies).
+// GetSandboxPolicy returns the latest revision and active version for a sandbox.
+// Policy().List has no sandbox-name filter, so revision history is the latest only.
 func (app *App) GetSandboxPolicy(w http.ResponseWriter, r *http.Request) {
-	workspace := chi.URLParam(r, "workspace")
-	name := chi.URLParam(r, "name")
-
-	status, err := app.gateway.GetSandboxPolicyStatus(r.Context(), workspace, name, 0, false)
+	status, err := app.sdk.Policy().GetStatus(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	list, err := app.gateway.ListSandboxPolicies(r.Context(), workspace, name, 0, 0, false)
-	if err != nil {
-		writeGrpcError(w, err)
-		return
-	}
-
-	view := models.SandboxPolicyView{
-		ActiveVersion: status.GetActiveVersion(),
-		Revisions:     []models.PolicyRevision{},
-	}
-	if status.GetRevision() != nil {
-		latest := models.FromPolicyRevision(status.GetRevision())
-		view.Latest = &latest
-	}
-	for _, revision := range list.GetRevisions() {
-		view.Revisions = append(view.Revisions, models.FromPolicyRevision(revision))
-	}
-	writeJSON(w, http.StatusOK, view)
+	writeJSON(w, http.StatusOK, models.FromSDKPolicyStatus(status))
 }
 
-// UpdatePolicyRequest carries the full replacement policy as protojson.
+// UpdatePolicyRequest carries the full replacement policy as JSON.
 // Sandbox-scoped updates may only change network_policies and inference
 // fields — filesystem/landlock/process must match the create-time policy.
 type UpdatePolicyRequest struct {
@@ -49,7 +31,7 @@ type UpdatePolicyRequest struct {
 	ExpectedResourceVersion uint64          `json:"expectedResourceVersion,omitempty"`
 }
 
-// UpdateSandboxPolicy applies a policy update to a sandbox via UpdateConfig.
+// UpdateSandboxPolicy applies a policy update to a sandbox via Config.Update.
 func (app *App) UpdateSandboxPolicy(w http.ResponseWriter, r *http.Request) {
 	var body UpdatePolicyRequest
 	if !decodeBody(w, r, &body) {
@@ -59,33 +41,37 @@ func (app *App) UpdateSandboxPolicy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_policy", "policy is required")
 		return
 	}
-	policy, err := models.ParsePolicy(body.Policy)
+	policy, err := models.ParseSDKPolicy(body.Policy)
 	if err != nil {
 		slog.Error("invalid policy specification", "error", err)
-		writeError(w, http.StatusBadRequest, "invalid_policy", "invalid policy specification")
+		writeError(w, http.StatusBadRequest, "invalid_policy", "policy does not match the SandboxPolicy schema: "+err.Error())
 		return
 	}
-	resp, err := app.gateway.UpdateSandboxPolicy(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), policy, body.ExpectedResourceVersion)
+	result, err := app.sdk.Config().Update(r.Context(), chi.URLParam(r, "workspace"), &openshell.ConfigUpdate{
+		Name:                    chi.URLParam(r, "name"),
+		Policy:                  policy,
+		ExpectedResourceVersion: body.ExpectedResourceVersion,
+	})
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.PolicyUpdateResult{
-		Version:    resp.GetVersion(),
-		PolicyHash: resp.GetPolicyHash(),
+		Version:    result.Version,
+		PolicyHash: result.PolicyHash,
 	})
 }
 
 // GetGlobalPolicy returns gateway-global policy revisions (Platform Admin).
 func (app *App) GetGlobalPolicy(w http.ResponseWriter, r *http.Request) {
-	list, err := app.gateway.ListSandboxPolicies(r.Context(), "", "", 0, 0, true)
+	revisions, err := app.sdk.Policy().List(r.Context(), "", openshell.WithListGlobal(true))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	view := models.SandboxPolicyView{Revisions: []models.PolicyRevision{}}
-	for _, revision := range list.GetRevisions() {
-		view.Revisions = append(view.Revisions, models.FromPolicyRevision(revision))
+	for i := range revisions {
+		view.Revisions = append(view.Revisions, models.FromSDKPolicyRevision(&revisions[i]))
 	}
 	if len(view.Revisions) > 0 {
 		view.Latest = &view.Revisions[0]
@@ -105,28 +91,35 @@ func (app *App) SetGlobalPolicy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_policy", "policy is required")
 		return
 	}
-	policy, err := models.ParsePolicy(body.Policy)
+	policy, err := models.ParseSDKPolicy(body.Policy)
 	if err != nil {
 		slog.Error("invalid policy specification", "error", err)
-		writeError(w, http.StatusBadRequest, "invalid_policy", "invalid policy specification")
+		writeError(w, http.StatusBadRequest, "invalid_policy", "policy does not match the SandboxPolicy schema: "+err.Error())
 		return
 	}
-	resp, err := app.gateway.SetGlobalPolicy(r.Context(), policy)
+	result, err := app.sdk.Config().Update(r.Context(), "", &openshell.ConfigUpdate{
+		Policy: policy,
+		Global: true,
+	})
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.PolicyUpdateResult{
-		Version:    resp.GetVersion(),
-		PolicyHash: resp.GetPolicyHash(),
+		Version:    result.Version,
+		PolicyHash: result.PolicyHash,
 	})
 }
 
 // DeleteGlobalPolicy removes the gateway-global policy lock, restoring
 // sandbox-level policy control. Platform Admin operation.
 func (app *App) DeleteGlobalPolicy(w http.ResponseWriter, r *http.Request) {
-	if err := app.gateway.DeleteGlobalPolicy(r.Context()); err != nil {
-		writeGrpcError(w, err)
+	if _, err := app.sdk.Config().Update(r.Context(), "", &openshell.ConfigUpdate{
+		Global:        true,
+		DeleteSetting: true,
+		SettingKey:    "policy",
+	}); err != nil {
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -419,6 +420,318 @@ func FromSDKDiagnostics(diagnostics []openshell.ProfileDiagnostic) []ProviderPro
 			Field:     d.Field,
 			Message:   d.Message,
 			Severity:  d.Severity,
+		})
+	}
+	return out
+}
+
+func timePtrToMs(t *time.Time) int64 {
+	if t == nil {
+		return 0
+	}
+	return t.UnixMilli()
+}
+
+// FromSDKWorkspace converts an SDK Workspace to the JSON DTO.
+func FromSDKWorkspace(ws *openshell.Workspace) Workspace {
+	if ws == nil {
+		return Workspace{Phase: "UNSPECIFIED"}
+	}
+	phase := strings.ToUpper(string(ws.Phase))
+	if phase == "" || phase == "UNKNOWN" {
+		phase = "UNSPECIFIED"
+	}
+	return Workspace{
+		Metadata: ObjectMeta{
+			ID:                  ws.ID,
+			Name:                ws.Name,
+			Workspace:           ws.Workspace,
+			Labels:              ws.Labels,
+			Annotations:         ws.Annotations,
+			CreatedAtMs:         timeToMs(ws.CreatedAt),
+			ResourceVersion:     ws.ResourceVersion,
+			DeletionTimestampMs: timePtrToMs(ws.DeletionTimestamp),
+		},
+		Phase: phase,
+	}
+}
+
+// FromSDKWorkspaceMember converts an SDK WorkspaceMember to the JSON DTO.
+func FromSDKWorkspaceMember(member *openshell.WorkspaceMember) WorkspaceMember {
+	if member == nil {
+		return WorkspaceMember{Role: "UNSPECIFIED"}
+	}
+	role := strings.ToUpper(string(member.Role))
+	if role == "" || role == "UNKNOWN" {
+		role = "UNSPECIFIED"
+	}
+	return WorkspaceMember{
+		Metadata: ObjectMeta{
+			ID:              member.ID,
+			Name:            member.Name,
+			Labels:          member.Labels,
+			Annotations:     member.Annotations,
+			CreatedAtMs:     timeToMs(member.CreatedAt),
+			ResourceVersion: member.ResourceVersion,
+		},
+		PrincipalSubject: member.PrincipalSubject,
+		Role:             role,
+	}
+}
+
+// SDKWorkspaceRoleFromString maps USER/ADMIN to the SDK WorkspaceRole.
+func SDKWorkspaceRoleFromString(role string) (openshell.WorkspaceRole, bool) {
+	switch role {
+	case "USER":
+		return openshell.WorkspaceRoleUser, true
+	case "ADMIN":
+		return openshell.WorkspaceRoleAdmin, true
+	}
+	return "", false
+}
+
+func sdkPolicyLoadStatusString(status openshell.PolicyLoadStatus) string {
+	switch status {
+	case openshell.PolicyLoadStatusPending:
+		return "PENDING"
+	case openshell.PolicyLoadStatusLoaded:
+		return "LOADED"
+	case openshell.PolicyLoadStatusFailed:
+		return "FAILED"
+	case openshell.PolicyLoadStatusSuperseded:
+		return "SUPERSEDED"
+	}
+	return "UNSPECIFIED"
+}
+
+// FromSDKPolicyRevision converts an SDK policy revision to the JSON DTO.
+func FromSDKPolicyRevision(revision *openshell.SandboxPolicyRevision) PolicyRevision {
+	if revision == nil {
+		return PolicyRevision{Status: "UNSPECIFIED"}
+	}
+	out := PolicyRevision{
+		Version:     revision.Version,
+		PolicyHash:  revision.PolicyHash,
+		Status:      sdkPolicyLoadStatusString(revision.Status),
+		LoadError:   revision.LoadError,
+		CreatedAtMs: timeToMs(revision.CreatedAt),
+		LoadedAtMs:  timeToMs(revision.LoadedAt),
+		Provenance:  revision.Provenance,
+	}
+	if revision.Policy != nil {
+		out.Policy = marshalSDKPolicy(revision.Policy)
+	}
+	return out
+}
+
+// FromSDKPolicyStatus builds the sandbox policy view from GetStatus.
+// Policy().List has no sandbox-name filter, so revision history is the latest only.
+func FromSDKPolicyStatus(status *openshell.PolicyStatusResult) SandboxPolicyView {
+	if status == nil {
+		return SandboxPolicyView{Revisions: []PolicyRevision{}}
+	}
+	latest := FromSDKPolicyRevision(&status.Revision)
+	return SandboxPolicyView{
+		ActiveVersion: status.ActiveVersion,
+		Latest:        &latest,
+		Revisions:     []PolicyRevision{latest},
+	}
+}
+
+// MarshalSDKNetworkPolicyRule converts an SDK NetworkPolicyRule to camelCase JSON.
+func MarshalSDKNetworkPolicyRule(rule *openshell.NetworkPolicyRule) json.RawMessage {
+	if rule == nil {
+		return nil
+	}
+	raw, err := json.Marshal(marshalSDKNetworkRule(*rule))
+	if err != nil {
+		return nil
+	}
+	return raw
+}
+
+// ParseSDKNetworkPolicyRule parses camelCase JSON into an SDK NetworkPolicyRule.
+func ParseSDKNetworkPolicyRule(raw json.RawMessage) (*openshell.NetworkPolicyRule, error) {
+	var rj sdkNetworkPolicyRuleJSON
+	if err := json.Unmarshal(raw, &rj); err != nil {
+		return nil, err
+	}
+	rule := parseSDKNetworkRule(rj)
+	return &rule, nil
+}
+
+// FromSDKDraftPolicy converts an SDK DraftPolicy to the JSON DTO.
+func FromSDKDraftPolicy(draft *openshell.DraftPolicy) DraftPolicy {
+	if draft == nil {
+		return DraftPolicy{Chunks: []PolicyChunk{}}
+	}
+	out := DraftPolicy{
+		Chunks:           []PolicyChunk{},
+		RollingSummary:   draft.RollingSummary,
+		DraftVersion:     draft.DraftVersion,
+		LastAnalyzedAtMs: timeToMs(draft.LastAnalyzedAt),
+	}
+	for i := range draft.Chunks {
+		chunk := &draft.Chunks[i]
+		item := PolicyChunk{
+			ID:               chunk.ID,
+			Status:           chunk.Status,
+			RuleName:         chunk.RuleName,
+			Rationale:        chunk.Rationale,
+			SecurityNotes:    chunk.SecurityNotes,
+			Confidence:       chunk.Confidence,
+			CreatedAtMs:      timeToMs(chunk.CreatedAt),
+			DecidedAtMs:      timeToMs(chunk.DecidedAt),
+			HitCount:         chunk.HitCount,
+			Binary:           chunk.Binary,
+			ValidationResult: chunk.ValidationResult,
+			RejectionReason:  chunk.RejectionReason,
+		}
+		if chunk.ProposedRule != nil {
+			item.ProposedRule = MarshalSDKNetworkPolicyRule(chunk.ProposedRule)
+		}
+		out.Chunks = append(out.Chunks, item)
+	}
+	return out
+}
+
+// FromSDKDraftHistory converts SDK draft history entries to JSON DTOs.
+func FromSDKDraftHistory(entries []openshell.DraftHistoryEntry) []DraftHistoryEntry {
+	out := make([]DraftHistoryEntry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, DraftHistoryEntry{
+			TimestampMs: timeToMs(e.Timestamp),
+			EventType:   e.EventType,
+			Description: e.Description,
+			ChunkID:     e.ChunkID,
+		})
+	}
+	return out
+}
+
+// FromSDKServiceEndpoint converts an SDK ServiceEndpoint to the JSON DTO.
+func FromSDKServiceEndpoint(svc *openshell.ServiceEndpoint) ServiceEndpoint {
+	if svc == nil {
+		return ServiceEndpoint{}
+	}
+	return ServiceEndpoint{
+		SandboxName: svc.SandboxName,
+		ServiceName: svc.ServiceName,
+		TargetPort:  svc.TargetPort,
+		Domain:      svc.Domain,
+		URL:         svc.URL,
+	}
+}
+
+func sdkSettingValueString(sv openshell.SettingValue) string {
+	switch sv.Type {
+	case openshell.SettingValueString:
+		return sv.StringVal
+	case openshell.SettingValueBool:
+		return fmt.Sprintf("%t", sv.BoolVal)
+	case openshell.SettingValueInt:
+		return fmt.Sprintf("%d", sv.IntVal)
+	case openshell.SettingValueBytes:
+		return fmt.Sprintf("%x", sv.BytesVal)
+	}
+	return ""
+}
+
+// FromSDKGatewaySettings converts an SDK GatewayConfig to the JSON DTO.
+func FromSDKGatewaySettings(config *openshell.GatewayConfig) GatewaySettings {
+	if config == nil {
+		return GatewaySettings{Settings: []SettingEntry{}}
+	}
+	out := GatewaySettings{
+		Settings:         []SettingEntry{},
+		SettingsRevision: config.SettingsRevision,
+	}
+	for key, val := range config.Settings {
+		out.Settings = append(out.Settings, SettingEntry{
+			Key:   key,
+			Value: sdkSettingValueString(val),
+		})
+	}
+	sort.Slice(out.Settings, func(i, j int) bool {
+		return out.Settings[i].Key < out.Settings[j].Key
+	})
+	return out
+}
+
+// FromSDKInferenceRoute converts an SDK InferenceRoute to the JSON DTO.
+func FromSDKInferenceRoute(route *openshell.InferenceRoute) InferenceRoute {
+	if route == nil {
+		return InferenceRoute{}
+	}
+	return InferenceRoute{
+		RouteName:    route.RouteName,
+		ProviderName: route.ProviderName,
+		ModelID:      route.ModelID,
+		Version:      route.Version,
+		TimeoutSecs:  route.TimeoutSecs,
+	}
+}
+
+// FromSDKCurrentUser converts an SDK CurrentUser to the JSON DTO.
+func FromSDKCurrentUser(user *openshell.CurrentUser) CurrentUser {
+	if user == nil {
+		return CurrentUser{}
+	}
+	return CurrentUser{
+		Subject:          user.Subject,
+		DisplayName:      user.DisplayName,
+		Roles:            user.Roles,
+		Scopes:           user.Scopes,
+		IdentityProvider: user.IdentityProvider,
+	}
+}
+
+func sdkServiceStatusString(status openshell.ServiceStatus) string {
+	switch status {
+	case openshell.ServiceStatusHealthy:
+		return "HEALTHY"
+	case openshell.ServiceStatusDegraded:
+		return "DEGRADED"
+	case openshell.ServiceStatusUnhealthy:
+		return "UNHEALTHY"
+	}
+	return "UNSPECIFIED"
+}
+
+// FromSDKGatewayInfo converts an SDK GatewayInfo to the JSON DTO.
+func FromSDKGatewayInfo(info *openshell.GatewayInfo) GatewayInfo {
+	if info == nil {
+		return GatewayInfo{Status: "UNSPECIFIED", ComputeDrivers: []ComputeDriver{}}
+	}
+	out := GatewayInfo{
+		Status:         sdkServiceStatusString(info.Status),
+		GatewayVersion: info.Version,
+		ComputeDrivers: []ComputeDriver{},
+	}
+	for _, driver := range info.ComputeDrivers {
+		out.ComputeDrivers = append(out.ComputeDrivers, ComputeDriver{
+			Name:          driver.Name,
+			DriverName:    driver.DriverName,
+			DriverVersion: driver.DriverVersion,
+		})
+	}
+	return out
+}
+
+// FromSDKSandboxLogs converts an SDK LogResult to the JSON DTO.
+func FromSDKSandboxLogs(result *openshell.LogResult) SandboxLogs {
+	if result == nil {
+		return SandboxLogs{Logs: []LogLine{}}
+	}
+	out := SandboxLogs{Logs: []LogLine{}, BufferTotal: result.BufferTotal}
+	for _, line := range result.Lines {
+		out.Logs = append(out.Logs, LogLine{
+			TimestampMs: timeToMs(line.Timestamp),
+			Level:       line.Level,
+			Target:      line.Target,
+			Message:     line.Message,
+			Source:      line.Source,
+			Fields:      line.Fields,
 		})
 	}
 	return out

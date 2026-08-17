@@ -7,6 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
 )
 
@@ -30,24 +32,28 @@ func (app *App) GetDraftSummary(w http.ResponseWriter, _ *http.Request) {
 // GetDraftPolicy returns the draft-policy inbox for a sandbox. Optional
 // ?status=pending|approved|rejected filter.
 func (app *App) GetDraftPolicy(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.GetDraftPolicy(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), r.URL.Query().Get("status"))
+	var opts []openshell.GetDraftOption
+	if status := r.URL.Query().Get("status"); status != "" {
+		opts = append(opts, openshell.WithStatusFilter(status))
+	}
+	draft, err := app.sdk.Policy().GetDraft(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), opts...)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromDraftPolicy(resp))
+	writeJSON(w, http.StatusOK, models.FromSDKDraftPolicy(draft))
 }
 
 // ApproveDraftChunk merges one proposed rule into the active policy.
 func (app *App) ApproveDraftChunk(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.ApproveDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"))
+	result, err := app.sdk.Policy().ApproveDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.PolicyUpdateResult{
-		Version:    resp.GetPolicyVersion(),
-		PolicyHash: resp.GetPolicyHash(),
+		Version:    result.PolicyVersion,
+		PolicyHash: result.PolicyHash,
 	})
 }
 
@@ -63,8 +69,8 @@ func (app *App) RejectDraftChunk(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength > 0 && !decodeBody(w, r, &body) {
 		return
 	}
-	if _, err := app.gateway.RejectDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"), body.Reason); err != nil {
-		writeGrpcError(w, err)
+	if err := app.sdk.Policy().RejectDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"), body.Reason); err != nil {
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"rejected": true})
@@ -82,20 +88,24 @@ func (app *App) ApproveAllDraftChunks(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength > 0 && !decodeBody(w, r, &body) {
 		return
 	}
-	resp, err := app.gateway.ApproveAllDraftChunks(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), body.IncludeSecurityFlagged)
+	var opts []openshell.ApproveAllOption
+	if body.IncludeSecurityFlagged {
+		opts = append(opts, openshell.WithIncludeSecurityFlagged())
+	}
+	result, err := app.sdk.Policy().ApproveAllDraftChunks(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), opts...)
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"policyVersion":  resp.GetPolicyVersion(),
-		"policyHash":     resp.GetPolicyHash(),
-		"chunksApproved": resp.GetChunksApproved(),
-		"chunksSkipped":  resp.GetChunksSkipped(),
+		"policyVersion":  result.PolicyVersion,
+		"policyHash":     result.PolicyHash,
+		"chunksApproved": result.ChunksApproved,
+		"chunksSkipped":  result.ChunksSkipped,
 	})
 }
 
-// EditDraftChunkRequest carries the replacement proposed rule as protojson.
+// EditDraftChunkRequest carries the replacement proposed rule as JSON.
 type EditDraftChunkRequest struct {
 	ProposedRule json.RawMessage `json:"proposedRule"`
 }
@@ -110,14 +120,14 @@ func (app *App) EditDraftChunk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_rule", "proposedRule is required")
 		return
 	}
-	rule, err := models.ParseNetworkPolicyRule(body.ProposedRule)
+	rule, err := models.ParseSDKNetworkPolicyRule(body.ProposedRule)
 	if err != nil {
 		slog.Error("invalid network policy rule", "error", err)
-		writeError(w, http.StatusBadRequest, "invalid_rule", "invalid network policy rule")
+		writeError(w, http.StatusBadRequest, "invalid_rule", "proposedRule does not match NetworkPolicyRule schema: "+err.Error())
 		return
 	}
-	if err := app.gateway.EditDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"), rule); err != nil {
-		writeGrpcError(w, err)
+	if err := app.sdk.Policy().EditDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"), rule); err != nil {
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"edited": true})
@@ -126,36 +136,36 @@ func (app *App) EditDraftChunk(w http.ResponseWriter, r *http.Request) {
 // UndoDraftChunk reverts an already-approved chunk, removing its rule from the
 // active policy.
 func (app *App) UndoDraftChunk(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.UndoDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"))
+	result, err := app.sdk.Policy().UndoDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.PolicyUpdateResult{
-		Version:    resp.GetPolicyVersion(),
-		PolicyHash: resp.GetPolicyHash(),
+		Version:    result.PolicyVersion,
+		PolicyHash: result.PolicyHash,
 	})
 }
 
 // ClearDraftChunks removes all pending draft chunks for a sandbox.
 func (app *App) ClearDraftChunks(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.ClearDraftChunks(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	result, err := app.sdk.Policy().ClearDraftChunks(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"chunksCleared": resp.GetChunksCleared(),
+		"chunksCleared": result.ChunksCleared,
 	})
 }
 
 // GetDraftHistory returns the chronological decision history for a sandbox's
 // draft policy.
 func (app *App) GetDraftHistory(w http.ResponseWriter, r *http.Request) {
-	resp, err := app.gateway.GetDraftHistory(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	entries, err := app.sdk.Policy().GetDraftHistory(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
 	if err != nil {
-		writeGrpcError(w, err)
+		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromDraftHistory(resp))
+	writeJSON(w, http.StatusOK, models.FromSDKDraftHistory(entries))
 }

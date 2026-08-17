@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -10,7 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 
-	openshellv1 "github.com/Gkrumbach07/openshell-dashboard/backend/gen/openshellv1"
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 const (
@@ -37,21 +38,20 @@ func parseDimensions(r *http.Request) (cols, rows uint32) {
 	return cols, rows
 }
 
-func relayGRPCToWS(ws *websocket.Conn, stream openshellv1.OpenShell_ExecSandboxInteractiveClient, cancel context.CancelFunc) {
+func relaySessionToWS(ws *websocket.Conn, session openshell.InteractiveSession, cancel context.CancelFunc) {
 	defer cancel()
+	buf := make([]byte, 32*1024)
 	for {
-		event, recvErr := stream.Recv()
-		if recvErr != nil {
-			return
+		n, err := session.Read(buf)
+		if n > 0 {
+			_ = ws.WriteMessage(websocket.BinaryMessage, buf[:n])
 		}
-		switch p := event.Payload.(type) {
-		case *openshellv1.ExecSandboxEvent_Stdout:
-			_ = ws.WriteMessage(websocket.BinaryMessage, p.Stdout.Data)
-		case *openshellv1.ExecSandboxEvent_Stderr:
-			_ = ws.WriteMessage(websocket.BinaryMessage, p.Stderr.Data)
-		case *openshellv1.ExecSandboxEvent_Exit:
-			msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure,
-				strconv.Itoa(int(p.Exit.ExitCode)))
+		if err != nil {
+			code := 0
+			if exitCode, exitErr := session.ExitCode(); exitErr == nil {
+				code = exitCode
+			}
+			msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, strconv.Itoa(code))
 			_ = ws.WriteMessage(websocket.CloseMessage, msg)
 			return
 		}
@@ -61,14 +61,6 @@ func relayGRPCToWS(ws *websocket.Conn, stream openshellv1.OpenShell_ExecSandboxI
 func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	name := chi.URLParam(r, "name")
-
-	sandbox, err := app.gateway.GetSandbox(r.Context(), workspace, name)
-	if err != nil {
-		writeGrpcError(w, err)
-		return
-	}
-	sandboxID := sandbox.GetMetadata().GetId()
-
 	cols, rows := parseDimensions(r)
 
 	upgrader := websocket.Upgrader{
@@ -85,37 +77,19 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	slog.Info("opening exec stream", "sandbox_id", sandboxID, "cols", cols, "rows", rows)
-	stream, err := app.gateway.ExecSandboxInteractive(ctx)
+	slog.Info("opening interactive session", "workspace", workspace, "name", name, "cols", cols, "rows", rows)
+	session, err := app.sdk.Exec().Interactive(ctx, workspace, name, []string{defaultShell}, cols, rows)
 	if err != nil {
-		slog.Error("exec stream open failed", "error", err)
+		slog.Error("interactive session open failed", "error", err)
 		_ = ws.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "failed to open exec stream"))
 		return
 	}
-	slog.Info("exec stream opened, sending start")
+	defer session.Close()
+	slog.Info("interactive session opened, entering relay loop")
 
-	if err := stream.Send(&openshellv1.ExecSandboxInput{
-		Payload: &openshellv1.ExecSandboxInput_Start{
-			Start: &openshellv1.ExecSandboxRequest{
-				SandboxId: sandboxID,
-				Command:   []string{defaultShell},
-				Tty:       true,
-				Cols:      cols,
-				Rows:      rows,
-			},
-		},
-	}); err != nil {
-		slog.Error("exec start failed", "error", err)
-		_ = ws.WriteMessage(websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "failed to start exec"))
-		return
-	}
-	slog.Info("exec start sent, entering relay loop")
+	go relaySessionToWS(ws, session, cancel)
 
-	go relayGRPCToWS(ws, stream, cancel)
-
-	// WS -> gRPC
 	for {
 		msgType, data, readErr := ws.ReadMessage()
 		if readErr != nil {
@@ -125,22 +99,14 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 		if msgType == websocket.TextMessage {
 			var resize resizeMessage
 			if json.Unmarshal(data, &resize) == nil && resize.Type == "resize" {
-				_ = stream.Send(&openshellv1.ExecSandboxInput{
-					Payload: &openshellv1.ExecSandboxInput_Resize{
-						Resize: &openshellv1.ExecSandboxWindowResize{
-							Cols: resize.Cols,
-							Rows: resize.Rows,
-						},
-					},
-				})
+				_ = session.Resize(resize.Cols, resize.Rows)
 				continue
 			}
 		}
-		_ = stream.Send(&openshellv1.ExecSandboxInput{
-			Payload: &openshellv1.ExecSandboxInput_Stdin{
-				Stdin: data,
-			},
-		})
+		if _, writeErr := session.Write(data); writeErr != nil && writeErr != io.EOF {
+			cancel()
+			return
+		}
 	}
 }
 
