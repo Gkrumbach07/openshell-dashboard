@@ -29,7 +29,7 @@ const AppRoutes: React.FC = () => {
   const authRequired = Boolean(config && !config.authDisabled);
   const {
     data: user,
-    isLoading: whoamiLoading,
+    isPending: whoamiPending,
     isError: whoamiError,
     error: whoamiQueryError,
     refetch: refetchWhoami,
@@ -94,7 +94,7 @@ const AppRoutes: React.FC = () => {
   }
 
   // Auth-on: prove session via whoami before mounting privileged UI (ADR 0002).
-  if (whoamiLoading) {
+  if (whoamiPending) {
     return <AuthBootstrapLoading />;
   }
 

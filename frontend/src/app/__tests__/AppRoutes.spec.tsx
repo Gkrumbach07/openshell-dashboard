@@ -34,6 +34,7 @@ const features: AuthConfig['features'] = {
 const idleWhoami = {
   data: undefined,
   isLoading: false,
+  isPending: false,
   isError: false,
   error: null,
   refetch: jest.fn(),
@@ -80,6 +81,7 @@ describe('AppRoutes', () => {
     mockUseCurrentUser.mockReturnValue({
       data: undefined,
       isLoading: false,
+      isPending: false,
       isError: true,
       error: { status: 401, message: 'Session expired' },
       refetch: jest.fn(),
@@ -88,6 +90,27 @@ describe('AppRoutes', () => {
     renderGate();
 
     expect(screen.getByTestId('auth-required')).toBeInTheDocument();
+    expect(screen.queryByTestId('authenticated-shell')).not.toBeInTheDocument();
+  });
+
+  it('shows loading spinner while whoami is pending', () => {
+    mockUseAuthConfig.mockReturnValue({
+      data: { authDisabled: false, features } satisfies AuthConfig,
+      isLoading: false,
+    });
+    mockUseCurrentUser.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isPending: true,
+      isError: false,
+      error: null,
+      refetch: jest.fn(),
+    });
+
+    renderGate();
+
+    expect(screen.getByLabelText('Loading session')).toBeInTheDocument();
+    expect(screen.queryByTestId('auth-required')).not.toBeInTheDocument();
     expect(screen.queryByTestId('authenticated-shell')).not.toBeInTheDocument();
   });
 
@@ -100,6 +123,7 @@ describe('AppRoutes', () => {
     mockUseCurrentUser.mockReturnValue({
       data: user,
       isLoading: false,
+      isPending: false,
       isError: false,
       error: null,
       refetch: jest.fn(),
