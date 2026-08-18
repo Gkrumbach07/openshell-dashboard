@@ -63,7 +63,7 @@ Key patterns:
 
 ### 2. Add the route
 
-Routes are defined in `frontend/src/app/App.tsx` inside the `AuthenticatedApp` component's `<Routes>` block (not `AppRoutes` — that handles auth mode switching):
+Routes are defined in `frontend/src/app/AuthenticatedRoutes.tsx` inside the `<Routes>` block (not `AppRoutes.tsx` — that handles auth mode switching):
 
 ```tsx
 <Route path="/workspaces/:workspace/sandboxes" element={<SandboxListPage />} />

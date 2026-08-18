@@ -1,5 +1,3 @@
-import { isDevSession } from '../app/authStore';
-
 export type ApiError = Error & {
   status: number;
   code?: string;
@@ -18,7 +16,6 @@ const buildError = (
 
 let apiBasePath = '';
 let onSessionExpired: (() => void) | null = null;
-let reloadedFor401 = false;
 
 export const setApiBasePath = (basePath: string): void => {
   apiBasePath = basePath.replace(/\/+$/, '');
@@ -26,7 +23,9 @@ export const setApiBasePath = (basePath: string): void => {
 
 export const getApiBasePath = (): string => apiBasePath;
 
-export const setSessionExpiredHandler = (handler: () => void): void => {
+export const setSessionExpiredHandler = (
+  handler: (() => void) | null,
+): void => {
   onSessionExpired = handler;
 };
 
@@ -59,19 +58,7 @@ export const apiFetch = async <T>(
     }
 
     if (response.status === 401) {
-      if (onSessionExpired) {
-        onSessionExpired();
-      } else if (isDevSession()) {
-        // Dev mode registers a /login route; send the user back to it.
-        window.location.assign('/login');
-      } else if (!reloadedFor401) {
-        // Proxied deployments have no /login route — the auth proxy owns
-        // sign-in. Reload the page so the proxy can re-authenticate the
-        // browser (it intercepts the document request and redirects to the
-        // IdP). Guarded so repeated API 401s in one page life can't loop.
-        reloadedFor401 = true;
-        window.location.reload();
-      }
+      onSessionExpired?.();
       throw buildError(401, code, 'Session expired');
     }
 
