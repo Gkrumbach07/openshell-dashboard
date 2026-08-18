@@ -17,9 +17,9 @@ PROTO_GRPC_OPTS := \
 	--go-grpc_opt=Minference.proto=$(GO_MODULE)/gen/inferencev1 \
 	--go-grpc_opt=Mopenshell.proto=$(GO_MODULE)/gen/openshellv1
 
-# Auto-source dev environment config if available (written by scripts/dev-env.sh)
+# Auto-source dev environment config if available (written by scripts/dev-env.sh).
 -include scripts/.env.dev
-export
+export OPENSHELL_DIR OPENSHELL_GATEWAY_URL GATEWAY_CA_CERT OIDC_ISSUER OIDC_CLIENT_ID
 
 .PHONY: setup proto dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean
 
@@ -43,6 +43,9 @@ dev-full: ## Start Keycloak + gateway, then frontend + BFF (one command)
 dev: ## Start frontend dev server (:3000) and Go BFF (:8080)
 	@$(MAKE) -j2 dev-backend dev-frontend
 
+# Default auth-off for plain make dev. Override: AUTH_DISABLED=false make dev
+# (or export AUTH_DISABLED=false). Ignores stale AUTH_DISABLED in scripts/.env.dev
+# because that file is included as a make var but not exported to the shell.
 dev-backend:
 	cd backend && AUTH_DISABLED=$${AUTH_DISABLED:-true} go run ./cmd/server
 

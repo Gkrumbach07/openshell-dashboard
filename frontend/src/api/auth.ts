@@ -19,12 +19,17 @@ export const useAuthConfig = () =>
 export const getCurrentUser = (): Promise<CurrentUser> =>
   get<CurrentUser>('/api/v1/auth/whoami');
 
-export const useCurrentUser = () =>
+type UseCurrentUserOptions = {
+  enabled?: boolean;
+};
+
+export const useCurrentUser = (options: UseCurrentUserOptions = {}) =>
   useQuery({
     queryKey: authKeys.whoami,
     queryFn: getCurrentUser,
     staleTime: STALE_5_MIN,
     retry: false,
+    enabled: options.enabled ?? true,
   });
 
 export const useFeatureFlags = () => {

@@ -1,4 +1,11 @@
-import { apiFetch, get, post, put, del } from '../client';
+import {
+  apiFetch,
+  get,
+  post,
+  put,
+  del,
+  setSessionExpiredHandler,
+} from '../client';
 import type { ApiError } from '../client';
 
 const mockFetch = jest.fn();
@@ -9,6 +16,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  setSessionExpiredHandler(null);
 });
 
 describe('apiFetch', () => {
@@ -81,6 +89,52 @@ describe('apiFetch', () => {
     await apiFetch('/api/v1/test');
     const [, init] = mockFetch.mock.calls[0];
     expect(init.headers['Content-Type']).toBeUndefined();
+  });
+
+  it('throws on 401 without invoking a session handler when none is set', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: () =>
+        Promise.resolve({ code: 'unauthorized', message: 'not authenticated' }),
+    });
+
+    await expect(apiFetch('/api/v1/workspaces')).rejects.toMatchObject({
+      status: 401,
+    });
+  });
+
+  it('invokes session expired handler on 401', async () => {
+    const onExpired = jest.fn();
+    setSessionExpiredHandler(onExpired);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: () =>
+        Promise.resolve({ code: 'unauthorized', message: 'not authenticated' }),
+    });
+
+    await expect(apiFetch('/api/v1/workspaces')).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(onExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears session handler when set to null', async () => {
+    const onExpired = jest.fn();
+    setSessionExpiredHandler(onExpired);
+    setSessionExpiredHandler(null);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: () =>
+        Promise.resolve({ code: 'unauthorized', message: 'not authenticated' }),
+    });
+
+    await expect(apiFetch('/api/v1/workspaces')).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(onExpired).not.toHaveBeenCalled();
   });
 });
 
