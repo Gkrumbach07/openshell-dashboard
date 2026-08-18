@@ -49,8 +49,9 @@ func (c tokenCredentials) RequireTransportSecurity() bool {
 // New connects to the OpenShell gateway. The URL may be a bare host:port
 // (plaintext) or prefixed with grpcs:// / https:// for TLS. If caCertPath
 // is non-empty, the PEM file is loaded into the TLS RootCAs pool for
-// trusting self-signed certificates.
-func New(gatewayURL, caCertPath string) (*Client, error) {
+// trusting self-signed certificates. clientCertPath and clientKeyPath enable
+// mutual TLS and must be configured together for a TLS endpoint.
+func New(gatewayURL, caCertPath, clientCertPath, clientKeyPath string) (*Client, error) {
 	target := gatewayURL
 	useTLS := false
 	for _, prefix := range []string{"grpcs://", "https://"} {
@@ -61,6 +62,14 @@ func New(gatewayURL, caCertPath string) (*Client, error) {
 	}
 	for _, prefix := range []string{"grpc://", "http://"} {
 		target = strings.TrimPrefix(target, prefix)
+	}
+	hasClientCert := clientCertPath != ""
+	hasClientKey := clientKeyPath != ""
+	if hasClientCert != hasClientKey {
+		return nil, fmt.Errorf("gateway client certificate and key must be configured together")
+	}
+	if hasClientCert && !useTLS {
+		return nil, fmt.Errorf("gateway client certificate requires a TLS gateway URL")
 	}
 
 	transport := insecure.NewCredentials()
@@ -76,6 +85,13 @@ func New(gatewayURL, caCertPath string) (*Client, error) {
 				return nil, fmt.Errorf("failed to parse CA cert %q", caCertPath)
 			}
 			tlsCfg.RootCAs = pool
+		}
+		if hasClientCert {
+			clientCertificate, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
+			if err != nil {
+				return nil, fmt.Errorf("load gateway client certificate: %w", err)
+			}
+			tlsCfg.Certificates = []tls.Certificate{clientCertificate}
 		}
 		transport = credentials.NewTLS(tlsCfg)
 	}

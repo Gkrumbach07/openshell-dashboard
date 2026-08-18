@@ -76,6 +76,7 @@ All flags have env var fallbacks:
 | Flag | Env var | Default | Description |
 |------|---------|---------|-------------|
 | `-port` | `PORT` | `8080` | BFF listen port |
+| `-listen-address` | `LISTEN_ADDRESS` | | BFF listen address; empty binds all interfaces |
 | `-gateway-url` | `OPENSHELL_GATEWAY_URL` | `localhost:50051` | Gateway gRPC endpoint (`grpcs://` prefix for TLS) |
 | `-static-dir` | `STATIC_DIR` |: | Serve built frontend from this directory |
 | `-auth-disabled` | `AUTH_DISABLED` | `false` | Skip auth: **dev only** |
@@ -84,6 +85,46 @@ All flags have env var fallbacks:
 | `-admin-role` | `ADMIN_ROLE` | `admin` | Role name the frontend treats as platform admin (display gating only) |
 | `-logout-url` | `LOGOUT_URL` | `/oauth2/sign_out` | Auth proxy sign-out URL the frontend redirects to on logout |
 | `-gateway-ca-cert` | `GATEWAY_CA_CERT` |: | Path to CA cert for self-signed gateway TLS |
+| `-gateway-client-cert` | `GATEWAY_CLIENT_CERT` | | Path to client certificate for gateway mTLS |
+| `-gateway-client-key` | `GATEWAY_CLIENT_KEY` | | Path to client private key for gateway mTLS |
+
+The browser connects to the dashboard BFF over HTTP or HTTPS. The BFF then
+connects separately, as a gRPC client, to the OpenShell gateway's
+administrative API. These are independent security boundaries: browser
+authentication protects access to the dashboard, while gateway TLS protects
+the BFF-to-gateway connection.
+
+The default local OpenShell gateway requires mutual TLS on its loopback-only
+administrative listener. Run the BFF on the gateway host and configure the
+gateway CA, client certificate, and client key as shown below. Do not point the
+BFF at the gateway listener reachable from sandbox containers; that listener
+is reserved for sandbox callbacks and is not the administrative API.
+
+```bash
+./openshell-dashboard \
+  -listen-address 127.0.0.1 \
+  -gateway-url https://localhost:17670 \
+  -gateway-ca-cert "$HOME/.config/openshell/gateways/openshell/mtls/ca.crt" \
+  -gateway-client-cert "$HOME/.config/openshell/gateways/openshell/mtls/tls.crt" \
+  -gateway-client-key "$HOME/.config/openshell/gateways/openshell/mtls/tls.key" \
+  -auth-disabled
+```
+
+Package-managed OpenShell installations generate this client bundle
+automatically under `~/.config/openshell/gateways/<gateway-name>/mtls/`. See
+OpenShell's [gateway authentication reference](https://github.com/NVIDIA/OpenShell/blob/main/docs/reference/gateway-auth.mdx)
+and [installation guide](https://github.com/NVIDIA/OpenShell/blob/main/docs/about/installation.mdx).
+Operators running a gateway manually or in a container can create the bundle
+with the documented [`generate-certs` flow](https://github.com/NVIDIA/OpenShell/blob/main/docs/about/container-gateway.mdx#full-mtls-setup).
+
+The BFF can also manage a remote OpenShell gateway by setting `-gateway-url`
+to a deliberately exposed administrative endpoint. The gateway's server
+certificate must cover that hostname, and the gateway must trust the BFF's
+client certificate. Mutual TLS is especially important across a network: it
+encrypts the administrative traffic, authenticates the gateway to the BFF,
+and authenticates the BFF to the gateway. Restrict network access to the
+endpoint and place an authentication proxy in front of the BFF for browser
+users; mutual TLS does not replace user authentication or gateway RBAC.
 
 ## Auth
 
