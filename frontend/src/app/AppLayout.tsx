@@ -39,6 +39,7 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 
 import openshellLogo from '~/assets/openshell-logo.svg';
+import openshellLogoDark from '~/assets/openshell-logo-dark.svg';
 import { useGatewayInfo } from '../api/gateway';
 import { useCurrentUser, useFeatureFlags } from '../api/auth';
 import { useUserRole } from '../api/rbac';
@@ -83,6 +84,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [isHelpOpen, setHelpOpen] = useState(false);
   const [isUserOpen, setUserOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const logoSrc = theme === 'dark' ? openshellLogoDark : openshellLogo;
 
   const masthead = (
     <Masthead
@@ -106,7 +108,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             )}
           >
             <img
-              src={openshellLogo}
+              src={logoSrc}
               alt="OpenShell Dashboard"
               style={{ height: 'var(--pf-t--global--spacer--2xl)' }}
             />
@@ -242,7 +244,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         onClose={() => setAboutOpen(false)}
         productName="OpenShell Dashboard"
         trademark="Apache-2.0 license."
-        brandImageSrc={openshellLogo}
+        brandImageSrc={logoSrc}
         brandImageAlt="OpenShell Dashboard"
       >
         <Content>
