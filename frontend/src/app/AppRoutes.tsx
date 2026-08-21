@@ -6,6 +6,7 @@ import LoginPage from '../pages/LoginPage';
 import { useAuthConfig, useCurrentUser } from '../api/auth';
 import type { ApiError } from '../api/client';
 import { setSessionExpiredHandler } from '../api/client';
+import { useI18n } from '../i18n';
 import AuthenticatedRoutes from './AuthenticatedRoutes';
 import AuthRequiredPage from './AuthRequiredPage';
 import { clearDevSession, isDevSession } from './authStore';
@@ -17,13 +18,18 @@ import {
 const isUnauthorized = (error: unknown): boolean =>
   (error as ApiError)?.status === 401;
 
-const AuthBootstrapLoading: React.FC = () => (
-  <Bullseye style={{ minHeight: '100vh' }}>
-    <Spinner aria-label="Loading session" />
-  </Bullseye>
-);
+const AuthBootstrapLoading: React.FC = () => {
+  const { t } = useI18n('auth');
+  return (
+    <Bullseye style={{ minHeight: '100vh' }}>
+      <Spinner aria-label={t('sessionLoading')} />
+    </Bullseye>
+  );
+};
 
 const AppRoutes: React.FC = () => {
+  const { t } = useI18n('auth');
+  const { t: tCommon } = useI18n('common');
   const { data: config, isLoading: configLoading } = useAuthConfig();
   const [devAuthenticated, setDevAuthenticated] = useState(isDevSession());
   const authRequired = Boolean(config && !config.authDisabled);
@@ -107,14 +113,14 @@ const AppRoutes: React.FC = () => {
         <Bullseye style={{ minHeight: '100vh' }}>
           <Alert
             variant="danger"
-            title="Cannot verify session"
+            title={t('sessionVerifyFailed')}
             actionLinks={
               <Button variant="link" onClick={() => void refetchWhoami()}>
-                Retry
+                {tCommon('actions.retry')}
               </Button>
             }
           >
-            Check that the BFF is running and reachable.
+            {t('sessionBffUnreachable')}
           </Alert>
         </Bullseye>
       );

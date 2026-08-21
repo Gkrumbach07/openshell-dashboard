@@ -9,6 +9,8 @@ Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell), th
 
 The frontend's page components are self-contained and exported (`openshell-dashboard/pages`) so downstream platforms can import and wrap them.
 
+UI copy goes through an English-only i18n layer (`openshell-dashboard/i18n`; contract in [ADR 0004](docs/adrs/0004-downstream-consumption-i18n.md)). See [`frontend/src/i18n/README.md`](frontend/src/i18n/README.md) for contributor usage and how hosts can override strings or add locales.
+
 ## Quick start (local dev)
 
 Prereqs: Go 1.25.1+, Node 20+, and a running OpenShell gateway (`openshell gateway start`).

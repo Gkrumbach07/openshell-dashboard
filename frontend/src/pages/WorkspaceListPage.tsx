@@ -33,6 +33,7 @@ import CreateWorkspaceModal from '../components/CreateWorkspaceModal';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
+import { useI18n } from '../i18n';
 import { formatAge } from '../utils/formatters';
 
 type WorkspaceListPageProps = {
@@ -44,6 +45,8 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
   onSelect,
   renderWorkspaceHeader,
 }) => {
+  const { t } = useI18n('workspaces');
+  const { t: tCommon } = useI18n('common');
   const workspaces = useWorkspaces();
   const deleteWorkspace = useDeleteWorkspace();
   const { addSuccess } = useAlerts();
@@ -57,7 +60,7 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
     return (
       <PageSection>
         <Bullseye>
-          <Spinner aria-label="Loading workspaces" />
+          <Spinner aria-label={t('loading')} />
         </Bullseye>
       </PageSection>
     );
@@ -68,10 +71,10 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
       <PageSection>
         <Alert
           variant="danger"
-          title="Failed to load workspaces"
+          title={t('loadFailed')}
           actionLinks={
             <Button variant="link" onClick={() => workspaces.refetch()}>
-              Retry
+              {tCommon('actions.retry')}
             </Button>
           }
         >
@@ -88,18 +91,19 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
   return (
     <>
       <PageSection>
-        <Title headingLevel="h1">Workspaces</Title>
+        <Title headingLevel="h1">{t('title')}</Title>
       </PageSection>
       {renderWorkspaceHeader && (
         <PageSection>{renderWorkspaceHeader()}</PageSection>
       )}
       <PageSection>
         {allRows.length === 0 ? (
-          <EmptyState titleText="No workspaces" icon={CubesIcon} variant="xl">
-            <EmptyStateBody>
-              Workspaces are hard isolation boundaries for sandboxes, providers,
-              and members.
-            </EmptyStateBody>
+          <EmptyState
+            titleText={t('empty.title')}
+            icon={CubesIcon}
+            variant="xl"
+          >
+            <EmptyStateBody>{t('empty.body')}</EmptyStateBody>
             {isPlatformAdmin && (
               <EmptyStateFooter>
                 <EmptyStateActions>
@@ -107,7 +111,7 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
                     onClick={() => setCreateOpen(true)}
                     data-testid="create-workspace-empty"
                   >
-                    Create workspace
+                    {t('create')}
                   </Button>
                 </EmptyStateActions>
               </EmptyStateFooter>
@@ -115,7 +119,7 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
           </EmptyState>
         ) : (
           <>
-            <Toolbar aria-label="Workspace actions">
+            <Toolbar aria-label={t('actionsToolbar')}>
               <ToolbarContent>
                 {isPlatformAdmin && (
                   <ToolbarItem>
@@ -123,7 +127,7 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
                       onClick={() => setCreateOpen(true)}
                       data-testid="create-workspace"
                     >
-                      Create workspace
+                      {t('create')}
                     </Button>
                   </ToolbarItem>
                 )}
@@ -142,20 +146,25 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
                 </ToolbarItem>
               </ToolbarContent>
             </Toolbar>
-            <Table aria-label="Workspaces" data-testid="workspace-table">
+            <Table
+              aria-label={t('table.ariaLabel')}
+              data-testid="workspace-table"
+            >
               <Thead>
                 <Tr>
-                  <Th>Name</Th>
-                  <Th>Phase</Th>
-                  <Th>Labels</Th>
-                  <Th>Age</Th>
-                  {isPlatformAdmin && <Th screenReaderText="Actions" />}
+                  <Th>{t('table.name')}</Th>
+                  <Th>{t('table.phase')}</Th>
+                  <Th>{t('table.labels')}</Th>
+                  <Th>{t('table.age')}</Th>
+                  {isPlatformAdmin && (
+                    <Th screenReaderText={t('table.actions')} />
+                  )}
                 </Tr>
               </Thead>
               <Tbody>
                 {rows.map((workspace) => (
                   <Tr key={workspace.metadata.name}>
-                    <Td dataLabel="Name">
+                    <Td dataLabel={t('table.name')}>
                       <Button
                         variant="link"
                         isInline
@@ -165,13 +174,13 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
                         {workspace.metadata.name}
                       </Button>
                     </Td>
-                    <Td dataLabel="Phase">
+                    <Td dataLabel={t('table.phase')}>
                       <PhaseLabel phase={workspace.phase} />
                     </Td>
-                    <Td dataLabel="Labels">
+                    <Td dataLabel={t('table.labels')}>
                       <LabelsList labels={workspace.metadata.labels} />
                     </Td>
-                    <Td dataLabel="Age">
+                    <Td dataLabel={t('table.age')}>
                       {formatAge(workspace.metadata.createdAtMs)}
                     </Td>
                     {isPlatformAdmin && (
@@ -179,7 +188,7 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
                         <ActionsColumn
                           items={[
                             {
-                              title: 'Delete',
+                              title: t('delete.action'),
                               onClick: () =>
                                 setDeleteTarget(workspace.metadata.name),
                             },
@@ -199,8 +208,8 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
         onClose={() => setCreateOpen(false)}
       />
       <ConfirmDeleteModal
-        title="Delete workspace?"
-        body={`Workspace "${deleteTarget ?? ''}" and everything in it (sandboxes, providers, members) will be deleted.`}
+        title={t('delete.title')}
+        body={t('delete.body', { name: deleteTarget ?? '' })}
         confirmName={deleteTarget ?? undefined}
         isOpen={deleteTarget !== null}
         isDeleting={deleteWorkspace.isPending}
@@ -213,7 +222,7 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
           if (deleteTarget) {
             deleteWorkspace.mutate(deleteTarget, {
               onSuccess: () => {
-                addSuccess(`Workspace "${deleteTarget}" deleted`);
+                addSuccess(t('delete.toast', { name: deleteTarget }));
                 setDeleteTarget(null);
               },
             });

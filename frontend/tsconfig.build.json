@@ -15,6 +15,7 @@
     "src/api",
     "src/types",
     "src/slots",
+    "src/i18n",
     "src/app/AlertContext.tsx",
     "src/app/authStore.ts"
   ],

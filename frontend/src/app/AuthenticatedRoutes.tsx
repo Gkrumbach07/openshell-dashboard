@@ -20,6 +20,7 @@ import ProviderDetailPage from '../pages/ProviderDetailPage';
 import GlobalPolicyPage from '../pages/GlobalPolicyPage';
 import SettingsPage from '../pages/SettingsPage';
 import { useUserRole } from '../api/rbac';
+import { useI18n } from '../i18n';
 import AppLayout from './AppLayout';
 
 const WorkspaceListRoute: React.FC = () => {
@@ -32,33 +33,36 @@ const WorkspaceListRoute: React.FC = () => {
 const WorkspaceCrumbs: React.FC<{ workspace: string; leaf?: string }> = ({
   workspace,
   leaf,
-}) => (
-  <PageBreadcrumb>
-    <Breadcrumb>
-      <BreadcrumbItem
-        render={({ className }) => (
-          <Link className={className} to="/workspaces">
-            Workspaces
-          </Link>
+}) => {
+  const { t } = useI18n('common');
+  return (
+    <PageBreadcrumb>
+      <Breadcrumb>
+        <BreadcrumbItem
+          render={({ className }) => (
+            <Link className={className} to="/workspaces">
+              {t('nav.workspaces')}
+            </Link>
+          )}
+        />
+        {leaf ? (
+          <>
+            <BreadcrumbItem
+              render={({ className }) => (
+                <Link className={className} to={`/workspaces/${workspace}`}>
+                  {workspace}
+                </Link>
+              )}
+            />
+            <BreadcrumbItem isActive>{leaf}</BreadcrumbItem>
+          </>
+        ) : (
+          <BreadcrumbItem isActive>{workspace}</BreadcrumbItem>
         )}
-      />
-      {leaf ? (
-        <>
-          <BreadcrumbItem
-            render={({ className }) => (
-              <Link className={className} to={`/workspaces/${workspace}`}>
-                {workspace}
-              </Link>
-            )}
-          />
-          <BreadcrumbItem isActive>{leaf}</BreadcrumbItem>
-        </>
-      ) : (
-        <BreadcrumbItem isActive>{workspace}</BreadcrumbItem>
-      )}
-    </Breadcrumb>
-  </PageBreadcrumb>
-);
+      </Breadcrumb>
+    </PageBreadcrumb>
+  );
+};
 
 const WorkspaceDetailRoute: React.FC = () => {
   const { workspace } = useParams<{ workspace: string }>();
