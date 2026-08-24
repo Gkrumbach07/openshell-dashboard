@@ -23,7 +23,7 @@ make dev
 
 | Process | Port | Notes |
 |---------|------|-------|
-| Webpack dev server | http://localhost:3000 | proxies `/api` → BFF |
+| Vite dev server | http://localhost:3000 | proxies `/api` → BFF |
 | Go BFF | http://localhost:8080 | runs with `AUTH_DISABLED=true` by default in dev |
 
 Open http://localhost:3000, click **Continue as developer**, and you're in.
@@ -59,7 +59,7 @@ Open http://localhost:3000 and log in via Keycloak with one of the test users:
 | Keycloak | Podman container (`openshell-keycloak`) on port 8180 | Runs until `dev-env.sh stop` |
 | OpenShell gateway | Background process built from source, port 17670 (gRPCs) + 17671 (health) | Runs until `dev-env.sh stop` |
 | Dashboard BFF | `go run` on port 8080 | Runs with `make dev`, Ctrl+C to stop |
-| Dashboard frontend | Webpack dev server on port 3000 | Runs with `make dev`, Ctrl+C to stop |
+| Dashboard frontend | Vite dev server on port 3000 | Runs with `make dev`, Ctrl+C to stop |
 
 Keycloak and the gateway survive across `make dev` restarts. Stop them explicitly:
 

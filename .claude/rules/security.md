@@ -13,7 +13,7 @@ alwaysApply: false
 - The BFF NEVER validates tokens (no JWKS, no go-oidc, no JWT parsing) and NEVER authorizes (ADR 0002). The gateway validates against its own OIDC JWKS and enforces RBAC
 - Deployment invariant: trusting `x-forwarded-access-token` is safe only when the proxy is the sole network path to the BFF (localhost sidecar, pod-internal port, proxy-only ingress). Manifests must enforce this; never expose the BFF port directly in an authenticated deployment
 - Never expose raw gRPC errors to the frontend — use `writeGrpcError()` which maps gRPC status codes to safe HTTP status codes
-- The BFF has no CORS middleware — it is accessed same-origin (behind a proxy or via webpack dev server proxy)
+- The BFF has no CORS middleware — it is accessed same-origin (behind a proxy or via the Vite dev server proxy)
 
 ## Secrets
 
