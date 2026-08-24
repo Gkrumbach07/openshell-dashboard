@@ -1,3 +1,4 @@
+import './monacoEnv';
 import { createRoot } from 'react-dom/client';
 import '@patternfly/react-core/dist/styles/base.css';
 import '@patternfly/react-styles/css/utilities/Spacing/spacing.css';

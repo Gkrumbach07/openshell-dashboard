@@ -24,7 +24,7 @@ export const ROUTES = {
 export const COMMUNITY_REGISTRY =
   'ghcr.io/nvidia/openshell-community/sandboxes';
 
-// Dashboard version — injected by webpack DefinePlugin.
+// Dashboard version — injected by Vite define in vite.config.ts.
 declare const __APP_VERSION__: string;
 export const APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.0';

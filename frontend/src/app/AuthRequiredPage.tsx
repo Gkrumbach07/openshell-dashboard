@@ -30,8 +30,8 @@ const AuthRequiredPage: React.FC = () => (
               This deployment requires a signed-in session. For local
               development, run <code>make dev</code> (defaults to{' '}
               <code>AUTH_DISABLED=true</code>). To test with auth enabled, use{' '}
-              <code>AUTH_DISABLED=false make dev</code> — note that the webpack
-              dev server is not behind an auth proxy, so browser sign-in is not
+              <code>AUTH_DISABLED=false make dev</code> — note that the Vite dev
+              server is not behind an auth proxy, so browser sign-in is not
               available without <code>make dev-full</code> and a fronting proxy.
             </Alert>
           </StackItem>
