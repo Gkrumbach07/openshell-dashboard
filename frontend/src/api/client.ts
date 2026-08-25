@@ -16,6 +16,8 @@ const buildError = (
 
 let apiBasePath = '';
 let onSessionExpired: (() => void) | null = null;
+let authTokenGetter: (() => string | null | Promise<string | null>) | null =
+  null;
 
 export const setApiBasePath = (basePath: string): void => {
   apiBasePath = basePath.replace(/\/+$/, '');
@@ -29,6 +31,24 @@ export const setSessionExpiredHandler = (
   onSessionExpired = handler;
 };
 
+/**
+ * Optional per-request bearer provider.
+ *
+ * By default the package attaches no Authorization header — auth is injected by
+ * the deployment's fronting proxy (ADR 0002/0014). But when the package is
+ * embedded in a host that authenticates to a *second* service (e.g. RHOAI
+ * embedding OpenShell — the "double auth" case), the host must supply the
+ * OpenShell token itself. Register an async getter here: it is awaited before
+ * every request, so the host can drive a browser-side silent OIDC (prompt=none)
+ * refresh and return a fresh token per call. Return null to send no header
+ * (falls back to the proxy-relay model).
+ */
+export const setAuthTokenGetter = (
+  getter: (() => string | null | Promise<string | null>) | null,
+): void => {
+  authTokenGetter = getter;
+};
+
 export const apiFetch = async <T>(
   path: string,
   init?: RequestInit,
@@ -38,8 +58,16 @@ export const apiFetch = async <T>(
     ...((init?.headers as Record<string, string>) ?? {}),
   };
 
-  // Auth is injected by the deployment's auth proxy (ADR 0002) — no
-  // Authorization header, no token in JS.
+  // Auth is normally injected by the deployment's fronting proxy (ADR 0002) —
+  // no Authorization header, no token in JS. When embedded in a host that must
+  // authenticate to OpenShell as a second service, the host registers an auth
+  // token getter (setAuthTokenGetter) that supplies the bearer per request.
+  if (authTokenGetter) {
+    const token = await authTokenGetter();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
   const response = await fetch(`${apiBasePath}${path}`, { ...init, headers });
   if (!response.ok) {
     let code: string | undefined;
