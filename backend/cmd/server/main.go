@@ -24,7 +24,6 @@ import (
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/api"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/gateway"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/sdkclient"
 )
 
@@ -42,18 +41,16 @@ func envOr(key, fallback string) string {
 
 func main() { //nolint:gocyclo // main is inherently branchy due to flag/config handling
 	var (
-		port              = flag.String("port", envOr("PORT", defaultPort), "listen port (env PORT)")
-		listenAddress     = flag.String("listen-address", envOr("LISTEN_ADDRESS", ""), "listen address (env LISTEN_ADDRESS)")
-		gatewayURL        = flag.String("gateway-url", envOr("OPENSHELL_GATEWAY_URL", defaultGatewayURL), "OpenShell gateway gRPC endpoint (env OPENSHELL_GATEWAY_URL)")
-		gatewayCACert     = flag.String("gateway-ca-cert", envOr("GATEWAY_CA_CERT", ""), "path to CA cert for gateway TLS (env GATEWAY_CA_CERT)")
-		gatewayClientCert = flag.String("gateway-client-cert", envOr("GATEWAY_CLIENT_CERT", ""), "path to client certificate for gateway mTLS (env GATEWAY_CLIENT_CERT)")
-		gatewayClientKey  = flag.String("gateway-client-key", envOr("GATEWAY_CLIENT_KEY", ""), "path to client key for gateway mTLS (env GATEWAY_CLIENT_KEY)")
-		staticDir         = flag.String("static-dir", envOr("STATIC_DIR", ""), "frontend static assets directory (env STATIC_DIR)")
-		authDisabled      = flag.Bool("auth-disabled", envOr("AUTH_DISABLED", "false") == "true", "skip auth — dev only (env AUTH_DISABLED)")
-		tokenHeader       = flag.String("auth-token-header", envOr("AUTH_TOKEN_HEADER", "x-forwarded-access-token"), "header injected by auth proxy containing the bearer token (env AUTH_TOKEN_HEADER)")
-		userHeader        = flag.String("auth-user-header", envOr("AUTH_USER_HEADER", "x-auth-request-user"), "header injected by auth proxy containing the username (env AUTH_USER_HEADER)")
-		adminRole         = flag.String("admin-role", envOr("ADMIN_ROLE", "admin"), "role name that grants platform admin access (env ADMIN_ROLE)")
-		logoutURL         = flag.String("logout-url", envOr("LOGOUT_URL", "/oauth2/sign_out"), "auth proxy sign-out URL to redirect to on logout (env LOGOUT_URL)")
+		port          = flag.String("port", envOr("PORT", defaultPort), "listen port (env PORT)")
+		listenAddress = flag.String("listen-address", envOr("LISTEN_ADDRESS", ""), "listen address (env LISTEN_ADDRESS)")
+		gatewayURL    = flag.String("gateway-url", envOr("OPENSHELL_GATEWAY_URL", defaultGatewayURL), "OpenShell gateway gRPC endpoint (env OPENSHELL_GATEWAY_URL)")
+		gatewayCACert = flag.String("gateway-ca-cert", envOr("GATEWAY_CA_CERT", ""), "path to CA cert for gateway TLS (env GATEWAY_CA_CERT)")
+		staticDir     = flag.String("static-dir", envOr("STATIC_DIR", ""), "frontend static assets directory (env STATIC_DIR)")
+		authDisabled  = flag.Bool("auth-disabled", envOr("AUTH_DISABLED", "false") == "true", "skip auth — dev only (env AUTH_DISABLED)")
+		tokenHeader   = flag.String("auth-token-header", envOr("AUTH_TOKEN_HEADER", "x-forwarded-access-token"), "header injected by auth proxy containing the bearer token (env AUTH_TOKEN_HEADER)")
+		userHeader    = flag.String("auth-user-header", envOr("AUTH_USER_HEADER", "x-auth-request-user"), "header injected by auth proxy containing the username (env AUTH_USER_HEADER)")
+		adminRole     = flag.String("admin-role", envOr("ADMIN_ROLE", "admin"), "role name that grants platform admin access (env ADMIN_ROLE)")
+		logoutURL     = flag.String("logout-url", envOr("LOGOUT_URL", "/oauth2/sign_out"), "auth proxy sign-out URL to redirect to on logout (env LOGOUT_URL)")
 	)
 	flag.Parse()
 
@@ -95,13 +92,6 @@ func main() { //nolint:gocyclo // main is inherently branchy due to flag/config 
 		},
 	}
 
-	gatewayClient, err := gateway.New(*gatewayURL, *gatewayCACert, *gatewayClientCert, *gatewayClientKey)
-	if err != nil {
-		slog.Error("gateway client setup failed", "error", err)
-		os.Exit(1)
-	}
-	defer gatewayClient.Close()
-
 	useTLS := strings.HasPrefix(*gatewayURL, "grpcs://") || strings.HasPrefix(*gatewayURL, "https://")
 	sdkAddress := *gatewayURL
 	switch {
@@ -132,7 +122,7 @@ func main() { //nolint:gocyclo // main is inherently branchy due to flag/config 
 	}
 	defer sdkClient.Close()
 
-	app := api.NewApp(gatewayClient, sdkClient, authMiddleware, *staticDir, authCfg)
+	app := api.NewApp(sdkClient, authMiddleware, *staticDir, authCfg)
 
 	addr := net.JoinHostPort(*listenAddress, *port)
 	slog.Info("openshell-dashboard BFF listening",

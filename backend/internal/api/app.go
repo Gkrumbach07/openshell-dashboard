@@ -13,14 +13,12 @@ import (
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/gateway"
 )
 
-// App wires the gateway client, auth middleware, and REST routes.
+// App wires the OpenShell SDK client, auth middleware, and REST routes.
 type App struct { //nolint:govet // fieldalignment: readability over padding
-	gateway gateway.Interface
-	sdk     openshell.ClientInterface
-	auth    *auth.Middleware
+	sdk  openshell.ClientInterface
+	auth *auth.Middleware
 	// authConfig is serialized to the browser via GET /auth/config — never
 	// put secrets in it.
 	authConfig    AuthConfigResponse
@@ -30,9 +28,8 @@ type App struct { //nolint:govet // fieldalignment: readability over padding
 }
 
 // NewApp builds the application.
-func NewApp(gw gateway.Interface, sdkClient openshell.ClientInterface, authMiddleware *auth.Middleware, staticDir string, authCfg AuthConfigResponse) *App {
+func NewApp(sdkClient openshell.ClientInterface, authMiddleware *auth.Middleware, staticDir string, authCfg AuthConfigResponse) *App {
 	app := &App{
-		gateway:    gw,
 		sdk:        sdkClient,
 		auth:       authMiddleware,
 		authConfig: authCfg,
