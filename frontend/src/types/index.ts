@@ -31,10 +31,20 @@ export type WorkspaceMember = {
   role: WorkspaceRole | 'UNSPECIFIED';
 };
 
-// openshell.v1.SandboxPhase — the full lifecycle. There is no stopped or
-// suspended state; a sandbox runs until deleted.
+// openshell.v1.SandboxPhase — the full lifecycle. Sandboxes can be stopped
+// (retaining persistent state) and started again:
+// PROVISIONING → READY → STOPPING → STOPPED → STARTING → READY, plus ERROR and
+// DELETING terminal/transitional states.
 export type SandboxPhase =
-  'PROVISIONING' | 'READY' | 'ERROR' | 'DELETING' | 'UNKNOWN' | 'UNSPECIFIED';
+  | 'PROVISIONING'
+  | 'READY'
+  | 'ERROR'
+  | 'DELETING'
+  | 'STOPPING'
+  | 'STOPPED'
+  | 'STARTING'
+  | 'UNKNOWN'
+  | 'UNSPECIFIED';
 
 export type SandboxCondition = {
   type: string;
@@ -50,6 +60,9 @@ export type SandboxStatus = {
   conditions?: SandboxCondition[];
   phase: SandboxPhase;
   currentPolicyVersion: number;
+  // Main process exit code once the sandbox has exited (undefined while
+  // running). Signal exits are reported as 128+signal.
+  exitCode?: number;
 };
 
 // --- openshell.sandbox.v1.SandboxPolicy (protojson camelCase) ---
@@ -409,6 +422,16 @@ export type PolicyChunk = {
   // Gateway prover verdict — there is no separate verify RPC.
   validationResult?: string;
   rejectionReason?: string;
+  // Pins an approval to the exact evaluated candidate (optimistic concurrency).
+  reviewToken?: string;
+  // Set when a prover-clean chunk still fails to apply to the complete
+  // candidate policy.
+  applicationError?: string;
+  // Before/after effective policy identity and full policies for a diff view.
+  currentEffectivePolicyHash?: string;
+  candidateEffectivePolicyHash?: string;
+  currentEffectivePolicy?: SandboxPolicy;
+  candidateEffectivePolicy?: SandboxPolicy;
 };
 
 export type DraftPolicy = {

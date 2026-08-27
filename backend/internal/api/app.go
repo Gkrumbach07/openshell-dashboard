@@ -98,6 +98,8 @@ func (app *App) Routes() http.Handler {
 					r.Post("/sandboxes", app.CreateSandbox)
 					r.Get("/sandboxes/{name}", app.GetSandbox)
 					r.Delete("/sandboxes/{name}", app.DeleteSandbox)
+					r.Post("/sandboxes/{name}/stop", app.StopSandbox)
+					r.Post("/sandboxes/{name}/start", app.StartSandbox)
 					r.Get("/sandboxes/{name}/logs", app.GetSandboxLogs)
 					r.Get("/sandboxes/{name}/terminal", app.Terminal)
 					r.Get("/sandboxes/{name}/providers", app.ListSandboxProviders)

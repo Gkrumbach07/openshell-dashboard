@@ -32,7 +32,12 @@ import { useNavigate } from 'react-router-dom';
 import { useFeatureFlags } from '../api/auth';
 import { useDraftNotifications, useSandboxPolicies } from '../api/policy';
 import { useProviderExpiry } from '../api/providers';
-import { deleteSandbox, useSandboxes } from '../api/sandboxes';
+import {
+  deleteSandbox,
+  useSandboxes,
+  useStartSandbox,
+  useStopSandbox,
+} from '../api/sandboxes';
 import { useAlerts } from '../app/AlertContext';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CreateSandboxModal from '../components/CreateSandboxModal';
@@ -101,6 +106,8 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
   const providerExpiry = useProviderExpiry(workspace);
   const drafts = useDraftNotifications(features.draftPolicy);
   const { addSuccess } = useAlerts();
+  const stopSandbox = useStopSandbox(workspace);
+  const startSandbox = useStartSandbox(workspace);
   const bulkDelete = useBulkDelete(
     (name) => deleteSandbox(workspace, name),
     ['sandboxes', workspace],
@@ -277,6 +284,14 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
                 }
                 onNameClick={() => onSelect?.(sandbox.metadata.name)}
                 onDelete={() => setDeleteTargets([sandbox.metadata.name])}
+                onStop={() => {
+                  stopSandbox.mutate(sandbox.metadata.name);
+                  addSuccess(`Stopping sandbox ${sandbox.metadata.name}`);
+                }}
+                onStart={() => {
+                  startSandbox.mutate(sandbox.metadata.name);
+                  addSuccess(`Starting sandbox ${sandbox.metadata.name}`);
+                }}
                 onViewLogs={() => viewSandbox(sandbox.metadata.name, 'logs')}
                 onOpenTerminal={
                   sandbox.status.phase === 'READY' && features.terminal

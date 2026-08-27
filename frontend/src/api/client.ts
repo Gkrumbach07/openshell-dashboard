@@ -69,8 +69,11 @@ export const apiFetch = async <T>(
 
 export const get = <T>(path: string): Promise<T> => apiFetch<T>(path);
 
-export const post = <T>(path: string, body: unknown): Promise<T> =>
-  apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) });
+export const post = <T>(path: string, body?: unknown): Promise<T> =>
+  apiFetch<T>(path, {
+    method: 'POST',
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 
 export const put = <T>(path: string, body: unknown): Promise<T> =>
   apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) });

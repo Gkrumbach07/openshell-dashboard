@@ -65,6 +65,21 @@ type PolicyChunk struct {
 	DecidedAtMs      int64           `json:"decidedAtMs,omitempty"`
 	Confidence       float32         `json:"confidence"`
 	HitCount         int32           `json:"hitCount"`
+	// ReviewToken pins an approval to the exact evaluated candidate (optimistic
+	// concurrency). The BFF resolves it server-side on approve; exposed so a
+	// client can echo it directly.
+	ReviewToken string `json:"reviewToken,omitempty"`
+	// ApplicationError is set when a prover-clean chunk still fails to apply to
+	// the complete candidate policy (explains "clean but not applicable").
+	ApplicationError string `json:"applicationError,omitempty"`
+	// CurrentEffectivePolicyHash and CandidateEffectivePolicyHash identify the
+	// before/after effective policies for a diff view.
+	CurrentEffectivePolicyHash   string `json:"currentEffectivePolicyHash,omitempty"`
+	CandidateEffectivePolicyHash string `json:"candidateEffectivePolicyHash,omitempty"`
+	// CurrentEffectivePolicy and CandidateEffectivePolicy carry the full
+	// before/after policies (protojson) so the draft inbox can render a diff.
+	CurrentEffectivePolicy   json.RawMessage `json:"currentEffectivePolicy,omitempty"`
+	CandidateEffectivePolicy json.RawMessage `json:"candidateEffectivePolicy,omitempty"`
 }
 
 // DraftPolicy mirrors GetDraftPolicyResponse.

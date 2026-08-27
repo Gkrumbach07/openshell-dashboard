@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -46,7 +47,21 @@ func (app *App) GetDraftPolicy(w http.ResponseWriter, r *http.Request) {
 
 // ApproveDraftChunk merges one proposed rule into the active policy.
 func (app *App) ApproveDraftChunk(w http.ResponseWriter, r *http.Request) {
-	result, err := app.sdk.Policy().ApproveDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"))
+	workspace := chi.URLParam(r, "workspace")
+	name := chi.URLParam(r, "name")
+	chunkID := chi.URLParam(r, "chunk")
+
+	// The gateway binds each approval to a review_token that pins the exact
+	// evaluated candidate (optimistic concurrency). Resolve the current token
+	// for this chunk from the draft before approving; older gateways return an
+	// empty token, which the RPC accepts.
+	reviewToken, err := app.resolveDraftReviewToken(r.Context(), workspace, name, chunkID)
+	if err != nil {
+		writeSDKError(w, err)
+		return
+	}
+
+	result, err := app.sdk.Policy().ApproveDraftChunk(r.Context(), workspace, name, chunkID, reviewToken)
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -55,6 +70,22 @@ func (app *App) ApproveDraftChunk(w http.ResponseWriter, r *http.Request) {
 		Version:    result.PolicyVersion,
 		PolicyHash: result.PolicyHash,
 	})
+}
+
+// resolveDraftReviewToken returns the review token bound to the given draft
+// chunk, or an empty string if the chunk carries none. The token pins an
+// approval to the exact candidate the gateway last evaluated.
+func (app *App) resolveDraftReviewToken(ctx context.Context, workspace, name, chunkID string) (string, error) {
+	draft, err := app.sdk.Policy().GetDraft(ctx, workspace, name)
+	if err != nil {
+		return "", err
+	}
+	for i := range draft.Chunks {
+		if draft.Chunks[i].ID == chunkID {
+			return draft.Chunks[i].ReviewToken, nil
+		}
+	}
+	return "", nil
 }
 
 // RejectDraftChunkRequest carries the optional reviewer reason, surfaced back

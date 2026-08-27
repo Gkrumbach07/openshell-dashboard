@@ -27,6 +27,8 @@ type SandboxTableRowProps = {
   onSelect: (isSelecting: boolean) => void;
   onNameClick?: () => void;
   onDelete: () => void;
+  onStop?: () => void;
+  onStart?: () => void;
   onViewLogs: () => void;
   onOpenTerminal?: () => void;
   policyView?: SandboxPolicyView;
@@ -47,6 +49,8 @@ const SandboxTableRow: React.FC<SandboxTableRowProps> = ({
   onSelect,
   onNameClick,
   onDelete,
+  onStop,
+  onStart,
   onViewLogs,
   onOpenTerminal,
   policyView,
@@ -63,6 +67,12 @@ const SandboxTableRow: React.FC<SandboxTableRowProps> = ({
   const actionItems = [
     ...(onOpenTerminal ? [{ title: 'Terminal', onClick: onOpenTerminal }] : []),
     { title: 'Logs', onClick: onViewLogs },
+    ...(onStop && sandbox.status.phase === 'READY'
+      ? [{ title: 'Stop', onClick: onStop }]
+      : []),
+    ...(onStart && sandbox.status.phase === 'STOPPED'
+      ? [{ title: 'Start', onClick: onStart }]
+      : []),
     { title: 'Delete', onClick: onDelete },
   ];
 

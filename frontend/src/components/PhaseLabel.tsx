@@ -3,6 +3,7 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   InProgressIcon,
+  PowerOffIcon,
 } from '@patternfly/react-icons';
 
 import type { SandboxPhase, WorkspacePhase } from '../types';
@@ -12,8 +13,8 @@ type PhaseLabelProps = {
 };
 
 // Renders a sandbox or workspace lifecycle phase. Sandbox phases come from
-// the SandboxPhase enum: PROVISIONING → READY | ERROR → DELETING. There is no
-// stopped/suspended state in the OpenShell API.
+// the SandboxPhase enum: PROVISIONING → READY | ERROR → DELETING, plus the
+// stop/start cycle READY → STOPPING → STOPPED → STARTING → READY.
 const PhaseLabel: React.FC<PhaseLabelProps> = ({ phase }) => {
   switch (phase) {
     case 'READY':
@@ -38,8 +39,16 @@ const PhaseLabel: React.FC<PhaseLabelProps> = ({ phase }) => {
         </Label>
       );
     case 'PROVISIONING':
+    case 'STOPPING':
+    case 'STARTING':
       return (
         <Label color="blue" icon={<InProgressIcon />} data-testid="phase-label">
+          {phase}
+        </Label>
+      );
+    case 'STOPPED':
+      return (
+        <Label color="grey" icon={<PowerOffIcon />} data-testid="phase-label">
           {phase}
         </Label>
       );

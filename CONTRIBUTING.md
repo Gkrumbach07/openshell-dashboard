@@ -77,7 +77,7 @@ This is a legal requirement for Apache 2.0 licensed projects. CI will reject uns
 **The proto files are the source of truth** (see `.claude/rules/openshell-api.md`). Do not invent RPCs, fields, or lifecycle states. If a UI concept has no backing RPC, open an issue — do not fabricate an endpoint.
 
 Common mistakes to avoid:
-- No sandbox stop/start/suspend (lifecycle is create → ready/error → delete)
+- Sandbox stop/start exists (v0.0.113+); still no suspend/restart (lifecycle is create → ready/error → stop ⇄ start → delete)
 - No workspace-level policy CRUD (policy is per-sandbox or gateway-global)
 - No events API (use GetSandboxLogs + polling)
 - Provider credentials are write-only — never return secrets to the frontend

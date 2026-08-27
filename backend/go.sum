@@ -1,5 +1,5 @@
-github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20260814001211-c4b500a7de64 h1:1bxTs8ykTjWia0soV7vw6m/0ZhWDjcOD38kGOcH/7r4=
-github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20260814001211-c4b500a7de64/go.mod h1:PPbbhH5tmSfoWzVcb5CXurnMkuJOYpesZmUB1itrlFY=
+github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20260827175501-197b41371d28 h1:Grmzq50KhPbrLFm3xt64gwn3jDMHNMMiqZX2PLbcXXs=
+github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20260827175501-197b41371d28/go.mod h1:fWdNw+NcUcKcvMLTa0/q66wVUJHGwWWV+CZOh/BdMZw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

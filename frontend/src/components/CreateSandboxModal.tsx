@@ -68,7 +68,7 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
     >
       <ModalHeader
         title="Create sandbox"
-        description="A sandbox is a secure execution environment. It runs until deleted — there is no stop or suspend."
+        description="A sandbox is a secure execution environment. It can be stopped and started, and runs until deleted."
       />
       <ModalBody>
         <Form

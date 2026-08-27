@@ -28,7 +28,11 @@ import { useSearchParams } from 'react-router-dom';
 import { useFeatureFlags } from '../api/auth';
 import { useDraftPolicy, useSandboxPolicy } from '../api/policy';
 import { useProviderExpiry } from '../api/providers';
-import { useSandbox } from '../api/sandboxes';
+import {
+  useSandbox,
+  useStartSandbox,
+  useStopSandbox,
+} from '../api/sandboxes';
 import ConnectCard from '../components/ConnectCard';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
@@ -52,6 +56,8 @@ type SandboxDetailPageProps = {
 const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
   const { workspace, sandboxName } = props;
   const sandbox = useSandbox(workspace, sandboxName);
+  const stopSandbox = useStopSandbox(workspace);
+  const startSandbox = useStartSandbox(workspace);
   const features = useFeatureFlags();
   const policyQuery = useSandboxPolicy(workspace, sandboxName);
   const draftsQuery = useDraftPolicy(workspace, sandboxName);
@@ -126,6 +132,31 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
           <FlexItem>
             <PhaseLabel phase={data.status.phase} />
           </FlexItem>
+          <FlexItem align={{ default: 'alignRight' }}>
+            {data.status.phase === 'STOPPED' ? (
+              <Button
+                variant="secondary"
+                data-testid="sandbox-start-button"
+                isLoading={startSandbox.isPending}
+                isDisabled={startSandbox.isPending}
+                onClick={() => startSandbox.mutate(sandboxName)}
+              >
+                Start
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                data-testid="sandbox-stop-button"
+                isLoading={stopSandbox.isPending}
+                isDisabled={
+                  stopSandbox.isPending || data.status.phase !== 'READY'
+                }
+                onClick={() => stopSandbox.mutate(sandboxName)}
+              >
+                Stop
+              </Button>
+            )}
+          </FlexItem>
         </Flex>
       </PageSection>
       <SandboxAttention
@@ -189,6 +220,17 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
                           {data.status.currentPolicyVersion || '-'}
                         </DescriptionListDescription>
                       </DescriptionListGroup>
+                      {data.status.exitCode !== undefined && (
+                        <DescriptionListGroup>
+                          <DescriptionListTerm>Exit code</DescriptionListTerm>
+                          <DescriptionListDescription
+                            data-testid="sandbox-exit-code"
+                            className="pf-v6-u-font-family-monospace"
+                          >
+                            {data.status.exitCode}
+                          </DescriptionListDescription>
+                        </DescriptionListGroup>
+                      )}
                       <DescriptionListGroup>
                         <DescriptionListTerm>
                           Attached providers

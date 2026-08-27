@@ -331,7 +331,7 @@ func (m *mockSDKWorkspaces) ListMembers(ctx context.Context, workspace string, o
 
 type mockSDKPolicy struct {
 	getDraftFn   func(ctx context.Context, workspace, sandboxName string, opts ...openshell.GetDraftOption) (*openshell.DraftPolicy, error)
-	approveFn    func(ctx context.Context, workspace, sandboxName, chunkID string) (*openshell.ApproveResult, error)
+	approveFn    func(ctx context.Context, workspace, sandboxName, chunkID, reviewToken string) (*openshell.ApproveResult, error)
 	rejectFn     func(ctx context.Context, workspace, sandboxName, chunkID, reason string) error
 	approveAllFn func(ctx context.Context, workspace, sandboxName string, opts ...openshell.ApproveAllOption) (*openshell.ApproveAllResult, error)
 	clearFn      func(ctx context.Context, workspace, sandboxName string) (*openshell.ClearResult, error)
@@ -349,9 +349,9 @@ func (m *mockSDKPolicy) GetDraft(ctx context.Context, workspace, sandboxName str
 	return &openshell.DraftPolicy{}, nil
 }
 
-func (m *mockSDKPolicy) ApproveDraftChunk(ctx context.Context, workspace, sandboxName, chunkID string) (*openshell.ApproveResult, error) {
+func (m *mockSDKPolicy) ApproveDraftChunk(ctx context.Context, workspace, sandboxName, chunkID, reviewToken string) (*openshell.ApproveResult, error) {
 	if m.approveFn != nil {
-		return m.approveFn(ctx, workspace, sandboxName, chunkID)
+		return m.approveFn(ctx, workspace, sandboxName, chunkID, reviewToken)
 	}
 	return &openshell.ApproveResult{}, nil
 }

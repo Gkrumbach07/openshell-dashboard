@@ -45,6 +45,22 @@ export const deleteSandbox = (
     `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}`,
   );
 
+export const stopSandbox = (
+  workspace: string,
+  name: string,
+): Promise<Sandbox> =>
+  post<Sandbox>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/stop`,
+  );
+
+export const startSandbox = (
+  workspace: string,
+  name: string,
+): Promise<Sandbox> =>
+  post<Sandbox>(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/start`,
+  );
+
 export const useSandboxes = (workspace: string, labelSelector?: string) =>
   useQuery({
     queryKey: sandboxKeys.list(workspace, labelSelector),
@@ -179,6 +195,24 @@ export const useDeleteSandbox = (workspace: string) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (name: string) => deleteSandbox(workspace, name),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: sandboxKeys.scope(workspace) }),
+  });
+};
+
+export const useStopSandbox = (workspace: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => stopSandbox(workspace, name),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: sandboxKeys.scope(workspace) }),
+  });
+};
+
+export const useStartSandbox = (workspace: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => startSandbox(workspace, name),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: sandboxKeys.scope(workspace) }),
   });
