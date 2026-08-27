@@ -63,10 +63,11 @@ export const approveDraftChunk = (
   workspace: string,
   name: string,
   chunkId: string,
+  reviewToken?: string,
 ): Promise<PolicyUpdateResult> =>
   post<PolicyUpdateResult>(
     `${sandboxBase(workspace, name)}/drafts/${encodeURIComponent(chunkId)}/approve`,
-    {},
+    reviewToken ? { reviewToken } : {},
   );
 
 export const rejectDraftChunk = (
@@ -190,8 +191,11 @@ const useDraftMutation = <TArgs, TResult>(
 };
 
 export const useApproveDraftChunk = (workspace: string, name: string) =>
-  useDraftMutation(workspace, name, (chunkId: string) =>
-    approveDraftChunk(workspace, name, chunkId),
+  useDraftMutation(
+    workspace,
+    name,
+    (args: { chunkId: string; reviewToken?: string }) =>
+      approveDraftChunk(workspace, name, args.chunkId, args.reviewToken),
   );
 
 export const useRejectDraftChunk = (workspace: string, name: string) =>

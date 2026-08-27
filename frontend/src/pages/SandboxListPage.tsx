@@ -105,7 +105,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
   const policyViews = useSandboxPolicies(workspace, visibleNames);
   const providerExpiry = useProviderExpiry(workspace);
   const drafts = useDraftNotifications(features.draftPolicy);
-  const { addSuccess } = useAlerts();
+  const { addSuccess, addDanger } = useAlerts();
   const stopSandbox = useStopSandbox(workspace);
   const startSandbox = useStartSandbox(workspace);
   const bulkDelete = useBulkDelete(
@@ -284,14 +284,26 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
                 }
                 onNameClick={() => onSelect?.(sandbox.metadata.name)}
                 onDelete={() => setDeleteTargets([sandbox.metadata.name])}
-                onStop={() => {
-                  stopSandbox.mutate(sandbox.metadata.name);
-                  addSuccess(`Stopping sandbox ${sandbox.metadata.name}`);
-                }}
-                onStart={() => {
-                  startSandbox.mutate(sandbox.metadata.name);
-                  addSuccess(`Starting sandbox ${sandbox.metadata.name}`);
-                }}
+                onStop={() =>
+                  stopSandbox.mutate(sandbox.metadata.name, {
+                    onSuccess: () =>
+                      addSuccess(`Stopping sandbox ${sandbox.metadata.name}`),
+                    onError: (err) =>
+                      addDanger(
+                        `Failed to stop sandbox ${sandbox.metadata.name}: ${(err as Error).message}`,
+                      ),
+                  })
+                }
+                onStart={() =>
+                  startSandbox.mutate(sandbox.metadata.name, {
+                    onSuccess: () =>
+                      addSuccess(`Starting sandbox ${sandbox.metadata.name}`),
+                    onError: (err) =>
+                      addDanger(
+                        `Failed to start sandbox ${sandbox.metadata.name}: ${(err as Error).message}`,
+                      ),
+                  })
+                }
                 onViewLogs={() => viewSandbox(sandbox.metadata.name, 'logs')}
                 onOpenTerminal={
                   sandbox.status.phase === 'READY' && features.terminal
@@ -343,8 +355,8 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
         }
         body={
           deleteTargets && deleteTargets.length > 1
-            ? `${deleteTargets.length} sandboxes will be permanently deleted. This is the only way to stop running sandboxes.`
-            : `Sandbox "${deleteTargets?.[0] ?? ''}" will be permanently deleted. This is the only way to stop a running sandbox.`
+            ? `${deleteTargets.length} sandboxes will be permanently deleted. This cannot be undone.`
+            : `Sandbox "${deleteTargets?.[0] ?? ''}" will be permanently deleted. This cannot be undone.`
         }
         confirmName={deleteTargets?.length === 1 ? deleteTargets[0] : undefined}
         isOpen={deleteTargets !== null}

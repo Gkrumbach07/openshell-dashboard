@@ -1,19 +1,19 @@
 ---
-description: OpenShell gRPC API reference for dashboard development — proto is source of truth
-globs: "backend/internal/gateway/**,backend/proto/**,frontend/src/api/**,frontend/src/types/**"
+description: OpenShell gRPC API reference for dashboard development — the vendored Go SDK is source of truth
+globs: "backend/internal/sdkclient/**,backend/internal/api/**,frontend/src/api/**,frontend/src/types/**"
 alwaysApply: false
 ---
 
 # OpenShell API Reference
 
-**THE PROTO FILES IN `backend/proto/` ARE THE SOURCE OF TRUTH.** Before writing any gateway wrapper method, REST handler, or TypeScript type, read the actual RPC and message definitions in the proto. Never invent RPCs, fields, or lifecycle states. If a UI idea has no backing RPC, flag it — do not fabricate an endpoint.
+**THE VENDORED GO SDK IS THE SOURCE OF TRUTH.** Since the SDK migration (PR #43), the BFF calls `github.com/NVIDIA/OpenShell/sdk/go` directly — there is no local `backend/proto/` copy or `backend/gen/` anymore (both were removed; `backend/proto/*.proto` predates the migration and is stale/unused — do not edit or regenerate from it). Before writing any handler or TypeScript type, read the actual RPC/message definitions in `$(go env GOMODCACHE)/github.com/!n!v!i!d!i!a/!open!shell/sdk/go@<version>/openshell/v1/` (hand-written client wrappers with doc comments; `types/*.go` for message shapes) or via `go doc`. Never invent RPCs, fields, or lifecycle states. If a UI idea has no backing RPC, flag it — do not fabricate an endpoint. Track upstream via `go get github.com/NVIDIA/OpenShell/sdk/go@latest`.
 
 ## Services
 
-| Service | Proto | What we use |
-|---------|-------|-------------|
-| `openshell.v1.OpenShell` (68 RPCs) | openshell.proto | Sandbox (incl. stop/start), workspace, member, provider, profile, policy, draft policy, logs, SSH, services |
-| `openshell.inference.v1.Inference` (4 RPCs) | inference.proto | Inference route CRUD |
+| Service | SDK package | What we use |
+|---------|-------------|-------------|
+| `openshell.v1.OpenShell` | `openshell/v1` (`Client.Sandboxes()`, `.Workspaces()`, `.Providers()`, `.Policy()`, ...) | Sandbox (incl. stop/start), workspace, member, provider, profile, policy, draft policy, logs, SSH, services |
+| `openshell.inference.v1.Inference` | `openshell/v1` (`Client.Inference()`) | Inference route CRUD |
 
 Skip `GatewayInterceptor`, `SupervisorMiddleware`, `ComputeDriver` — internal/operator only.
 
@@ -29,7 +29,7 @@ Skip `GatewayInterceptor`, `SupervisorMiddleware`, `ComputeDriver` — internal/
 8. **Provider model** (`datamodel.v1.Provider`): metadata, type (profile slug like "claude"/"gitlab"), credentials (map, `secret` option — strip before returning to browser), config (map), credential_expires_at_ms, profile_workspace. No endpoint-URL/status/model fields. Valid types come from `ListProviderProfiles`.
 9. **No list-images API.** Sandbox images are free-text OCI refs; community images by convention `ghcr.io/nvidia/openshell-community/sandboxes/<name>`.
 10. **`GetGatewayInfo` returns only** status, gateway_version, compute_drivers[]. No uptime/db/TLS/auth-mode fields.
-11. **Optimistic concurrency:** `AttachSandboxProvider`, `DetachSandboxProvider`, `UpdateConfig`, `UpdateProviderProfiles` accept `expected_resource_version` — pass the ObjectMeta.resource_version from the last read.
+11. **Optimistic concurrency:** `AttachSandboxProvider`, `DetachSandboxProvider`, `UpdateConfig`, `UpdateProviderProfiles` accept `expected_resource_version` — pass the ObjectMeta.resource_version from the last read. `ApproveDraftChunk` similarly takes a `review_token` (from the chunk's last `GetDraft` read) pinning the exact evaluated candidate; the BFF falls back to resolving it server-side if the client doesn't send one.
 12. **Workspace scoping:** most requests carry a `workspace` field (empty = "default"); list RPCs offer `all_workspaces`. Workspaces themselves are top-level.
 13. **Secret fields** are annotated `[(openshell.options.v1.secret) = true]` in proto — grep for `secret` when adding a wrapper and never serialize those fields to the frontend.
 
