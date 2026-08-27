@@ -29,6 +29,7 @@ import { useFeatureFlags } from '../api/auth';
 import { useDraftPolicy, useSandboxPolicy } from '../api/policy';
 import { useProviderExpiry } from '../api/providers';
 import { useSandbox, useStartSandbox, useStopSandbox } from '../api/sandboxes';
+import { useAlerts } from '../app/AlertContext';
 import ConnectCard from '../components/ConnectCard';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
@@ -41,6 +42,7 @@ import PolicyRuleEditor from '../components/PolicyRuleEditor';
 import SandboxProvidersTab from '../components/sandbox/SandboxProvidersTab';
 import SandboxServicesTab from '../components/sandbox/SandboxServicesTab';
 import { formatTimestamp } from '../utils/formatters';
+import { canStartSandbox, canStopSandbox } from '../utils/sandboxLifecycle';
 
 type SandboxDetailPageProps = {
   workspace: string;
@@ -54,6 +56,7 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
   const sandbox = useSandbox(workspace, sandboxName);
   const stopSandbox = useStopSandbox(workspace);
   const startSandbox = useStartSandbox(workspace);
+  const { addDanger } = useAlerts();
   const features = useFeatureFlags();
   const policyQuery = useSandboxPolicy(workspace, sandboxName);
   const draftsQuery = useDraftPolicy(workspace, sandboxName);
@@ -129,13 +132,20 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
             <PhaseLabel phase={data.status.phase} />
           </FlexItem>
           <FlexItem align={{ default: 'alignRight' }}>
-            {data.status.phase === 'STOPPED' ? (
+            {canStartSandbox(data.status.phase) ? (
               <Button
                 variant="secondary"
                 data-testid="sandbox-start-button"
                 isLoading={startSandbox.isPending}
                 isDisabled={startSandbox.isPending}
-                onClick={() => startSandbox.mutate(sandboxName)}
+                onClick={() =>
+                  startSandbox.mutate(sandboxName, {
+                    onError: (err) =>
+                      addDanger(
+                        `Failed to start sandbox: ${(err as Error).message}`,
+                      ),
+                  })
+                }
               >
                 Start
               </Button>
@@ -145,9 +155,16 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
                 data-testid="sandbox-stop-button"
                 isLoading={stopSandbox.isPending}
                 isDisabled={
-                  stopSandbox.isPending || data.status.phase !== 'READY'
+                  stopSandbox.isPending || !canStopSandbox(data.status.phase)
                 }
-                onClick={() => stopSandbox.mutate(sandboxName)}
+                onClick={() =>
+                  stopSandbox.mutate(sandboxName, {
+                    onError: (err) =>
+                      addDanger(
+                        `Failed to stop sandbox: ${(err as Error).message}`,
+                      ),
+                  })
+                }
               >
                 Stop
               </Button>

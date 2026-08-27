@@ -235,6 +235,93 @@ func TestGetSandbox(t *testing.T) {
 	}
 }
 
+func TestStopSandbox(t *testing.T) {
+	tests := []struct {
+		stopFn     func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
+		name       string
+		wantStatus int
+	}{
+		{
+			name: "success",
+			stopFn: func(_ context.Context, _, name string) (*openshell.Sandbox, error) {
+				return &openshell.Sandbox{ID: "id-1", Name: name, Status: openshell.SandboxStatus{Phase: openshell.SandboxStopping}}, nil
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "not found",
+			stopFn: func(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
+				return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "sandbox not found"}
+			},
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "already stopped conflicts",
+			stopFn: func(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
+				return nil, &openshell.StatusError{Code: openshell.ErrorConflict, Message: "sandbox is not running"}
+			},
+			wantStatus: http.StatusConflict,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sdk := &mockSDK{}
+			sdk.sandboxes.stopFn = tc.stopFn
+			app := newTestAppWithSDK(sdk)
+			r := chi.NewRouter()
+			r.Post("/workspaces/{workspace}/sandboxes/{name}/stop", app.StopSandbox)
+
+			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/stop", nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != tc.wantStatus {
+				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestStartSandbox(t *testing.T) {
+	tests := []struct {
+		startFn    func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
+		name       string
+		wantStatus int
+	}{
+		{
+			name: "success",
+			startFn: func(_ context.Context, _, name string) (*openshell.Sandbox, error) {
+				return &openshell.Sandbox{ID: "id-1", Name: name, Status: openshell.SandboxStatus{Phase: openshell.SandboxStarting}}, nil
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "not found",
+			startFn: func(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
+				return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "sandbox not found"}
+			},
+			wantStatus: http.StatusNotFound,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sdk := &mockSDK{}
+			sdk.sandboxes.startFn = tc.startFn
+			app := newTestAppWithSDK(sdk)
+			r := chi.NewRouter()
+			r.Post("/workspaces/{workspace}/sandboxes/{name}/start", app.StartSandbox)
+
+			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/start", nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != tc.wantStatus {
+				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestDeleteSandbox(t *testing.T) {
 	tests := []struct {
 		deleteFn   func(ctx context.Context, workspace, name string) error

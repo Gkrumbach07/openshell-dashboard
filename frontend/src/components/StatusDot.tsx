@@ -4,7 +4,10 @@ const STATUS_DOT_COLORS: Partial<Record<SandboxPhase, string>> = {
   READY: 'var(--pf-t--global--color--status--success--default)',
   ERROR: 'var(--pf-t--global--color--status--danger--default)',
   PROVISIONING: 'var(--pf-t--global--color--status--info--default)',
+  STARTING: 'var(--pf-t--global--color--status--info--default)',
+  STOPPING: 'var(--pf-t--global--color--status--info--default)',
   DELETING: 'var(--pf-t--global--color--status--warning--default)',
+  STOPPED: 'var(--pf-t--global--icon--color--disabled)',
 };
 
 export const getStatusDotColor = (phase: SandboxPhase): string =>

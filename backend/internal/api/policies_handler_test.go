@@ -210,15 +210,63 @@ func TestGetDraftPolicy(t *testing.T) {
 }
 
 func TestApproveDraftChunk(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
-	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/approve", app.ApproveDraftChunk)
-	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/drafts/c1/approve", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d", w.Code)
-	}
+	t.Run("uses client-supplied review token without resolving the draft", func(t *testing.T) {
+		sdk := &mockSDK{}
+		sdk.policy.getDraftFn = func(_ context.Context, _, _ string, _ ...openshell.GetDraftOption) (*openshell.DraftPolicy, error) {
+			t.Fatal("GetDraft should not be called when the client supplies a reviewToken")
+			return nil, nil
+		}
+		var gotToken string
+		sdk.policy.approveFn = func(_ context.Context, _, _, _, reviewToken string) (*openshell.ApproveResult, error) {
+			gotToken = reviewToken
+			return &openshell.ApproveResult{PolicyVersion: 2}, nil
+		}
+		app := newTestAppWithSDK(sdk)
+		r := chi.NewRouter()
+		r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/approve", app.ApproveDraftChunk)
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/workspaces/default/sandboxes/my-sandbox/drafts/c1/approve",
+			strings.NewReader(`{"reviewToken":"client-token"}`),
+		)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d; body: %s", w.Code, w.Body.String())
+		}
+		if gotToken != "client-token" {
+			t.Errorf("reviewToken passed to ApproveDraftChunk = %q, want %q", gotToken, "client-token")
+		}
+	})
+
+	t.Run("resolves the review token from the draft when the client sends none", func(t *testing.T) {
+		sdk := &mockSDK{}
+		sdk.policy.getDraftFn = func(_ context.Context, _, _ string, _ ...openshell.GetDraftOption) (*openshell.DraftPolicy, error) {
+			return &openshell.DraftPolicy{
+				Chunks: []openshell.PolicyChunk{
+					{ID: "c1", ReviewToken: "resolved-token"},
+				},
+			}, nil
+		}
+		var gotToken string
+		sdk.policy.approveFn = func(_ context.Context, _, _, _, reviewToken string) (*openshell.ApproveResult, error) {
+			gotToken = reviewToken
+			return &openshell.ApproveResult{PolicyVersion: 2}, nil
+		}
+		app := newTestAppWithSDK(sdk)
+		r := chi.NewRouter()
+		r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/approve", app.ApproveDraftChunk)
+		req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/drafts/c1/approve", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d; body: %s", w.Code, w.Body.String())
+		}
+		if gotToken != "resolved-token" {
+			t.Errorf("reviewToken passed to ApproveDraftChunk = %q, want %q", gotToken, "resolved-token")
+		}
+	})
 }
 
 func TestRejectDraftChunk(t *testing.T) {

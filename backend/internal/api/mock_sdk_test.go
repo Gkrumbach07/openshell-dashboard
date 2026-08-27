@@ -46,6 +46,8 @@ type mockSDKSandboxes struct {
 	detachFn        func(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshell.DetachProviderResult, error)
 	listProvidersFn func(ctx context.Context, workspace, sandboxName string) ([]*openshell.Provider, error)
 	getLogsFn       func(ctx context.Context, workspace, name string, opts ...openshell.LogOption) (*openshell.LogResult, error)
+	stopFn          func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
+	startFn         func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
 }
 
 func (m *mockSDKSandboxes) List(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
@@ -112,12 +114,18 @@ func (m *mockSDKSandboxes) GetLogs(ctx context.Context, workspace, name string, 
 	return &openshell.LogResult{}, nil
 }
 
-func (m *mockSDKSandboxes) Start(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
-	panic("not implemented")
+func (m *mockSDKSandboxes) Start(ctx context.Context, workspace, name string) (*openshell.Sandbox, error) {
+	if m.startFn != nil {
+		return m.startFn(ctx, workspace, name)
+	}
+	return &openshell.Sandbox{Name: name}, nil
 }
 
-func (m *mockSDKSandboxes) Stop(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
-	panic("not implemented")
+func (m *mockSDKSandboxes) Stop(ctx context.Context, workspace, name string) (*openshell.Sandbox, error) {
+	if m.stopFn != nil {
+		return m.stopFn(ctx, workspace, name)
+	}
+	return &openshell.Sandbox{Name: name}, nil
 }
 
 func (m *mockSDKSandboxes) WaitStopped(_ context.Context, _, _ string, _ ...openshell.WaitOptions) (*openshell.Sandbox, error) {

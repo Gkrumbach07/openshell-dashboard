@@ -16,6 +16,7 @@ import LabelsList from '../LabelsList';
 import { getPolicySummary } from './SandboxEgressSummary';
 import StatusDot from '../StatusDot';
 import { formatAge } from '../../utils/formatters';
+import { canStartSandbox, canStopSandbox } from '../../utils/sandboxLifecycle';
 import type { Sandbox, SandboxPolicyView } from '../../types';
 
 type PolicySummary = ReturnType<typeof getPolicySummary>;
@@ -67,10 +68,10 @@ const SandboxTableRow: React.FC<SandboxTableRowProps> = ({
   const actionItems = [
     ...(onOpenTerminal ? [{ title: 'Terminal', onClick: onOpenTerminal }] : []),
     { title: 'Logs', onClick: onViewLogs },
-    ...(onStop && sandbox.status.phase === 'READY'
+    ...(onStop && canStopSandbox(sandbox.status.phase)
       ? [{ title: 'Stop', onClick: onStop }]
       : []),
-    ...(onStart && sandbox.status.phase === 'STOPPED'
+    ...(onStart && canStartSandbox(sandbox.status.phase)
       ? [{ title: 'Start', onClick: onStart }]
       : []),
     { title: 'Delete', onClick: onDelete },

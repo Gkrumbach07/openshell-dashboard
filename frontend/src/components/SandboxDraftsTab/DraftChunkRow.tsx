@@ -114,7 +114,12 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
                     <Button
                       variant="primary"
                       size="sm"
-                      onClick={() => approve.mutate(chunk.id)}
+                      onClick={() =>
+                        approve.mutate({
+                          chunkId: chunk.id,
+                          reviewToken: chunk.reviewToken,
+                        })
+                      }
                       isDisabled={approve.isPending}
                       data-testid={`approve-chunk-${chunk.id}`}
                     >
