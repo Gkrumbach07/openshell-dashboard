@@ -52,34 +52,34 @@ type PolicyUpdateResult struct {
 // ProposedRule is protojson of a NetworkPolicyRule. ValidationResult carries
 // the gateway prover verdict (there is no separate verify RPC).
 type PolicyChunk struct {
-	ValidationResult string          `json:"validationResult,omitempty"`
-	Status           string          `json:"status"`
-	RuleName         string          `json:"ruleName,omitempty"`
-	Rationale        string          `json:"rationale,omitempty"`
-	SecurityNotes    string          `json:"securityNotes,omitempty"`
-	ID               string          `json:"id"`
-	RejectionReason  string          `json:"rejectionReason,omitempty"`
-	Binary           string          `json:"binary,omitempty"`
-	ProposedRule     json.RawMessage `json:"proposedRule,omitempty"`
-	CreatedAtMs      int64           `json:"createdAtMs"`
-	DecidedAtMs      int64           `json:"decidedAtMs,omitempty"`
-	Confidence       float32         `json:"confidence"`
-	HitCount         int32           `json:"hitCount"`
 	// ReviewToken pins an approval to the exact evaluated candidate (optimistic
 	// concurrency). The BFF resolves it server-side on approve; exposed so a
 	// client can echo it directly.
-	ReviewToken string `json:"reviewToken,omitempty"`
+	ReviewToken      string `json:"reviewToken,omitempty"`
+	Status           string `json:"status"`
+	RuleName         string `json:"ruleName,omitempty"`
+	Rationale        string `json:"rationale,omitempty"`
+	SecurityNotes    string `json:"securityNotes,omitempty"`
+	ID               string `json:"id"`
+	RejectionReason  string `json:"rejectionReason,omitempty"`
+	Binary           string `json:"binary,omitempty"`
+	ValidationResult string `json:"validationResult,omitempty"`
+	// CandidateEffectivePolicyHash and CurrentEffectivePolicyHash identify the
+	// before/after effective policies for a diff view.
+	CandidateEffectivePolicyHash string `json:"candidateEffectivePolicyHash,omitempty"`
+	CurrentEffectivePolicyHash   string `json:"currentEffectivePolicyHash,omitempty"`
 	// ApplicationError is set when a prover-clean chunk still fails to apply to
 	// the complete candidate policy (explains "clean but not applicable").
-	ApplicationError string `json:"applicationError,omitempty"`
-	// CurrentEffectivePolicyHash and CandidateEffectivePolicyHash identify the
-	// before/after effective policies for a diff view.
-	CurrentEffectivePolicyHash   string `json:"currentEffectivePolicyHash,omitempty"`
-	CandidateEffectivePolicyHash string `json:"candidateEffectivePolicyHash,omitempty"`
+	ApplicationError string          `json:"applicationError,omitempty"`
+	ProposedRule     json.RawMessage `json:"proposedRule,omitempty"`
 	// CurrentEffectivePolicy and CandidateEffectivePolicy carry the full
 	// before/after policies (protojson) so the draft inbox can render a diff.
 	CurrentEffectivePolicy   json.RawMessage `json:"currentEffectivePolicy,omitempty"`
 	CandidateEffectivePolicy json.RawMessage `json:"candidateEffectivePolicy,omitempty"`
+	DecidedAtMs              int64           `json:"decidedAtMs,omitempty"`
+	CreatedAtMs              int64           `json:"createdAtMs"`
+	HitCount                 int32           `json:"hitCount"`
+	Confidence               float32         `json:"confidence"`
 }
 
 // DraftPolicy mirrors GetDraftPolicyResponse.
