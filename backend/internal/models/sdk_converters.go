@@ -54,6 +54,7 @@ func FromSDKSandbox(sandbox *openshell.Sandbox) Sandbox {
 		AgentPod:             sandbox.Status.AgentPod,
 		Phase:                strings.ToUpper(string(sandbox.Status.Phase)),
 		CurrentPolicyVersion: sandbox.Status.CurrentPolicyVersion,
+		ExitCode:             sandbox.Status.ExitCode,
 	}
 	for _, cond := range sandbox.Status.Conditions {
 		out.Status.Conditions = append(out.Status.Conditions, SandboxCondition{
@@ -472,9 +473,20 @@ func FromSDKDraftPolicy(draft *openshell.DraftPolicy) DraftPolicy {
 			Binary:           chunk.Binary,
 			ValidationResult: chunk.ValidationResult,
 			RejectionReason:  chunk.RejectionReason,
+			ReviewToken:      chunk.ReviewToken,
+			ApplicationError: chunk.ApplicationError,
+
+			CurrentEffectivePolicyHash:   chunk.CurrentEffectivePolicyHash,
+			CandidateEffectivePolicyHash: chunk.CandidateEffectivePolicyHash,
 		}
 		if chunk.ProposedRule != nil {
 			item.ProposedRule = MarshalSDKNetworkPolicyRule(chunk.ProposedRule)
+		}
+		if chunk.CurrentEffectivePolicy != nil {
+			item.CurrentEffectivePolicy = marshalSDKPolicy(chunk.CurrentEffectivePolicy)
+		}
+		if chunk.CandidateEffectivePolicy != nil {
+			item.CandidateEffectivePolicy = marshalSDKPolicy(chunk.CandidateEffectivePolicy)
 		}
 		out.Chunks = append(out.Chunks, item)
 	}

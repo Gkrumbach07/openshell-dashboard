@@ -53,7 +53,7 @@ Each rule has a corresponding Architecture Decision Record in [`docs/adrs/`](doc
 
 ## OpenShell API reference
 
-The gateway exposes 68 gRPC RPCs across 2 services (64 in `OpenShell`, 4 in `Inference`). Proto files are in `backend/proto/`.
+The gateway exposes 72 gRPC RPCs across 2 services (68 in `OpenShell`, 4 in `Inference`). Proto files are in `backend/proto/`.
 
 ## Personas
 

@@ -211,7 +211,7 @@ Browser ── REST ──► Go BFF ── gRPC (bearer) ──► OpenShell ga
 - **Proto is source of truth.** `backend/proto/` is copied from `NVIDIA/OpenShell/proto/`; `make proto` regenerates `backend/gen/`. Wrappers in `backend/internal/gateway/` cover the Phase 1 user-facing RPCs only.
 - **Polling for status**: sandbox state uses polling (5s via React Query `refetchInterval`). WebSockets are used only for the interactive terminal.
 - **Secrets never reach the browser**: provider credentials are write-only; the BFF serializes only credential key names.
-- **No sandbox stop/start**: the OpenShell lifecycle is create → ready/error → delete. The UI reflects the API as-is.
+- **Sandbox stop/start** (OpenShell v0.0.113+): the lifecycle is create → ready/error → (stop ⇄ start) → delete. Stopping retains persistent state; there is still no suspend/restart. The UI reflects the API as-is.
 - Sandbox **policy is required at create**: the form ships client-side starter templates (the gateway has no server-side policy library).
 
 See `CLAUDE.md` and `.claude/rules/` for contributor conventions.

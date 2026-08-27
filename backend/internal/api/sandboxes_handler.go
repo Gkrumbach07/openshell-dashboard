@@ -74,6 +74,29 @@ func (app *App) GetSandbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.FromSDKSandbox(sandbox))
 }
 
+// StopSandbox stops a running sandbox while retaining its persistent state.
+// The sandbox transitions through STOPPING to STOPPED and can be resumed with
+// StartSandbox.
+func (app *App) StopSandbox(w http.ResponseWriter, r *http.Request) {
+	sandbox, err := app.sdk.Sandboxes().Stop(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	if err != nil {
+		writeSDKError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, models.FromSDKSandbox(sandbox))
+}
+
+// StartSandbox resumes a previously stopped sandbox. The sandbox transitions
+// through STARTING back to READY.
+func (app *App) StartSandbox(w http.ResponseWriter, r *http.Request) {
+	sandbox, err := app.sdk.Sandboxes().Start(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	if err != nil {
+		writeSDKError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, models.FromSDKSandbox(sandbox))
+}
+
 func (app *App) DeleteSandbox(w http.ResponseWriter, r *http.Request) {
 	if err := app.sdk.Sandboxes().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name")); err != nil {
 		writeSDKError(w, err)

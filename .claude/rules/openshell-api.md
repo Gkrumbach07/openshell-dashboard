@@ -12,14 +12,14 @@ alwaysApply: false
 
 | Service | Proto | What we use |
 |---------|-------|-------------|
-| `openshell.v1.OpenShell` (64 RPCs) | openshell.proto | Sandbox, workspace, member, provider, profile, policy, draft policy, logs, SSH, services |
+| `openshell.v1.OpenShell` (68 RPCs) | openshell.proto | Sandbox (incl. stop/start), workspace, member, provider, profile, policy, draft policy, logs, SSH, services |
 | `openshell.inference.v1.Inference` (4 RPCs) | inference.proto | Inference route CRUD |
 
 Skip `GatewayInterceptor`, `SupervisorMiddleware`, `ComputeDriver` — internal/operator only.
 
 ## Hard facts — do not violate these
 
-1. **No sandbox stop/start/suspend/restart.** `SandboxPhase` = UNSPECIFIED, PROVISIONING, READY, ERROR, DELETING, UNKNOWN. Lifecycle: Create → Ready/Error → Delete. Never generate stop/start endpoints, buttons, or "Suspended" states.
+1. **Sandbox stop/start exists (as of v0.0.113); no suspend/restart.** `StopSandbox` retains persistent state; `StartSandbox` resumes. `SandboxPhase` = UNSPECIFIED, PROVISIONING, READY, ERROR, DELETING, STOPPING, STOPPED, STARTING, UNKNOWN. Lifecycle: Create → Ready/Error → (Stop ⇄ Start) → Delete. There is still no suspend/restart RPC and no "Suspended" state — do not invent those.
 2. **No workspace-scoped named-policy resource.** Policy exists as: (a) `SandboxSpec.policy` — **required** on `CreateSandbox`, then versioned revisions per sandbox; (b) gateway-global via `UpdateConfig(global=true)`. No CreatePolicy/DeletePolicy/ListPolicies-by-workspace RPCs exist.
 3. **Sandbox-scoped `UpdateConfig` may only change `network_policies` and inference fields.** filesystem/landlock/process are immutable after create — render read-only.
 4. **No OCSF events API.** Observability = `GetSandboxLogs` (structured `fields` map on log lines) and `WatchSandbox` platform events. Never build an events query endpoint.

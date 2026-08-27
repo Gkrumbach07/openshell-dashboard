@@ -48,6 +48,10 @@ type SandboxStatus struct {
 	Phase                string             `json:"phase"`
 	Conditions           []SandboxCondition `json:"conditions,omitempty"`
 	CurrentPolicyVersion uint32             `json:"currentPolicyVersion"`
+	// ExitCode is the main process exit code once the sandbox has exited (nil
+	// while running). Signal exits are reported as 128+signal. Surfaced to
+	// explain ERROR-phase sandboxes.
+	ExitCode *int32 `json:"exitCode,omitempty"`
 }
 
 // SandboxSpec is the dashboard view of openshell.v1.SandboxSpec. Policy is
