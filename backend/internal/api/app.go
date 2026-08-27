@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,10 +16,18 @@ import (
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
 )
 
+// StdinExecer runs a command in a sandbox with piped stdin and no TTY — the
+// binary-safe exec path the SDK does not expose. Used only for file upload.
+// Implemented by sdkclient.RawExecClient.
+type StdinExecer interface {
+	ExecWithStdin(ctx context.Context, sandboxID string, command []string, stdin []byte) (string, int, error)
+}
+
 // App wires the OpenShell SDK client, auth middleware, and REST routes.
 type App struct { //nolint:govet // fieldalignment: readability over padding
-	sdk  openshell.ClientInterface
-	auth *auth.Middleware
+	sdk        openshell.ClientInterface
+	execUpload StdinExecer
+	auth       *auth.Middleware
 	// authConfig is serialized to the browser via GET /auth/config — never
 	// put secrets in it.
 	authConfig    AuthConfigResponse
@@ -28,9 +37,10 @@ type App struct { //nolint:govet // fieldalignment: readability over padding
 }
 
 // NewApp builds the application.
-func NewApp(sdkClient openshell.ClientInterface, authMiddleware *auth.Middleware, staticDir string, authCfg AuthConfigResponse) *App {
+func NewApp(sdkClient openshell.ClientInterface, execUpload StdinExecer, authMiddleware *auth.Middleware, staticDir string, authCfg AuthConfigResponse) *App {
 	app := &App{
 		sdk:        sdkClient,
+		execUpload: execUpload,
 		auth:       authMiddleware,
 		authConfig: authCfg,
 		staticDir:  staticDir,

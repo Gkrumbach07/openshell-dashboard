@@ -122,7 +122,19 @@ func main() { //nolint:gocyclo // main is inherently branchy due to flag/config 
 	}
 	defer sdkClient.Close()
 
-	app := api.NewApp(sdkClient, authMiddleware, *staticDir, authCfg)
+	// Dedicated raw client for the one gateway capability the SDK omits:
+	// non-TTY, stdin-carrying ExecSandbox, used for binary file upload.
+	rawHost := sdkAddress
+	rawHost = strings.TrimPrefix(rawHost, "https://")
+	rawHost = strings.TrimPrefix(rawHost, "http://")
+	uploadExec, err := sdkclient.NewRawExecClient(rawHost, *gatewayCACert, useTLS)
+	if err != nil {
+		slog.Error("upload exec client setup failed", "error", err)
+		os.Exit(1)
+	}
+	defer uploadExec.Close()
+
+	app := api.NewApp(sdkClient, uploadExec, authMiddleware, *staticDir, authCfg)
 
 	addr := net.JoinHostPort(*listenAddress, *port)
 	slog.Info("openshell-dashboard BFF listening",

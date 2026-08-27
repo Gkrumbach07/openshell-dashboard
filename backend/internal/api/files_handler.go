@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -54,38 +53,6 @@ func resolveUploadDest(w http.ResponseWriter, destQuery, filename string) (strin
 	return destPath, true
 }
 
-type uploadSession interface {
-	io.Reader
-	io.Writer
-	Close() error
-	ExitCode() (int, error)
-}
-
-func pipeUpload(session uploadSession, fileBytes []byte) (stdout string, exitCode int, err error) {
-	var stdoutBuf bytes.Buffer
-	drainDone := make(chan struct{})
-	go func() {
-		defer close(drainDone)
-		_, _ = io.Copy(&stdoutBuf, session)
-	}()
-
-	if _, writeErr := session.Write(fileBytes); writeErr != nil && writeErr != io.EOF {
-		_ = session.Close()
-		<-drainDone
-		return stdoutBuf.String(), 0, writeErr
-	}
-	if closeErr := session.Close(); closeErr != nil {
-		<-drainDone
-		return stdoutBuf.String(), 0, closeErr
-	}
-	<-drainDone
-
-	if code, exitErr := session.ExitCode(); exitErr == nil {
-		exitCode = code
-	}
-	return stdoutBuf.String(), exitCode, nil
-}
-
 func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	name := chi.URLParam(r, "name")
@@ -117,21 +84,22 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Files().Upload is a stub in this SDK build (defaultSSHTransport.available
-	// is always false). Pipe bytes into dd via Interactive stdin, matching the
-	// pre-migration ExecSandbox contract.
+	// The SDK exposes no non-TTY stdin exec (Run has no stdin; Interactive
+	// forces a PTY that corrupts binary payloads) and its file transport is a
+	// stub. Stream the bytes into `dd` over the gateway's non-TTY ExecSandbox
+	// RPC via the dedicated raw client, resolving name -> sandbox UUID first.
 	ctx, cancel := app.execContext(r.Context())
 	defer cancel()
 
-	session, err := app.sdk.Exec().Interactive(ctx, workspace, name, []string{"dd", "of=" + destPath, "bs=4096"}, defaultTerminalCols, defaultTerminalRows)
+	sandbox, err := app.sdk.Sandboxes().Get(ctx, workspace, name)
 	if err != nil {
 		writeSDKError(w, err)
 		return
 	}
 
-	stdout, exitCode, pipeErr := pipeUpload(session, fileBytes)
-	if pipeErr != nil {
-		writeSDKError(w, pipeErr)
+	stdout, exitCode, execErr := app.execUpload.ExecWithStdin(ctx, sandbox.ID, []string{"dd", "of=" + destPath, "bs=4096"}, fileBytes)
+	if execErr != nil {
+		writeSDKError(w, execErr)
 		return
 	}
 	if exitCode != 0 {
