@@ -9,7 +9,13 @@ import (
 	"time"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	sbv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
+
+// policyProtoMarshaler emits camelCase JSON matching the pre-SDK protojson
+// contract the frontend consumes.
+var policyProtoMarshaler = protojson.MarshalOptions{UseProtoNames: false}
 
 // FromSDKSandbox converts an SDK Sandbox to the JSON DTO the frontend expects.
 func FromSDKSandbox(sandbox *openshell.Sandbox) Sandbox {
@@ -98,36 +104,17 @@ func BuildSDKSandboxSpec(req CreateSandboxRequest) (*openshell.SandboxSpec, erro
 	return spec, nil
 }
 
-// ParseSDKPolicy converts camelCase JSON from the frontend into the SDK SandboxPolicy.
+// ParseSDKPolicy converts camelCase JSON from the frontend into the SDK
+// SandboxPolicy. It round-trips through the proto with protojson so every
+// policy field (L7 rules, deny rules, IP allowlists, multi-port, MCP,
+// middleware, ...) is preserved — protojson rejects unknown fields, matching
+// the pre-SDK validation behavior.
 func ParseSDKPolicy(raw json.RawMessage) (*openshell.SandboxPolicy, error) {
-	var p sdkPolicyJSON
-	if err := json.Unmarshal(raw, &p); err != nil {
+	var pb sbv1.SandboxPolicy
+	if err := protojson.Unmarshal(raw, &pb); err != nil {
 		return nil, err
 	}
-	policy := &openshell.SandboxPolicy{Version: p.Version}
-	if p.Filesystem != nil {
-		policy.Filesystem = &openshell.FilesystemPolicy{
-			IncludeWorkdir: p.Filesystem.IncludeWorkdir,
-			ReadOnly:       p.Filesystem.ReadOnly,
-			ReadWrite:      p.Filesystem.ReadWrite,
-		}
-	}
-	if p.Landlock != nil {
-		policy.Landlock = &openshell.LandlockPolicy{Compatibility: p.Landlock.Compatibility}
-	}
-	if p.Process != nil {
-		policy.Process = &openshell.ProcessPolicy{
-			RunAsUser:  p.Process.RunAsUser,
-			RunAsGroup: p.Process.RunAsGroup,
-		}
-	}
-	if p.NetworkPolicies != nil {
-		policy.NetworkPolicies = make(map[string]openshell.NetworkPolicyRule, len(p.NetworkPolicies))
-		for k, v := range p.NetworkPolicies {
-			policy.NetworkPolicies[k] = parseSDKNetworkRule(v)
-		}
-	}
-	return policy, nil
+	return sandboxPolicyFromProto(&pb), nil
 }
 
 func timeToMs(t time.Time) int64 {
@@ -137,116 +124,14 @@ func timeToMs(t time.Time) int64 {
 	return t.UnixMilli()
 }
 
-// marshalSDKPolicy converts an SDK SandboxPolicy into camelCase JSON for the frontend.
+// marshalSDKPolicy converts an SDK SandboxPolicy into camelCase JSON for the
+// frontend, round-tripping through the proto with protojson for full fidelity.
 func marshalSDKPolicy(p *openshell.SandboxPolicy) json.RawMessage {
-	pj := sdkPolicyJSON{Version: p.Version}
-	if p.Filesystem != nil {
-		pj.Filesystem = &sdkFilesystemJSON{
-			IncludeWorkdir: p.Filesystem.IncludeWorkdir,
-			ReadOnly:       p.Filesystem.ReadOnly,
-			ReadWrite:      p.Filesystem.ReadWrite,
-		}
-	}
-	if p.Landlock != nil {
-		pj.Landlock = &sdkLandlockJSON{Compatibility: p.Landlock.Compatibility}
-	}
-	if p.Process != nil {
-		pj.Process = &sdkProcessJSON{
-			RunAsUser:  p.Process.RunAsUser,
-			RunAsGroup: p.Process.RunAsGroup,
-		}
-	}
-	if p.NetworkPolicies != nil {
-		pj.NetworkPolicies = make(map[string]sdkNetworkPolicyRuleJSON, len(p.NetworkPolicies))
-		for k, rule := range p.NetworkPolicies {
-			pj.NetworkPolicies[k] = marshalSDKNetworkRule(rule)
-		}
-	}
-	raw, err := json.Marshal(pj)
+	raw, err := policyProtoMarshaler.Marshal(sandboxPolicyToProto(p))
 	if err != nil {
 		return nil
 	}
 	return raw
-}
-
-// --- JSON serialization types for SDK policy (camelCase for frontend) ---
-
-type sdkPolicyJSON struct {
-	NetworkPolicies map[string]sdkNetworkPolicyRuleJSON `json:"networkPolicies,omitempty"`
-	Filesystem      *sdkFilesystemJSON                  `json:"filesystem,omitempty"`
-	Landlock        *sdkLandlockJSON                    `json:"landlock,omitempty"`
-	Process         *sdkProcessJSON                     `json:"process,omitempty"`
-	Version         uint32                              `json:"version,omitempty"`
-}
-
-type sdkFilesystemJSON struct {
-	ReadOnly       []string `json:"readOnly,omitempty"`
-	ReadWrite      []string `json:"readWrite,omitempty"`
-	IncludeWorkdir bool     `json:"includeWorkdir,omitempty"`
-}
-
-type sdkLandlockJSON struct {
-	Compatibility string `json:"compatibility,omitempty"`
-}
-
-type sdkProcessJSON struct {
-	RunAsUser  string `json:"runAsUser,omitempty"`
-	RunAsGroup string `json:"runAsGroup,omitempty"`
-}
-
-type sdkNetworkPolicyRuleJSON struct {
-	Name      string                   `json:"name,omitempty"`
-	Endpoints []sdkNetworkEndpointJSON `json:"endpoints,omitempty"`
-	Binaries  []sdkNetworkBinaryJSON   `json:"binaries,omitempty"`
-}
-
-type sdkNetworkEndpointJSON struct {
-	Host        string `json:"host,omitempty"`
-	Protocol    string `json:"protocol,omitempty"`
-	TLS         string `json:"tls,omitempty"`
-	Enforcement string `json:"enforcement,omitempty"`
-	Access      string `json:"access,omitempty"`
-	Port        uint32 `json:"port,omitempty"`
-}
-
-type sdkNetworkBinaryJSON struct {
-	Path string `json:"path,omitempty"`
-}
-
-func parseSDKNetworkRule(rj sdkNetworkPolicyRuleJSON) openshell.NetworkPolicyRule {
-	rule := openshell.NetworkPolicyRule{Name: rj.Name}
-	for _, ej := range rj.Endpoints {
-		rule.Endpoints = append(rule.Endpoints, openshell.PolicyNetworkEndpoint{
-			Host:        ej.Host,
-			Port:        ej.Port,
-			Protocol:    ej.Protocol,
-			TLS:         ej.TLS,
-			Enforcement: ej.Enforcement,
-			Access:      ej.Access,
-		})
-	}
-	for _, bj := range rj.Binaries {
-		rule.Binaries = append(rule.Binaries, openshell.PolicyNetworkBinary{Path: bj.Path})
-	}
-	return rule
-}
-
-func marshalSDKNetworkRule(rule openshell.NetworkPolicyRule) sdkNetworkPolicyRuleJSON {
-	rj := sdkNetworkPolicyRuleJSON{Name: rule.Name}
-	for _, ep := range rule.Endpoints {
-		rj.Endpoints = append(rj.Endpoints, sdkNetworkEndpointJSON{
-			Host:        ep.Host,
-			Port:        ep.Port,
-			Protocol:    ep.Protocol,
-			TLS:         ep.TLS,
-			Enforcement: ep.Enforcement,
-			Access:      ep.Access,
-		})
-	}
-	for _, b := range rule.Binaries {
-		rj.Binaries = append(rj.Binaries, sdkNetworkBinaryJSON{Path: b.Path})
-	}
-	return rj
 }
 
 // RefreshStrategyAWSStsAssumeRole is defined in SDK types but not re-exported
@@ -538,26 +423,27 @@ func FromSDKPolicyStatus(status *openshell.PolicyStatusResult) SandboxPolicyView
 	}
 }
 
-// MarshalSDKNetworkPolicyRule converts an SDK NetworkPolicyRule to camelCase JSON.
+// MarshalSDKNetworkPolicyRule converts an SDK NetworkPolicyRule to camelCase
+// JSON, round-tripping through the proto for full fidelity.
 func MarshalSDKNetworkPolicyRule(rule *openshell.NetworkPolicyRule) json.RawMessage {
 	if rule == nil {
 		return nil
 	}
-	raw, err := json.Marshal(marshalSDKNetworkRule(*rule))
+	raw, err := policyProtoMarshaler.Marshal(networkPolicyRuleToProto(rule))
 	if err != nil {
 		return nil
 	}
 	return raw
 }
 
-// ParseSDKNetworkPolicyRule parses camelCase JSON into an SDK NetworkPolicyRule.
+// ParseSDKNetworkPolicyRule parses camelCase JSON into an SDK NetworkPolicyRule,
+// preserving every field via the proto round-trip.
 func ParseSDKNetworkPolicyRule(raw json.RawMessage) (*openshell.NetworkPolicyRule, error) {
-	var rj sdkNetworkPolicyRuleJSON
-	if err := json.Unmarshal(raw, &rj); err != nil {
+	var pb sbv1.NetworkPolicyRule
+	if err := protojson.Unmarshal(raw, &pb); err != nil {
 		return nil, err
 	}
-	rule := parseSDKNetworkRule(rj)
-	return &rule, nil
+	return networkPolicyRuleFromProto(&pb), nil
 }
 
 // FromSDKDraftPolicy converts an SDK DraftPolicy to the JSON DTO.

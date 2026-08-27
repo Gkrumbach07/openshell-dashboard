@@ -45,48 +45,75 @@ func TestValidateFilePath(t *testing.T) {
 	}
 }
 
-func TestUploadFile(t *testing.T) {
-	session := &mockInteractiveSession{}
-	sdk := &mockSDK{}
-	sdk.exec.interactiveFn = func(_ context.Context, _, _ string, command []string, _, _ uint32, _ ...openshell.ExecOptions) (openshell.InteractiveSession, error) {
-		if len(command) != 3 || command[0] != "dd" || command[1] != "of=/sandbox/hello.txt" || command[2] != "bs=4096" {
-			t.Errorf("command = %v, want dd of=/sandbox/hello.txt bs=4096", command)
-		}
-		return session, nil
-	}
-	app := newTestAppWithSDK(sdk)
-	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
+// mockUploader is a test double for the non-TTY stdin exec (StdinExecer).
+type mockUploader struct {
+	fn       func(ctx context.Context, sandboxID string, command []string, stdin []byte) (string, int, error)
+	gotID    string
+	gotCmd   []string
+	gotStdin []byte
+}
 
+func (m *mockUploader) ExecWithStdin(ctx context.Context, sandboxID string, command []string, stdin []byte) (string, int, error) {
+	m.gotID = sandboxID
+	m.gotCmd = command
+	m.gotStdin = append([]byte(nil), stdin...)
+	if m.fn != nil {
+		return m.fn(ctx, sandboxID, command, stdin)
+	}
+	return "", 0, nil
+}
+
+func uploadRequest(t *testing.T, filename, content string) *http.Request {
+	t.Helper()
 	body := &bytes.Buffer{}
 	mw := multipart.NewWriter(body)
-	part, err := mw.CreateFormFile("file", "hello.txt")
+	part, err := mw.CreateFormFile("file", filename)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := part.Write([]byte("hello")); err != nil {
+	if _, err := part.Write([]byte(content)); err != nil {
 		t.Fatal(err)
 	}
 	if err := mw.Close(); err != nil {
 		t.Fatal(err)
 	}
-
 	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/sb/files", body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
+	return req
+}
+
+func TestUploadFile(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.sandboxes.getFn = func(_ context.Context, workspace, name string) (*openshell.Sandbox, error) {
+		if workspace != "default" || name != "sb" {
+			t.Errorf("Get(%q,%q), want (default,sb)", workspace, name)
+		}
+		return &openshell.Sandbox{ID: "sb-uuid-123"}, nil
+	}
+	up := &mockUploader{fn: func(_ context.Context, sandboxID string, command []string, _ []byte) (string, int, error) {
+		if sandboxID != "sb-uuid-123" {
+			t.Errorf("sandboxID = %q, want sb-uuid-123 (resolved UUID, not name)", sandboxID)
+		}
+		if len(command) != 3 || command[0] != "dd" || command[1] != "of=/sandbox/hello.txt" || command[2] != "bs=4096" {
+			t.Errorf("command = %v, want dd of=/sandbox/hello.txt bs=4096", command)
+		}
+		return "5+0 records in", 0, nil
+	}}
+	app := newTestAppWithSDK(sdk)
+	app.execUpload = up
+	r := chi.NewRouter()
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
+
+	// Include a control byte (0x04 = EOT) that a PTY path would corrupt/truncate.
+	content := "he\x04llo"
+	req := uploadRequest(t, "hello.txt", content)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d; body: %s", w.Code, w.Body.String())
 	}
-	session.mu.Lock()
-	written := string(session.written)
-	closed := session.closed
-	session.mu.Unlock()
-	if written != "hello" {
-		t.Errorf("written = %q, want hello", written)
-	}
-	if !closed {
-		t.Error("session not closed")
+	if string(up.gotStdin) != content {
+		t.Errorf("stdin = %q, want %q (raw bytes, no TTY mangling)", up.gotStdin, content)
 	}
 	var resp map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
@@ -94,6 +121,22 @@ func TestUploadFile(t *testing.T) {
 	}
 	if resp["path"] != "/sandbox/hello.txt" || resp["success"] != true {
 		t.Errorf("resp = %+v", resp)
+	}
+}
+
+func TestUploadFileSandboxNotFound(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.sandboxes.getFn = func(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
+		return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "sandbox not found"}
+	}
+	app := newTestAppWithSDK(sdk)
+	app.execUpload = &mockUploader{}
+	r := chi.NewRouter()
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, uploadRequest(t, "hello.txt", "hi"))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404; body: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -136,32 +179,20 @@ func TestDownloadFileNotFound(t *testing.T) {
 }
 
 func TestUploadFileFailed(t *testing.T) {
-	session := &mockInteractiveSession{exit: 1}
 	sdk := &mockSDK{}
-	sdk.exec.interactiveFn = func(_ context.Context, _, _ string, _ []string, _, _ uint32, _ ...openshell.ExecOptions) (openshell.InteractiveSession, error) {
-		return session, nil
+	sdk.sandboxes.getFn = func(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
+		return &openshell.Sandbox{ID: "sb-uuid-123"}, nil
 	}
+	up := &mockUploader{fn: func(_ context.Context, _ string, _ []string, _ []byte) (string, int, error) {
+		return "dd: write error", 1, nil
+	}}
 	app := newTestAppWithSDK(sdk)
+	app.execUpload = up
 	r := chi.NewRouter()
 	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
 
-	body := &bytes.Buffer{}
-	mw := multipart.NewWriter(body)
-	part, err := mw.CreateFormFile("file", "hello.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := part.Write([]byte("hello")); err != nil {
-		t.Fatal(err)
-	}
-	if err := mw.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/sb/files", body)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+	r.ServeHTTP(w, uploadRequest(t, "hello.txt", "hello"))
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502; body: %s", w.Code, w.Body.String())
 	}
@@ -170,32 +201,21 @@ func TestUploadFileFailed(t *testing.T) {
 	}
 }
 
-func TestUploadFileInteractiveError(t *testing.T) {
+func TestUploadFileExecError(t *testing.T) {
 	sdk := &mockSDK{}
-	sdk.exec.interactiveFn = func(_ context.Context, _, _ string, _ []string, _, _ uint32, _ ...openshell.ExecOptions) (openshell.InteractiveSession, error) {
-		return nil, fmt.Errorf("exec unavailable")
+	sdk.sandboxes.getFn = func(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
+		return &openshell.Sandbox{ID: "sb-uuid-123"}, nil
 	}
+	up := &mockUploader{fn: func(_ context.Context, _ string, _ []string, _ []byte) (string, int, error) {
+		return "", 0, fmt.Errorf("exec unavailable")
+	}}
 	app := newTestAppWithSDK(sdk)
+	app.execUpload = up
 	r := chi.NewRouter()
 	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
 
-	body := &bytes.Buffer{}
-	mw := multipart.NewWriter(body)
-	part, err := mw.CreateFormFile("file", "hello.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := part.Write([]byte("hello")); err != nil {
-		t.Fatal(err)
-	}
-	if err := mw.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/sb/files", body)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+	r.ServeHTTP(w, uploadRequest(t, "hello.txt", "hello"))
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500; body: %s", w.Code, w.Body.String())
 	}
