@@ -28,11 +28,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useFeatureFlags } from '../api/auth';
 import { useDraftPolicy, useSandboxPolicy } from '../api/policy';
 import { useProviderExpiry } from '../api/providers';
-import {
-  useSandbox,
-  useStartSandbox,
-  useStopSandbox,
-} from '../api/sandboxes';
+import { useSandbox, useStartSandbox, useStopSandbox } from '../api/sandboxes';
 import ConnectCard from '../components/ConnectCard';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
