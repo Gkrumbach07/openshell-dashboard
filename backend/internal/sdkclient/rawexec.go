@@ -28,7 +28,10 @@ type RawExecClient struct {
 }
 
 // NewRawExecClient dials the gateway. address is host:port (no URL scheme).
-func NewRawExecClient(address, caFile string, useTLS bool) (*RawExecClient, error) {
+// When useTLS is set, caFile (optional) verifies the server and clientCert +
+// clientKey (optional, both required together) enable mTLS client auth — the
+// same knobs the SDK client uses, so upload honors gateway mTLS too.
+func NewRawExecClient(address, caFile, clientCert, clientKey string, useTLS bool) (*RawExecClient, error) {
 	var creds credentials.TransportCredentials
 	if useTLS {
 		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
@@ -42,6 +45,13 @@ func NewRawExecClient(address, caFile string, useTLS bool) (*RawExecClient, erro
 				return nil, fmt.Errorf("no valid certificates in %s", caFile)
 			}
 			tlsCfg.RootCAs = pool
+		}
+		if clientCert != "" && clientKey != "" {
+			cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
+			if err != nil {
+				return nil, fmt.Errorf("load gateway client cert/key: %w", err)
+			}
+			tlsCfg.Certificates = []tls.Certificate{cert}
 		}
 		creds = credentials.NewTLS(tlsCfg)
 	} else {
