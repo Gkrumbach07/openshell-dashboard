@@ -1,40 +1,12 @@
-GO_MODULE := github.com/Gkrumbach07/openshell-dashboard/backend
-PROTO_DIR := backend/proto
-GEN_DIR := backend/gen
-PROTO_FILES := options.proto datamodel.proto sandbox.proto inference.proto openshell.proto
-
-# Map each proto file to its generated Go package import path.
-PROTO_GO_OPTS := \
-	--go_opt=Moptions.proto=$(GO_MODULE)/gen/optionsv1 \
-	--go_opt=Mdatamodel.proto=$(GO_MODULE)/gen/datamodelv1 \
-	--go_opt=Msandbox.proto=$(GO_MODULE)/gen/sandboxv1 \
-	--go_opt=Minference.proto=$(GO_MODULE)/gen/inferencev1 \
-	--go_opt=Mopenshell.proto=$(GO_MODULE)/gen/openshellv1
-PROTO_GRPC_OPTS := \
-	--go-grpc_opt=Moptions.proto=$(GO_MODULE)/gen/optionsv1 \
-	--go-grpc_opt=Mdatamodel.proto=$(GO_MODULE)/gen/datamodelv1 \
-	--go-grpc_opt=Msandbox.proto=$(GO_MODULE)/gen/sandboxv1 \
-	--go-grpc_opt=Minference.proto=$(GO_MODULE)/gen/inferencev1 \
-	--go-grpc_opt=Mopenshell.proto=$(GO_MODULE)/gen/openshellv1
-
 # Auto-source dev environment config if available (written by scripts/dev-env.sh).
 -include scripts/.env.dev
 export OPENSHELL_DIR OPENSHELL_GATEWAY_URL GATEWAY_CA_CERT OIDC_ISSUER OIDC_CLIENT_ID
 
-.PHONY: setup proto dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean
+.PHONY: setup dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean
 
 setup: ## Install frontend deps and Go deps
 	cd frontend && npm install
 	cd backend && go mod download
-
-proto: ## Regenerate Go stubs from backend/proto/*.proto into backend/gen/
-	rm -rf $(GEN_DIR)
-	mkdir -p $(GEN_DIR)
-	protoc -I $(PROTO_DIR) \
-		--go_out=$(GEN_DIR) --go_opt=module=$(GO_MODULE)/gen $(PROTO_GO_OPTS) \
-		--go-grpc_out=$(GEN_DIR) --go-grpc_opt=module=$(GO_MODULE)/gen $(PROTO_GRPC_OPTS) \
-		$(addprefix $(PROTO_DIR)/,$(PROTO_FILES))
-	cd backend && go mod tidy
 
 dev-full: ## Start Keycloak + gateway, then frontend + BFF (one command)
 	./scripts/dev-env.sh start

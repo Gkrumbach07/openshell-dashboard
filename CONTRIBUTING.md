@@ -70,11 +70,11 @@ This is a legal requirement for Apache 2.0 licensed projects. CI will reject uns
 - `go-chi/chi` for routing
 - Table-driven tests
 - Handler signature: `func (app *App) HandlerName(w http.ResponseWriter, r *http.Request)`
-- Gateway client methods are 5-10 lines wrapping protoc-generated stubs
+- Prefer the vendored OpenShell Go SDK; keep any adapter code thin and justified by a concrete SDK gap
 
 ### API rules
 
-**The proto files are the source of truth** (see `.claude/rules/openshell-api.md`). Do not invent RPCs, fields, or lifecycle states. If a UI concept has no backing RPC, open an issue — do not fabricate an endpoint.
+**The vendored OpenShell Go SDK is the source of truth** (see `.claude/rules/openshell-api.md`). Do not invent RPCs, fields, or lifecycle states. If a UI concept has no backing RPC, open an issue — do not fabricate an endpoint.
 
 Common mistakes to avoid:
 - Sandbox stop/start exists (v0.0.113+); still no suspend/restart (lifecycle is create → ready/error → stop ⇄ start → delete)
@@ -88,7 +88,7 @@ AI-assisted code is welcome — this project was built agent-first. However:
 
 - **You must understand every line you submit.** If you cannot explain a change during review, the PR will be closed.
 - **AI-generated commit messages are fine** but must accurately describe the change.
-- **Do not submit AI-generated code that fabricates API endpoints.** This is the most common AI failure mode in this project. The proto files are the source of truth.
+- **Do not submit AI-generated code that fabricates API endpoints.** This is the most common AI failure mode in this project. The vendored Go SDK is the source of truth.
 
 ## Security
 

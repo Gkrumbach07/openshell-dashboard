@@ -30,46 +30,6 @@ func writeError(w http.ResponseWriter, statusCode int, code, message string) {
 	writeJSON(w, statusCode, ErrorResponse{Code: code, Message: message})
 }
 
-// writeGrpcError maps a gateway gRPC error onto a safe HTTP error response.
-// It extracts the original gRPC status via the GRPCStatus() interface to get
-// the clean gateway message, bypassing status.FromError's behavior of replacing
-// the message with the full error chain (grpc-go v1.82+).
-func writeGrpcError(w http.ResponseWriter, err error) {
-	var gs interface{ GRPCStatus() *status.Status }
-	if !errors.As(err, &gs) {
-		slog.Error("gateway call failed (non-gRPC)", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal", "internal error")
-		return
-	}
-	st := gs.GRPCStatus()
-	if st == nil {
-		slog.Error("gateway call failed (nil gRPC status)", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal", "internal error")
-		return
-	}
-	slog.Warn("gateway error", "code", st.Code().String(), "message", st.Message(), "full_error", err.Error())
-	switch st.Code() {
-	case codes.NotFound:
-		writeError(w, http.StatusNotFound, "not_found", st.Message())
-	case codes.AlreadyExists:
-		writeError(w, http.StatusConflict, "already_exists", st.Message())
-	case codes.InvalidArgument, codes.FailedPrecondition, codes.OutOfRange:
-		writeError(w, http.StatusBadRequest, "invalid_argument", st.Message())
-	case codes.PermissionDenied:
-		writeError(w, http.StatusForbidden, "permission_denied", st.Message())
-	case codes.Unauthenticated:
-		writeError(w, http.StatusUnauthorized, "unauthenticated", st.Message())
-	case codes.Aborted:
-		writeError(w, http.StatusConflict, "conflict", st.Message())
-	case codes.ResourceExhausted:
-		writeError(w, http.StatusTooManyRequests, "resource_exhausted", st.Message())
-	case codes.Unavailable, codes.DeadlineExceeded:
-		writeError(w, http.StatusBadGateway, "gateway_unavailable", "OpenShell gateway is unreachable")
-	default:
-		writeError(w, http.StatusInternalServerError, "internal", "internal error")
-	}
-}
-
 // writeSDKError maps an SDK StatusError onto a safe HTTP error response.
 // Uses the SDK's typed error helpers for classification and extracts the
 // clean message from StatusError.Message (no error chain prefix).

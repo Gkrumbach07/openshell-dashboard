@@ -1,49 +1,54 @@
 ---
 name: proto-sync
-description: Sync proto files from NVIDIA/OpenShell and regenerate Go stubs. Use when OpenShell proto definitions have changed upstream and the dashboard needs to be updated.
+description: Legacy alias for the SDK update workflow. Use when upstream OpenShell API definitions have changed and the dashboard needs to bump or audit the vendored Go SDK.
 ---
 
-# Proto Sync
+# SDK Sync
 
-Sync proto files from the upstream OpenShell repo and regenerate Go stubs.
+This repo no longer copies upstream proto files or regenerates local stubs.
+When OpenShell changes upstream, update the pinned Go SDK version and audit the
+affected handlers/models instead.
 
-> **Note:** ADR 0003 proposes migrating the BFF to `openshell-sdk-go` (PR #2). If that lands, this skill retires — `backend/proto/` and `backend/gen/` go away, and API updates become an SDK version bump. Until then, this is the process.
+> **Note:** `proto-sync` remains only as a discoverable alias for older prompts.
+> The live workflow is SDK-first per ADR 0003.
 
 ## Steps
 
-### 1. Fetch latest protos
+### 1. Inspect upstream changes
+
+```bash
+git -C ../OpenShell fetch upstream main
+```
+
+Then compare the pinned SDK version against upstream:
+- `sdk/go/openshell/v1/` for public client methods and resource shapes
+- `sdk/go/openshell/v1/types/` for request/response field details
+- `sdk/go/proto/sandboxv1/` only when the frontend policy protojson contract is involved
+
+### 2. Bump the vendored SDK
 
 ```bash
 cd backend
-for proto in openshell datamodel sandbox inference options; do
-  gh api "repos/NVIDIA/OpenShell/contents/proto/${proto}.proto?ref=main" \
-    --jq '.content' | base64 -d > proto/${proto}.proto
-done
+go get github.com/NVIDIA/OpenShell/sdk/go@<version-or-commit>
+go mod tidy
 ```
 
-### 2. Regenerate Go stubs
+### 3. Update call sites if the SDK shape changed
 
-```bash
-make proto
-```
+- Handlers should keep calling `app.sdk.<SubClient>()...`
+- DTO shaping belongs in `backend/internal/models/sdk_converters.go`
+- Policy JSON compatibility belongs in `backend/internal/models/policyproto.go`
+- Only keep `backend/internal/sdkclient/rawexec.go` if the public SDK still lacks non-TTY stdin exec
 
-This runs `protoc` with `protoc-gen-go` and `protoc-gen-go-grpc` to regenerate `backend/gen/`.
+### 4. Check for new user-facing capabilities
 
-### 3. Check for breaking changes
-
-```bash
-go build ./...
-```
-
-If the build fails, some RPC signatures changed. Update the affected wrapper methods in `internal/gateway/`.
-
-### 4. Check for new RPCs we should wrap
-
-Compare the new proto against `internal/gateway/` to see if any new user-facing RPCs were added that we should surface. Refer to `brain/openshell-dashboard/api-surface.md` for the prioritized scope.
+Compare upstream capabilities with the dashboard surface to see whether we
+should expose anything new. Prefer the public SDK. If a feature is missing in
+the SDK, document the exact gap before adding any workaround.
 
 ### 5. Commit
 
 ```bash
-git add backend/proto/ backend/gen/
-git commit -m "sync: update proto files from NVIDIA/OpenShell"
+git add backend/go.mod backend/go.sum
+git commit -m "build: bump OpenShell Go SDK"
 ```

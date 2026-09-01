@@ -38,7 +38,7 @@ export const apiFetch = async <T>(
     ...((init?.headers as Record<string, string>) ?? {}),
   };
 
-  // Auth is injected by the deployment's auth proxy (ADR 0014) — no
+  // Auth is injected by the deployment's auth proxy (ADR 0002) — no
   // Authorization header, no token in JS.
   const response = await fetch(`${apiBasePath}${path}`, { ...init, headers });
   if (!response.ok) {

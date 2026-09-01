@@ -20,7 +20,7 @@ type LoginPageProps = {
 };
 
 // LoginPage only renders in dev mode (AUTH_DISABLED=true). In every other
-// deployment the auth proxy in front of the BFF owns login (ADR 0014), so an
+// deployment the auth proxy in front of the BFF owns login (ADR 0002), so an
 // unauthenticated browser never reaches this app.
 const LoginPage: React.FC<LoginPageProps> = ({ config, onAuthenticated }) => (
   <Bullseye style={{ minHeight: '100vh' }}>

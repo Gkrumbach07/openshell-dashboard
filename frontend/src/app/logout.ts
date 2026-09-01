@@ -1,7 +1,7 @@
 import { getAuthConfig } from '../api/auth';
 import { clearDevSession } from './authStore';
 
-// Logout per auth mode (ADR 0014):
+// Logout per auth mode (ADR 0002):
 // - Dev (AUTH_DISABLED): the "session" is a client-side flag; clear it.
 // - Proxied: the auth proxy owns the session; redirect to its sign-out URL
 //   (LOGOUT_URL, e.g. /oauth2/sign_out for oauth2-proxy).

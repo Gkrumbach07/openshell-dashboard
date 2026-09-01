@@ -1,8 +1,12 @@
 # ADR 0003: Gateway Client — SDK over Generated Stubs
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-07
 **Authors:** Gage Krumbach
+
+This ADR records the pre-migration context and the decision that later landed
+in PR #43. Historical references below to `backend/proto/`, `backend/gen/`,
+and `internal/gateway/` describe the repo state before that migration.
 
 ## Context
 
@@ -22,10 +26,11 @@ is an implementation question underneath it.
 
 ## Decision
 
-**Adopt the SDK.** A community dashboard should consume the community's Go
-client, not maintain a parallel 26K-line generated surface. The BFF keeps
-its own thin interface (`gateway.Interface`) so handlers and tests never see
-SDK types directly; the SDK is an implementation detail behind it.
+**Adopt the SDK directly.** A community dashboard should consume the
+community's Go client, not maintain a parallel 26K-line generated surface. The
+live BFF now passes `openshell.ClientInterface` into handlers and test doubles,
+keeping only a narrow raw-exec helper for binary-safe uploads until the public
+SDK exposes non-TTY stdin exec.
 
 **Conditions before adoption:**
 

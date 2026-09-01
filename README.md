@@ -1,6 +1,6 @@
 # OpenShell Dashboard
 
-Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell), the open-source agent sandboxing platform. Go BFF + React (PatternFly 6) frontend, talking to the OpenShell gateway over gRPC.
+Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell), the open-source agent sandboxing platform. Go BFF + React (PatternFly 6) frontend, talking to the OpenShell gateway through the official Go SDK.
 
 - **Workspaces**: create, browse, delete; manage members (OIDC subject + role)
 - **Sandboxes**: list, create (with required security policy), inspect, delete
@@ -11,7 +11,7 @@ The frontend's page components are self-contained and exported (`openshell-dashb
 
 ## Quick start (local dev)
 
-Prereqs: Go 1.22+, Node 20+, `protoc` (only needed to regenerate stubs), and a running OpenShell gateway (`openshell gateway start`).
+Prereqs: Go 1.25.1+, Node 20+, and a running OpenShell gateway (`openshell gateway start`).
 
 ```bash
 make setup                                # npm install + go mod download
@@ -180,7 +180,6 @@ See `docs/adrs/0002-auth-relay-only-bff.md` for the full design.
 
 ```bash
 make setup      # install frontend + backend deps
-make proto      # regenerate Go stubs from backend/proto/*.proto
 make dev        # frontend dev server (:3000) + BFF (:8080)
 make dev-full   # start Keycloak + gateway, then run dev (full OIDC stack)
 make build      # docker image (multi-stage: frontend + Go binary)
@@ -205,10 +204,10 @@ For local OIDC testing without containers, use `./scripts/dev-env.sh start` inst
 
 ```
 Browser ── REST ──► Go BFF ── gRPC (bearer) ──► OpenShell gateway
-           (React Query)     (protoc-generated stubs, thin wrapper)
+           (React Query)     (OpenShell Go SDK)
 ```
 
-- **Proto is source of truth.** `backend/proto/` is copied from `NVIDIA/OpenShell/proto/`; `make proto` regenerates `backend/gen/`. Wrappers in `backend/internal/gateway/` cover the Phase 1 user-facing RPCs only.
+- **The vendored Go SDK is the source of truth.** Handlers call `github.com/NVIDIA/OpenShell/sdk/go` directly. The only remaining low-level escape hatch is `backend/internal/sdkclient/rawexec.go` for binary-safe file uploads, because the public SDK still lacks a non-TTY exec API that accepts raw stdin bytes.
 - **Polling for status**: sandbox state uses polling (5s via React Query `refetchInterval`). WebSockets are used only for the interactive terminal.
 - **Secrets never reach the browser**: provider credentials are write-only; the BFF serializes only credential key names.
 - **Sandbox stop/start** (OpenShell v0.0.113+): the lifecycle is create → ready/error → (stop ⇄ start) → delete. Stopping retains persistent state; there is still no suspend/restart. The UI reflects the API as-is.

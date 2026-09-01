@@ -6,7 +6,9 @@ alwaysApply: false
 
 # OpenShell API Reference
 
-**THE VENDORED GO SDK IS THE SOURCE OF TRUTH.** Since the SDK migration (PR #43), the BFF calls `github.com/NVIDIA/OpenShell/sdk/go` directly — there is no local `backend/proto/` copy or `backend/gen/` anymore (both were removed; `backend/proto/*.proto` predates the migration and is stale/unused — do not edit or regenerate from it). Before writing any handler or TypeScript type, read the actual RPC/message definitions in `$(go env GOMODCACHE)/github.com/!n!v!i!d!i!a/!open!shell/sdk/go@<version>/openshell/v1/` (hand-written client wrappers with doc comments; `types/*.go` for message shapes) or via `go doc`. Never invent RPCs, fields, or lifecycle states. If a UI idea has no backing RPC, flag it — do not fabricate an endpoint. Track upstream via `go get github.com/NVIDIA/OpenShell/sdk/go@latest`.
+**THE VENDORED GO SDK IS THE SOURCE OF TRUTH.** Since the SDK migration (PR #43), the BFF calls `github.com/NVIDIA/OpenShell/sdk/go` directly and this repo carries no local proto mirror or generated stub tree. Before writing any handler or TypeScript type, read the actual RPC/message definitions in `$(go env GOMODCACHE)/github.com/!n!v!i!d!i!a/!open!shell/sdk/go@<version>/openshell/v1/` (hand-written client wrappers with doc comments; `types/*.go` for message shapes) or via `go doc`. Never invent RPCs, fields, or lifecycle states. If a UI idea has no backing RPC, flag it — do not fabricate an endpoint. Track upstream via `go get github.com/NVIDIA/OpenShell/sdk/go@latest`.
+
+**One narrow exception remains.** `backend/internal/sdkclient/rawexec.go` uses the SDK's generated proto client for binary-safe file uploads because the public `Exec().Run(...)` API still does not accept raw stdin bytes when `tty=false`. Do not expand this escape hatch unless the public SDK still has a concrete gap you can point to.
 
 ## Services
 
