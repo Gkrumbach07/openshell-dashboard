@@ -1,3 +1,4 @@
+// Package middleware holds net/http middleware exported for reuse
 package middleware
 
 import "net/http"

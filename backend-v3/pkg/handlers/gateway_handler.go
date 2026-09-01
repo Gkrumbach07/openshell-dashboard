@@ -1,53 +1,58 @@
 package handlers
 
 import (
-	"encoding/json"
-	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/Gkrumbach07/openshell-dashboard/backend-v3/pkg/services/gateway"
 )
 
 type GatewayHandler struct {
-	*Handler                               // You can use gatewayHandler.logger now or other Handler fields (first class field)
-	gatewayService services.gatewayService // service interface
-	// fields specific to this handler
+	*Handler
+	service gateway.Service
 }
 
-func NewGatewayHandler(svc service.gatewayService) {
+func NewGatewayHandler(service gateway.Service) *GatewayHandler {
 	return &GatewayHandler{
-		Handler:        &Handler{logger: slog.Default()},
-		gatewayService: svc,
+		Handler: newHandler(nil),
+		service: service,
 	}
 }
 
 func (h *GatewayHandler) RegisterRoutes(r chi.Router) {
-	// r.Use(h.someGatewaySpecificMiddleware)
-
-	r.Get("/", h.GetGatewayInfo)
-	r.Post("/process", h.ProcessGateway)
-	r.Get("/{id}", h.GetGatewayByID)
+	// r.Get("/", h.GetGatewayInfo)
+	r.Get("/health", h.CheckHealth)
+	r.Get("/me", h.GetCurrentUser)
+	r.Get("/", h.GetGateways)
 }
 
-func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) {
-	// can be a model
-	var req struct {
-		Name string `json:"name"`
-	}
+func (h *GatewayHandler) GetGateways(w http.ResponseWriter, r *http.Request) {
+}
 
-	// validate model
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Pass r.Context() down into the service for request scoped variables
-	provider, err := h.gatewayService.CreateProvider(r.Context(), req.Name)
+func (h *GatewayHandler) GetGatewayInfo(w http.ResponseWriter, r *http.Request) {
+	info, err := h.service.GetGatewayInfo(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	h.writeJSON(w, http.StatusOK, info)
+}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(provider)
+func (h *GatewayHandler) CheckHealth(w http.ResponseWriter, r *http.Request) {
+	result, err := h.service.CheckHealth(r.Context())
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, result)
+}
+
+func (h *GatewayHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	user, err := h.service.GetCurrentUser(r.Context())
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, user)
 }
