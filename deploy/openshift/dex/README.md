@@ -38,10 +38,65 @@ dex serve /etc/dex/config.yaml
 
 The live POC uses Dex `v2.41.1` on port `5556`, an edge-terminated OpenShift Route named `dex`, and an in-memory store. Replace the hard-coded ROSA hosts and API issuer before using this example on another cluster.
 
+## Configure authorization claims
+
+Keep token audience validation separate from authorization. The gateway validates
+Token B's `aud` claim against `openshell-dashboard`, but it must read roles from
+the `groups` claim. Do **not** configure `roles_claim = "aud"`; a single-audience
+token encodes `aud` as a string while a cross-client token can encode it as an
+array, causing identical users to receive different authorization results.
+
+Create explicit OpenShift groups and assign users according to the access they
+need:
+
+```bash
+oc adm groups new openshell-users
+oc adm groups new openshell-admins
+oc adm groups add-users openshell-users <user>
+oc adm groups add-users openshell-admins <admin-user>
+```
+
+Configure the OpenShell gateway to consume those groups:
+
+```toml
+[openshell.gateway.oidc]
+issuer      = "https://<dex-host>"
+audience    = "openshell-dashboard"
+roles_claim = "groups"
+admin_role  = "openshell-admins"
+user_role   = "openshell-users"
+```
+
+An admin role implicitly satisfies user-level methods. OpenShift `cluster-admin`
+is not automatically an OpenShell role: add the user to `openshell-admins`, or
+build a separate OpenShift authorization integration.
+
+The embedded RHOAI client must request both the group claim and the gateway
+audience:
+
+```text
+OPENSHELL_OIDC_SCOPE="openid profile email groups audience:server:client_id:openshell-dashboard"
+OPENSHELL_OIDC_AUDIENCE="openshell-dashboard"
+```
+
+The standalone oauth2-proxy must forward the OIDC access token using the header
+expected by the relay BFF:
+
+```text
+--scope="openid profile email groups"
+--pass-access-token=true
+--set-xauthrequest=true
+```
+
+`--pass-authorization-header=true` is not a substitute: it can forward the ID
+token in `Authorization`, while the embedded integration forwards Token B's
+access token through `x-forwarded-access-token`.
+
 ## Security invariants
 
 - Never commit either client secret or rendered configuration.
 - Keep `openshell-rhoai-embed` public; browser clients cannot hold a secret.
 - Restrict redirect URIs and allowed origins to the exact dashboard hosts.
 - The Token B issuer and audience must match what the OpenShell gateway validates.
+- Read authorization roles from an explicit group/roles claim, never from `aud`.
 - Use durable Dex storage and trusted cluster certificates outside this POC.
