@@ -59,6 +59,9 @@ oc adm groups add-users openshell-admins <admin-user>
 Configure the OpenShell gateway to consume those groups:
 
 ```toml
+[openshell.gateway.auth]
+allow_unauthenticated_users = false
+
 [openshell.gateway.oidc]
 issuer      = "https://<dex-host>"
 audience    = "openshell-dashboard"
@@ -99,4 +102,5 @@ access token through `x-forwarded-access-token`.
 - Restrict redirect URIs and allowed origins to the exact dashboard hosts.
 - The Token B issuer and audience must match what the OpenShell gateway validates.
 - Read authorization roles from an explicit group/roles claim, never from `aud`.
+- Disable unauthenticated gateway users in every shared or cluster deployment.
 - Use durable Dex storage and trusted cluster certificates outside this POC.
