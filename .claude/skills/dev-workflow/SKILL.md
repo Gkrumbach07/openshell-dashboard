@@ -10,7 +10,7 @@ description: Full development workflow for OpenShell Dashboard. Implements the c
 1. Read the relevant docs if unsure about architecture:
    - `CLAUDE.md` — project structure, architecture rules with ADR links
    - `docs/adrs/` — Architecture Decision Records
-   - `backend/proto/` — source of truth for what RPCs exist (see `.claude/rules/openshell-api.md`)
+   - `.claude/rules/openshell-api.md` — how to inspect the vendored SDK surface safely
 
 2. Check if the change touches the BFF, frontend, or both.
 
@@ -18,7 +18,7 @@ description: Full development workflow for OpenShell Dashboard. Implements the c
 
 - Follow rules in `.claude/rules/` (react.md, bff-go.md, openshell-api.md, security.md)
 - Page components must be self-contained and exportable (no dashboard-specific wrappers)
-- BFF handlers call `internal/gateway/` wrapper methods, not raw gRPC directly
+- BFF handlers call the vendored Go SDK through `app.sdk`; the only approved low-level exception is `internal/sdkclient/rawexec.go` for binary-safe uploads
 
 ## Verify
 

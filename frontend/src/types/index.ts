@@ -1,6 +1,6 @@
-// TypeScript interfaces matching the OpenShell proto messages as serialized
-// by the BFF (camelCase, protojson-style). Proto is source of truth:
-// backend/proto/*.proto.
+// TypeScript interfaces matching the SDK-backed BFF payloads (camelCase,
+// protojson-style). The vendored OpenShell Go SDK is the source of truth;
+// see .claude/rules/openshell-api.md.
 
 export type ObjectMeta = {
   id: string;

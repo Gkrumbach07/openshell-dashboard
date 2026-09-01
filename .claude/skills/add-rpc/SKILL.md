@@ -1,91 +1,55 @@
 ---
 name: add-rpc
-description: Add a new OpenShell gRPC RPC to the dashboard. Creates the gateway wrapper method, REST handler, frontend API hook, and TypeScript types. Use when adding a new API endpoint to the dashboard.
+description: Add a new OpenShell API capability to the dashboard using the vendored Go SDK. Updates the handler, models, frontend API hook, and types. Use when adding a new endpoint to the dashboard.
 ---
 
-# Add RPC
+# Add API Capability
 
-Wire a new OpenShell gRPC RPC through the full stack: gateway wrapper → Interface update → models DTO → REST handler → route → frontend API function → hook → types.
+Wire a new OpenShell gateway capability through the full stack: SDK surface check
+→ models/request shape → REST handler → route → frontend API function → hook →
+types.
 
 ## Arguments
 
-`$ARGUMENTS` — RPC name from `backend/proto/openshell.proto` (or `inference.proto`). Example: `CreateWorkspace`, `ListProviders`
+`$ARGUMENTS` — SDK method or gateway capability name. Example:
+`CreateWorkspace`, `ListProviders`, `GetInferenceRoute`
 
 ## Steps
 
-### 1. Find the RPC in the proto
+### 1. Find the capability in the SDK
 
-Read `backend/proto/openshell.proto` (or `inference.proto`). Find the request/response message types. Note:
-- Workspace scoping (does the request have a `workspace` field?)
-- Auth requirements (check `authorization` option: `workspace_role` vs `global_role`)
-- Whether it uses `sandbox_id` (UUID) vs `name` (see `.claude/rules/openshell-api.md` rule 6)
-- Secret fields annotated with `[(openshell.options.v1.secret) = true]`
+Read the vendored SDK surface described in `.claude/rules/openshell-api.md`.
+Start with `openshell/v1/` and `types/` in the pinned module version. Note:
+- Which SDK sub-client owns the capability (`Sandboxes()`, `Workspaces()`, `Providers()`, `Exec()`, `Inference()`, `Policy()`, `Services()`, ...)
+- Workspace scoping
+- Whether the API addresses a sandbox by name or UUID
+- Secret-bearing fields or write-only fields that must not be sent back to the frontend
+- Whether the public SDK is actually missing what you need; if so, document the gap before adding any escape hatch
 
-### 2. Gateway wrapper
+### 2. Update models / request parsing
 
-Add a method to the appropriate file in `backend/internal/gateway/`. Use the correct generated package (`openshellv1`, `datamodelv1`, `sandboxv1`, `inferencev1`):
-
-```go
-// backend/internal/gateway/workspaces.go
-func (c *Client) CreateWorkspace(ctx context.Context, name string, labels map[string]string) (*datamodelv1.Workspace, error) {
-    resp, err := c.openshell.CreateWorkspace(ctx, &openshellv1.CreateWorkspaceRequest{
-        Name:   name,
-        Labels: labels,
-    })
-    if err != nil {
-        return nil, err
-    }
-    return resp.Workspace, nil
-}
-```
-
-### 3. Update gateway Interface
-
-Add the method signature to `backend/internal/gateway/interface.go`. This is required for test mocking:
+If the gateway response needs JSON shaping, add or extend DTO converters in
+`backend/internal/models/`. Never serialize SDK objects directly.
 
 ```go
-CreateWorkspace(ctx context.Context, name string, labels map[string]string) (*datamodelv1.Workspace, error)
+func FromSDKWorkspace(ws *openshell.Workspace) Workspace { ... }
 ```
 
-### 4. Add models DTO
+For request bodies:
+- Simple request structs live in the handler file.
+- Complex SDK-building logic lives in `models/sdk_converters.go` or
+  `models/builders.go`.
+- Policy payloads must keep using `ParseSDKPolicy` / `marshalSDKPolicy` so the
+  frontend's protojson contract stays intact.
 
-Add a `From*()` function in `backend/internal/models/` to convert the proto response to a JSON-safe DTO. **Never serialize proto types directly** — always go through models:
-
-```go
-// backend/internal/models/models.go
-type Workspace struct {
-    Name      string            `json:"name"`
-    Labels    map[string]string `json:"labels"`
-    CreatedAt string            `json:"createdAt"`
-}
-
-func FromWorkspace(w *datamodelv1.Workspace) Workspace {
-    return Workspace{
-        Name:      w.Metadata.Name,
-        Labels:    w.Metadata.Labels,
-        CreatedAt: w.Metadata.CreatedAtMs, // convert as needed
-    }
-}
-```
-
-For request bodies: simple request structs go in the handler file (e.g., `CreateWorkspaceRequest` in `workspaces_handler.go`). Complex ones that need builder logic go in `models/builders.go` (e.g., `CreateSandboxRequest` which needs `BuildSandboxSpec()`).
-
-```go
-// In the handler file for simple cases:
-type CreateWorkspaceRequest struct {
-    Name   string            `json:"name"`
-    Labels map[string]string `json:"labels"`
-}
-```
-
-### 5. REST handler
+### 3. REST handler
 
 Add a handler in `backend/internal/api/`. Use package-level helpers from `respond.go`:
 
 ```go
 // backend/internal/api/workspaces_handler.go
 func (app *App) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
-    var body models.CreateWorkspaceRequest
+    var body CreateWorkspaceRequest
     if !decodeBody(w, r, &body) {
         return
     }
@@ -93,29 +57,29 @@ func (app *App) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
         writeError(w, http.StatusBadRequest, "invalid_name", "name must be a valid DNS-1123 label")
         return
     }
-    workspace, err := app.gateway.CreateWorkspace(r.Context(), body.Name, body.Labels)
+    workspace, err := app.sdk.Workspaces().Create(r.Context(), body.Name, body.Labels)
     if err != nil {
-        writeGrpcError(w, err)
+        writeSDKError(w, err)
         return
     }
-    writeJSON(w, http.StatusCreated, models.FromWorkspace(workspace))
+    writeJSON(w, http.StatusCreated, models.FromSDKWorkspace(workspace))
 }
 ```
 
 Key patterns:
 - No `Handler` suffix on method names
 - `decodeBody(w, r, &dst)` for request parsing (returns false on error, writes response itself)
-- `writeGrpcError(w, err)` for gateway errors
-- `writeJSON(w, statusCode, models.From*(...))` — always convert through models
+- `writeSDKError(w, err)` for gateway/SDK errors
+- `writeJSON(w, statusCode, models.FromSDK*(...))` when returning SDK resources
 - `validDNS1123(name)` for resource name validation
 
 Register the route in `app.go`:
 
 ```go
-r.Post("/api/v1/workspaces", app.CreateWorkspace)
+r.Post("/workspaces", app.CreateWorkspace)
 ```
 
-### 6. Frontend types
+### 4. Frontend types
 
 Add to `frontend/src/types/`:
 
@@ -127,7 +91,7 @@ export type Workspace = {
 };
 ```
 
-### 7. Frontend API function
+### 5. Frontend API function
 
 Add to the appropriate file in `frontend/src/api/`. Use `get`, `post`, `put`, `del` from `./client`:
 
@@ -139,7 +103,7 @@ export const createWorkspace = (name: string): Promise<Workspace> =>
   post<Workspace>('/api/v1/workspaces', { name });
 ```
 
-### 8. Frontend hook
+### 6. Frontend hook
 
 Add query/mutation hooks using the centralized `queryKeys` from `./queryKeys`:
 
@@ -167,11 +131,12 @@ export const useWorkspaces = () =>
   });
 ```
 
-### 9. Update test mock
+### 7. Update test doubles
 
-Add the new method to `backend/internal/api/mock_gateway_test.go`.
+Add the needed behavior to `backend/internal/api/mock_sdk_test.go`. Extend the
+relevant mock SDK sub-client instead of inventing a parallel interface layer.
 
-### 10. Verify
+### 8. Verify
 
 ```bash
 cd backend && go build ./... && go test ./...
