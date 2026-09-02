@@ -28,6 +28,13 @@ import {
   deleteProviderProfile,
   lintProviderProfiles,
 } from '../providers';
+import {
+  listTemplates,
+  getTemplate,
+  createTemplate,
+  deleteTemplate,
+  createSandboxFromTemplate,
+} from '../templates';
 import { getGatewayInfo } from '../gateway';
 import { getAuthConfig, getCurrentUser } from '../auth';
 import {
@@ -410,5 +417,59 @@ describe('settings API', () => {
   it('deleteGlobalSetting calls correct path', async () => {
     await deleteGlobalSetting('key1');
     expect(mockDel).toHaveBeenCalledWith('/api/v1/settings/global?key=key1');
+  });
+});
+
+describe('templates API', () => {
+  it('listTemplates calls correct path', async () => {
+    await listTemplates('default');
+    expect(mockGet).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/templates',
+    );
+  });
+
+  it('listTemplates passes label selector', async () => {
+    await listTemplates('default', 'kind=harness');
+    expect(mockGet).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/templates?labelSelector=kind%3Dharness',
+    );
+  });
+
+  it('getTemplate calls correct path', async () => {
+    await getTemplate('default', 'claude-harness');
+    expect(mockGet).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/templates/claude-harness',
+    );
+  });
+
+  it('createTemplate posts to correct path', async () => {
+    const body = {
+      name: 'claude-harness',
+      spec: { workload: { image: 'base' } },
+    };
+    await createTemplate('default', body);
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/templates',
+      body,
+    );
+  });
+
+  it('deleteTemplate deletes at correct path', async () => {
+    await deleteTemplate('default', 'claude-harness');
+    expect(mockDel).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/templates/claude-harness',
+    );
+  });
+
+  it('createSandboxFromTemplate posts to correct path', async () => {
+    const body = {
+      templateName: 'claude-harness',
+      policy: { version: 1 },
+    };
+    await createSandboxFromTemplate('default', body);
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/workspaces/default/sandboxes/from-template',
+      body,
+    );
   });
 });

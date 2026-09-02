@@ -169,6 +169,65 @@ export type CreateSandboxRequest = {
   policy: SandboxPolicy;
 };
 
+// --- Sandbox templates ---
+// openshell.v1.SandboxWorkloadTemplate — a reusable, workspace-scoped template
+// resource. A sandbox is created from a template by name (see
+// CreateSandboxFromTemplateRequest), supplying only governance fields.
+
+export type SandboxGPU = {
+  count?: number;
+};
+
+export type SandboxResources = {
+  cpu?: string;
+  memory?: string;
+  gpu?: SandboxGPU;
+};
+
+export type SandboxWorkload = {
+  image?: string;
+  environment?: Record<string, string>;
+  resources?: SandboxResources;
+};
+
+export type SandboxStartup = {
+  readyWithinMs?: number;
+  maxBurst?: number;
+};
+
+export type SandboxServiceLevel = {
+  startup?: SandboxStartup;
+};
+
+export type SandboxTemplateSpec = {
+  workload?: SandboxWorkload;
+  driverConfig?: Record<string, unknown>;
+  desiredServiceLevel?: SandboxServiceLevel;
+};
+
+export type SandboxTemplate = {
+  metadata: ObjectMeta;
+  spec: SandboxTemplateSpec;
+};
+
+export type CreateSandboxTemplateRequest = {
+  name: string;
+  labels?: Record<string, string>;
+  annotations?: Record<string, string>;
+  spec: SandboxTemplateSpec;
+};
+
+// Only governance fields are accepted; the workload comes from the template.
+export type CreateSandboxFromTemplateRequest = {
+  name?: string;
+  templateName: string;
+  providers?: string[];
+  labels?: Record<string, string>;
+  annotations?: Record<string, string>;
+  // Required — SandboxSpec.policy is a required field on CreateSandbox.
+  policy: SandboxPolicy;
+};
+
 // --- Providers ---
 
 // openshell.datamodel.v1.Provider as returned by the BFF. Credential values
