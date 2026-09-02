@@ -72,6 +72,55 @@ type Sandbox struct {
 	Metadata ObjectMeta    `json:"metadata"`
 }
 
+// SandboxTemplate is the dashboard view of openshell.v1.SandboxWorkloadTemplate
+// — the reusable, workspace-scoped template resource. A sandbox is created from
+// a template by name (see CreateSandboxFromTemplate), supplying only governance
+// fields (policy, providers); the workload comes from the template.
+type SandboxTemplate struct {
+	Spec     SandboxTemplateSpec `json:"spec"`
+	Metadata ObjectMeta          `json:"metadata"`
+}
+
+// SandboxTemplateSpec mirrors openshell.v1.SandboxWorkloadTemplateSpec.
+type SandboxTemplateSpec struct {
+	Workload            *SandboxWorkload     `json:"workload,omitempty"`
+	DriverConfig        map[string]any       `json:"driverConfig,omitempty"`
+	DesiredServiceLevel *SandboxServiceLevel `json:"desiredServiceLevel,omitempty"`
+}
+
+// SandboxWorkload mirrors openshell.v1.SandboxWorkloadConfig — the portable
+// workload shape (image, environment, resources) a template pins.
+type SandboxWorkload struct {
+	Resources   *SandboxResources `json:"resources,omitempty"`
+	Environment map[string]string `json:"environment,omitempty"`
+	Image       string            `json:"image,omitempty"`
+}
+
+// SandboxResources mirrors openshell.v1.SandboxResources.
+type SandboxResources struct {
+	GPU    *SandboxGPU `json:"gpu,omitempty"`
+	CPU    string      `json:"cpu,omitempty"`
+	Memory string      `json:"memory,omitempty"`
+}
+
+// SandboxGPU mirrors openshell.v1.SandboxGPURequirements. A non-nil GPU with a
+// nil Count requests the active driver's default GPU assignment.
+type SandboxGPU struct {
+	Count *uint32 `json:"count,omitempty"`
+}
+
+// SandboxServiceLevel mirrors openshell.v1.SandboxServiceLevel.
+type SandboxServiceLevel struct {
+	Startup *SandboxStartup `json:"startup,omitempty"`
+}
+
+// SandboxStartup mirrors openshell.v1.SandboxStartup. ReadyWithinMs is the
+// startup deadline in milliseconds.
+type SandboxStartup struct {
+	ReadyWithinMs int64  `json:"readyWithinMs,omitempty"`
+	MaxBurst      uint32 `json:"maxBurst,omitempty"`
+}
+
 // Provider is the dashboard view of openshell.datamodel.v1.Provider. The
 // credentials map is secret-marked in proto and is intentionally absent —
 // only the credential key names are surfaced.

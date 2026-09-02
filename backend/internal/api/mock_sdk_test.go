@@ -11,6 +11,7 @@ import (
 // mockSDK is a mock of openshell.ClientInterface for testing.
 type mockSDK struct {
 	sandboxes  mockSDKSandboxes
+	templates  mockSDKTemplates
 	providers  mockSDKProviders
 	workspaces mockSDKWorkspaces
 	policy     mockSDKPolicy
@@ -36,16 +37,60 @@ func (m *mockSDK) Workspaces() openshell.WorkspaceInterface { return &m.workspac
 func (m *mockSDK) Inference() openshell.InferenceInterface  { return &m.inference }
 func (m *mockSDK) Close() error                             { return nil }
 
-func (m *mockSDK) SandboxTemplates() openshell.SandboxTemplateInterface { panic("not implemented") }
+func (m *mockSDK) SandboxTemplates() openshell.SandboxTemplateInterface { return &m.templates }
 
 func (m *mockSDK) CreateSandboxFromTemplate(
-	_ context.Context,
-	_, _, _ string,
-	_ *openshell.SandboxSpec,
-	_ map[string]string,
-	_ ...openshell.CreateOptions,
+	ctx context.Context,
+	workspace, name, templateName string,
+	spec *openshell.SandboxSpec,
+	labels map[string]string,
+	opts ...openshell.CreateOptions,
 ) (*openshell.Sandbox, error) {
-	panic("not implemented")
+	if m.templates.createFromTemplateFn != nil {
+		return m.templates.createFromTemplateFn(ctx, workspace, name, templateName, spec, labels, opts...)
+	}
+	return &openshell.Sandbox{Name: name}, nil
+}
+
+// mockSDKTemplates provides injectable reusable-template operations plus the
+// top-level CreateSandboxFromTemplate hook.
+type mockSDKTemplates struct {
+	listFn               func(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.SandboxWorkloadTemplate, error)
+	createFn             func(ctx context.Context, workspace string, template *openshell.SandboxWorkloadTemplate) (*openshell.SandboxWorkloadTemplate, error)
+	getFn                func(ctx context.Context, workspace, name string) (*openshell.SandboxWorkloadTemplate, error)
+	deleteFn             func(ctx context.Context, workspace, name string) (bool, error)
+	createFromTemplateFn func(ctx context.Context, workspace, name, templateName string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error)
+}
+
+func (m *mockSDKTemplates) List(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.SandboxWorkloadTemplate, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, workspace, opts...)
+	}
+	return nil, nil
+}
+
+func (m *mockSDKTemplates) Create(ctx context.Context, workspace string, template *openshell.SandboxWorkloadTemplate) (*openshell.SandboxWorkloadTemplate, error) {
+	if m.createFn != nil {
+		return m.createFn(ctx, workspace, template)
+	}
+	if template != nil {
+		return template, nil
+	}
+	return &openshell.SandboxWorkloadTemplate{}, nil
+}
+
+func (m *mockSDKTemplates) Get(ctx context.Context, workspace, name string) (*openshell.SandboxWorkloadTemplate, error) {
+	if m.getFn != nil {
+		return m.getFn(ctx, workspace, name)
+	}
+	return &openshell.SandboxWorkloadTemplate{Name: name}, nil
+}
+
+func (m *mockSDKTemplates) Delete(ctx context.Context, workspace, name string) (bool, error) {
+	if m.deleteFn != nil {
+		return m.deleteFn(ctx, workspace, name)
+	}
+	return true, nil
 }
 
 // mockSDKSandboxes provides injectable sandbox operations.
