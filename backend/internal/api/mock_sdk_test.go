@@ -36,6 +36,18 @@ func (m *mockSDK) Workspaces() openshell.WorkspaceInterface { return &m.workspac
 func (m *mockSDK) Inference() openshell.InferenceInterface  { return &m.inference }
 func (m *mockSDK) Close() error                             { return nil }
 
+func (m *mockSDK) SandboxTemplates() openshell.SandboxTemplateInterface { panic("not implemented") }
+
+func (m *mockSDK) CreateSandboxFromTemplate(
+	_ context.Context,
+	_, _, _ string,
+	_ *openshell.SandboxSpec,
+	_ map[string]string,
+	_ ...openshell.CreateOptions,
+) (*openshell.Sandbox, error) {
+	panic("not implemented")
+}
+
 // mockSDKSandboxes provides injectable sandbox operations.
 type mockSDKSandboxes struct {
 	listFn          func(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error)
