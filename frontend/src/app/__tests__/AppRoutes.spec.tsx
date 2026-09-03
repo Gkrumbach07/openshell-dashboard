@@ -17,6 +17,7 @@ jest.mock('../AuthenticatedRoutes', () => ({
 
 import AppRoutes from '../AppRoutes';
 import { useAuthConfig, useCurrentUser } from '../../api/auth';
+import { catalogs } from '../../i18n';
 
 const mockUseAuthConfig = useAuthConfig as jest.Mock;
 const mockUseCurrentUser = useCurrentUser as jest.Mock;
@@ -90,6 +91,7 @@ describe('AppRoutes', () => {
     renderGate();
 
     expect(screen.getByTestId('auth-required')).toBeInTheDocument();
+    expect(screen.getByText('make dev').closest('code')).toBeInTheDocument();
     expect(screen.queryByTestId('authenticated-shell')).not.toBeInTheDocument();
   });
 
@@ -109,7 +111,9 @@ describe('AppRoutes', () => {
 
     renderGate();
 
-    expect(screen.getByLabelText('Loading session')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(catalogs.en.auth.sessionLoading),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId('auth-required')).not.toBeInTheDocument();
     expect(screen.queryByTestId('authenticated-shell')).not.toBeInTheDocument();
   });

@@ -108,6 +108,10 @@ forks that guarantee. Five mechanisms are enough to build a full
 host-platform integration; anything they can't express is a conversation
 about extending this contract, not a workaround.
 
+## Amendments
+
+- [ADR 0004](0004-downstream-consumption-i18n.md) — adds i18n as a sixth extension mechanism (issue #27).
+
 ## Consequences
 
 - Downstream consumers wrap these five mechanisms and nothing else. Deeper

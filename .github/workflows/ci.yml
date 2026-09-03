@@ -37,6 +37,8 @@ jobs:
       - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
         run: cd frontend && npm run typecheck
       - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+        run: cd frontend && npm run build:lib
+      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
         run: cd frontend && npm test -- --coverage --passWithNoTests
       - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
         run: cd frontend && npm run build:lib

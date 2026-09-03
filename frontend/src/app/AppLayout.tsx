@@ -43,6 +43,7 @@ import openshellLogoDark from '~/assets/openshell-logo-dark.svg';
 import { useGatewayInfo } from '../api/gateway';
 import { useCurrentUser, useFeatureFlags } from '../api/auth';
 import { useUserRole } from '../api/rbac';
+import { useI18n } from '../i18n';
 import { logout } from './logout';
 import { useTheme } from './theme';
 
@@ -52,29 +53,31 @@ type AppLayoutProps = {
 
 type NavEntry = {
   path: string;
-  label: string;
+  labelKey:
+    'nav.gateway' | 'nav.workspaces' | 'nav.globalPolicy' | 'nav.settings';
   adminOnly?: boolean;
   featureKey?: keyof import('../types').FeatureFlags;
 };
 
 const navEntries: NavEntry[] = [
-  { path: '/gateway', label: 'Gateway', adminOnly: true },
-  { path: '/workspaces', label: 'Workspaces' },
+  { path: '/gateway', labelKey: 'nav.gateway', adminOnly: true },
+  { path: '/workspaces', labelKey: 'nav.workspaces' },
   {
     path: '/global-policy',
-    label: 'Global policy',
+    labelKey: 'nav.globalPolicy',
     adminOnly: true,
     featureKey: 'globalPolicy',
   },
   {
     path: '/settings',
-    label: 'Settings',
+    labelKey: 'nav.settings',
     adminOnly: true,
     featureKey: 'settings',
   },
 ];
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
+  const { t } = useI18n('common');
   const location = useLocation();
   const user = useCurrentUser();
   const { isPlatformAdmin } = useUserRole();
@@ -93,7 +96,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     >
       <MastheadMain>
         <MastheadToggle>
-          <PageToggleButton variant="plain" aria-label="Global navigation">
+          <PageToggleButton variant="plain" aria-label={t('nav.global')}>
             <BarsIcon />
           </PageToggleButton>
         </MastheadToggle>
@@ -109,14 +112,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           >
             <img
               src={logoSrc}
-              alt="OpenShell Dashboard"
+              alt={t('about.brandAlt')}
               style={{ height: 'var(--pf-t--global--spacer--2xl)' }}
             />
           </MastheadLogo>
         </MastheadBrand>
       </MastheadMain>
       <MastheadContent>
-        <Toolbar isFullHeight isStatic aria-label="Header actions">
+        <Toolbar isFullHeight isStatic aria-label={t('header.actions')}>
           <ToolbarContent>
             <ToolbarItem align={{ default: 'alignEnd' }}>
               <Button
@@ -124,8 +127,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 onClick={toggleTheme}
                 aria-label={
                   theme === 'dark'
-                    ? 'Switch to light theme'
-                    : 'Switch to dark theme'
+                    ? t('header.themeToLight')
+                    : t('header.themeToDark')
                 }
                 data-testid="theme-toggle"
               >
@@ -143,7 +146,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     variant="plain"
                     onClick={() => setHelpOpen(!isHelpOpen)}
                     isExpanded={isHelpOpen}
-                    aria-label="Help"
+                    aria-label={t('header.help')}
                     data-testid="help-menu"
                   >
                     <QuestionCircleIcon />
@@ -157,7 +160,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     onClick={() => setAboutOpen(true)}
                     data-testid="about-menu-item"
                   >
-                    About
+                    {t('header.about')}
                   </DropdownItem>
                 </DropdownList>
               </Dropdown>
@@ -174,7 +177,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     isExpanded={isUserOpen}
                     data-testid="current-user"
                   >
-                    {user.data?.displayName || user.data?.subject || 'User'}
+                    {user.data?.displayName ||
+                      user.data?.subject ||
+                      t('header.userFallback')}
                   </MenuToggle>
                 )}
                 popperProps={{ position: 'end' }}
@@ -188,7 +193,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                       }}
                       data-testid="copy-subject"
                     >
-                      Copy my subject ID
+                      {t('header.copySubject')}
                     </DropdownItem>
                   )}
                   <Divider key="divider" />
@@ -197,7 +202,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     onClick={() => logout()}
                     data-testid="logout"
                   >
-                    Log out
+                    {t('header.logOut')}
                   </DropdownItem>
                 </DropdownList>
               </Dropdown>
@@ -211,7 +216,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const sidebar = (
     <PageSidebar>
       <PageSidebarBody>
-        <Nav aria-label="Primary navigation">
+        <Nav aria-label={t('nav.primary')}>
           <NavList>
             {navEntries
               .filter(
@@ -227,7 +232,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   isActive={location.pathname.startsWith(entry.path)}
                   component={(props) => <Link {...props} to={entry.path} />}
                 >
-                  {entry.label}
+                  {t(entry.labelKey)}
                 </NavItem>
               ))}
           </NavList>
@@ -242,10 +247,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       <AboutModal
         isOpen={isAboutOpen}
         onClose={() => setAboutOpen(false)}
-        productName="OpenShell Dashboard"
-        trademark="Apache-2.0 license."
+        productName={t('about.productName')}
+        trademark={t('about.trademark')}
         brandImageSrc={logoSrc}
-        brandImageAlt="OpenShell Dashboard"
+        brandImageAlt={t('about.brandAlt')}
       >
         <Content>
           <DescriptionList
@@ -254,29 +259,37 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             autoFitMinModifier={{ default: '200px' }}
           >
             <DescriptionListGroup>
-              <DescriptionListTerm>Dashboard version</DescriptionListTerm>
+              <DescriptionListTerm>
+                {t('about.dashboardVersion')}
+              </DescriptionListTerm>
               <DescriptionListDescription>
                 {APP_VERSION}
               </DescriptionListDescription>
             </DescriptionListGroup>
             <DescriptionListGroup>
-              <DescriptionListTerm>Gateway version</DescriptionListTerm>
+              <DescriptionListTerm>
+                {t('about.gatewayVersion')}
+              </DescriptionListTerm>
               <DescriptionListDescription>
-                {gateway.data?.gatewayVersion || 'Unknown'}
+                {gateway.data?.gatewayVersion || t('about.unknown')}
               </DescriptionListDescription>
             </DescriptionListGroup>
             <DescriptionListGroup>
-              <DescriptionListTerm>Gateway status</DescriptionListTerm>
+              <DescriptionListTerm>
+                {t('about.gatewayStatus')}
+              </DescriptionListTerm>
               <DescriptionListDescription>
-                {gateway.data?.status || 'Unknown'}
+                {gateway.data?.status || t('about.unknown')}
               </DescriptionListDescription>
             </DescriptionListGroup>
             <DescriptionListGroup>
-              <DescriptionListTerm>Compute driver</DescriptionListTerm>
+              <DescriptionListTerm>
+                {t('about.computeDriver')}
+              </DescriptionListTerm>
               <DescriptionListDescription>
                 {gateway.data?.computeDrivers?.[0]
                   ? `${gateway.data.computeDrivers[0].driverName} ${gateway.data.computeDrivers[0].driverVersion}`
-                  : 'Unknown'}
+                  : t('about.unknown')}
               </DescriptionListDescription>
             </DescriptionListGroup>
           </DescriptionList>

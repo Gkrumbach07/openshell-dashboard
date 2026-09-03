@@ -15,12 +15,33 @@
   "rules": {
     "react/react-in-jsx-scope": "off",
     "react/prop-types": "off",
-    "@typescript-eslint/no-explicit-any": "error"
+    "@typescript-eslint/no-explicit-any": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "i18next",
+            "message": "Import useI18n / I18nProvider / catalogs from ~/i18n instead."
+          },
+          {
+            "name": "react-i18next",
+            "message": "Import useI18n / I18nProvider / catalogs from ~/i18n instead."
+          }
+        ]
+      }
+    ]
   },
   "overrides": [
     {
       "files": ["vite.config.ts"],
       "env": { "node": true }
+    },
+    {
+      "files": ["src/i18n/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
     }
   ]
 }
