@@ -38,6 +38,57 @@ jobs:
         run: cd frontend && npm run typecheck
       - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
         run: cd frontend && npm test -- --coverage --passWithNoTests
+      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+        run: cd frontend && npm run build:lib
+      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+        name: Verify package exports resolve and load
+        run: |
+          cd frontend
+          npm pack --pack-destination /tmp
+          rm -rf .tmp/verify-exports
+          mkdir -p .tmp/verify-exports && cd .tmp/verify-exports
+          npm init -y > /dev/null
+          npm install --legacy-peer-deps /tmp/openshell-dashboard-*.tgz > /dev/null
+          node -e "
+            const modules = [
+              'openshell-dashboard',
+              'openshell-dashboard/pages',
+              'openshell-dashboard/components',
+              'openshell-dashboard/api',
+              'openshell-dashboard/types',
+              'openshell-dashboard/slots',
+            ];
+            for (const moduleId of modules) {
+              require.resolve(moduleId);
+            }
+            console.log('All exports resolve correctly');
+          "
+          cat > index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <title>export smoke test</title>
+            </head>
+            <body>
+              <div id="app"></div>
+              <script type="module" src="./main.js"></script>
+            </body>
+          </html>
+          EOF
+          cat > main.js <<'EOF'
+          import * as root from 'openshell-dashboard';
+          import * as pages from 'openshell-dashboard/pages';
+          import * as components from 'openshell-dashboard/components';
+          import * as api from 'openshell-dashboard/api';
+          import * as types from 'openshell-dashboard/types';
+          import * as slots from 'openshell-dashboard/slots';
+
+          console.log({ root, pages, components, api, types, slots });
+          document.getElementById('app')?.setAttribute('data-loaded', 'true');
+          EOF
+          ../../node_modules/.bin/vite build
 
   check-backend:
     runs-on: ubuntu-latest
