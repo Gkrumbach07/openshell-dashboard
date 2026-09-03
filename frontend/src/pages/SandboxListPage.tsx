@@ -12,6 +12,7 @@ import {
   EmptyStateFooter,
   MenuToggle,
   Pagination,
+  SearchInput,
   Spinner,
   ToggleGroup,
   ToggleGroupItem,
@@ -59,12 +60,18 @@ type SandboxListPageProps = {
   workspace: string;
   onSelect?: (name: string) => void;
   onViewSandbox?: (name: string, tab?: string) => void;
+  toolbarStart?: React.ReactNode;
+  createActionPosition?: 'start' | 'end';
+  compactToolbar?: boolean;
 };
 
 const SandboxListPage: React.FC<SandboxListPageProps> = ({
   workspace,
   onSelect,
   onViewSandbox,
+  toolbarStart,
+  createActionPosition = 'start',
+  compactToolbar = false,
 }) => {
   const navigate = useNavigate();
   const viewSandbox = (name: string, tab?: string) => {
@@ -78,6 +85,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
   const features = useFeatureFlags();
   const sandboxes = useSandboxes(workspace);
   const [isCreateOpen, setCreateOpen] = useState(false);
+  const [nameFilter, setNameFilter] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
   const {
     page,
@@ -97,11 +105,21 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
     closeDeleteModal,
     deleteSelectedLabel,
   } = useListPage();
-  const visibleNames = useMemo(() => {
+  const filteredSandboxes = useMemo(() => {
     const all = sandboxes.data ?? [];
+    const normalizedFilter = nameFilter.trim().toLocaleLowerCase();
+    if (!normalizedFilter) {
+      return all;
+    }
+    return all.filter((sandbox) =>
+      sandbox.metadata.name.toLocaleLowerCase().includes(normalizedFilter),
+    );
+  }, [sandboxes.data, nameFilter]);
+  const visibleNames = useMemo(() => {
+    const all = filteredSandboxes;
     const start = (page - 1) * perPage;
     return all.slice(start, start + perPage).map((s) => s.metadata.name);
-  }, [sandboxes.data, page, perPage]);
+  }, [filteredSandboxes, page, perPage]);
   const policyViews = useSandboxPolicies(workspace, visibleNames);
   const providerExpiry = useProviderExpiry(workspace);
   const drafts = useDraftNotifications(features.draftPolicy);
@@ -138,9 +156,9 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
   }
 
   const allRows = sandboxes.data ?? [];
-  const totalCount = allRows.length;
+  const totalCount = filteredSandboxes.length;
   const startIndex = (page - 1) * perPage;
-  const rows = allRows.slice(startIndex, startIndex + perPage);
+  const rows = filteredSandboxes.slice(startIndex, startIndex + perPage);
   const pageNames = rows.map((sandbox) => sandbox.metadata.name);
 
   if (allRows.length === 0) {
@@ -175,70 +193,92 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
     <>
       <Toolbar aria-label="Sandbox actions">
         <ToolbarContent>
+          {createActionPosition === 'start' && (
+            <ToolbarItem>
+              <Button
+                onClick={() => setCreateOpen(true)}
+                data-testid="create-sandbox"
+              >
+                Create sandbox
+              </Button>
+            </ToolbarItem>
+          )}
+          {toolbarStart && <ToolbarItem>{toolbarStart}</ToolbarItem>}
           <ToolbarItem>
-            <Button
-              onClick={() => setCreateOpen(true)}
-              data-testid="create-sandbox"
-            >
-              Create sandbox
-            </Button>
+            <SearchInput
+              aria-label="Filter sandboxes by name"
+              placeholder="Filter by name"
+              value={nameFilter}
+              onChange={(_event, value) => {
+                setNameFilter(value);
+                setPage(1);
+              }}
+              onClear={() => {
+                setNameFilter('');
+                setPage(1);
+              }}
+            />
           </ToolbarItem>
-          <ToolbarItem>
-            <Dropdown
-              isOpen={isActionsOpen}
-              onOpenChange={setActionsOpen}
-              onSelect={() => setActionsOpen(false)}
-              toggle={(toggleRef) => (
-                <MenuToggle
-                  ref={toggleRef}
-                  variant="plain"
-                  onClick={() => setActionsOpen((prev) => !prev)}
-                  isExpanded={isActionsOpen}
-                  aria-label="Actions"
-                  data-testid="sandbox-actions-kebab"
-                >
-                  <EllipsisVIcon />
-                </MenuToggle>
-              )}
-            >
-              <DropdownList>
-                <DropdownItem
-                  key="delete-selected"
-                  isDisabled={numSelected === 0}
-                  onClick={() => setDeleteTargets(selected)}
-                  data-testid="delete-selected-sandboxes"
-                >
-                  {deleteSelectedLabel}
-                </DropdownItem>
-              </DropdownList>
-            </Dropdown>
-          </ToolbarItem>
-          <ToolbarItem align={{ default: 'alignEnd' }}>
-            <ToggleGroup aria-label="View type" data-testid="view-toggle">
-              <ToggleGroupItem
-                text=""
-                icon={<ListIcon />}
-                aria-label="List view"
-                isSelected={viewMode === 'list'}
-                onChange={() => {
-                  setViewMode('list');
-                  localStorage.setItem(VIEW_MODE_KEY, 'list');
-                }}
-                data-testid="view-toggle-list"
-              />
-              <ToggleGroupItem
-                text=""
-                icon={<ThIcon />}
-                aria-label="Card view"
-                isSelected={viewMode === 'cards'}
-                onChange={() => {
-                  setViewMode('cards');
-                  localStorage.setItem(VIEW_MODE_KEY, 'cards');
-                }}
-                data-testid="view-toggle-cards"
-              />
-            </ToggleGroup>
-          </ToolbarItem>
+          {!compactToolbar && (
+            <ToolbarItem>
+              <Dropdown
+                isOpen={isActionsOpen}
+                onOpenChange={setActionsOpen}
+                onSelect={() => setActionsOpen(false)}
+                toggle={(toggleRef) => (
+                  <MenuToggle
+                    ref={toggleRef}
+                    variant="plain"
+                    onClick={() => setActionsOpen((prev) => !prev)}
+                    isExpanded={isActionsOpen}
+                    aria-label="Actions"
+                    data-testid="sandbox-actions-kebab"
+                  >
+                    <EllipsisVIcon />
+                  </MenuToggle>
+                )}
+              >
+                <DropdownList>
+                  <DropdownItem
+                    key="delete-selected"
+                    isDisabled={numSelected === 0}
+                    onClick={() => setDeleteTargets(selected)}
+                    data-testid="delete-selected-sandboxes"
+                  >
+                    {deleteSelectedLabel}
+                  </DropdownItem>
+                </DropdownList>
+              </Dropdown>
+            </ToolbarItem>
+          )}
+          {!compactToolbar && (
+            <ToolbarItem>
+              <ToggleGroup aria-label="View type" data-testid="view-toggle">
+                <ToggleGroupItem
+                  text=""
+                  icon={<ListIcon />}
+                  aria-label="List view"
+                  isSelected={viewMode === 'list'}
+                  onChange={() => {
+                    setViewMode('list');
+                    localStorage.setItem(VIEW_MODE_KEY, 'list');
+                  }}
+                  data-testid="view-toggle-list"
+                />
+                <ToggleGroupItem
+                  text=""
+                  icon={<ThIcon />}
+                  aria-label="Card view"
+                  isSelected={viewMode === 'cards'}
+                  onChange={() => {
+                    setViewMode('cards');
+                    localStorage.setItem(VIEW_MODE_KEY, 'cards');
+                  }}
+                  data-testid="view-toggle-cards"
+                />
+              </ToggleGroup>
+            </ToolbarItem>
+          )}
           <ToolbarItem>
             <Pagination
               itemCount={totalCount}
@@ -249,9 +289,19 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
               isCompact
             />
           </ToolbarItem>
+          {createActionPosition === 'end' && (
+            <ToolbarItem align={{ default: 'alignEnd' }}>
+              <Button
+                onClick={() => setCreateOpen(true)}
+                data-testid="create-sandbox"
+              >
+                Create sandbox
+              </Button>
+            </ToolbarItem>
+          )}
         </ToolbarContent>
       </Toolbar>
-      {viewMode === 'list' ? (
+      {compactToolbar || viewMode === 'list' ? (
         <Table aria-label="Sandboxes" data-testid="sandbox-table">
           <Thead>
             <Tr>
@@ -315,7 +365,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
             ))}
             {rows.length === 0 && (
               <Tr>
-                <Td colSpan={7}>No sandboxes match this filter.</Td>
+                <Td colSpan={8}>No sandboxes match this filter.</Td>
               </Tr>
             )}
           </Tbody>

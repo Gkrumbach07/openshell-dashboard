@@ -1,0 +1,70 @@
+# Sanitized snapshot of the Dex configuration used by the RHOAI/OpenShell POC.
+# Render the two secret placeholders at deployment time; never commit their values.
+connectors:
+  - type: openshift
+    id: openshift
+    name: OpenShift
+    config:
+      clientID: dex-openshell
+      clientSecret: ${OPENSHIFT_OAUTH_CLIENT_SECRET}
+      insecureCA: true
+      issuer: https://api.gkrumbac.9bpp.p3.openshiftapps.com:443
+      redirectURI: https://dex-openshell.apps.rosa.gkrumbac.9bpp.p3.openshiftapps.com/callback
+
+enablePasswordDB: false
+issuer: https://dex-openshell.apps.rosa.gkrumbac.9bpp.p3.openshiftapps.com
+
+oauth2:
+  skipApprovalScreen: true
+
+staticClients:
+  # Confidential client used by the standalone OpenShell dashboard's oauth2-proxy.
+  - id: openshell-dashboard
+    name: OpenShell Dashboard
+    secret: ${OPENSHELL_DASHBOARD_CLIENT_SECRET}
+    redirectURIs:
+      - https://openshell-dashboard-openshell.apps.rosa.gkrumbac.9bpp.p3.openshiftapps.com/oauth2/callback
+      - https://openshell-dashboard-openshell.apps.rosa.gkrumbac.9bpp.p3.openshiftapps.com/auth/callback
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
+    trustedPeers:
+      - openshell-cli
+      - openshell-rhoai-embed
+
+  # Public client used by the OpenShell CLI.
+  - id: openshell-cli
+    name: OpenShell CLI
+    public: true
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
+
+  # Public PKCE client used by the embedded RHOAI frontend to obtain Token B.
+  - id: openshell-rhoai-embed
+    name: OpenShell RHOAI Embed
+    public: true
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
+    redirectURIs:
+      - https://rh-ai.apps.rosa.gkrumbac.9bpp.p3.openshiftapps.com/ai-hub/agents/oidc/callback
+      - https://rh-ai.apps.rosa.gkrumbac.9bpp.p3.openshiftapps.com/ai-hub/agents/oidc/silent-callback
+      - https://rhods-dashboard-redhat-ods-applications.apps.rosa.gkrumbac.9bpp.p3.openshiftapps.com/ai-hub/agents/oidc/callback
+      - https://rhods-dashboard-redhat-ods-applications.apps.rosa.gkrumbac.9bpp.p3.openshiftapps.com/ai-hub/agents/oidc/silent-callback
+
+storage:
+  # Deliberately ephemeral for this POC. Use durable storage for production.
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+  allowedOrigins:
+    - https://rh-ai.apps.rosa.gkrumbac.9bpp.p3.openshiftapps.com
+    - https://rhods-dashboard-redhat-ods-applications.apps.rosa.gkrumbac.9bpp.p3.openshiftapps.com

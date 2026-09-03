@@ -169,6 +169,10 @@ RBAC decisions.
 
   Note the client must be **confidential** (oauth2-proxy requires a client
   secret) — a PKCE-only public client registration is not enough.
+
+  The RHOAI/OpenShell POC's sanitized Dex configuration, including its separate
+  public embed client, is documented in
+  [`deploy/openshift/dex/`](deploy/openshift/dex/README.md).
 - **Dev** (`AUTH_DISABLED=true`): no auth, synthetic dev-user, no tokens
   forwarded. `make dev-full` runs the gateway with unauthenticated calls
   allowed; Keycloak still mints real JWTs for exercising the Bearer relay

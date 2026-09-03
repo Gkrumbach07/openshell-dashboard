@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import SandboxListPage from '../SandboxListPage';
 import type { Sandbox } from '../../types';
@@ -150,5 +150,38 @@ describe('SandboxListPage', () => {
     expect(screen.getByTestId('view-toggle')).toBeInTheDocument();
     expect(screen.getByTestId('create-sandbox')).toBeInTheDocument();
     expect(screen.getByText('test-sandbox')).toBeInTheDocument();
+  });
+
+  it('renders downstream toolbar content and filters by sandbox name', () => {
+    mockUseSandboxes.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: [
+        mockSandbox,
+        {
+          ...mockSandbox,
+          metadata: {
+            ...mockSandbox.metadata,
+            id: 'uuid-2',
+            name: 'research-runner',
+          },
+        },
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <SandboxListPage
+          workspace="default"
+          toolbarStart={<span>Workspace selector</span>}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Workspace selector')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Filter by name'), {
+      target: { value: 'research' },
+    });
+    expect(screen.getByText('research-runner')).toBeInTheDocument();
+    expect(screen.queryByText('test-sandbox')).not.toBeInTheDocument();
   });
 });
