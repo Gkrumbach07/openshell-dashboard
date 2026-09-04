@@ -56,7 +56,7 @@ export const createSandboxFromTemplate = (
 
 export const useTemplates = (workspace: string, labelSelector?: string) =>
   useQuery({
-    queryKey: templateKeys.all(workspace),
+    queryKey: templateKeys.list(workspace, labelSelector),
     queryFn: () => listTemplates(workspace, labelSelector),
   });
 

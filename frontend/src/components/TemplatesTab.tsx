@@ -52,7 +52,9 @@ const resourceSummary = (template: SandboxTemplate): string => {
   }
   if (resources.gpu) {
     parts.push(
-      resources.gpu.count ? `${resources.gpu.count} GPU` : 'default GPU',
+      resources.gpu.count !== undefined
+        ? `${resources.gpu.count} GPU`
+        : 'default GPU',
     );
   }
   return parts.length > 0 ? parts.join(' · ') : '-';

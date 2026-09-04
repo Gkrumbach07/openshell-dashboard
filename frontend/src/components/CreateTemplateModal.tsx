@@ -48,7 +48,11 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
   const resolvedImage = image ? resolveImage(image) : '';
   const isResolved = Boolean(image) && resolvedImage !== image.trim();
   const isValid =
-    Boolean(image) && env !== null && labels !== null && !gpuInvalid;
+    Boolean(name) &&
+    Boolean(image) &&
+    env !== null &&
+    labels !== null &&
+    !gpuInvalid;
 
   const reset = () => {
     setName('');
@@ -75,7 +79,9 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
         ? {
             ...(cpu ? { cpu } : {}),
             ...(memory ? { memory } : {}),
-            ...(gpuCount ? { gpu: { count: Number(gpuCount) } } : {}),
+            ...(Number(gpuCount) > 0
+              ? { gpu: { count: Number(gpuCount) } }
+              : {}),
           }
         : undefined;
     const body: CreateSandboxTemplateRequest = {
