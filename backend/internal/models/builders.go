@@ -19,6 +19,28 @@ type CreateSandboxRequest struct {
 	GpuCount    uint32            `json:"gpuCount,omitempty"`
 }
 
+// CreateSandboxTemplateRequest is the create-template body for a reusable
+// workspace-scoped workload template. The workload image is required.
+type CreateSandboxTemplateRequest struct {
+	Labels      map[string]string   `json:"labels,omitempty"`
+	Annotations map[string]string   `json:"annotations,omitempty"`
+	Spec        SandboxTemplateSpec `json:"spec"`
+	Name        string              `json:"name"`
+}
+
+// CreateSandboxFromTemplateRequest is the create-sandbox-from-template body.
+// Only governance fields are accepted alongside the template reference — the
+// workload (image, environment, resources) comes from the named template.
+// Policy is required by the gateway (SandboxSpec.policy).
+type CreateSandboxFromTemplateRequest struct {
+	Labels       map[string]string `json:"labels,omitempty"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
+	Name         string            `json:"name"`
+	TemplateName string            `json:"templateName"`
+	Providers    []string          `json:"providers,omitempty"`
+	Policy       json.RawMessage   `json:"policy"`
+}
+
 // CreateProviderRequest is the create-provider body. Credentials are
 // write-only: accepted here, forwarded to the gateway, never returned.
 type CreateProviderRequest struct {

@@ -105,6 +105,107 @@ func BuildSDKSandboxSpec(req CreateSandboxRequest) (*openshell.SandboxSpec, erro
 	return spec, nil
 }
 
+// FromSDKSandboxTemplate converts an SDK SandboxWorkloadTemplate to the JSON
+// DTO the frontend expects.
+func FromSDKSandboxTemplate(t *openshell.SandboxWorkloadTemplate) SandboxTemplate {
+	if t == nil {
+		return SandboxTemplate{}
+	}
+	out := SandboxTemplate{
+		Metadata: ObjectMeta{
+			ID:              t.ID,
+			Name:            t.Name,
+			Workspace:       t.Workspace,
+			Labels:          t.Labels,
+			Annotations:     t.Annotations,
+			CreatedAtMs:     timeToMs(t.CreatedAt),
+			ResourceVersion: t.ResourceVersion,
+		},
+		Spec: fromSDKTemplateSpec(t.Spec),
+	}
+	if t.DeletionTimestamp != nil {
+		out.Metadata.DeletionTimestampMs = t.DeletionTimestamp.UnixMilli()
+	}
+	return out
+}
+
+func fromSDKTemplateSpec(spec openshell.SandboxWorkloadTemplateSpec) SandboxTemplateSpec {
+	out := SandboxTemplateSpec{DriverConfig: spec.DriverConfig}
+	if spec.Workload != nil {
+		workload := &SandboxWorkload{
+			Image:       spec.Workload.Image,
+			Environment: spec.Workload.Environment,
+		}
+		if res := spec.Workload.Resources; res != nil {
+			workload.Resources = &SandboxResources{CPU: res.CPU, Memory: res.Memory}
+			if res.GPU != nil {
+				workload.Resources.GPU = &SandboxGPU{Count: res.GPU.Count}
+			}
+		}
+		out.Workload = workload
+	}
+	if sl := spec.DesiredServiceLevel; sl != nil && sl.Startup != nil {
+		out.DesiredServiceLevel = &SandboxServiceLevel{
+			Startup: &SandboxStartup{
+				ReadyWithinMs: sl.Startup.ReadyWithin.Milliseconds(),
+				MaxBurst:      sl.Startup.MaxBurst,
+			},
+		}
+	}
+	return out
+}
+
+// BuildSDKSandboxWorkloadTemplate constructs an SDK SandboxWorkloadTemplate from
+// a create request.
+func BuildSDKSandboxWorkloadTemplate(req CreateSandboxTemplateRequest) *openshell.SandboxWorkloadTemplate {
+	return &openshell.SandboxWorkloadTemplate{
+		Name:        req.Name,
+		Labels:      req.Labels,
+		Annotations: req.Annotations,
+		Spec:        buildSDKTemplateSpec(req.Spec),
+	}
+}
+
+func buildSDKTemplateSpec(spec SandboxTemplateSpec) openshell.SandboxWorkloadTemplateSpec {
+	out := openshell.SandboxWorkloadTemplateSpec{DriverConfig: spec.DriverConfig}
+	if spec.Workload != nil {
+		workload := &openshell.SandboxWorkloadConfig{
+			Image:       spec.Workload.Image,
+			Environment: spec.Workload.Environment,
+		}
+		if res := spec.Workload.Resources; res != nil {
+			workload.Resources = &openshell.SandboxResources{CPU: res.CPU, Memory: res.Memory}
+			if res.GPU != nil {
+				workload.Resources.GPU = &openshell.SandboxGPURequirements{Count: res.GPU.Count}
+			}
+		}
+		out.Workload = workload
+	}
+	if sl := spec.DesiredServiceLevel; sl != nil && sl.Startup != nil {
+		out.DesiredServiceLevel = &openshell.SandboxServiceLevel{
+			Startup: &openshell.SandboxStartup{
+				ReadyWithin: time.Duration(sl.Startup.ReadyWithinMs) * time.Millisecond,
+				MaxBurst:    sl.Startup.MaxBurst,
+			},
+		}
+	}
+	return out
+}
+
+// BuildSDKTemplateGovernanceSpec builds the governance-only SandboxSpec allowed
+// when creating a sandbox from a template. The gateway rejects any workload
+// fields here — only policy and providers may be supplied.
+func BuildSDKTemplateGovernanceSpec(req CreateSandboxFromTemplateRequest) (*openshell.SandboxSpec, error) {
+	policy, err := ParseSDKPolicy(req.Policy)
+	if err != nil {
+		return nil, fmt.Errorf("policy does not match the SandboxPolicy schema: %w", err)
+	}
+	return &openshell.SandboxSpec{
+		Policy:    policy,
+		Providers: req.Providers,
+	}, nil
+}
+
 // ParseSDKPolicy converts camelCase JSON from the frontend into the SDK
 // SandboxPolicy. It round-trips through the proto with protojson so every
 // policy field (L7 rules, deny rules, IP allowlists, multi-port, MCP,

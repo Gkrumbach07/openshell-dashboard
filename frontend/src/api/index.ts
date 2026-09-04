@@ -5,6 +5,7 @@ export * from './auth';
 export * from './gateway';
 export * from './workspaces';
 export * from './sandboxes';
+export * from './templates';
 export * from './providers';
 export * from './policy';
 export * from './inference';

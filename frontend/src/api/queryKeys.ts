@@ -15,6 +15,14 @@ export const sandboxKeys = {
     ['sandbox-services', workspace, sandbox] as const,
 };
 
+export const templateKeys = {
+  all: (workspace: string) => ['templates', workspace] as const,
+  list: (workspace: string, labelSelector = '') =>
+    ['templates', workspace, labelSelector] as const,
+  detail: (workspace: string, name: string) =>
+    ['templates', workspace, name] as const,
+};
+
 export const workspaceKeys = {
   all: ['workspaces'] as const,
   detail: (name: string) => ['workspaces', name] as const,

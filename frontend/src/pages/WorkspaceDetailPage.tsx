@@ -16,11 +16,13 @@ import {
 
 import { useProviders } from '../api/providers';
 import { useSandboxes } from '../api/sandboxes';
+import { useTemplates } from '../api/templates';
 import { useMembers, useWorkspace } from '../api/workspaces';
 import InferenceTab from '../components/InferenceTab';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
 import ProfilesTab from '../components/provider/ProfilesTab';
+import TemplatesTab from '../components/TemplatesTab';
 import { useSlots } from '../slots';
 import MemberListPage from './MemberListPage';
 import ProviderListPage from './ProviderListPage';
@@ -52,6 +54,7 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
   const resolvedModelPicker = renderModelPicker ?? slots.modelPicker;
   const workspaceQuery = useWorkspace(workspace);
   const sandboxCount = useSandboxes(workspace);
+  const templateCount = useTemplates(workspace);
   const providerCount = useProviders(workspace);
   const memberCount = useMembers(workspace);
   const [activeTab, setActiveTab] = useState<string | number>('sandboxes');
@@ -128,6 +131,22 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
                 workspace={workspace}
                 onSelect={onSelectSandbox}
               />
+            </TabPanel>
+          </Tab>
+          <Tab
+            eventKey="templates"
+            title={
+              <TabTitleText>
+                Templates{' '}
+                {templateCount.data && (
+                  <Badge isRead>{templateCount.data.length}</Badge>
+                )}
+              </TabTitleText>
+            }
+            data-testid="tab-templates"
+          >
+            <TabPanel>
+              <TemplatesTab workspace={workspace} />
             </TabPanel>
           </Tab>
           <Tab

@@ -94,8 +94,14 @@ func (app *App) Routes() http.Handler {
 					r.Post("/members", app.AddMember)
 					r.Delete("/members/{subject}", app.RemoveMember)
 
+					r.Get("/templates", app.ListSandboxTemplates)
+					r.Post("/templates", app.CreateSandboxTemplate)
+					r.Get("/templates/{name}", app.GetSandboxTemplate)
+					r.Delete("/templates/{name}", app.DeleteSandboxTemplate)
+
 					r.Get("/sandboxes", app.ListSandboxes)
 					r.Post("/sandboxes", app.CreateSandbox)
+					r.Post("/sandboxes/from-template", app.CreateSandboxFromTemplate)
 					r.Get("/sandboxes/{name}", app.GetSandbox)
 					r.Delete("/sandboxes/{name}", app.DeleteSandbox)
 					r.Post("/sandboxes/{name}/stop", app.StopSandbox)
