@@ -32,6 +32,7 @@ import type { CredentialInputSlot, ModelPickerSlot } from '../types';
 type WorkspaceDetailPageProps = {
   workspace: string;
   onSelectSandbox?: (name: string) => void;
+  onViewSandbox?: (name: string, tab?: string) => void;
   onSelectProvider?: (name: string) => void;
   renderCredentialInput?: CredentialInputSlot;
   renderModelPicker?: ModelPickerSlot;
@@ -44,6 +45,7 @@ const TabPanel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
   workspace,
   onSelectSandbox,
+  onViewSandbox,
   onSelectProvider,
   renderCredentialInput,
   renderModelPicker,
@@ -130,6 +132,7 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
               <SandboxListPage
                 workspace={workspace}
                 onSelect={onSelectSandbox}
+                onViewSandbox={onViewSandbox}
               />
             </TabPanel>
           </Tab>
