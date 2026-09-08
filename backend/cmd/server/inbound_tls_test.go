@@ -17,22 +17,24 @@ import (
 	"time"
 )
 
+type inboundTLSValidationCase struct { //nolint:govet // fieldalignment: test readability
+	wantErr bool
+	errSub  string
+	name    string
+	cert    string
+	key     string
+}
+
 func TestValidateInboundTLS(t *testing.T) {
 	validCert, validKey := writeSelfSignedCert(t)
 
-	tests := []struct {
-		name    string
-		cert    string
-		key     string
-		wantErr bool
-		errSub  string
-	}{
-		{name: "both empty", cert: "", key: "", wantErr: false},
-		{name: "both set", cert: validCert, key: validKey, wantErr: false},
-		{name: "cert only", cert: validCert, key: "", wantErr: true, errSub: "TLS_CERT_FILE"},
-		{name: "key only", cert: "", key: validKey, wantErr: true, errSub: "TLS_CERT_FILE"},
-		{name: "missing cert file", cert: filepath.Join(t.TempDir(), "missing.crt"), key: validKey, wantErr: true, errSub: "TLS_CERT_FILE"},
-		{name: "missing key file", cert: validCert, key: filepath.Join(t.TempDir(), "missing.key"), wantErr: true, errSub: "TLS_KEY_FILE"},
+	tests := []inboundTLSValidationCase{
+		{wantErr: false, name: "both empty", cert: "", key: ""},
+		{wantErr: false, name: "both set", cert: validCert, key: validKey},
+		{wantErr: true, name: "cert only", cert: validCert, key: "", errSub: "TLS_CERT_FILE"},
+		{wantErr: true, name: "key only", cert: "", key: validKey, errSub: "TLS_CERT_FILE"},
+		{wantErr: true, name: "missing cert file", cert: filepath.Join(t.TempDir(), "missing.crt"), key: validKey, errSub: "TLS_CERT_FILE"},
+		{wantErr: true, name: "missing key file", cert: validCert, key: filepath.Join(t.TempDir(), "missing.key"), errSub: "TLS_KEY_FILE"},
 	}
 
 	for _, tc := range tests {
@@ -200,7 +202,7 @@ func writeSelfSignedCert(t *testing.T) (certPath, keyPath string) {
 	keyPath = filepath.Join(dir, "tls.key")
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
-	if err := os.WriteFile(certPath, certPEM, 0o600); err != nil {
+	if err = os.WriteFile(certPath, certPEM, 0o600); err != nil {
 		t.Fatalf("write cert: %v", err)
 	}
 
@@ -209,7 +211,7 @@ func writeSelfSignedCert(t *testing.T) (certPath, keyPath string) {
 		t.Fatalf("marshal key: %v", err)
 	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
-	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
+	if err = os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
 		t.Fatalf("write key: %v", err)
 	}
 

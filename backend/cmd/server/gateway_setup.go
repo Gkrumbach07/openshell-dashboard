@@ -18,10 +18,14 @@ type gatewayClients struct {
 
 func (c *gatewayClients) Close() {
 	if c.sdk != nil {
-		c.sdk.Close()
+		if err := c.sdk.Close(); err != nil {
+			slog.Warn("SDK client close failed", "error", err)
+		}
 	}
 	if c.uploadExec != nil {
-		c.uploadExec.Close()
+		if err := c.uploadExec.Close(); err != nil {
+			slog.Warn("upload exec client close failed", "error", err)
+		}
 	}
 }
 
@@ -56,7 +60,9 @@ func newGatewayClients(gatewayURL, gatewayCACert, gatewayClientCert, gatewayClie
 	rawHost := strings.TrimPrefix(strings.TrimPrefix(sdkAddress, "https://"), "http://")
 	uploadExec, err := sdkclient.NewRawExecClient(rawHost, gatewayCACert, gatewayClientCert, gatewayClientKey, useTLS)
 	if err != nil {
-		sdkClient.Close()
+		if closeErr := sdkClient.Close(); closeErr != nil {
+			slog.Warn("SDK client close failed during setup rollback", "error", closeErr)
+		}
 		return nil, fmt.Errorf("upload exec client setup failed: %w", err)
 	}
 
