@@ -117,6 +117,8 @@ Env vars (some also available as CLI flags):
 | `GATEWAY_CA_CERT` | `-gateway-ca-cert` | | CA cert for gateway TLS |
 | `GATEWAY_CLIENT_CERT` | `-gateway-client-cert` | | Client cert for gateway mTLS |
 | `GATEWAY_CLIENT_KEY` | `-gateway-client-key` | | Client key for gateway mTLS |
+| `TLS_CERT_FILE` | `-tls-cert` | | Server cert for inbound BFF HTTPS |
+| `TLS_KEY_FILE` | `-tls-key` | | Server key for inbound BFF HTTPS |
 | `STATIC_DIR` | `-static-dir` | | Frontend static assets directory |
 | `AUTH_DISABLED` | `-auth-disabled` | `false` | Skip auth — dev only |
 | `AUTH_TOKEN_HEADER` | `-auth-token-header` | `x-forwarded-access-token` | Token header name |

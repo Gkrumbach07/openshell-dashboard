@@ -89,12 +89,35 @@ All flags have env var fallbacks:
 | `-gateway-ca-cert` | `GATEWAY_CA_CERT` |: | Path to CA cert for self-signed gateway TLS |
 | `-gateway-client-cert` | `GATEWAY_CLIENT_CERT` | | Path to client certificate for gateway mTLS |
 | `-gateway-client-key` | `GATEWAY_CLIENT_KEY` | | Path to client private key for gateway mTLS |
+| `-tls-cert` | `TLS_CERT_FILE` | | Path to server certificate for inbound BFF HTTPS |
+| `-tls-key` | `TLS_KEY_FILE` | | Path to server private key for inbound BFF HTTPS |
 
-The browser connects to the dashboard BFF over HTTP or HTTPS. The BFF then
-connects separately, as a gRPC client, to the OpenShell gateway's
-administrative API. These are independent security boundaries: browser
-authentication protects access to the dashboard, while gateway TLS protects
-the BFF-to-gateway connection.
+The browser or auth proxy connects to the dashboard BFF over HTTP or HTTPS.
+The BFF then connects separately, as a gRPC client, to the OpenShell gateway's
+administrative API. These are three independent TLS boundaries:
+
+- **Inbound BFF TLS** — proxy/browser → BFF (`TLS_CERT_FILE` / `TLS_KEY_FILE`).
+  When both are set, the BFF serves HTTPS on `PORT`. When neither is set, the
+  BFF serves plain HTTP (local dev unchanged). Setting only one fails at startup.
+- **Outbound gateway TLS** — BFF → gateway server (`GATEWAY_CA_CERT`).
+- **Outbound gateway mTLS** — BFF client identity to the gateway
+  (`GATEWAY_CLIENT_CERT` / `GATEWAY_CLIENT_KEY`).
+
+Browser authentication protects access to the dashboard; inbound BFF TLS
+encrypts the proxy-to-BFF hop; outbound gateway TLS/mTLS protects the
+BFF-to-gateway connection.
+
+For container deployments that require inbound HTTPS, mount cert and key files
+and point the env vars at them (paths are examples, not enforced):
+
+```text
+/etc/tls/private/tls.crt  → TLS_CERT_FILE
+/etc/tls/private/tls.key  → TLS_KEY_FILE
+PORT=8843                   # consumer choice; not hardcoded
+```
+
+Rotating mounted cert/key files requires restarting the BFF process so it reloads
+the paths configured in `TLS_CERT_FILE` and `TLS_KEY_FILE`.
 
 The default local OpenShell gateway requires mutual TLS on its loopback-only
 administrative listener. Run the BFF on the gateway host and configure the
