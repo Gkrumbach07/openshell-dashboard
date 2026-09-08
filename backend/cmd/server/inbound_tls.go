@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -58,6 +59,10 @@ func newInboundServer(addr string, handler http.Handler) *http.Server {
 		// WriteTimeout is intentionally unset: terminal WebSockets and large
 		// uploads can run longer than a fixed write deadline after the handshake.
 		IdleTimeout: serverIdleTimeout,
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS13,
+			NextProtos: []string{"h2", "http/1.1"},
+		},
 	}
 }
 
