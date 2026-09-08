@@ -11,20 +11,17 @@
 package main
 
 import (
+	"context"
 	"flag"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
-	"strings"
-	"time"
-
-	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	"os/signal"
+	"syscall"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/api"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/sdkclient"
 )
 
 const (
@@ -39,7 +36,7 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func main() { //nolint:gocyclo // main is inherently branchy due to flag/config handling
+func main() {
 	var (
 		port              = flag.String("port", envOr("PORT", defaultPort), "listen port (env PORT)")
 		listenAddress     = flag.String("listen-address", envOr("LISTEN_ADDRESS", ""), "listen address (env LISTEN_ADDRESS)")
@@ -47,6 +44,8 @@ func main() { //nolint:gocyclo // main is inherently branchy due to flag/config 
 		gatewayCACert     = flag.String("gateway-ca-cert", envOr("GATEWAY_CA_CERT", ""), "path to CA cert for gateway TLS (env GATEWAY_CA_CERT)")
 		gatewayClientCert = flag.String("gateway-client-cert", envOr("GATEWAY_CLIENT_CERT", ""), "path to client certificate for gateway mTLS (env GATEWAY_CLIENT_CERT)")
 		gatewayClientKey  = flag.String("gateway-client-key", envOr("GATEWAY_CLIENT_KEY", ""), "path to client key for gateway mTLS (env GATEWAY_CLIENT_KEY)")
+		tlsCert           = flag.String("tls-cert", envOr("TLS_CERT_FILE", ""), "path to server cert for inbound HTTPS (env TLS_CERT_FILE)")
+		tlsKey            = flag.String("tls-key", envOr("TLS_KEY_FILE", ""), "path to server key for inbound HTTPS (env TLS_KEY_FILE)")
 		staticDir         = flag.String("static-dir", envOr("STATIC_DIR", ""), "frontend static assets directory (env STATIC_DIR)")
 		authDisabled      = flag.Bool("auth-disabled", envOr("AUTH_DISABLED", "false") == "true", "skip auth — dev only (env AUTH_DISABLED)")
 		tokenHeader       = flag.String("auth-token-header", envOr("AUTH_TOKEN_HEADER", "x-forwarded-access-token"), "header injected by auth proxy containing the bearer token (env AUTH_TOKEN_HEADER)")
@@ -59,18 +58,10 @@ func main() { //nolint:gocyclo // main is inherently branchy due to flag/config 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	slog.SetDefault(logger)
 
-	if *gatewayURL == defaultGatewayURL {
-		slog.Warn("gateway URL is the default — verify OPENSHELL_GATEWAY_URL is configured correctly", "url", *gatewayURL)
-	}
-	if *gatewayCACert != "" && !strings.HasPrefix(*gatewayURL, "grpcs://") && !strings.HasPrefix(*gatewayURL, "https://") {
-		slog.Warn(
-			"gateway CA cert is set but gateway URL has no TLS scheme; use grpcs:// or https:// for TLS gateways",
-			"url", *gatewayURL,
-			"caCert", *gatewayCACert,
-		)
-	}
-	if *authDisabled {
-		slog.Warn("AUTH_DISABLED=true — authentication is OFF; never use this outside local development")
+	warnGatewayConfig(*gatewayURL, *gatewayCACert, *authDisabled)
+	if err := validateInboundTLS(*tlsCert, *tlsKey); err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
 	}
 
 	authMiddleware := auth.New(auth.Config{
@@ -94,73 +85,50 @@ func main() { //nolint:gocyclo // main is inherently branchy due to flag/config 
 		},
 	}
 
-	useTLS := strings.HasPrefix(*gatewayURL, "grpcs://") || strings.HasPrefix(*gatewayURL, "https://")
-	sdkAddress := *gatewayURL
-	switch {
-	case strings.HasPrefix(sdkAddress, "grpcs://"):
-		sdkAddress = "https://" + strings.TrimPrefix(sdkAddress, "grpcs://")
-	case strings.HasPrefix(sdkAddress, "grpc://"):
-		sdkAddress = "http://" + strings.TrimPrefix(sdkAddress, "grpc://")
-	case !strings.HasPrefix(sdkAddress, "https://") && !strings.HasPrefix(sdkAddress, "http://"):
-		scheme := "http"
-		if useTLS {
-			scheme = "https"
-		}
-		sdkAddress = fmt.Sprintf("%s://%s", scheme, sdkAddress)
-	}
-	if (*gatewayClientCert == "") != (*gatewayClientKey == "") {
-		slog.Error("gateway mTLS requires both --gateway-client-cert and --gateway-client-key")
-		os.Exit(1)
-	}
-	sdkCfg := openshell.Config{
-		Address: sdkAddress,
-		Auth:    sdkclient.ContextAuthProvider{RequireTLS: useTLS},
-	}
-	if useTLS {
-		tlsCfg := &openshell.TLSConfig{CAFile: *gatewayCACert}
-		if *gatewayClientCert != "" {
-			tlsCfg.CertFile = *gatewayClientCert
-			tlsCfg.KeyFile = *gatewayClientKey
-		}
-		sdkCfg.TLS = tlsCfg
-	} else {
-		sdkCfg.TLS = &openshell.TLSConfig{Insecure: true}
-	}
-	sdkClient, err := openshell.NewClient(sdkCfg)
+	clients, err := newGatewayClients(*gatewayURL, *gatewayCACert, *gatewayClientCert, *gatewayClientKey)
 	if err != nil {
-		slog.Error("SDK client setup failed", "error", err)
-		os.Exit(1)
+		exitOnError("gateway client setup failed", err)
 	}
-	defer sdkClient.Close()
+	defer clients.Close()
 
-	// Dedicated raw client for the one gateway capability the SDK omits:
-	// non-TTY, stdin-carrying ExecSandbox, used for binary file upload.
-	rawHost := sdkAddress
-	rawHost = strings.TrimPrefix(rawHost, "https://")
-	rawHost = strings.TrimPrefix(rawHost, "http://")
-	uploadExec, err := sdkclient.NewRawExecClient(rawHost, *gatewayCACert, *gatewayClientCert, *gatewayClientKey, useTLS)
-	if err != nil {
-		slog.Error("upload exec client setup failed", "error", err)
-		os.Exit(1)
-	}
-	defer uploadExec.Close()
-
-	app := api.NewApp(sdkClient, uploadExec, authMiddleware, *staticDir, authCfg)
+	app := api.NewApp(clients.sdk, clients.uploadExec, authMiddleware, *staticDir, authCfg)
 
 	addr := net.JoinHostPort(*listenAddress, *port)
 	slog.Info("openshell-dashboard BFF listening",
 		"addr", addr,
+		"scheme", inboundScheme(*tlsCert, *tlsKey),
 		"gateway", *gatewayURL,
 		"static", *staticDir,
 		"authDisabled", *authDisabled,
 	)
-	server := &http.Server{
-		Addr:              addr,
-		Handler:           app.Routes(),
-		ReadHeaderTimeout: 10 * time.Second,
+
+	server := newInboundServer(addr, app.Routes())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- serveInbound(server, *tlsCert, *tlsKey)
+	}()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			exitOnError("server exited", err)
+		}
+		return
+	case sig := <-sigCh:
+		signal.Stop(sigCh)
+		slog.Info("shutting down BFF", "signal", sig.String())
 	}
-	if err := server.ListenAndServe(); err != nil {
-		slog.Error("server exited", "error", err)
-		os.Exit(1)
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		exitOnError("server shutdown failed", err)
+	}
+
+	if err := <-errCh; err != nil && err != http.ErrServerClosed {
+		exitOnError("server exited", err)
 	}
 }
