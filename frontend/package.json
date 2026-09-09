@@ -64,7 +64,8 @@
     "e2e:integration": "cypress run --config-file cypress.config.integration.ts",
     "e2e:integration:open": "cypress open --config-file cypress.config.integration.ts",
     "build:lib": "node scripts/build-lib.mjs",
-    "verify:lib": "node scripts/verify-lib-build.mjs"
+    "verify:lib": "node scripts/verify-lib-build.mjs",
+    "verify:consumer": "node scripts/verify-packed-consumer.mjs"
   },
   "peerDependencies": {
     "@patternfly/react-code-editor": "^6.6.0",

@@ -12,5 +12,8 @@ function run(cmd) {
 
 rmSync(join(root, 'dist'), { recursive: true, force: true });
 run('tsc -p tsconfig.build.json');
-run('tsc-alias -p tsconfig.build.json');
+// Node ESM does not resolve extensionless relative imports. Rewrite the emitted
+// specifiers to their explicit .js paths so the packed library works outside a
+// bundler too.
+run('tsc-alias -p tsconfig.build.json --resolve-full-paths');
 run('node scripts/verify-lib-build.mjs');
