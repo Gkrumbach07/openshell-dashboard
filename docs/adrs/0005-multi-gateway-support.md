@@ -89,7 +89,37 @@ and minting them is a proxy/IdP concern. HyperShell lists "a central console
 with single sign-on across all gateways (one login, token exchange for each
 `aud`)" as explicitly out of scope.
 
-### 4. mTLS does not survive the move to a fleet dashboard
+### 4. RHOAI is a third deployment context, and it must not assume a singleton
+
+RHOAI's OpenShell plan (design thread, Sept 2026) adds two more shapes:
+
+| | Backend | Dashboard implication |
+|---|---|---|
+| **3.6 EA2** | Downstream image + Helm, **self-deployed by the customer**. No managed backend. | The UI ships with no backend of ours to point at. The gateway is user-deployed and outside our trust boundary. |
+| **3.6 GA** | Managed, operator-owned; DSC flips it on and off, like other RHOAI components. | Standard managed-dependency pattern. |
+
+The initial framing assumed one gateway per RHOAI deployment. That assumption
+was pushed back on in review, and the pushback is right: per-project /
+per-namespace topologies are exactly what HyperShell already builds, and a
+cluster-wide singleton would foreclose them. **This ADR therefore treats
+single-gateway as a configuration, never an architecture.**
+
+It also surfaces a discovery question the other two contexts don't have.
+EA2 has no registry to read: the candidate answer is a downstream label on
+the customer's own gateway resource, which anyone can apply to anything. GA
+would get the answer from the DSC. Neither resembles the OpenShell CLI's
+on-disk layout. So **discovery is a separate axis from selection**, and the
+registry in Layer 1 has to be pluggable across at least four sources: the
+OpenShell CLI layout, an explicit env/flag, in-cluster Kubernetes discovery
+(label or DSC), and the HyperShell fleet API.
+
+A useful consequence of the per-namespace shape: if a gateway belongs to an
+RHOAI project, "which gateway" is largely answered by "which project," and
+the gateway dimension partly collapses onto a selector the user already
+drives. That is worth designing toward rather than adding a second,
+independent switcher.
+
+### 5. mTLS does not survive the move to a fleet dashboard
 
 Each gateway is reachable two ways, and they are not interchangeable:
 
@@ -119,10 +149,15 @@ byte-identical to today, so the HyperShell image contract keeps working.
 **Backend**
 
 - Introduce a `GatewayRegistry` built at boot: named entries of
-  `{name, endpoint, tls, default}`. Populate it from the OpenShell layout via
-  `sdk/go openshell/v1/gateway.ListGateways()` / `LoadConfig()`, plus an
-  explicit env/file override for containers. `OPENSHELL_GATEWAY_URL` remains
-  supported and defines the single default entry.
+  `{name, endpoint, tls, default}`, behind a **`GatewaySource` interface** so
+  discovery can vary per deployment without touching handlers. Four sources,
+  in rough order of arrival: the explicit env/flag one
+  (`OPENSHELL_GATEWAY_URL`, which keeps today's behavior as the single
+  default entry), the OpenShell CLI layout via
+  `sdk/go openshell/v1/gateway.ListGateways()` / `LoadConfig()`, in-cluster
+  Kubernetes discovery for RHOAI (label or DSC), and the HyperShell fleet
+  API. Only the first two are in scope now; the interface is what keeps the
+  other two from becoming a rewrite.
 - Replace `App.sdk openshell.ClientInterface` (`internal/api/app.go:28`) with
   a resolver — `app.gw(r)` returning the `ClientInterface` and
   `StdinExecer` for the request's gateway. Clients stay per-gateway
@@ -185,6 +220,57 @@ than a rewrite.
 3. Per-gateway isolation (`fullScopeAllowed = false`) survives: N narrow
    tokens, never one wide one.
 
+## The trust boundary when the gateway is not ours
+
+EA2's self-deploy model raises a question worth answering precisely, because
+the review thread guessed at it: *how risky is it that the BFF may route
+through a gateway we don't manage?*
+
+**What the BFF would hand a rogue gateway.** Exactly one thing: the end
+user's bearer, verbatim, on every RPC. The BFF holds no credential of its
+own — no service account, no static token, no ambient identity (ADR 0002),
+and `sdkclient.ContextAuthProvider` reads only the per-request context. The
+mTLS material is not at risk either: the client *certificate* is presented,
+the private key never leaves the process, so a hostile endpoint learns
+nothing replayable from it.
+
+**So the blast radius is decided entirely by the token's `aud`.** This is the
+question for architects, and it has a concrete answer either way:
+
+- If the relayed token is **audience-scoped to that gateway** — HyperShell's
+  model, one Keycloak client per gateway — a rogue gateway harvests a
+  credential useful only against itself. The exposure is bounded to what the
+  user already granted it.
+- If RHOAI relays a **broadly-scoped token** (a cluster or RHOAI-wide user
+  token), a rogue gateway harvests a credential valid against other APIs.
+  That is a genuine credential-exfiltration path, and no amount of BFF
+  hardening fixes it — the fix is audience scoping at the IdP.
+
+Relay-only is what keeps this bounded rather than catastrophic: there is no
+service account to steal, and the BFF authorizes nothing. But "no service
+account" is not itself the mitigation; **audience scoping is.**
+
+Two concrete gaps in the current code, independent of RHOAI:
+
+1. **Plaintext downgrade leaks the bearer.** `RequireTLS` is derived from the
+   URL scheme (`gateway_setup.go:33`), so a bare `host:port` or `grpc://`
+   gateway URL makes `RequireTransportSecurity()` return false and gRPC will
+   ship the user's token in cleartext. Acceptable for `AUTH_DISABLED` dev;
+   not acceptable when a customer supplies the URL. The BFF should refuse a
+   plaintext gateway URL whenever auth is enabled.
+2. **No CA pinning by default.** An empty `GATEWAY_CA_CERT` with a `grpcs://`
+   address falls back to system roots, so any publicly-trusted certificate is
+   accepted and "is this the right gateway" is answered by DNS alone.
+
+**On label-based discovery.** A label is only as trustworthy as write access
+to the object carrying it. If any user can label any Service in their own
+namespace, label-scraping is not an authorization mechanism and must not be
+used as one. The safe shapes are admin-scoped discovery (DSC, or a
+cluster-scoped config only an admin writes) or explicit user choice, where
+the user names their gateway and visibly owns the trust decision. What we
+must not build is silent auto-discovery that picks a gateway for the user
+across namespaces.
+
 ## Alternatives considered
 
 **Keep one gateway per dashboard instance forever.** This is the status quo
@@ -226,6 +312,16 @@ server-side state, no credential brokering.
   `connection | details | service-accounts` gateway detail tabs.
 - "Multiple gateways" and "single sign-on across gateways" are now separable:
   we ship the first without waiting on the second.
+- RHOAI 3.6 EA2 can ship a UI against a self-deployed gateway without the
+  dashboard hard-coding a singleton, and GA can supply the same registry from
+  the DSC — the same code path, a different `GatewaySource`.
+- Two hardening items fall out of the trust-boundary analysis and should land
+  regardless of this ADR's fate: refuse plaintext gateway URLs when auth is
+  enabled, and make CA pinning expressible per gateway.
+- The decisive security question — whether the relayed token is
+  audience-scoped per gateway — is not ours to answer alone. It belongs in
+  the RHOAI architecture review, and this ADR should not be accepted for the
+  RHOAI context until it is settled.
 
 ## References
 
