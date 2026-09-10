@@ -33,7 +33,7 @@ func (h *GatewayHandler) GetGateways(w http.ResponseWriter, r *http.Request) {
 func (h *GatewayHandler) GetGatewayInfo(w http.ResponseWriter, r *http.Request) {
 	info, err := h.service.GetGatewayInfo(r.Context())
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, info)
@@ -42,7 +42,7 @@ func (h *GatewayHandler) GetGatewayInfo(w http.ResponseWriter, r *http.Request) 
 func (h *GatewayHandler) CheckHealth(w http.ResponseWriter, r *http.Request) {
 	result, err := h.service.CheckHealth(r.Context())
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, result)
@@ -51,7 +51,7 @@ func (h *GatewayHandler) CheckHealth(w http.ResponseWriter, r *http.Request) {
 func (h *GatewayHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	user, err := h.service.GetCurrentUser(r.Context())
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, user)

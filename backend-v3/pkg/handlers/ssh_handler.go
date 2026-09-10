@@ -40,7 +40,7 @@ func (h *SSHHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 
 	session, err := h.service.CreateSession(r.Context(), workspace, sandboxName)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusCreated, session)
@@ -52,7 +52,7 @@ func (h *SSHHandler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 
 	revoked, err := h.service.RevokeSession(r.Context(), workspace, token)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]bool{"revoked": revoked})

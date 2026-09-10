@@ -39,7 +39,7 @@ func (h *ProviderHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	providers, err := h.service.List(r.Context(), workspace, models.ListOptions{})
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, providers)
@@ -51,7 +51,7 @@ func (h *ProviderHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	p, err := h.service.Get(r.Context(), workspace, name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, p)
@@ -62,13 +62,13 @@ func (h *ProviderHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var p models.Provider
 	if err := h.decodeJSON(r, &p); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	created, err := h.service.Create(r.Context(), workspace, &p)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusCreated, created)
@@ -80,14 +80,14 @@ func (h *ProviderHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var p models.Provider
 	if err := h.decodeJSON(r, &p); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 	p.Name = name
 
 	updated, err := h.service.Update(r.Context(), workspace, &p)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, updated)
@@ -98,7 +98,7 @@ func (h *ProviderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
 	if err := h.service.Delete(r.Context(), workspace, name); err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusNoContent, nil)
@@ -110,14 +110,14 @@ func (h *ProviderHandler) Ensure(w http.ResponseWriter, r *http.Request) {
 
 	var p models.Provider
 	if err := h.decodeJSON(r, &p); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 	p.Name = name
 
 	ensured, err := h.service.Ensure(r.Context(), workspace, &p)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, ensured)

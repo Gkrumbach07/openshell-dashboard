@@ -41,10 +41,10 @@ func (h *Handler) writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// writeError maps err to an HTTP error response. Domain handlers call this
+// WriteError maps err to an HTTP error response. Domain handlers call this
 // on service errors; replace with richer status-code mapping (e.g. from
 // SDK StatusError codes) as real client implementations land.
-func (h *Handler) writeError(w http.ResponseWriter, status int, err error) {
+func (h *Handler) WriteError(w http.ResponseWriter, status int, err error) {
 	http.Error(w, err.Error(), status)
 }
 

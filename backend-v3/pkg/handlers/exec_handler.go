@@ -49,13 +49,13 @@ func (h *ExecHandler) Run(w http.ResponseWriter, r *http.Request) {
 
 	var req execRequest
 	if err := h.decodeJSON(r, &req); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	result, err := h.service.Run(r.Context(), workspace, name, req.Command)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -70,20 +70,20 @@ func (h *ExecHandler) Stream(w http.ResponseWriter, r *http.Request) {
 
 	var req execRequest
 	if err := h.decodeJSON(r, &req); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	stream, err := h.service.Stream(r.Context(), workspace, name, req.Command)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	defer func() { _ = stream.Close() }()
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		h.writeError(w, http.StatusInternalServerError, errNoFlush)
+		h.WriteError(w, http.StatusInternalServerError, errNoFlush)
 		return
 	}
 

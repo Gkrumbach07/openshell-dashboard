@@ -48,7 +48,7 @@ func (h *SandboxHandler) ListSandboxes(w http.ResponseWriter, r *http.Request) {
 
 	sandboxes, err := h.service.ListSandboxes(r.Context(), workspace)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -61,7 +61,7 @@ func (h *SandboxHandler) GetSandbox(w http.ResponseWriter, r *http.Request) {
 
 	sb, err := h.service.GetSandbox(r.Context(), workspace, name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -77,13 +77,13 @@ func (h *SandboxHandler) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 		Labels map[string]string   `json:"labels,omitempty"`
 	}
 	if err := h.decodeJSON(r, &req); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	sb, err := h.service.CreateSandbox(r.Context(), workspace, req.Name, req.Spec, req.Labels)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -95,7 +95,7 @@ func (h *SandboxHandler) DeleteSandbox(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
 	if err := h.service.DeleteSandbox(r.Context(), workspace, name); err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -110,7 +110,7 @@ func (h *SandboxHandler) AttachProvider(w http.ResponseWriter, r *http.Request) 
 
 	result, err := h.service.AttachProvider(r.Context(), workspace, name, provider, expectedResourceVersion)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -125,7 +125,7 @@ func (h *SandboxHandler) DetachProvider(w http.ResponseWriter, r *http.Request) 
 
 	result, err := h.service.DetachProvider(r.Context(), workspace, name, provider, expectedResourceVersion)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -138,7 +138,7 @@ func (h *SandboxHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
 
 	providers, err := h.service.ListProviders(r.Context(), workspace, name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -159,7 +159,7 @@ func (h *SandboxHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.service.GetLogs(r.Context(), workspace, name, opts)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -174,14 +174,14 @@ func (h *SandboxHandler) WatchSandbox(w http.ResponseWriter, r *http.Request) {
 
 	events, stop, err := h.service.Watch(r.Context(), workspace, name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	defer stop()
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		h.writeError(w, http.StatusInternalServerError, errNoFlush)
+		h.WriteError(w, http.StatusInternalServerError, errNoFlush)
 		return
 	}
 

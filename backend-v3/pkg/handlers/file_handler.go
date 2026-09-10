@@ -47,24 +47,24 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	sandboxName := chi.URLParam(r, "name")
 
 	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 	remotePath := r.FormValue("remotePath")
 	if remotePath == "" {
-		h.writeError(w, http.StatusBadRequest, errMissingRemotePath)
+		h.WriteError(w, http.StatusBadRequest, errMissingRemotePath)
 		return
 	}
 
 	f, _, err := r.FormFile("file")
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 	defer func() { _ = f.Close() }()
 
 	if err := h.service.Upload(r.Context(), workspace, sandboxName, remotePath, f); err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusNoContent, nil)
@@ -77,7 +77,7 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 	sandboxName := chi.URLParam(r, "name")
 	remotePath := r.URL.Query().Get("remotePath")
 	if remotePath == "" {
-		h.writeError(w, http.StatusBadRequest, errMissingRemotePath)
+		h.WriteError(w, http.StatusBadRequest, errMissingRemotePath)
 		return
 	}
 

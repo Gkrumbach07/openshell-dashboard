@@ -56,7 +56,7 @@ func (h *PolicyHandler) GetDraft(w http.ResponseWriter, r *http.Request) {
 
 	draft, err := h.service.GetDraft(r.Context(), workspace, name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, draft)
@@ -68,7 +68,7 @@ func (h *PolicyHandler) GetDraftHistory(w http.ResponseWriter, r *http.Request) 
 
 	history, err := h.service.GetDraftHistory(r.Context(), workspace, name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, history)
@@ -80,7 +80,7 @@ func (h *PolicyHandler) ClearDraftChunks(w http.ResponseWriter, r *http.Request)
 
 	result, err := h.service.ClearDraftChunks(r.Context(), workspace, name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, result)
@@ -92,7 +92,7 @@ func (h *PolicyHandler) ApproveAllDraftChunks(w http.ResponseWriter, r *http.Req
 
 	result, err := h.service.ApproveAllDraftChunks(r.Context(), workspace, name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, result)
@@ -105,7 +105,7 @@ func (h *PolicyHandler) ApproveDraftChunk(w http.ResponseWriter, r *http.Request
 
 	result, err := h.service.ApproveDraftChunk(r.Context(), workspace, name, chunkID)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, result)
@@ -120,12 +120,12 @@ func (h *PolicyHandler) RejectDraftChunk(w http.ResponseWriter, r *http.Request)
 		Reason string `json:"reason"`
 	}
 	if err := h.decodeJSON(r, &req); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	if err := h.service.RejectDraftChunk(r.Context(), workspace, name, chunkID, req.Reason); err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusNoContent, nil)
@@ -138,12 +138,12 @@ func (h *PolicyHandler) EditDraftChunk(w http.ResponseWriter, r *http.Request) {
 
 	var rule models.NetworkPolicyRule
 	if err := h.decodeJSON(r, &rule); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	if err := h.service.EditDraftChunk(r.Context(), workspace, name, chunkID, &rule); err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusNoContent, nil)
@@ -156,7 +156,7 @@ func (h *PolicyHandler) UndoDraftChunk(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.service.UndoDraftChunk(r.Context(), workspace, name, chunkID)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, result)
@@ -168,7 +168,7 @@ func (h *PolicyHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 
 	status, err := h.service.GetStatus(r.Context(), workspace, name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, status)
@@ -179,7 +179,7 @@ func (h *PolicyHandler) ListRevisions(w http.ResponseWriter, r *http.Request) {
 
 	revisions, err := h.service.ListRevisions(r.Context(), workspace)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, revisions)

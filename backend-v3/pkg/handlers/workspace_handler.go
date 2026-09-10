@@ -38,7 +38,7 @@ func (h *WorkspaceHandler) RegisterRoutes(r chi.Router) {
 func (h *WorkspaceHandler) List(w http.ResponseWriter, r *http.Request) {
 	workspaces, err := h.service.List(r.Context(), models.ListOptions{})
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, workspaces)
@@ -49,7 +49,7 @@ func (h *WorkspaceHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	ws, err := h.service.Get(r.Context(), name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, ws)
@@ -61,13 +61,13 @@ func (h *WorkspaceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Labels map[string]string `json:"labels,omitempty"`
 	}
 	if err := h.decodeJSON(r, &req); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	ws, err := h.service.Create(r.Context(), req.Name, req.Labels)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusCreated, ws)
@@ -77,7 +77,7 @@ func (h *WorkspaceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
 	if err := h.service.Delete(r.Context(), name); err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusNoContent, nil)
@@ -88,7 +88,7 @@ func (h *WorkspaceHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 
 	members, err := h.service.ListMembers(r.Context(), name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, members)
@@ -102,13 +102,13 @@ func (h *WorkspaceHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		Role             string `json:"role"`
 	}
 	if err := h.decodeJSON(r, &req); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	member, err := h.service.AddMember(r.Context(), name, req.PrincipalSubject, req.Role)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusCreated, member)
@@ -119,7 +119,7 @@ func (h *WorkspaceHandler) RemoveMember(w http.ResponseWriter, r *http.Request) 
 	subject := chi.URLParam(r, "subject")
 
 	if err := h.service.RemoveMember(r.Context(), name, subject); err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusNoContent, nil)

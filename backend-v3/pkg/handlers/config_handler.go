@@ -36,7 +36,7 @@ func (h *ConfigHandler) GetSandboxConfig(w http.ResponseWriter, r *http.Request)
 
 	cfg, err := h.service.GetSandboxConfig(r.Context(), workspace, name)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, cfg)
@@ -45,7 +45,7 @@ func (h *ConfigHandler) GetSandboxConfig(w http.ResponseWriter, r *http.Request)
 func (h *ConfigHandler) GetGatewayConfig(w http.ResponseWriter, r *http.Request) {
 	cfg, err := h.service.GetGatewayConfig(r.Context())
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, cfg)
@@ -56,13 +56,13 @@ func (h *ConfigHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var update models.ConfigUpdate
 	if err := h.decodeJSON(r, &update); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	result, err := h.service.Update(r.Context(), workspace, &update)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, result)

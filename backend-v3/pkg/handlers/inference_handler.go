@@ -39,13 +39,13 @@ func (h *InferenceHandler) SetRoute(w http.ResponseWriter, r *http.Request) {
 
 	var cfg models.InferenceRouteConfig
 	if err := h.decodeJSON(r, &cfg); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	route, err := h.service.SetRoute(r.Context(), workspace, &cfg)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, route)
@@ -57,7 +57,7 @@ func (h *InferenceHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 
 	route, err := h.service.GetRoute(r.Context(), workspace, routeName)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, route)
@@ -68,7 +68,7 @@ func (h *InferenceHandler) DeleteRoute(w http.ResponseWriter, r *http.Request) {
 	routeName := chi.URLParam(r, "routeName")
 
 	if err := h.service.DeleteRoute(r.Context(), workspace, routeName); err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusNoContent, nil)
@@ -79,7 +79,7 @@ func (h *InferenceHandler) GetDefaultRoute(w http.ResponseWriter, r *http.Reques
 
 	route, err := h.service.GetRoute(r.Context(), workspace, "")
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, route)
@@ -89,7 +89,7 @@ func (h *InferenceHandler) DeleteDefaultRoute(w http.ResponseWriter, r *http.Req
 	workspace := r.URL.Query().Get("workspace")
 
 	if err := h.service.DeleteRoute(r.Context(), workspace, ""); err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusNoContent, nil)

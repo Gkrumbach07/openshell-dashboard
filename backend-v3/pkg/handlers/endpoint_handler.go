@@ -39,7 +39,7 @@ func (h *EndpointHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	services, err := h.service.List(r.Context(), workspace, sandboxName)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, services)
@@ -52,7 +52,7 @@ func (h *EndpointHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	svc, err := h.service.Get(r.Context(), workspace, sandboxName, serviceName)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, svc)
@@ -68,13 +68,13 @@ func (h *EndpointHandler) Expose(w http.ResponseWriter, r *http.Request) {
 		Domain      bool   `json:"domain,omitempty"`
 	}
 	if err := h.decodeJSON(r, &req); err != nil {
-		h.writeError(w, http.StatusBadRequest, err)
+		h.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	svc, err := h.service.Expose(r.Context(), workspace, sandboxName, req.ServiceName, req.TargetPort, req.Domain)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusCreated, svc)
@@ -86,7 +86,7 @@ func (h *EndpointHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	serviceName := chi.URLParam(r, "serviceName")
 
 	if err := h.service.Delete(r.Context(), workspace, sandboxName, serviceName); err != nil {
-		h.writeError(w, http.StatusInternalServerError, err)
+		h.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 	h.writeJSON(w, http.StatusNoContent, nil)
