@@ -44,6 +44,15 @@ PostgreSQL-backed API server, reconciled into Kubernetes by a control plane.
 A `Gateway` row carries `namespace`, `route_address`, `console_address`,
 `oidc` (JSON), `phase`, `status`, `active_sandbox_count`.
 
+There are no CRDs: PostgreSQL is the source of truth and the control plane
+reconciles plain Kubernetes objects off gRPC watch streams.
+
+`GET /api/hypershell/v1/gateways` is already a complete gateway-switcher data
+source — RBAC-filtered server-side (`plugins/gateways/handler.go:195-225`),
+paginated, with generated Go and TypeScript clients. The readiness gates to
+copy rather than reinvent are `phase === "Running" && route_address` for
+connectable, and non-empty `console_address` for console-reachable.
+
 Its `specs/platform/openshell-gateway-console.spec.md` deploys **our image**
 as the per-gateway console: the control plane pins
 `quay.io/gkrumbach07/openshell-dashboard@sha256:…` as `defaultConsoleImage`
@@ -79,6 +88,23 @@ a single bearer that N gateways will accept.** Multi-gateway means N tokens,
 and minting them is a proxy/IdP concern. HyperShell lists "a central console
 with single sign-on across all gateways (one login, token exchange for each
 `aud`)" as explicitly out of scope.
+
+### 4. mTLS does not survive the move to a fleet dashboard
+
+Each gateway is reachable two ways, and they are not interchangeable:
+
+| From | Address | Auth |
+|---|---|---|
+| In-cluster (today's console) | `grpcs://openshell-gateway.<ns>.svc.cluster.local:8080` | mTLS client cert from that namespace's `openshell-client-tls`, plus the relayed bearer |
+| External (CLI, SDK) | `grpcs://gw-<ns>.<base-domain>:443` | Bearer only — the shared ingress strips mTLS, and `client_ca_path` is deliberately removed on routed gateways |
+
+The in-cluster client certs are **per-namespace**, so a dashboard living in one
+namespace cannot use that path to reach any other gateway. A fleet dashboard
+must therefore use the external `route_address`, which means bearer-only auth
+and no mTLS — reinforcing that the token is the whole problem.
+
+(Note `:50051` is our default alone; HyperShell serves `:8080` in-cluster and
+`:443` externally, and always overrides `OPENSHELL_GATEWAY_URL`.)
 
 ## Decision
 
@@ -144,6 +170,7 @@ Three options were considered for spanning gateways in one session:
 | **a** | **Link-out.** A fleet view lists gateways; each opens its own dashboard origin with its own oauth2-proxy session. | **Adopt.** Zero auth work, works today, is what HyperShell already does. Costs N logins and forbids cross-gateway views. |
 | **b** | **One dashboard, N tokens via RFC 8693 token exchange** at the proxy, selecting the `aud`-correct token per request. | **Defer.** Requires Keycloak token exchange, a per-gateway header or sidecar exchange service, and reverses HyperShell's stated isolation non-goal. Not ours to decide unilaterally. |
 | **c** | **Read-only fleet aggregation against the HyperShell API** (`/api/hypershell/v1/gateways`) rather than N OpenShell gateways. | **Adopt for fleet views.** `phase`, `status`, `active_sandbox_count`, `console_address` already live in HyperShell's DB, so a cross-gateway overview needs one audience, not N. Drill-down hands off to (a). |
+| **d** | **Per-gateway service-account credentials.** HyperShell's `/gateways/{id}/service_accounts` already mints `hs-sa-*` client-credentials clients returning `connection.{issuer, token_endpoint, client_id, audience, gateway_endpoint}` and a one-time secret. | **Reject.** It is exactly the ambient identity ADR 0002 forbids: the dashboard would act as itself, not as the user, and the gateway's RBAC would see one principal for every human. Correct for CI, wrong for a console. |
 
 **We adopt (a) + (c) and defer (b).** Layer 1 is worth doing regardless: it is
 what makes (a) ergonomic, (c) possible, and (b) a configuration change rather
@@ -188,10 +215,15 @@ server-side state, no credential brokering.
 - The `/api/v1/…` alias must be kept for as long as the published npm client
   and the HyperShell console image contract depend on it.
 - Embedding our pages in HyperShell's fleet console (the point of ADR 0001)
-  is blocked on a separate peer-dependency question: that console is
-  React 19 + `react-router` v8 + PatternFly 6.6, while our `peerDependencies`
-  pin `react ^18.3.1` and `react-router-dom ^6.30.0`. Widening those, and
-  decoupling pages from router v6, is a distinct task from this ADR.
+  is blocked on a separate stack question, not on architecture — there is no
+  Module Federation or iframe anywhere in that repo, only workspace packages
+  and an external `consoleUrl` hyperlink. Their console is React 19 +
+  `react-router` v8 + PatternFly 6.6 + **react-intl**, while our
+  `peerDependencies` pin `react ^18.3.1`, `react-router-dom ^6.30.0` and
+  i18next/react-i18next (ADR 0004). Widening the React peer, decoupling pages
+  from router v6, and reconciling two i18n runtimes is a distinct task from
+  this ADR. The natural landing spot is a fourth tab beside their existing
+  `connection | details | service-accounts` gateway detail tabs.
 - "Multiple gateways" and "single sign-on across gateways" are now separable:
   we ship the first without waiting on the second.
 
