@@ -145,6 +145,30 @@ namespace the user cannot read is invisible to them; one in a namespace they
 discovery is safe precisely when it is not the BFF's service account doing
 the looking.
 
+**Two house rules are worth adopting wholesale.**
+
+*Never a hardcoded backend address in production.* Every static backend flag
+across these BFFs (`LLAMA_STACK_URL`, `EVAL_HUB_URL`, `MAAS_API_URL`) is
+documented as a developer override and is absent from every shipped manifest;
+production resolves the address from a CR status field, an operator-injected
+ConfigMap, synthesized Service DNS, or a bootstrap discovery call. Our
+`OPENSHELL_GATEWAY_URL` is the opposite, and deliberately so — HyperShell
+pins it in its console Deployment as a contract. Both can hold: the env var
+stays the explicit, highest-precedence source, and discovery fills in when
+it is unset. That is the same `env → discovery → fallback` order every one of
+these BFFs already uses.
+
+*Validate a resolved endpoint before relaying a token to it.* `eval-hub`
+refuses to forward a bearer unless the discovered host ends in
+`.svc.cluster.local` and the Service name matches an expected prefix, with
+the rationale stated inline: it "prevents SSRF if a malicious actor gains
+write access to the discovery ConfigMap — the BFF will refuse to forward
+bearer tokens to arbitrary endpoints." `autorag` does the same for
+Secret-sourced URLs (scheme allowlist, no embedded credentials, no path or
+query). **This is the precedented answer to the untrusted-gateway concern**,
+and it applies whether the endpoint came from a label, a ConfigMap, or the
+DSC.
+
 **The other conventions are consistent across all eleven:**
 
 - `--auth-method=user_token`, `--auth-token-header=x-forwarded-access-token`,
@@ -325,6 +349,14 @@ Two concrete gaps in the current code, independent of RHOAI:
 2. **No CA pinning by default.** An empty `GATEWAY_CA_CERT` with a `grpcs://`
    address falls back to system roots, so any publicly-trusted certificate is
    accepted and "is this the right gateway" is answered by DNS alone.
+3. **No endpoint validation before the token goes out.** Whatever address is
+   configured receives the user's bearer on the first RPC. Once a gateway
+   address can come from discovery rather than a trusted operator, that
+   becomes an SSRF-shaped hole, and `eval-hub`'s host-and-name check is the
+   pattern to copy: a discovered endpoint must look like what we expect
+   before any bearer reaches it. An explicitly configured
+   `OPENSHELL_GATEWAY_URL` is a deliberate operator choice and needs no such
+   gate; a discovered one does.
 
 **On label-based discovery.** A label is only as trustworthy as write access
 to the object carrying it, so label-scraping is not an authorization
@@ -384,9 +416,10 @@ server-side state, no credential brokering.
 - RHOAI 3.6 EA2 can ship a UI against a self-deployed gateway without the
   dashboard hard-coding a singleton, and GA can supply the same registry from
   the DSC — the same code path, a different `GatewaySource`.
-- Two hardening items fall out of the trust-boundary analysis and should land
-  regardless of this ADR's fate: refuse plaintext gateway URLs when auth is
-  enabled, and make CA pinning expressible per gateway.
+- Three hardening items fall out of the trust-boundary analysis and should
+  land regardless of this ADR's fate: refuse plaintext gateway URLs when auth
+  is enabled, make CA pinning expressible per gateway, and validate any
+  *discovered* endpoint before relaying a bearer to it.
 - The decisive security question — whether the relayed token is
   audience-scoped per gateway — is not ours to answer alone. It belongs in
   the RHOAI architecture review, and this ADR should not be accepted for the
