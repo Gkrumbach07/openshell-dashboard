@@ -20,8 +20,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/api"
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/auth"
+	api "github.com/Gkrumbach07/openshell-dashboard/backend/pkg/handlers"
 )
 
 const (

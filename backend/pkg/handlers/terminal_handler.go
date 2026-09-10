@@ -59,8 +59,8 @@ func relaySessionToWS(ws *websocket.Conn, session openshell.InteractiveSession, 
 }
 
 func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
-	workspace := chi.URLParam(r, "workspace")
-	name := chi.URLParam(r, "name")
+	workspace := r.PathValue("workspace")
+	name := r.PathValue("name")
 	cols, rows := parseDimensions(r)
 
 	upgrader := websocket.Upgrader{

@@ -1,4 +1,4 @@
-package sdkclient
+package clients
 
 import (
 	"context"

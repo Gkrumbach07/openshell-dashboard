@@ -11,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
 
 const defaultUploadDir = "/sandbox"
@@ -24,8 +25,34 @@ func validateFilePath(p string) bool {
 	return filepath.IsAbs(cleaned)
 }
 
-func (app *App) execContext(parent context.Context) (context.Context, context.CancelFunc) {
-	timeout := app.execTimeout
+type FilesHandlerConfig struct {
+	ExecTimeout   uint32
+	MaxUploadSize int64
+}
+
+type FilesHandler struct {
+	svc           services.FileServiceInterface
+	execSvc       services.ExecServiceInterface
+	sandboxes     services.SandboxServiceInterface
+	execTimeout   uint32
+	maxUploadSize int64
+}
+
+func NewFilesHandler(
+	svc services.FileServiceInterface,
+	execSvc services.ExecServiceInterface,
+	cfg FilesHandlerConfig,
+) *FilesHandler {
+	return &FilesHandler{
+		svc:           svc,
+		execSvc:       execSvc,
+		execTimeout:   cfg.ExecTimeout,
+		maxUploadSize: cfg.MaxUploadSize,
+	}
+}
+
+func (h *FilesHandler) execContext(parent context.Context) (context.Context, context.CancelFunc) {
+	timeout := h.execTimeout
 	if timeout == 0 {
 		timeout = 30
 	}
@@ -34,7 +61,7 @@ func (app *App) execContext(parent context.Context) (context.Context, context.Ca
 
 func resolveUploadDest(w http.ResponseWriter, destQuery, filename string) (string, bool) {
 	if filename == "." || filename == ".." || filename == "/" {
-		WriteError(w, http.StatusBadRequest, "invalid_filename", "invalid filename")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidFileName, "invalid filename")
 		return "", false
 	}
 	dest := destQuery
@@ -42,33 +69,33 @@ func resolveUploadDest(w http.ResponseWriter, destQuery, filename string) (strin
 		dest = defaultUploadDir
 	}
 	if !validateFilePath(dest) {
-		WriteError(w, http.StatusBadRequest, "invalid_path", "invalid destination directory")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPath, "invalid destination directory")
 		return "", false
 	}
 	destPath := filepath.Join(dest, filename)
 	if !validateFilePath(destPath) {
-		WriteError(w, http.StatusBadRequest, "invalid_path", "invalid destination path")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPath, "invalid destination path")
 		return "", false
 	}
 	return destPath, true
 }
 
-func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
-	workspace := chi.URLParam(r, "workspace")
-	name := chi.URLParam(r, "name")
+func (h *FilesHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
+	workspace := r.PathValue("workspace")
+	name := r.PathValue("name")
 
-	maxSize := app.maxUploadSize
+	maxSize := h.maxUploadSize
 	if maxSize == 0 {
 		maxSize = 64 << 20
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
 	if parseErr := r.ParseMultipartForm(maxSize); parseErr != nil { //nolint:gosec // bounded by MaxBytesReader
-		WriteError(w, http.StatusBadRequest, "invalid_upload", "failed to parse multipart form")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidUpload, "failed to parse multipart form")
 		return
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		WriteError(w, http.StatusBadRequest, "missing_file", "file field is required")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.MissingFile, "file field is required")
 		return
 	}
 	defer file.Close()
@@ -80,7 +107,7 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	fileBytes, err := io.ReadAll(file)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "read_error", "failed to read uploaded file")
+		apiutils.WriteError(w, http.StatusInternalServerError, apiutils.FileReadError, "failed to read uploaded file")
 		return
 	}
 
@@ -89,27 +116,27 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	// helper yet. Stream the bytes into `dd` over the gateway's non-TTY
 	// ExecSandbox RPC via the dedicated raw client, resolving name -> sandbox
 	// UUID first.
-	ctx, cancel := app.execContext(r.Context())
+	ctx, cancel := h.execContext(r.Context())
 	defer cancel()
 
-	sandbox, err := app.sdk.Sandboxes().Get(ctx, workspace, name)
+	sandbox, err := h.sandboxes.Get(ctx, workspace, name)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
 
-	stdout, exitCode, execErr := app.execUpload.ExecWithStdin(ctx, sandbox.ID, []string{"dd", "of=" + destPath, "bs=4096"}, fileBytes)
+	stdout, exitCode, execErr := h.svc.ExecWithStdin(ctx, sandbox.ID, []string{"dd", "of=" + destPath, "bs=4096"}, fileBytes)
 	if execErr != nil {
-		writeSDKError(w, execErr)
+		apiutils.WriteSDKError(w, execErr)
 		return
 	}
 	if exitCode != 0 {
 		slog.Error("file upload failed", "path", destPath, "exitCode", exitCode, "stdout", stdout)
-		WriteError(w, http.StatusBadGateway, "upload_failed", "file upload failed")
+		apiutils.WriteError(w, http.StatusBadGateway, apiutils.FileUploadFailed, "file upload failed")
 		return
 	}
 
-	WriteJSON(w, http.StatusOK, map[string]any{
+	apiutils.WriteJSON(w, http.StatusOK, map[string]any{
 		"exitCode": 0,
 		"path":     destPath,
 		"size":     len(fileBytes),
@@ -118,27 +145,27 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (app *App) DownloadFile(w http.ResponseWriter, r *http.Request) {
-	workspace := chi.URLParam(r, "workspace")
-	name := chi.URLParam(r, "name")
+func (h *FilesHandler) DownloadFile(w http.ResponseWriter, r *http.Request) {
+	workspace := r.PathValue("workspace")
+	name := r.PathValue("name")
 	filePath := r.URL.Query().Get("path")
 
 	if !validateFilePath(filePath) {
-		WriteError(w, http.StatusBadRequest, "invalid_path", "path must be an absolute path without traversal")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPath, "path must be an absolute path without traversal")
 		return
 	}
 
-	ctx, cancel := app.execContext(r.Context())
+	ctx, cancel := h.execContext(r.Context())
 	defer cancel()
 
-	result, err := app.sdk.Exec().Run(ctx, workspace, name, []string{"cat", filePath})
+	result, err := h.execSvc.Run(ctx, workspace, name, []string{"cat", filePath})
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
 	if result.ExitCode != 0 {
 		slog.Error("file download failed", "path", filePath, "exitCode", result.ExitCode, "stderr", string(result.Stderr))
-		WriteError(w, http.StatusNotFound, "file_not_found", "file download failed")
+		apiutils.WriteError(w, http.StatusNotFound, apiutils.FileNotFound, "file download failed")
 		return
 	}
 

@@ -9,17 +9,27 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
+
+type LogsHandler struct {
+	sandboxSvc services.SandboxServiceInterface
+}
+
+func NewLogsHandler(svc services.SandboxServiceInterface) *LogsHandler {
+	return &LogsHandler{sandboxSvc: svc}
+}
 
 // GetSandboxLogs serves the polled logs view. The SDK resolves sandbox name
 // to sandbox_id internally.
 //
 // Query params: lines (default 200), sinceMs, source (repeatable:
 // gateway|sandbox), level (min level, e.g. INFO).
-func (app *App) GetSandboxLogs(w http.ResponseWriter, r *http.Request) {
-	workspace := chi.URLParam(r, "workspace")
-	name := chi.URLParam(r, "name")
+func (h *LogsHandler) GetSandboxLogs(w http.ResponseWriter, r *http.Request) {
+	workspace := r.PathValue("workspace")
+	name := r.PathValue("name")
 
 	query := r.URL.Query()
 	var opts []openshell.LogOption
@@ -44,26 +54,26 @@ func (app *App) GetSandboxLogs(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, openshell.WithLogMinLevel(level))
 	}
 
-	result, err := app.sdk.Sandboxes().GetLogs(r.Context(), workspace, name, opts...)
+	result, err := h.sandboxSvc.GetLogs(r.Context(), workspace, name, opts...)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, models.FromSDKSandboxLogs(result))
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKSandboxLogs(result))
 }
 
 // ListSandboxProviders lists provider records attached to a sandbox.
-func (app *App) ListSandboxProviders(w http.ResponseWriter, r *http.Request) {
-	providers, err := app.sdk.Sandboxes().ListProviders(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+func (h *LogsHandler) ListSandboxProviders(w http.ResponseWriter, r *http.Request) {
+	providers, err := h.sandboxSvc.ListProviders(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
 	out := make([]models.Provider, 0, len(providers))
 	for _, provider := range providers {
 		out = append(out, models.FromSDKProvider(provider))
 	}
-	WriteJSON(w, http.StatusOK, out)
+	apiutils.WriteJSON(w, http.StatusOK, out)
 }
 
 // attachDetachRequest carries the optimistic-concurrency version from the
@@ -73,49 +83,49 @@ type attachDetachRequest struct {
 }
 
 // AttachSandboxProvider attaches a provider to a sandbox.
-func (app *App) AttachSandboxProvider(w http.ResponseWriter, r *http.Request) {
+func (h *LogsHandler) AttachSandboxProvider(w http.ResponseWriter, r *http.Request) {
 	var body attachDetachRequest
-	if r.ContentLength > 0 && !decodeBody(w, r, &body) {
+	if r.ContentLength > 0 && !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
-	result, err := app.sdk.Sandboxes().AttachProvider(
+	result, err := h.sandboxSvc.AttachProvider(
 		r.Context(),
-		chi.URLParam(r, "workspace"),
-		chi.URLParam(r, "name"),
-		chi.URLParam(r, "provider"),
+		r.PathValue("workspace"),
+		r.PathValue("name"),
+		r.PathValue("provider"),
 		body.ExpectedResourceVersion,
 	)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
 	out := map[string]any{"attached": result.Attached}
 	if result.Sandbox != nil {
 		out["sandbox"] = models.FromSDKSandbox(result.Sandbox)
 	}
-	WriteJSON(w, http.StatusOK, out)
+	apiutils.WriteJSON(w, http.StatusOK, out)
 }
 
 // DetachSandboxProvider detaches a provider from a sandbox.
-func (app *App) DetachSandboxProvider(w http.ResponseWriter, r *http.Request) {
+func (h *LogsHandler) DetachSandboxProvider(w http.ResponseWriter, r *http.Request) {
 	var body attachDetachRequest
-	if r.ContentLength > 0 && !decodeBody(w, r, &body) {
+	if r.ContentLength > 0 && !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
-	result, err := app.sdk.Sandboxes().DetachProvider(
+	result, err := h.sandboxSvc.DetachProvider(
 		r.Context(),
-		chi.URLParam(r, "workspace"),
-		chi.URLParam(r, "name"),
-		chi.URLParam(r, "provider"),
+		r.PathValue("workspace"),
+		r.PathValue("name"),
+		r.PathValue("provider"),
 		body.ExpectedResourceVersion,
 	)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
 	out := map[string]any{"detached": result.Detached}
 	if result.Sandbox != nil {
 		out["sandbox"] = models.FromSDKSandbox(result.Sandbox)
 	}
-	WriteJSON(w, http.StatusOK, out)
+	apiutils.WriteJSON(w, http.StatusOK, out)
 }

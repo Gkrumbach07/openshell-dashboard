@@ -17,7 +17,7 @@ func (app *App) ListSandboxTemplates(w http.ResponseWriter, r *http.Request) {
 	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
 		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
 	}
-	templates, err := app.sdk.SandboxTemplates().List(r.Context(), chi.URLParam(r, "workspace"), opts...)
+	templates, err := app.sdk.SandboxTemplates().List(r.Context(), r.PathValue("workspace"), opts...)
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -43,7 +43,7 @@ func (app *App) CreateSandboxTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_image", "spec.workload.image is required")
 		return
 	}
-	template, err := app.sdk.SandboxTemplates().Create(r.Context(), chi.URLParam(r, "workspace"), models.BuildSDKSandboxWorkloadTemplate(body))
+	template, err := app.sdk.SandboxTemplates().Create(r.Context(), r.PathValue("workspace"), models.BuildSDKSandboxWorkloadTemplate(body))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -53,7 +53,7 @@ func (app *App) CreateSandboxTemplate(w http.ResponseWriter, r *http.Request) {
 
 // GetSandboxTemplate returns a single reusable workload template.
 func (app *App) GetSandboxTemplate(w http.ResponseWriter, r *http.Request) {
-	template, err := app.sdk.SandboxTemplates().Get(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	template, err := app.sdk.SandboxTemplates().Get(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -64,7 +64,7 @@ func (app *App) GetSandboxTemplate(w http.ResponseWriter, r *http.Request) {
 // DeleteSandboxTemplate deletes a reusable workload template. Sandboxes already
 // created from it are not affected.
 func (app *App) DeleteSandboxTemplate(w http.ResponseWriter, r *http.Request) {
-	deleted, err := app.sdk.SandboxTemplates().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	deleted, err := app.sdk.SandboxTemplates().Delete(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -104,7 +104,7 @@ func (app *App) CreateSandboxFromTemplate(w http.ResponseWriter, r *http.Request
 		createOpts = append(createOpts, openshell.CreateOptions{Annotations: body.Annotations})
 	}
 
-	sandbox, err := app.sdk.CreateSandboxFromTemplate(r.Context(), chi.URLParam(r, "workspace"), body.Name, body.TemplateName, spec, body.Labels, createOpts...)
+	sandbox, err := app.sdk.CreateSandboxFromTemplate(r.Context(), r.PathValue("workspace"), body.Name, body.TemplateName, spec, body.Labels, createOpts...)
 	if err != nil {
 		writeSDKError(w, err)
 		return

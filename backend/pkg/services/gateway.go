@@ -1,5 +1,5 @@
-// Package gateway is the business-logic layer for gateway-wide operations
-package gateway
+// Package services is the business-logic layer for all operations
+package services
 
 import (
 	"context"
@@ -8,39 +8,40 @@ import (
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
-// Service is the contract GatewayHandler depends on. Downstream can satisfy
+// GatewayServiceInterface is the contract GatewayHandler depends on. Downstream can satisfy
 // it with its own type, or embed Service and shadow individual methods to
 // layer custom logic on top of the upstream default.
 //
 // CheckHealth and GetCurrentUser cover the SDK's HealthInterface
 // (client.Health()); GetGatewayInfo also doubles as
 // HealthInterface.GetGatewayInfo.
-type ServiceInterface interface {
+type GatewayServiceInterface interface {
 	GetGatewayInfo(ctx context.Context) (*models.GatewayInfo, error)
 	CheckHealth(ctx context.Context) (*models.HealthInfo, error)
 	GetCurrentUser(ctx context.Context) (*models.CurrentUser, error)
 }
 
-type Service struct {
+type GatewayService struct {
 	// clients openshell.Factory
 	sdk openshell.ClientInterface
 }
 
 // NewService builds the default upstream implementation. clients mints an
 // OpenShell SDK client per request (see pkg/clients/openshell).
-func NewService(sdk openshell.ClientInterface) *Service {
-	return &Service{sdk: sdk}
+func NewGatewayService(sdk openshell.ClientInterface) *GatewayService {
+	return &GatewayService{sdk: sdk}
 }
 
-func (s *Service) GetGatewayInfo(ctx context.Context) (*models.GatewayInfo, error) {
+func (s *GatewayService) GetGatewayInfo(ctx context.Context) (*models.GatewayInfo, error) {
 	info, err := s.sdk.Health().GetGatewayInfo(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &models.GatewayInfo{GatewayInfo: info}, nil
+	result := models.FromSDKGatewayInfo(info)
+	return &result, nil
 }
 
-func (s *Service) CheckHealth(ctx context.Context) (*models.HealthInfo, error) {
+func (s *GatewayService) CheckHealth(ctx context.Context) (*models.HealthInfo, error) {
 	health, err := s.sdk.Health().Check(ctx)
 	if err != nil {
 		return nil, err
@@ -48,10 +49,11 @@ func (s *Service) CheckHealth(ctx context.Context) (*models.HealthInfo, error) {
 	return &models.HealthInfo{HealthResult: health}, nil
 }
 
-func (s *Service) GetCurrentUser(ctx context.Context) (*models.CurrentUser, error) {
+func (s *GatewayService) GetCurrentUser(ctx context.Context) (*models.CurrentUser, error) {
 	info, err := s.sdk.Health().GetCurrentUser(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &models.CurrentUser{CurrentUser: info}, nil
+	result := models.FromSDKCurrentUser(info)
+	return &result, nil
 }

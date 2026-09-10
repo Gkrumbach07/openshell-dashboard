@@ -40,7 +40,7 @@ func TestDecodeBody(t *testing.T) {
 				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
 					t.Fatalf("decode: %v", err)
 				}
-				if errResp.Code != tc.wantErr {
+				if errResp.Code.String() != tc.wantErr {
 					t.Errorf("code = %q, want %q", errResp.Code, tc.wantErr)
 				}
 			}
@@ -177,7 +177,7 @@ func TestWriteSDKError(t *testing.T) {
 			if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 				t.Fatalf("decode: %v", err)
 			}
-			if body.Code != tc.wantCode {
+			if body.Code.String() != tc.wantCode {
 				t.Errorf("error code = %q, want %q", body.Code, tc.wantCode)
 			}
 			if body.Message != tc.wantMessage {

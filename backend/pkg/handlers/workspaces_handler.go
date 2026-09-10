@@ -52,7 +52,7 @@ func (app *App) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) GetWorkspace(w http.ResponseWriter, r *http.Request) {
-	workspace, err := app.sdk.Workspaces().Get(r.Context(), chi.URLParam(r, "workspace"))
+	workspace, err := app.sdk.Workspaces().Get(r.Context(), r.PathValue("workspace"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -61,7 +61,7 @@ func (app *App) GetWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
-	if err := app.sdk.Workspaces().Delete(r.Context(), chi.URLParam(r, "workspace")); err != nil {
+	if err := app.sdk.Workspaces().Delete(r.Context(), r.PathValue("workspace")); err != nil {
 		writeSDKError(w, err)
 		return
 	}
@@ -75,7 +75,7 @@ type AddMemberRequest struct {
 }
 
 func (app *App) ListMembers(w http.ResponseWriter, r *http.Request) {
-	members, err := app.sdk.Workspaces().ListMembers(r.Context(), chi.URLParam(r, "workspace"))
+	members, err := app.sdk.Workspaces().ListMembers(r.Context(), r.PathValue("workspace"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -101,7 +101,7 @@ func (app *App) AddMember(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "invalid_role", "role must be USER or ADMIN")
 		return
 	}
-	member, err := app.sdk.Workspaces().AddMember(r.Context(), chi.URLParam(r, "workspace"), body.PrincipalSubject, role)
+	member, err := app.sdk.Workspaces().AddMember(r.Context(), r.PathValue("workspace"), body.PrincipalSubject, role)
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -111,12 +111,12 @@ func (app *App) AddMember(w http.ResponseWriter, r *http.Request) {
 
 func (app *App) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	// Subjects are OIDC sub claims and may contain URL-escaped characters.
-	subject, err := url.PathUnescape(chi.URLParam(r, "subject"))
+	subject, err := url.PathUnescape(r.PathValue("subject"))
 	if err != nil || subject == "" {
 		WriteError(w, http.StatusBadRequest, "invalid_subject", "invalid member subject")
 		return
 	}
-	if err := app.sdk.Workspaces().RemoveMember(r.Context(), chi.URLParam(r, "workspace"), subject); err != nil {
+	if err := app.sdk.Workspaces().RemoveMember(r.Context(), r.PathValue("workspace"), subject); err != nil {
 		writeSDKError(w, err)
 		return
 	}

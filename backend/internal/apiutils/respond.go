@@ -13,22 +13,39 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// setting response code "enum"
-type ResponseCode int
+// ResponseCode is a stable JSON error code returned by the BFF.
+type ResponseCode string
 
 const (
-	NotReady ResponseCode = iota
-	Internal
+	NotReady           ResponseCode = "not_ready"
+	Internal           ResponseCode = "internal"
+	NotFound           ResponseCode = "not_found"
+	AlreadyExists      ResponseCode = "already_exists"
+	InvalidArgument    ResponseCode = "invalid_argument"
+	PermissionDenied   ResponseCode = "permission_denied"
+	Unauthenticated    ResponseCode = "unauthenticated"
+	Conflict           ResponseCode = "conflict"
+	GatewayUnavailable ResponseCode = "gateway_unavailable"
+	ResourceExhausted  ResponseCode = "resource_exhausted"
+	InvalidBody        ResponseCode = "invalid_body"
+	InvalidRoute       ResponseCode = "invalid_route"
+	InvalidFileName    ResponseCode = "invalid_filename"
+	InvalidPath        ResponseCode = "invalid_path"
+	InvalidUpload      ResponseCode = "invalid_upload"
+	InvalidProvider    ResponseCode = "invalid_provider"
+	InvalidRequest     ResponseCode = "invalid_request"
+	InvalidPolicy      ResponseCode = "invalid_policy"
+	InvalidStrategy    ResponseCode = "invalid_strategy"
+	InvalidProfile     ResponseCode = "invalid_profile"
+	MissingFile        ResponseCode = "missing_file"
+	FileReadError      ResponseCode = "read_error"
+	FileUploadFailed   ResponseCode = "upload_failed"
+	FileNotFound       ResponseCode = "file_not_found"
+	IdMismatch         ResponseCode = "id_mismatch"
 )
 
-var responseCodeNames = map[ResponseCode]string{
-	NotReady: "not_ready",
-	Internal: "internal",
-}
-
-// implements fmt.Stringer interface
 func (rc ResponseCode) String() string {
-	return responseCodeNames[rc]
+	return string(rc)
 }
 
 // ErrorResponse is the standard error envelope.
@@ -64,25 +81,25 @@ func WriteSDKError(w http.ResponseWriter, err error) {
 	switch {
 	case openshell.IsNotFound(err):
 		slog.Warn("gateway error", "code", "NotFound", "message", msg)
-		WriteError(w, http.StatusNotFound, "not_found", msg)
+		WriteError(w, http.StatusNotFound, NotFound, msg)
 	case openshell.IsAlreadyExists(err):
 		slog.Warn("gateway error", "code", "AlreadyExists", "message", msg)
-		WriteError(w, http.StatusConflict, "already_exists", msg)
+		WriteError(w, http.StatusConflict, AlreadyExists, msg)
 	case openshell.IsInvalidArgument(err):
 		slog.Warn("gateway error", "code", "InvalidArgument", "message", msg)
-		WriteError(w, http.StatusBadRequest, "invalid_argument", msg)
+		WriteError(w, http.StatusBadRequest, InvalidArgument, msg)
 	case openshell.IsPermissionDenied(err):
 		slog.Warn("gateway error", "code", "PermissionDenied", "message", msg)
-		WriteError(w, http.StatusForbidden, "permission_denied", msg)
+		WriteError(w, http.StatusForbidden, PermissionDenied, msg)
 	case openshell.IsUnauthenticated(err):
 		slog.Warn("gateway error", "code", "Unauthenticated", "message", msg)
-		WriteError(w, http.StatusUnauthorized, "unauthenticated", msg)
+		WriteError(w, http.StatusUnauthorized, Unauthenticated, msg)
 	case openshell.IsConflict(err):
 		slog.Warn("gateway error", "code", "Conflict", "message", msg)
-		WriteError(w, http.StatusConflict, "conflict", msg)
+		WriteError(w, http.StatusConflict, Conflict, msg)
 	case openshell.IsUnavailable(err) || openshell.IsDeadlineExceeded(err):
 		slog.Warn("gateway error", "code", "Unavailable", "message", msg)
-		WriteError(w, http.StatusBadGateway, "gateway_unavailable", "OpenShell gateway is unreachable")
+		WriteError(w, http.StatusBadGateway, GatewayUnavailable, "OpenShell gateway is unreachable")
 	default:
 		// Fallback: check for raw gRPC status codes not covered by SDK helpers
 		// (FailedPrecondition, OutOfRange, ResourceExhausted).
@@ -91,16 +108,16 @@ func WriteSDKError(w http.ResponseWriter, err error) {
 			switch st.Code() {
 			case codes.FailedPrecondition, codes.OutOfRange:
 				slog.Warn("gateway error", "code", st.Code().String(), "message", st.Message())
-				WriteError(w, http.StatusBadRequest, "invalid_argument", st.Message())
+				WriteError(w, http.StatusBadRequest, InvalidArgument, st.Message())
 				return
 			case codes.ResourceExhausted:
 				slog.Warn("gateway error", "code", "ResourceExhausted", "message", st.Message())
-				WriteError(w, http.StatusTooManyRequests, "resource_exhausted", st.Message())
+				WriteError(w, http.StatusTooManyRequests, ResourceExhausted, st.Message())
 				return
 			}
 		}
 		slog.Error("gateway call failed", "error", err)
-		WriteError(w, http.StatusInternalServerError, "internal", "internal error")
+		WriteError(w, http.StatusInternalServerError, Internal, "internal error")
 	}
 }
 
@@ -112,7 +129,7 @@ func DecodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dst); err != nil {
 		slog.Debug("request body decode failed", "error", err)
-		WriteError(w, http.StatusBadRequest, "invalid_body", "invalid request body")
+		WriteError(w, http.StatusBadRequest, InvalidBody, "invalid request body")
 		return false
 	}
 	return true

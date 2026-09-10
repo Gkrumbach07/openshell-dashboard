@@ -6,43 +6,17 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
 
 // draftSummaryResponse matches the frontend DraftSummary type.
 type draftSummaryResponse struct {
 	Sandboxes    []any `json:"sandboxes"`
 	TotalPending int   `json:"totalPending"`
-}
-
-// GetDraftSummary returns an aggregated summary of pending draft policy chunks
-// across all workspaces. TODO: No single gateway RPC provides a cross-workspace
-// draft summary. When one becomes available, aggregate real data here. For now,
-// return an empty response so the frontend route does not 404.
-func (app *App) GetDraftSummary(w http.ResponseWriter, _ *http.Request) {
-	WriteJSON(w, http.StatusOK, draftSummaryResponse{
-		Sandboxes:    []any{},
-		TotalPending: 0,
-	})
-}
-
-// GetDraftPolicy returns the draft-policy inbox for a sandbox. Optional
-// ?status=pending|approved|rejected filter.
-func (app *App) GetDraftPolicy(w http.ResponseWriter, r *http.Request) {
-	var opts []openshell.GetDraftOption
-	if status := r.URL.Query().Get("status"); status != "" {
-		opts = append(opts, openshell.WithStatusFilter(status))
-	}
-	draft, err := app.sdk.Policy().GetDraft(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), opts...)
-	if err != nil {
-		writeSDKError(w, err)
-		return
-	}
-	WriteJSON(w, http.StatusOK, models.FromSDKDraftPolicy(draft))
 }
 
 // ApproveDraftChunkRequest optionally carries the chunk's review token, which
@@ -52,14 +26,54 @@ type ApproveDraftChunkRequest struct {
 	ReviewToken string `json:"reviewToken,omitempty"`
 }
 
+// RejectDraftChunkRequest carries the optional reviewer reason, surfaced back
+// to the in-sandbox agent.
+type RejectDraftChunkRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+type DraftsHandler struct {
+	svc services.PolicyServiceInterface
+}
+
+func NewDraftsHandler(svc services.PolicyServiceInterface) *DraftsHandler {
+	return &DraftsHandler{}
+}
+
+// GetDraftSummary returns an aggregated summary of pending draft policy chunks
+// across all workspaces. TODO: No single gateway RPC provides a cross-workspace
+// draft summary. When one becomes available, aggregate real data here. For now,
+// return an empty response so the frontend route does not 404.
+func (h *DraftsHandler) GetDraftSummary(w http.ResponseWriter, _ *http.Request) {
+	apiutils.WriteJSON(w, http.StatusOK, draftSummaryResponse{
+		Sandboxes:    []any{},
+		TotalPending: 0,
+	})
+}
+
+// GetDraftPolicy returns the draft-policy inbox for a sandbox. Optional
+// ?status=pending|approved|rejected filter.
+func (h *DraftsHandler) GetDraftPolicy(w http.ResponseWriter, r *http.Request) {
+	var opts []openshell.GetDraftOption
+	if status := r.URL.Query().Get("status"); status != "" {
+		opts = append(opts, openshell.WithStatusFilter(status))
+	}
+	draft, err := h.svc.GetDraft(r.Context(), r.PathValue("workspace"), r.PathValue("name"), opts...)
+	if err != nil {
+		apiutils.WriteSDKError(w, err)
+		return
+	}
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKDraftPolicy(draft))
+}
+
 // ApproveDraftChunk merges one proposed rule into the active policy.
-func (app *App) ApproveDraftChunk(w http.ResponseWriter, r *http.Request) {
-	workspace := chi.URLParam(r, "workspace")
-	name := chi.URLParam(r, "name")
-	chunkID := chi.URLParam(r, "chunk")
+func (h *DraftsHandler) ApproveDraftChunk(w http.ResponseWriter, r *http.Request) {
+	workspace := r.PathValue("workspace")
+	name := r.PathValue("name")
+	chunkID := r.PathValue("chunk")
 
 	var body ApproveDraftChunkRequest
-	if r.ContentLength > 0 && !decodeBody(w, r, &body) {
+	if r.ContentLength > 0 && !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
 
@@ -70,19 +84,19 @@ func (app *App) ApproveDraftChunk(w http.ResponseWriter, r *http.Request) {
 	reviewToken := body.ReviewToken
 	if reviewToken == "" {
 		var err error
-		reviewToken, err = app.resolveDraftReviewToken(r.Context(), workspace, name, chunkID)
+		reviewToken, err = h.resolveDraftReviewToken(r.Context(), workspace, name, chunkID)
 		if err != nil {
-			writeSDKError(w, err)
+			apiutils.WriteSDKError(w, err)
 			return
 		}
 	}
 
-	result, err := app.sdk.Policy().ApproveDraftChunk(r.Context(), workspace, name, chunkID, reviewToken)
+	result, err := h.svc.ApproveDraftChunk(r.Context(), workspace, name, chunkID, reviewToken)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, models.PolicyUpdateResult{
+	apiutils.WriteJSON(w, http.StatusOK, models.PolicyUpdateResult{
 		Version:    result.PolicyVersion,
 		PolicyHash: result.PolicyHash,
 	})
@@ -91,8 +105,8 @@ func (app *App) ApproveDraftChunk(w http.ResponseWriter, r *http.Request) {
 // resolveDraftReviewToken returns the review token bound to the given draft
 // chunk, or an empty string if the chunk carries none. The token pins an
 // approval to the exact candidate the gateway last evaluated.
-func (app *App) resolveDraftReviewToken(ctx context.Context, workspace, name, chunkID string) (string, error) {
-	draft, err := app.sdk.Policy().GetDraft(ctx, workspace, name)
+func (h *DraftsHandler) resolveDraftReviewToken(ctx context.Context, workspace, name, chunkID string) (string, error) {
+	draft, err := h.svc.GetDraft(ctx, workspace, name)
 	if err != nil {
 		return "", err
 	}
@@ -104,23 +118,17 @@ func (app *App) resolveDraftReviewToken(ctx context.Context, workspace, name, ch
 	return "", nil
 }
 
-// RejectDraftChunkRequest carries the optional reviewer reason, surfaced back
-// to the in-sandbox agent.
-type RejectDraftChunkRequest struct {
-	Reason string `json:"reason,omitempty"`
-}
-
 // RejectDraftChunk rejects one proposed rule.
-func (app *App) RejectDraftChunk(w http.ResponseWriter, r *http.Request) {
+func (h *DraftsHandler) RejectDraftChunk(w http.ResponseWriter, r *http.Request) {
 	var body RejectDraftChunkRequest
-	if r.ContentLength > 0 && !decodeBody(w, r, &body) {
+	if r.ContentLength > 0 && !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
-	if err := app.sdk.Policy().RejectDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"), body.Reason); err != nil {
-		writeSDKError(w, err)
+	if err := h.svc.RejectDraftChunk(r.Context(), r.PathValue("workspace"), r.PathValue("name"), r.PathValue("chunk"), body.Reason); err != nil {
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]bool{"rejected": true})
+	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"rejected": true})
 }
 
 // ApproveAllDraftChunksRequest mirrors the include_security_flagged option.
@@ -130,21 +138,21 @@ type ApproveAllDraftChunksRequest struct {
 
 // ApproveAllDraftChunks approves all pending chunks (security-flagged ones
 // are skipped unless explicitly included).
-func (app *App) ApproveAllDraftChunks(w http.ResponseWriter, r *http.Request) {
+func (h *DraftsHandler) ApproveAllDraftChunks(w http.ResponseWriter, r *http.Request) {
 	var body ApproveAllDraftChunksRequest
-	if r.ContentLength > 0 && !decodeBody(w, r, &body) {
+	if r.ContentLength > 0 && !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
 	var opts []openshell.ApproveAllOption
 	if body.IncludeSecurityFlagged {
 		opts = append(opts, openshell.WithIncludeSecurityFlagged())
 	}
-	result, err := app.sdk.Policy().ApproveAllDraftChunks(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), opts...)
+	result, err := h.svc.ApproveAllDraftChunks(r.Context(), r.PathValue("workspace"), r.PathValue("name"), opts...)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{
+	apiutils.WriteJSON(w, http.StatusOK, map[string]any{
 		"policyVersion":  result.PolicyVersion,
 		"policyHash":     result.PolicyHash,
 		"chunksApproved": result.ChunksApproved,
@@ -158,61 +166,61 @@ type EditDraftChunkRequest struct {
 }
 
 // EditDraftChunk replaces the proposed rule on a pending draft chunk.
-func (app *App) EditDraftChunk(w http.ResponseWriter, r *http.Request) {
+func (h *DraftsHandler) EditDraftChunk(w http.ResponseWriter, r *http.Request) {
 	var body EditDraftChunkRequest
-	if !decodeBody(w, r, &body) {
+	if !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
 	if len(body.ProposedRule) == 0 {
-		WriteError(w, http.StatusBadRequest, "invalid_rule", "proposedRule is required")
+		apiutils.WriteError(w, http.StatusBadRequest, "invalid_rule", "proposedRule is required")
 		return
 	}
 	rule, err := models.ParseSDKNetworkPolicyRule(body.ProposedRule)
 	if err != nil {
 		slog.Error("invalid network policy rule", "error", err)
-		WriteError(w, http.StatusBadRequest, "invalid_rule", "proposedRule does not match NetworkPolicyRule schema: "+err.Error())
+		apiutils.WriteError(w, http.StatusBadRequest, "invalid_rule", "proposedRule does not match NetworkPolicyRule schema: "+err.Error())
 		return
 	}
-	if err := app.sdk.Policy().EditDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"), rule); err != nil {
-		writeSDKError(w, err)
+	if err := h.svc.EditDraftChunk(r.Context(), r.PathValue("workspace"), r.PathValue("name"), r.PathValue("chunk"), rule); err != nil {
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]bool{"edited": true})
+	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"edited": true})
 }
 
 // UndoDraftChunk reverts an already-approved chunk, removing its rule from the
 // active policy.
-func (app *App) UndoDraftChunk(w http.ResponseWriter, r *http.Request) {
-	result, err := app.sdk.Policy().UndoDraftChunk(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "chunk"))
+func (h *DraftsHandler) UndoDraftChunk(w http.ResponseWriter, r *http.Request) {
+	result, err := h.svc.UndoDraftChunk(r.Context(), r.PathValue("workspace"), r.PathValue("name"), r.PathValue("chunk"))
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, models.PolicyUpdateResult{
+	apiutils.WriteJSON(w, http.StatusOK, models.PolicyUpdateResult{
 		Version:    result.PolicyVersion,
 		PolicyHash: result.PolicyHash,
 	})
 }
 
 // ClearDraftChunks removes all pending draft chunks for a sandbox.
-func (app *App) ClearDraftChunks(w http.ResponseWriter, r *http.Request) {
-	result, err := app.sdk.Policy().ClearDraftChunks(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+func (h *DraftsHandler) ClearDraftChunks(w http.ResponseWriter, r *http.Request) {
+	result, err := h.svc.ClearDraftChunks(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{
+	apiutils.WriteJSON(w, http.StatusOK, map[string]any{
 		"chunksCleared": result.ChunksCleared,
 	})
 }
 
 // GetDraftHistory returns the chronological decision history for a sandbox's
 // draft policy.
-func (app *App) GetDraftHistory(w http.ResponseWriter, r *http.Request) {
-	entries, err := app.sdk.Policy().GetDraftHistory(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+func (h *DraftsHandler) GetDraftHistory(w http.ResponseWriter, r *http.Request) {
+	entries, err := h.svc.GetDraftHistory(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, models.FromSDKDraftHistory(entries))
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKDraftHistory(entries))
 }

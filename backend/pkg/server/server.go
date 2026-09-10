@@ -1,5 +1,5 @@
-// Package api exposes the BFF REST API consumed by the React frontend.
-package server
+// Package handlers exposes the BFF REST API consumed by the React frontend.
+package handlers
 
 import (
 	"context"
@@ -86,7 +86,7 @@ func (app *App) Routes() http.Handler {
 		// Public: frontend bootstrap config, no token needed.
 		r.Get("/auth/config", app.GetAuthConfig)
 		// BFF liveness (does not call the gateway).
-		r.Get("/healthz", app.getHealthz)
+		r.Get("/healthz", app.GetHealthz)
 		r.Get("/readyz", app.GetReadyz)
 
 		r.Group(func(r chi.Router) {
@@ -96,7 +96,7 @@ func (app *App) Routes() http.Handler {
 			r.Get("/gateway", app.GetGateway)
 			r.Get("/draft-summary", app.GetDraftSummary)
 
-			r.Route("/global-policy", func(chi.Router) {
+			r.Route("/global-policy", func(r chi.Router) {
 				r.Get("/", app.GetGlobalPolicy)
 				r.Put("/", app.SetGlobalPolicy)
 			})
@@ -198,11 +198,11 @@ func (app *App) serveStatic(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetHealthz reports BFF liveness without touching the gateway.
-func (app *App) getHealthz(w http.ResponseWriter, _ *http.Request) {
+func (app *App) GetHealthz(w http.ResponseWriter, _ *http.Request) {
 	apiutils.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // GetAuthConfig is public — the frontend needs it before any auth exists.
-func (app *App) getAuthConfig(w http.ResponseWriter, _ *http.Request) {
+func (app *App) GetAuthConfig(w http.ResponseWriter, _ *http.Request) {
 	apiutils.WriteJSON(w, http.StatusOK, app.authConfig)
 }

@@ -1,9 +1,9 @@
-package sdkclient
+package clients
 
 import (
 	"context"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/auth"
 )
 
 // ContextAuthProvider implements grpc.PerRPCCredentials by reading the JWT

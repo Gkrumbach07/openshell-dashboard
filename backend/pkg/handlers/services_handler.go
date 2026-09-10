@@ -15,7 +15,7 @@ type ExposeServiceRequest struct {
 }
 
 func (app *App) ListServices(w http.ResponseWriter, r *http.Request) {
-	services, err := app.sdk.Services().List(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	services, err := app.sdk.Services().List(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -40,7 +40,7 @@ func (app *App) ExposeService(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "invalid_port", "targetPort must be greater than 0")
 		return
 	}
-	svc, err := app.sdk.Services().Expose(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), body.Service, body.TargetPort, body.Domain)
+	svc, err := app.sdk.Services().Expose(r.Context(), r.PathValue("workspace"), r.PathValue("name"), body.Service, body.TargetPort, body.Domain)
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -49,7 +49,7 @@ func (app *App) ExposeService(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) DeleteService(w http.ResponseWriter, r *http.Request) {
-	if err := app.sdk.Services().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "svc")); err != nil {
+	if err := app.sdk.Services().Delete(r.Context(), r.PathValue("workspace"), r.PathValue("name"), r.PathValue("svc")); err != nil {
 		writeSDKError(w, err)
 		return
 	}

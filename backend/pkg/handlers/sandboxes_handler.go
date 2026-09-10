@@ -16,7 +16,7 @@ func (app *App) ListSandboxes(w http.ResponseWriter, r *http.Request) {
 	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
 		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
 	}
-	sandboxes, err := app.sdk.Sandboxes().List(r.Context(), chi.URLParam(r, "workspace"), opts...)
+	sandboxes, err := app.sdk.Sandboxes().List(r.Context(), r.PathValue("workspace"), opts...)
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -57,7 +57,7 @@ func (app *App) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 		createOpts = append(createOpts, openshell.CreateOptions{Annotations: body.Annotations})
 	}
 
-	sandbox, err := app.sdk.Sandboxes().Create(r.Context(), chi.URLParam(r, "workspace"), body.Name, spec, body.Labels, createOpts...)
+	sandbox, err := app.sdk.Sandboxes().Create(r.Context(), r.PathValue("workspace"), body.Name, spec, body.Labels, createOpts...)
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -66,7 +66,7 @@ func (app *App) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) GetSandbox(w http.ResponseWriter, r *http.Request) {
-	sandbox, err := app.sdk.Sandboxes().Get(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	sandbox, err := app.sdk.Sandboxes().Get(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -78,7 +78,7 @@ func (app *App) GetSandbox(w http.ResponseWriter, r *http.Request) {
 // The sandbox transitions through STOPPING to STOPPED and can be resumed with
 // StartSandbox.
 func (app *App) StopSandbox(w http.ResponseWriter, r *http.Request) {
-	sandbox, err := app.sdk.Sandboxes().Stop(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	sandbox, err := app.sdk.Sandboxes().Stop(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -89,7 +89,7 @@ func (app *App) StopSandbox(w http.ResponseWriter, r *http.Request) {
 // StartSandbox resumes a previously stopped sandbox. The sandbox transitions
 // through STARTING back to READY.
 func (app *App) StartSandbox(w http.ResponseWriter, r *http.Request) {
-	sandbox, err := app.sdk.Sandboxes().Start(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	sandbox, err := app.sdk.Sandboxes().Start(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -98,7 +98,7 @@ func (app *App) StartSandbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) DeleteSandbox(w http.ResponseWriter, r *http.Request) {
-	if err := app.sdk.Sandboxes().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name")); err != nil {
+	if err := app.sdk.Sandboxes().Delete(r.Context(), r.PathValue("workspace"), r.PathValue("name")); err != nil {
 		writeSDKError(w, err)
 		return
 	}

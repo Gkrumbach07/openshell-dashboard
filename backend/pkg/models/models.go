@@ -5,11 +5,7 @@
 // are exposed.
 package models
 
-import (
-	"encoding/json"
-
-	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
-)
+import "encoding/json"
 
 // ObjectMeta mirrors openshell.datamodel.v1.ObjectMeta.
 type ObjectMeta struct {
@@ -203,13 +199,12 @@ type LintProviderProfilesResult struct {
 
 // CurrentUser mirrors openshell.v1.GetCurrentUserResponse.
 type CurrentUser struct {
-	// Subject          string   `json:"subject"`
-	// DisplayName      string   `json:"displayName,omitempty"`
-	// Email            string   `json:"email,omitempty"`
-	// IdentityProvider string   `json:"identityProvider,omitempty"`
-	// Roles            []string `json:"roles"`
-	// Scopes           []string `json:"scopes,omitempty"`
-	*openshell.CurrentUser
+	Subject          string   `json:"subject"`
+	DisplayName      string   `json:"displayName,omitempty"`
+	Email            string   `json:"email,omitempty"`
+	IdentityProvider string   `json:"identityProvider,omitempty"`
+	Roles            []string `json:"roles"`
+	Scopes           []string `json:"scopes,omitempty"`
 }
 
 // ComputeDriver flattens openshell.v1.ComputeDriverInfo + capabilities.
@@ -222,12 +217,7 @@ type ComputeDriver struct {
 // GatewayInfo mirrors openshell.v1.GetGatewayInfoResponse — status, version,
 // and compute drivers are all the gateway exposes about itself.
 type GatewayInfo struct {
-	// Status         string          `json:"status"`
-	// GatewayVersion string          `json:"gatewayVersion"`
-	// ComputeDrivers []ComputeDriver `json:"computeDrivers"`
-	*openshell.GatewayInfo
-}
-
-type HealthInfo struct {
-	*openshell.HealthResult
+	Status         string          `json:"status"`
+	GatewayVersion string          `json:"gatewayVersion"`
+	ComputeDrivers []ComputeDriver `json:"computeDrivers"`
 }
