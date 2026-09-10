@@ -119,7 +119,62 @@ the gateway dimension partly collapses onto a selector the user already
 drives. That is worth designing toward rather than adding a second,
 independent switcher.
 
-### 5. mTLS does not survive the move to a fleet dashboard
+### 5. RHOAI already has a house pattern for this, and one BFF is a direct precedent
+
+`odh-dashboard` carries eleven Go BFFs. Reviewing them settles several
+questions this ADR was treating as open.
+
+**`model-registry` solves our exact problem.** It supports N registry
+instances across N namespaces, and does it like this:
+
+- **No backend address is configured at all.** Its Deployment sets no
+  registry URL; the address is discovered per request by listing Kubernetes
+  Services with `component=model-registry` and requiring a port named
+  `http-api`/`https-api` (`shared_k8s_client.go:41-55`, `:83-92`).
+- **The instance is a URL path segment**, the scope is a query param:
+  `/api/v1/model_registry/:model_registry_id?namespace=X`.
+- **Discovery runs on the user's token, not the BFF's.** Its ServiceAccount
+  ClusterRole grants only `config.openshift.io/apiservers get` and
+  `subjectaccessreviews create` — it cannot list Services. The user's own
+  RBAC bounds what they can discover.
+
+That last point answers the spoofable-label objection directly: **the label
+filters, Kubernetes RBAC authorizes.** A rogue labelled Service in a
+namespace the user cannot read is invisible to them; one in a namespace they
+*can* read is a workload they could already run themselves. Label-based
+discovery is safe precisely when it is not the BFF's service account doing
+the looking.
+
+**The other conventions are consistent across all eleven:**
+
+- `--auth-method=user_token`, `--auth-token-header=x-forwarded-access-token`,
+  empty prefix — the same header and shape this BFF already uses.
+- The BFF's ServiceAccount reads *configuration only*. `core-bff`'s Role
+  covers ConfigMaps, `odhdashboardconfigs`, `odhapplications`; `mlflow`'s adds
+  its own CR; `data-registry`'s adds ConfigMaps. None can touch user
+  workloads.
+- Discovery source varies by module and is the module's own choice: label
+  selector (model-registry), ConfigMap (data-registry), cluster-scoped CR
+  (mlflow), the DSC's `status.release.name` (maas). All use
+  `env override → discovery → fallback` precedence.
+- Enable/disable is not a DSC watch. The operator renders a ConfigMap
+  (`MF_REMOTES_CONFIG`) listing `{service{name,namespace,port,tls}, path}`
+  per module; the dashboard proxies to each entry's in-cluster Service.
+
+**Direction of travel matters here.** The older per-module BFFs default to
+`--auth-method=internal` — the BFF's own ServiceAccount plus Kubernetes user
+impersonation. The newer `distributions/core-bff`, which its README describes
+as replacing Fastify across RHOAI and RHAII, has **dropped `internal`
+entirely**: only `disabled` and `user_token`. Relay-only is not an outlier
+here; it is where the platform is heading.
+
+One cautionary precedent: `mlflow` hard-fails when a second CR appears
+(`mlflow_cr.go:69-71`, `Limit: 2` purely to detect N>1), and its escape-hatch
+env var is not wired in the manifest — so a second instance degrades the
+module to 503 until someone edits the Deployment. That is the cost of
+treating single-instance as an architecture, in a shipping component.
+
+### 6. mTLS does not survive the move to a fleet dashboard
 
 Each gateway is reachable two ways, and they are not interchangeable:
 
@@ -168,7 +223,16 @@ byte-identical to today, so the HyperShell image contract keeps working.
 - Route under `/api/v1/gateways/{gateway}/…`, keeping the existing
   `/api/v1/…` paths as an alias resolving to the default gateway. Add
   `GET /api/v1/gateways` returning `{name, status, default}` per entry —
-  endpoints and any credential material stay server-side.
+  endpoints and any credential material stay server-side. Instance-as-path-
+  segment matches `model-registry`'s shipping convention, so this is the
+  house pattern rather than a new one.
+- **Any Kubernetes-discovery source must query with the caller's token, not
+  a BFF ServiceAccount** — following `model-registry`, whose SA deliberately
+  cannot list Services. This keeps discovery bounded by the user's own RBAC
+  and preserves ADR 0002: the BFF still holds no identity that a gateway
+  could ever see. Where a source genuinely needs the BFF's own identity
+  (reading the DSC, as `maas` does), the ServiceAccount stays
+  configuration-scoped and is never used on an outbound gateway call.
 - `useTLS` is currently decided once at boot and baked into both clients
   (`gateway_setup.go:33`); it becomes per-entry.
 
@@ -263,13 +327,18 @@ Two concrete gaps in the current code, independent of RHOAI:
    accepted and "is this the right gateway" is answered by DNS alone.
 
 **On label-based discovery.** A label is only as trustworthy as write access
-to the object carrying it. If any user can label any Service in their own
-namespace, label-scraping is not an authorization mechanism and must not be
-used as one. The safe shapes are admin-scoped discovery (DSC, or a
-cluster-scoped config only an admin writes) or explicit user choice, where
-the user names their gateway and visibly owns the trust decision. What we
-must not build is silent auto-discovery that picks a gateway for the user
-across namespaces.
+to the object carrying it, so label-scraping is not an authorization
+mechanism. But RHOAI has already solved this, and the answer is narrower
+than "don't use labels": **the label filters, Kubernetes RBAC authorizes.**
+`model-registry` lists labelled Services with the *caller's* token — its own
+ServiceAccount cannot list Services at all — so a user only ever discovers
+instances in namespaces they can already read. A rogue labelled gateway is
+then either invisible to them, or sits in a namespace where they could
+already run the same workload themselves.
+
+What must not be built is discovery performed with the BFF's ServiceAccount,
+which would let a label in any namespace surface a gateway to a user who
+could not otherwise see it.
 
 ## Alternatives considered
 
@@ -322,6 +391,11 @@ server-side state, no credential brokering.
   audience-scoped per gateway — is not ours to answer alone. It belongs in
   the RHOAI architecture review, and this ADR should not be accepted for the
   RHOAI context until it is settled.
+- Nothing in Layer 1 diverges from RHOAI's BFF conventions: same token
+  header, same instance-as-path-segment routing, same
+  `env → discovery → fallback` precedence, same rule that the BFF's own
+  identity is configuration-scoped. The multi-gateway work is a normal
+  instance of a pattern the platform already runs eleven times.
 
 ## References
 
