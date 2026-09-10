@@ -10,5 +10,6 @@ recorded here — an ADR appears when the decision does.
 | [0002](0002-auth-relay-only-bff.md) | Auth: relay-only BFF behind a fronting proxy (e.g. oauth2-proxy) | Accepted |
 | [0003](0003-gateway-client-sdk-vs-stubs.md) | Gateway client: openshell-sdk-go over generated stubs | Accepted |
 | [0004](0004-downstream-consumption-i18n.md) | Amends 0001: i18n as sixth extension mechanism | Accepted |
+| [0005](0005-multi-gateway-support.md) | Multi-gateway: request-scoped gateway in the BFF, federated auth out of it | Proposed |
 
 From here forward, ADRs are append-only: supersede, don't rewrite.
