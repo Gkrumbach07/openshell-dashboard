@@ -1,0 +1,92 @@
+package handlers
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/go-chi/chi/v5"
+
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+)
+
+func TestListServices(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.services.listFn = func(_ context.Context, _, _ string, _ ...openshell.ListOptions) ([]*openshell.ServiceEndpoint, error) {
+		return []*openshell.ServiceEndpoint{
+			{SandboxName: "my-sandbox", ServiceName: "web", TargetPort: 8080, URL: "https://web.example"},
+		}, nil
+	}
+	handler := NewServicesHandler(sdk.Services())
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/services", handler.ListServices)
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/services", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	var body []map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	if len(body) != 1 || body[0]["serviceName"] != "web" {
+		t.Errorf("body = %v", body)
+	}
+}
+
+func TestExposeService(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantCode   string
+		wantStatus int
+	}{
+		{name: "success", body: `{"service":"web","targetPort":8080}`, wantStatus: http.StatusCreated},
+		{name: "missing service", body: `{"service":"","targetPort":8080}`, wantStatus: http.StatusBadRequest, wantCode: "invalid_service"},
+		{name: "zero port", body: `{"service":"web","targetPort":0}`, wantStatus: http.StatusBadRequest, wantCode: "invalid_port"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &mockSDK{}
+			handler := NewServicesHandler(mock.Services())
+			r := chi.NewRouter()
+			r.Post("/workspaces/{workspace}/sandboxes/{name}/services", handler.ExposeService)
+			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/services", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			if w.Code != tc.wantStatus {
+				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
+			}
+			if tc.wantCode != "" {
+				var body map[string]any
+				if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
+				if body["code"] != tc.wantCode {
+					t.Errorf("code = %v, want %q", body["code"], tc.wantCode)
+				}
+			}
+		})
+	}
+}
+
+func TestDeleteService(t *testing.T) {
+	mock := &mockSDK{}
+	handler := NewServicesHandler(mock.Services())
+	r := chi.NewRouter()
+	r.Delete("/workspaces/{workspace}/sandboxes/{name}/services/{svc}", handler.DeleteService)
+	req := httptest.NewRequest(http.MethodDelete, "/workspaces/default/sandboxes/my-sandbox/services/web", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	var body map[string]bool
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	if !body["deleted"] {
+		t.Errorf("deleted = %v", body["deleted"])
+	}
+}

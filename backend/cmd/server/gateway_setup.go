@@ -8,7 +8,7 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/sdkclient"
+	sdkclient "github.com/Gkrumbach07/openshell-dashboard/backend/pkg/clients"
 )
 
 type gatewayClients struct {
