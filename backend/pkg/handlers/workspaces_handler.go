@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/go-chi/chi/v5"
-
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
 
 // CreateWorkspaceRequest is the create-workspace body.
@@ -17,55 +17,65 @@ type CreateWorkspaceRequest struct {
 	Name   string            `json:"name"`
 }
 
-func (app *App) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
+type WorkspacesHandler struct {
+	svc services.WorkspaceServiceInterface
+}
+
+func NewWorkspacesHandler(svc services.WorkspaceServiceInterface) *WorkspacesHandler {
+	return &WorkspacesHandler{
+		svc: svc,
+	}
+}
+
+func (h *WorkspacesHandler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	var opts []openshell.ListOptions
 	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
 		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
 	}
-	workspaces, err := app.sdk.Workspaces().List(r.Context(), opts...)
+	workspaces, err := h.svc.List(r.Context(), opts...)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
 	out := make([]models.Workspace, 0, len(workspaces))
 	for _, ws := range workspaces {
 		out = append(out, models.FromSDKWorkspace(ws))
 	}
-	WriteJSON(w, http.StatusOK, out)
+	apiutils.WriteJSON(w, http.StatusOK, out)
 }
 
-func (app *App) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
+func (h *WorkspacesHandler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	var body CreateWorkspaceRequest
-	if !decodeBody(w, r, &body) {
+	if !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
-	if !validDNS1123(body.Name) {
-		WriteError(w, http.StatusBadRequest, "invalid_name", "workspace name must be a valid DNS-1123 label")
+	if !apiutils.ValidDNS1123(body.Name) {
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidName, "workspace name must be a valid DNS-1123 label")
 		return
 	}
-	workspace, err := app.sdk.Workspaces().Create(r.Context(), body.Name, body.Labels)
+	workspace, err := h.svc.Create(r.Context(), body.Name, body.Labels)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusCreated, models.FromSDKWorkspace(workspace))
+	apiutils.WriteJSON(w, http.StatusCreated, models.FromSDKWorkspace(workspace))
 }
 
-func (app *App) GetWorkspace(w http.ResponseWriter, r *http.Request) {
-	workspace, err := app.sdk.Workspaces().Get(r.Context(), r.PathValue("workspace"))
+func (h *WorkspacesHandler) GetWorkspace(w http.ResponseWriter, r *http.Request) {
+	workspace, err := h.svc.Get(r.Context(), r.PathValue("workspace"))
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, models.FromSDKWorkspace(workspace))
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKWorkspace(workspace))
 }
 
-func (app *App) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
-	if err := app.sdk.Workspaces().Delete(r.Context(), r.PathValue("workspace")); err != nil {
-		writeSDKError(w, err)
+func (h *WorkspacesHandler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.Delete(r.Context(), r.PathValue("workspace")); err != nil {
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // AddMemberRequest is the add-member body. Role is USER or ADMIN.
@@ -74,51 +84,51 @@ type AddMemberRequest struct {
 	Role             string `json:"role"`
 }
 
-func (app *App) ListMembers(w http.ResponseWriter, r *http.Request) {
-	members, err := app.sdk.Workspaces().ListMembers(r.Context(), r.PathValue("workspace"))
+func (h *WorkspacesHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
+	members, err := h.svc.ListMembers(r.Context(), r.PathValue("workspace"))
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
 	out := make([]models.WorkspaceMember, 0, len(members))
 	for _, member := range members {
 		out = append(out, models.FromSDKWorkspaceMember(member))
 	}
-	WriteJSON(w, http.StatusOK, out)
+	apiutils.WriteJSON(w, http.StatusOK, out)
 }
 
-func (app *App) AddMember(w http.ResponseWriter, r *http.Request) {
+func (h *WorkspacesHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 	var body AddMemberRequest
-	if !decodeBody(w, r, &body) {
+	if !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
 	if body.PrincipalSubject == "" {
-		WriteError(w, http.StatusBadRequest, "invalid_subject", "principalSubject is required")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidSubject, "principalSubject is required")
 		return
 	}
 	role, ok := models.SDKWorkspaceRoleFromString(body.Role)
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "invalid_role", "role must be USER or ADMIN")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidRole, "role must be USER or ADMIN")
 		return
 	}
-	member, err := app.sdk.Workspaces().AddMember(r.Context(), r.PathValue("workspace"), body.PrincipalSubject, role)
+	member, err := h.svc.AddMember(r.Context(), r.PathValue("workspace"), body.PrincipalSubject, role)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusCreated, models.FromSDKWorkspaceMember(member))
+	apiutils.WriteJSON(w, http.StatusCreated, models.FromSDKWorkspaceMember(member))
 }
 
-func (app *App) RemoveMember(w http.ResponseWriter, r *http.Request) {
+func (h *WorkspacesHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	// Subjects are OIDC sub claims and may contain URL-escaped characters.
 	subject, err := url.PathUnescape(r.PathValue("subject"))
 	if err != nil || subject == "" {
-		WriteError(w, http.StatusBadRequest, "invalid_subject", "invalid member subject")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidSubject, "invalid member subject")
 		return
 	}
-	if err := app.sdk.Workspaces().RemoveMember(r.Context(), r.PathValue("workspace"), subject); err != nil {
-		writeSDKError(w, err)
+	if err := h.svc.RemoveMember(r.Context(), r.PathValue("workspace"), subject); err != nil {
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]bool{"removed": true})
+	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"removed": true})
 }

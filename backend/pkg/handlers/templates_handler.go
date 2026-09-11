@@ -1,101 +1,111 @@
-package api
+package handlers
 
 import (
 	"log/slog"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
 
+type TemplatesHandler struct {
+	svc services.TemplateServiceInterface
+}
+
+func NewTemplatesHandler(svc services.TemplateServiceInterface) *TemplatesHandler {
+	return &TemplatesHandler{
+		svc: svc,
+	}
+}
+
 // ListSandboxTemplates lists the reusable workload templates in a workspace.
-func (app *App) ListSandboxTemplates(w http.ResponseWriter, r *http.Request) {
+func (h *TemplatesHandler) ListSandboxTemplates(w http.ResponseWriter, r *http.Request) {
 	var opts []openshell.ListOptions
 	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
 		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
 	}
-	templates, err := app.sdk.SandboxTemplates().List(r.Context(), r.PathValue("workspace"), opts...)
+	templates, err := h.svc.List(r.Context(), r.PathValue("workspace"), opts...)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
 	out := make([]models.SandboxTemplate, 0, len(templates))
 	for _, t := range templates {
 		out = append(out, models.FromSDKSandboxTemplate(t))
 	}
-	writeJSON(w, http.StatusOK, out)
+	apiutils.WriteJSON(w, http.StatusOK, out)
 }
 
 // CreateSandboxTemplate creates a reusable workload template.
-func (app *App) CreateSandboxTemplate(w http.ResponseWriter, r *http.Request) {
+func (h *TemplatesHandler) CreateSandboxTemplate(w http.ResponseWriter, r *http.Request) {
 	var body models.CreateSandboxTemplateRequest
-	if !decodeBody(w, r, &body) {
+	if !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
-	if !validDNS1123(body.Name) {
-		writeError(w, http.StatusBadRequest, "invalid_name", "template name must be a valid DNS-1123 label")
+	if !apiutils.ValidDNS1123(body.Name) {
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidName, "template name must be a valid DNS-1123 label")
 		return
 	}
 	if body.Spec.Workload == nil || body.Spec.Workload.Image == "" {
-		writeError(w, http.StatusBadRequest, "invalid_image", "spec.workload.image is required")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidImage, "spec.workload.image is required")
 		return
 	}
-	template, err := app.sdk.SandboxTemplates().Create(r.Context(), r.PathValue("workspace"), models.BuildSDKSandboxWorkloadTemplate(body))
+	template, err := h.svc.Create(r.Context(), r.PathValue("workspace"), models.BuildSDKSandboxWorkloadTemplate(body))
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, models.FromSDKSandboxTemplate(template))
+	apiutils.WriteJSON(w, http.StatusCreated, models.FromSDKSandboxTemplate(template))
 }
 
 // GetSandboxTemplate returns a single reusable workload template.
-func (app *App) GetSandboxTemplate(w http.ResponseWriter, r *http.Request) {
-	template, err := app.sdk.SandboxTemplates().Get(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
+func (h *TemplatesHandler) GetSandboxTemplate(w http.ResponseWriter, r *http.Request) {
+	template, err := h.svc.Get(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, models.FromSDKSandboxTemplate(template))
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKSandboxTemplate(template))
 }
 
 // DeleteSandboxTemplate deletes a reusable workload template. Sandboxes already
 // created from it are not affected.
-func (app *App) DeleteSandboxTemplate(w http.ResponseWriter, r *http.Request) {
-	deleted, err := app.sdk.SandboxTemplates().Delete(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
+func (h *TemplatesHandler) DeleteSandboxTemplate(w http.ResponseWriter, r *http.Request) {
+	deleted, err := h.svc.Delete(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
 }
 
 // CreateSandboxFromTemplate creates a sandbox from a named workload template.
 // The request supplies only governance fields (policy, providers); the workload
 // (image, environment, resources) comes from the template.
-func (app *App) CreateSandboxFromTemplate(w http.ResponseWriter, r *http.Request) {
+func (h *TemplatesHandler) CreateSandboxFromTemplate(w http.ResponseWriter, r *http.Request) {
 	var body models.CreateSandboxFromTemplateRequest
-	if !decodeBody(w, r, &body) {
+	if !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
-	if body.Name != "" && !validDNS1123(body.Name) {
-		writeError(w, http.StatusBadRequest, "invalid_name", "sandbox name must be a valid DNS-1123 label")
+	if body.Name != "" && !apiutils.ValidDNS1123(body.Name) {
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidName, "sandbox name must be a valid DNS-1123 label")
 		return
 	}
 	if body.TemplateName == "" {
-		writeError(w, http.StatusBadRequest, "invalid_template", "templateName is required")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidTemplate, "templateName is required")
 		return
 	}
 	if len(body.Policy) == 0 {
-		writeError(w, http.StatusBadRequest, "invalid_policy", "policy is required — SandboxSpec.policy is a required field")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPolicy, "policy is required — SandboxSpec.policy is a required field")
 		return
 	}
 	spec, err := models.BuildSDKTemplateGovernanceSpec(body)
 	if err != nil {
 		slog.Error("invalid sandbox specification", "error", err)
-		writeError(w, http.StatusBadRequest, "invalid_policy", "invalid sandbox specification")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPolicy, "invalid sandbox specification")
 		return
 	}
 
@@ -104,10 +114,10 @@ func (app *App) CreateSandboxFromTemplate(w http.ResponseWriter, r *http.Request
 		createOpts = append(createOpts, openshell.CreateOptions{Annotations: body.Annotations})
 	}
 
-	sandbox, err := app.sdk.CreateSandboxFromTemplate(r.Context(), r.PathValue("workspace"), body.Name, body.TemplateName, spec, body.Labels, createOpts...)
+	sandbox, err := h.svc.CreateSandboxFromTemplate(r.Context(), r.PathValue("workspace"), body.Name, body.TemplateName, spec, body.Labels, createOpts...)
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, models.FromSDKSandbox(sandbox))
+	apiutils.WriteJSON(w, http.StatusCreated, models.FromSDKSandbox(sandbox))
 }

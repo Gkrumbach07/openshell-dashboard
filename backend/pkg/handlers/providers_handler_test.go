@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
@@ -28,9 +29,9 @@ func TestListProviders(t *testing.T) {
 			},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/providers", app.ListProviders)
+	r.Get("/workspaces/{workspace}/providers", handler.ListProviders)
 
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/providers", nil)
 	w := httptest.NewRecorder()
@@ -65,9 +66,9 @@ func TestListProvidersUnavailable(t *testing.T) {
 	sdk.providers.listFn = func(_ context.Context, _ string, _ ...openshell.ListOptions) ([]*openshell.Provider, error) {
 		return nil, &openshell.StatusError{Code: openshell.ErrorUnavailable, Message: "gateway down"}
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/providers", app.ListProviders)
+	r.Get("/workspaces/{workspace}/providers", handler.ListProviders)
 
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/providers", nil)
 	w := httptest.NewRecorder()
@@ -123,9 +124,9 @@ func TestCreateProvider(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.providers.createFn = tc.createFn
-			app := newTestAppWithSDK(sdk)
+			handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 			r := chi.NewRouter()
-			r.Post("/workspaces/{workspace}/providers", app.CreateProvider)
+			r.Post("/workspaces/{workspace}/providers", handler.CreateProvider)
 
 			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/providers", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
@@ -136,12 +137,12 @@ func TestCreateProvider(t *testing.T) {
 				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
 			}
 			if tc.wantCode != "" {
-				var errResp ErrorResponse
+				var errResp map[string]any
 				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
 					t.Fatalf("decode error response: %v", err)
 				}
-				if errResp.Code != tc.wantCode {
-					t.Errorf("code = %q, want %q", errResp.Code, tc.wantCode)
+				if errResp["code"] != tc.wantCode {
+					t.Errorf("code = %q, want %q", errResp["code"], tc.wantCode)
 				}
 			}
 		})
@@ -188,9 +189,9 @@ func TestGetProvider(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.providers.getFn = tc.getFn
-			app := newTestAppWithSDK(sdk)
+			handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 			r := chi.NewRouter()
-			r.Get("/workspaces/{workspace}/providers/{name}", app.GetProvider)
+			r.Get("/workspaces/{workspace}/providers/{name}", handler.GetProvider)
 
 			req := httptest.NewRequest(http.MethodGet, "/workspaces/default/providers/claude-prov", nil)
 			w := httptest.NewRecorder()
@@ -244,9 +245,9 @@ func TestUpdateProvider(t *testing.T) {
 		}
 		return prov, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 	r := chi.NewRouter()
-	r.Put("/workspaces/{workspace}/providers/{name}", app.UpdateProvider)
+	r.Put("/workspaces/{workspace}/providers/{name}", handler.UpdateProvider)
 
 	body := `{"config":{"region":"eu"}}`
 	req := httptest.NewRequest(http.MethodPut, "/workspaces/default/providers/claude-prov", strings.NewReader(body))
@@ -260,9 +261,10 @@ func TestUpdateProvider(t *testing.T) {
 }
 
 func TestDeleteProvider(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewProvidersHandler(services.NewProviderService(mock.Providers()))
 	r := chi.NewRouter()
-	r.Delete("/workspaces/{workspace}/providers/{name}", app.DeleteProvider)
+	r.Delete("/workspaces/{workspace}/providers/{name}", handler.DeleteProvider)
 
 	req := httptest.NewRequest(http.MethodDelete, "/workspaces/default/providers/claude-prov", nil)
 	w := httptest.NewRecorder()
@@ -312,9 +314,10 @@ func TestConfigureProviderRefresh(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestAppWithSDK(&mockSDK{})
+			mock := &mockSDK{}
+			handler := NewProvidersHandler(services.NewProviderService(mock.Providers()))
 			r := chi.NewRouter()
-			r.Post("/workspaces/{workspace}/providers/{name}/refresh", app.ConfigureProviderRefresh)
+			r.Post("/workspaces/{workspace}/providers/{name}/refresh", handler.ConfigureProviderRefresh)
 
 			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/providers/claude-prov/refresh", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
@@ -325,12 +328,12 @@ func TestConfigureProviderRefresh(t *testing.T) {
 				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
 			}
 			if tc.wantCode != "" {
-				var errResp ErrorResponse
+				var errResp map[string]any
 				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
 					t.Fatalf("decode error response: %v", err)
 				}
-				if errResp.Code != tc.wantCode {
-					t.Errorf("code = %q, want %q", errResp.Code, tc.wantCode)
+				if errResp["code"] != tc.wantCode {
+					t.Errorf("code = %q, want %q", errResp["code"], tc.wantCode)
 				}
 			}
 		})
@@ -338,10 +341,11 @@ func TestConfigureProviderRefresh(t *testing.T) {
 }
 
 func TestRotateAndDeleteProviderRefresh(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewProvidersHandler(services.NewProviderService(mock.Providers()))
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/providers/{name}/refresh/rotate", app.RotateProviderCredential)
-	r.Delete("/workspaces/{workspace}/providers/{name}/refresh", app.DeleteProviderRefresh)
+	r.Post("/workspaces/{workspace}/providers/{name}/refresh/rotate", handler.RotateProviderCredential)
+	r.Delete("/workspaces/{workspace}/providers/{name}/refresh", handler.DeleteProviderRefresh)
 
 	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/providers/claude-prov/refresh/rotate", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -403,9 +407,9 @@ func TestGetProviderProfile(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.providers.profiles.getFn = tc.getFn
-			app := newTestAppWithSDK(sdk)
+			handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 			r := chi.NewRouter()
-			r.Get("/workspaces/{workspace}/provider-profiles/{profileId}", app.GetProviderProfile)
+			r.Get("/workspaces/{workspace}/provider-profiles/{profileId}", handler.GetProviderProfile)
 
 			req := httptest.NewRequest(http.MethodGet, "/workspaces/default/provider-profiles/claude", nil)
 			w := httptest.NewRecorder()
@@ -426,9 +430,9 @@ func TestGetProviderProfileArgOrder(t *testing.T) {
 		}
 		return &openshell.ProviderProfile{ID: id, DisplayName: "Claude"}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/provider-profiles/{profileId}", app.GetProviderProfile)
+	r.Get("/workspaces/{workspace}/provider-profiles/{profileId}", handler.GetProviderProfile)
 
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/provider-profiles/claude", nil)
 	w := httptest.NewRecorder()
@@ -477,9 +481,10 @@ func TestImportProviderProfiles(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestAppWithSDK(&mockSDK{})
+			mock := &mockSDK{}
+			handler := NewProvidersHandler(services.NewProviderService(mock.Providers()))
 			r := chi.NewRouter()
-			r.Post("/workspaces/{workspace}/provider-profiles", app.ImportProviderProfiles)
+			r.Post("/workspaces/{workspace}/provider-profiles", handler.ImportProviderProfiles)
 
 			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/provider-profiles", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
@@ -490,12 +495,12 @@ func TestImportProviderProfiles(t *testing.T) {
 				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
 			}
 			if tc.wantCode != "" {
-				var errResp ErrorResponse
+				var errResp map[string]any
 				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
 					t.Fatalf("decode error response: %v", err)
 				}
-				if errResp.Code != tc.wantCode {
-					t.Errorf("code = %q, want %q", errResp.Code, tc.wantCode)
+				if errResp["code"] != tc.wantCode {
+					t.Errorf("code = %q, want %q", errResp["code"], tc.wantCode)
 				}
 			}
 		})
@@ -513,9 +518,9 @@ func TestImportProviderProfilesResponse(t *testing.T) {
 			},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/provider-profiles", app.ImportProviderProfiles)
+	r.Post("/workspaces/{workspace}/provider-profiles", handler.ImportProviderProfiles)
 
 	body := `{"profiles":[{"id":"custom-llm","displayName":"Custom LLM","category":"INFERENCE","inferenceCapable":false}]}`
 	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/provider-profiles", strings.NewReader(body))
@@ -565,9 +570,10 @@ func TestUpdateProviderProfile(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestAppWithSDK(&mockSDK{})
+			mock := &mockSDK{}
+			handler := NewProvidersHandler(services.NewProviderService(mock.Providers()))
 			r := chi.NewRouter()
-			r.Put("/workspaces/{workspace}/provider-profiles/{profileId}", app.UpdateProviderProfile)
+			r.Put("/workspaces/{workspace}/provider-profiles/{profileId}", handler.UpdateProviderProfile)
 
 			req := httptest.NewRequest(http.MethodPut, "/workspaces/default/provider-profiles/custom-llm", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
@@ -578,12 +584,12 @@ func TestUpdateProviderProfile(t *testing.T) {
 				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
 			}
 			if tc.wantCode != "" {
-				var errResp ErrorResponse
+				var errResp map[string]any
 				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
 					t.Fatalf("decode error response: %v", err)
 				}
-				if errResp.Code != tc.wantCode {
-					t.Errorf("code = %q, want %q", errResp.Code, tc.wantCode)
+				if errResp["code"] != tc.wantCode {
+					t.Errorf("code = %q, want %q", errResp["code"], tc.wantCode)
 				}
 			}
 		})
@@ -598,9 +604,9 @@ func TestDeleteProviderProfile(t *testing.T) {
 		}
 		return true, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 	r := chi.NewRouter()
-	r.Delete("/workspaces/{workspace}/provider-profiles/{profileId}", app.DeleteProviderProfile)
+	r.Delete("/workspaces/{workspace}/provider-profiles/{profileId}", handler.DeleteProviderProfile)
 
 	req := httptest.NewRequest(http.MethodDelete, "/workspaces/default/provider-profiles/custom-llm", nil)
 	w := httptest.NewRecorder()
@@ -619,9 +625,10 @@ func TestDeleteProviderProfile(t *testing.T) {
 }
 
 func TestLintProviderProfiles(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewProvidersHandler(services.NewProviderService(mock.Providers()))
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/provider-profiles/lint", app.LintProviderProfiles)
+	r.Post("/workspaces/{workspace}/provider-profiles/lint", handler.LintProviderProfiles)
 
 	body := `{"profiles":[{"id":"test","displayName":"Test","category":"OTHER","inferenceCapable":false}]}`
 	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/provider-profiles/lint", strings.NewReader(body))
@@ -648,9 +655,9 @@ func TestGetProviderRefreshStatus(t *testing.T) {
 			{CredentialKey: "api_key", Strategy: openshell.RefreshStrategyStatic, Status: "active"},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/providers/{name}/refresh-status", app.GetProviderRefreshStatus)
+	r.Get("/workspaces/{workspace}/providers/{name}/refresh-status", handler.GetProviderRefreshStatus)
 
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/providers/claude-prov/refresh-status", nil)
 	w := httptest.NewRecorder()
@@ -674,9 +681,9 @@ func TestListProviderProfiles(t *testing.T) {
 			{ID: "claude", DisplayName: "Claude", Category: openshell.ProfileCategoryInference},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/provider-profiles", app.ListProviderProfiles)
+	r.Get("/workspaces/{workspace}/provider-profiles", handler.ListProviderProfiles)
 
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/provider-profiles", nil)
 	w := httptest.NewRecorder()

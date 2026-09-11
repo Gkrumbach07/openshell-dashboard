@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
@@ -24,9 +25,9 @@ func TestGetInferenceRoute(t *testing.T) {
 			TimeoutSecs:  60,
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewInferenceHandler(services.NewInferenceService(sdk.Inference()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/inference", app.GetInferenceRoute)
+	r.Get("/workspaces/{workspace}/inference", handler.GetInferenceRoute)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/inference", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -51,9 +52,10 @@ func TestSetInferenceRoute(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestAppWithSDK(&mockSDK{})
+			mock := &mockSDK{}
+			handler := NewInferenceHandler(services.NewInferenceService(mock.Inference()))
 			r := chi.NewRouter()
-			r.Put("/workspaces/{workspace}/inference", app.SetInferenceRoute)
+			r.Put("/workspaces/{workspace}/inference", handler.SetInferenceRoute)
 			req := httptest.NewRequest(http.MethodPut, "/workspaces/default/inference", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
@@ -66,9 +68,10 @@ func TestSetInferenceRoute(t *testing.T) {
 }
 
 func TestDeleteInferenceRoute(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewInferenceHandler(services.NewInferenceService(mock.Inference()))
 	r := chi.NewRouter()
-	r.Delete("/workspaces/{workspace}/inference", app.DeleteInferenceRoute)
+	r.Delete("/workspaces/{workspace}/inference", handler.DeleteInferenceRoute)
 	req := httptest.NewRequest(http.MethodDelete, "/workspaces/default/inference", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

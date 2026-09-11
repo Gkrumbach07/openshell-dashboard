@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
@@ -48,9 +49,9 @@ func TestListSandboxes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.listFn = tc.listFn
-			app := newTestAppWithSDK(sdk)
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
 			r := chi.NewRouter()
-			r.Get("/workspaces/{workspace}/sandboxes", app.ListSandboxes)
+			r.Get("/workspaces/{workspace}/sandboxes", handler.ListSandboxes)
 
 			req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes", nil)
 			w := httptest.NewRecorder()
@@ -75,9 +76,9 @@ func TestListSandboxesBody(t *testing.T) {
 			},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes", app.ListSandboxes)
+	r.Get("/workspaces/{workspace}/sandboxes", handler.ListSandboxes)
 
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes", nil)
 	w := httptest.NewRecorder()
@@ -170,9 +171,9 @@ func TestCreateSandbox(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.createFn = tc.createFn
-			app := newTestAppWithSDK(sdk)
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
 			r := chi.NewRouter()
-			r.Post("/workspaces/{workspace}/sandboxes", app.CreateSandbox)
+			r.Post("/workspaces/{workspace}/sandboxes", handler.CreateSandbox)
 
 			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
@@ -183,12 +184,12 @@ func TestCreateSandbox(t *testing.T) {
 				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
 			}
 			if tc.wantCode != "" {
-				var errResp ErrorResponse
+				var errResp map[string]any
 				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
 					t.Fatalf("decode: %v", err)
 				}
-				if errResp.Code != tc.wantCode {
-					t.Errorf("code = %q, want %q", errResp.Code, tc.wantCode)
+				if errResp["code"] != tc.wantCode {
+					t.Errorf("code = %q, want %q", errResp["code"], tc.wantCode)
 				}
 			}
 		})
@@ -220,9 +221,9 @@ func TestGetSandbox(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.getFn = tc.getFn
-			app := newTestAppWithSDK(sdk)
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
 			r := chi.NewRouter()
-			r.Get("/workspaces/{workspace}/sandboxes/{name}", app.GetSandbox)
+			r.Get("/workspaces/{workspace}/sandboxes/{name}", handler.GetSandbox)
 
 			req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox", nil)
 			w := httptest.NewRecorder()
@@ -267,9 +268,9 @@ func TestStopSandbox(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.stopFn = tc.stopFn
-			app := newTestAppWithSDK(sdk)
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
 			r := chi.NewRouter()
-			r.Post("/workspaces/{workspace}/sandboxes/{name}/stop", app.StopSandbox)
+			r.Post("/workspaces/{workspace}/sandboxes/{name}/stop", handler.StopSandbox)
 
 			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/stop", nil)
 			w := httptest.NewRecorder()
@@ -307,9 +308,9 @@ func TestStartSandbox(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.startFn = tc.startFn
-			app := newTestAppWithSDK(sdk)
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
 			r := chi.NewRouter()
-			r.Post("/workspaces/{workspace}/sandboxes/{name}/start", app.StartSandbox)
+			r.Post("/workspaces/{workspace}/sandboxes/{name}/start", handler.StartSandbox)
 
 			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/start", nil)
 			w := httptest.NewRecorder()
@@ -354,9 +355,9 @@ func TestDeleteSandbox(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.deleteFn = tc.deleteFn
-			app := newTestAppWithSDK(sdk)
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
 			r := chi.NewRouter()
-			r.Delete("/workspaces/{workspace}/sandboxes/{name}", app.DeleteSandbox)
+			r.Delete("/workspaces/{workspace}/sandboxes/{name}", handler.DeleteSandbox)
 
 			req := httptest.NewRequest(http.MethodDelete, "/workspaces/default/sandboxes/my-sandbox", nil)
 			w := httptest.NewRecorder()

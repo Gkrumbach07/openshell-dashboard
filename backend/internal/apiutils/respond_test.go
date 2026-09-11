@@ -18,8 +18,8 @@ func TestValidDNS1123(t *testing.T) {
 		{"way-too-long-name-way-too-long-name-way-too-long-name-way-too-long", false},
 	}
 	for _, tc := range cases {
-		if got := validDNS1123(tc.name); got != tc.valid {
-			t.Errorf("validDNS1123(%q) = %v, want %v", tc.name, got, tc.valid)
+		if got := ValidDNS1123(tc.name); got != tc.valid {
+			t.Errorf("ValidDNS1123(%q) = %v, want %v", tc.name, got, tc.valid)
 		}
 	}
 }

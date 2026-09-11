@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
@@ -39,9 +40,9 @@ func TestGetSandboxLogs(t *testing.T) {
 			BufferTotal: 100,
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewLogsHandler(services.NewSandboxService(sdk.Sandboxes()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/logs", app.GetSandboxLogs)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/logs", handler.GetSandboxLogs)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/logs?lines=50&sinceMs=1000&source=gateway&source=sandbox&level=INFO", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -68,9 +69,9 @@ func TestGetSandboxLogsDefaults(t *testing.T) {
 		}
 		return &openshell.LogResult{}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewLogsHandler(services.NewSandboxService(sdk.Sandboxes()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/logs", app.GetSandboxLogs)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/logs", handler.GetSandboxLogs)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/logs?lines=notanumber", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -84,9 +85,9 @@ func TestGetSandboxLogsNotFound(t *testing.T) {
 	sdk.sandboxes.getLogsFn = func(_ context.Context, _, _ string, _ ...openshell.LogOption) (*openshell.LogResult, error) {
 		return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "sandbox not found"}
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewLogsHandler(services.NewSandboxService(sdk.Sandboxes()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/logs", app.GetSandboxLogs)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/logs", handler.GetSandboxLogs)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/missing/logs", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -110,9 +111,9 @@ func TestListSandboxProviders(t *testing.T) {
 			},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewLogsHandler(services.NewSandboxService(sdk.Sandboxes()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/providers", app.ListSandboxProviders)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/providers", handler.ListSandboxProviders)
 
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/providers", nil)
 	w := httptest.NewRecorder()
@@ -151,10 +152,10 @@ func TestAttachDetachSandboxProvider(t *testing.T) {
 	sdk.sandboxes.detachFn = func(_ context.Context, _, sandboxName, _ string, _ uint64) (*openshell.DetachProviderResult, error) {
 		return &openshell.DetachProviderResult{Detached: true, Sandbox: &openshell.Sandbox{Name: sandboxName}}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewLogsHandler(services.NewSandboxService(sdk.Sandboxes()))
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/providers/{provider}", app.AttachSandboxProvider)
-	r.Delete("/workspaces/{workspace}/sandboxes/{name}/providers/{provider}", app.DetachSandboxProvider)
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/providers/{provider}", handler.AttachSandboxProvider)
+	r.Delete("/workspaces/{workspace}/sandboxes/{name}/providers/{provider}", handler.DetachSandboxProvider)
 
 	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/providers/claude-prov", strings.NewReader(`{"expectedResourceVersion":42}`))
 	req.Header.Set("Content-Type", "application/json")

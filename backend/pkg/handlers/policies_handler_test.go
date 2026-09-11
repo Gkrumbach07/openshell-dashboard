@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	sdktypes "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
@@ -43,9 +44,9 @@ func TestGetSandboxPolicy(t *testing.T) {
 			}, nil
 		}
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewPoliciesHandler(services.NewPolicyService(sdk.Policy()), services.NewConfig(sdk.Config()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/policy", app.GetSandboxPolicy)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/policy", handler.GetSandboxPolicy)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/policy", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -91,9 +92,9 @@ func TestGetSandboxPolicySkipsMissingRevision(t *testing.T) {
 			}, nil
 		}
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewPoliciesHandler(services.NewPolicyService(sdk.Policy()), services.NewConfig(sdk.Config()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/policy", app.GetSandboxPolicy)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/policy", handler.GetSandboxPolicy)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/policy", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -123,9 +124,9 @@ func TestGetSandboxPolicyNotFound(t *testing.T) {
 	sdk.policy.getStatusFn = func(_ context.Context, _, _ string, _ ...openshell.GetStatusOption) (*openshell.PolicyStatusResult, error) {
 		return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "sandbox not found"}
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewPoliciesHandler(services.NewPolicyService(sdk.Policy()), services.NewConfig(sdk.Config()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/policy", app.GetSandboxPolicy)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/policy", handler.GetSandboxPolicy)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/missing/policy", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -146,9 +147,10 @@ func TestUpdateSandboxPolicy(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestAppWithSDK(&mockSDK{})
+			mock := &mockSDK{}
+			handler := NewPoliciesHandler(services.NewPolicyService(mock.Policy()), services.NewConfig(mock.Config()))
 			r := chi.NewRouter()
-			r.Put("/workspaces/{workspace}/sandboxes/{name}/policy", app.UpdateSandboxPolicy)
+			r.Put("/workspaces/{workspace}/sandboxes/{name}/policy", handler.UpdateSandboxPolicy)
 			req := httptest.NewRequest(http.MethodPut, "/workspaces/default/sandboxes/my-sandbox/policy", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
@@ -161,9 +163,10 @@ func TestUpdateSandboxPolicy(t *testing.T) {
 }
 
 func TestSetGlobalPolicy(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewPoliciesHandler(services.NewPolicyService(mock.Policy()), services.NewConfig(mock.Config()))
 	r := chi.NewRouter()
-	r.Put("/global-policy", app.SetGlobalPolicy)
+	r.Put("/global-policy", handler.SetGlobalPolicy)
 	req := httptest.NewRequest(http.MethodPut, "/global-policy", strings.NewReader(`{"policy":{"version":1}}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -174,10 +177,11 @@ func TestSetGlobalPolicy(t *testing.T) {
 }
 
 func TestDeleteGlobalPolicy(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewPoliciesHandler(services.NewPolicyService(mock.Policy()), services.NewConfig(mock.Config()))
 	req := httptest.NewRequest(http.MethodDelete, "/global-policy", nil)
 	w := httptest.NewRecorder()
-	app.DeleteGlobalPolicy(w, req)
+	handler.DeleteGlobalPolicy(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
 	}
@@ -193,9 +197,9 @@ func TestGetDraftPolicy(t *testing.T) {
 			},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewDraftsHandler(services.NewPolicyService(sdk.Policy()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/drafts", app.GetDraftPolicy)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/drafts", handler.GetDraftPolicy)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/drafts", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -221,9 +225,9 @@ func TestApproveDraftChunk(t *testing.T) {
 			gotToken = reviewToken
 			return &openshell.ApproveResult{PolicyVersion: 2}, nil
 		}
-		app := newTestAppWithSDK(sdk)
+		handler := NewDraftsHandler(services.NewPolicyService(sdk.Policy()))
 		r := chi.NewRouter()
-		r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/approve", app.ApproveDraftChunk)
+		r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/approve", handler.ApproveDraftChunk)
 		req := httptest.NewRequest(
 			http.MethodPost,
 			"/workspaces/default/sandboxes/my-sandbox/drafts/c1/approve",
@@ -254,9 +258,9 @@ func TestApproveDraftChunk(t *testing.T) {
 			gotToken = reviewToken
 			return &openshell.ApproveResult{PolicyVersion: 2}, nil
 		}
-		app := newTestAppWithSDK(sdk)
+		handler := NewDraftsHandler(services.NewPolicyService(sdk.Policy()))
 		r := chi.NewRouter()
-		r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/approve", app.ApproveDraftChunk)
+		r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/approve", handler.ApproveDraftChunk)
 		req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/drafts/c1/approve", nil)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
@@ -270,9 +274,10 @@ func TestApproveDraftChunk(t *testing.T) {
 }
 
 func TestRejectDraftChunk(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewDraftsHandler(services.NewPolicyService(mock.Policy()))
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/reject", app.RejectDraftChunk)
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/reject", handler.RejectDraftChunk)
 	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/drafts/c1/reject", strings.NewReader(`{"reason":"nope"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -287,9 +292,9 @@ func TestApproveAllDraftChunks(t *testing.T) {
 	sdk.policy.approveAllFn = func(_ context.Context, _, _ string, _ ...openshell.ApproveAllOption) (*openshell.ApproveAllResult, error) {
 		return &openshell.ApproveAllResult{PolicyVersion: 4, ChunksApproved: 2, ChunksSkipped: 1}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewDraftsHandler(services.NewPolicyService(sdk.Policy()))
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/approve-all", app.ApproveAllDraftChunks)
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/approve-all", handler.ApproveAllDraftChunks)
 	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/drafts/approve-all", strings.NewReader(`{"includeSecurityFlagged":true}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -305,9 +310,10 @@ func TestApproveAllDraftChunks(t *testing.T) {
 }
 
 func TestEditDraftChunk(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewDraftsHandler(services.NewPolicyService(mock.Policy()))
 	r := chi.NewRouter()
-	r.Put("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}", app.EditDraftChunk)
+	r.Put("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}", handler.EditDraftChunk)
 	req := httptest.NewRequest(http.MethodPut, "/workspaces/default/sandboxes/my-sandbox/drafts/c1", strings.NewReader(`{"proposedRule":{"name":"allow-api"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -318,9 +324,10 @@ func TestEditDraftChunk(t *testing.T) {
 }
 
 func TestUndoDraftChunk(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewDraftsHandler(services.NewPolicyService(mock.Policy()))
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/undo", app.UndoDraftChunk)
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/{chunk}/undo", handler.UndoDraftChunk)
 	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/drafts/c1/undo", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -334,9 +341,9 @@ func TestClearDraftChunks(t *testing.T) {
 	sdk.policy.clearFn = func(_ context.Context, _, _ string) (*openshell.ClearResult, error) {
 		return &openshell.ClearResult{ChunksCleared: 3}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewDraftsHandler(services.NewPolicyService(sdk.Policy()))
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/clear", app.ClearDraftChunks)
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/drafts/clear", handler.ClearDraftChunks)
 	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/drafts/clear", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -350,9 +357,9 @@ func TestGetDraftHistory(t *testing.T) {
 	sdk.policy.historyFn = func(_ context.Context, _, _ string) ([]openshell.DraftHistoryEntry, error) {
 		return []openshell.DraftHistoryEntry{{EventType: "approved", ChunkID: "c1"}}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewDraftsHandler(services.NewPolicyService(sdk.Policy()))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/drafts/history", app.GetDraftHistory)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/drafts/history", handler.GetDraftHistory)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/drafts/history", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -362,10 +369,11 @@ func TestGetDraftHistory(t *testing.T) {
 }
 
 func TestGetDraftSummary(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewDraftsHandler(services.NewPolicyService(mock.Policy()))
 	req := httptest.NewRequest(http.MethodGet, "/draft-summary", nil)
 	w := httptest.NewRecorder()
-	app.GetDraftSummary(w, req)
+	handler.GetDraftSummary(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
 	}

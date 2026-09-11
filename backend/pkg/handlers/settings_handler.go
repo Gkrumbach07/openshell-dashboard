@@ -5,16 +5,28 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
 
-func (app *App) GetGlobalSettings(w http.ResponseWriter, r *http.Request) {
-	config, err := app.sdk.Config().GetGateway(r.Context())
+type SettingsHandler struct {
+	svc services.ConfigServiceInterface
+}
+
+func NewSettingsHandler(svc services.ConfigServiceInterface) *SettingsHandler {
+	return &SettingsHandler{
+		svc: svc,
+	}
+}
+
+func (h *SettingsHandler) GetGlobalSettings(w http.ResponseWriter, r *http.Request) {
+	config, err := h.svc.GetGateway(r.Context())
 	if err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, models.FromSDKGatewaySettings(config))
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKGatewaySettings(config))
 }
 
 type SetSettingRequest struct {
@@ -22,39 +34,39 @@ type SetSettingRequest struct {
 	Value string `json:"value"`
 }
 
-func (app *App) SetGlobalSetting(w http.ResponseWriter, r *http.Request) {
+func (h *SettingsHandler) SetGlobalSetting(w http.ResponseWriter, r *http.Request) {
 	var body SetSettingRequest
-	if !decodeBody(w, r, &body) {
+	if !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
 	if body.Key == "" {
-		WriteError(w, http.StatusBadRequest, "invalid_setting", "key is required")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidSetting, "key is required")
 		return
 	}
-	if _, err := app.sdk.Config().Update(r.Context(), "", &openshell.ConfigUpdate{
+	if _, err := h.svc.Update(r.Context(), "", &openshell.ConfigUpdate{
 		SettingKey:   body.Key,
 		SettingValue: &openshell.SettingValue{Type: openshell.SettingValueString, StringVal: body.Value},
 		Global:       true,
 	}); err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]bool{"updated": true})
+	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"updated": true})
 }
 
-func (app *App) DeleteGlobalSetting(w http.ResponseWriter, r *http.Request) {
+func (h *SettingsHandler) DeleteGlobalSetting(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("key")
 	if key == "" {
-		WriteError(w, http.StatusBadRequest, "invalid_setting", "key query parameter is required")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidSetting, "key query parameter is required")
 		return
 	}
-	if _, err := app.sdk.Config().Update(r.Context(), "", &openshell.ConfigUpdate{
+	if _, err := h.svc.Update(r.Context(), "", &openshell.ConfigUpdate{
 		SettingKey:    key,
 		DeleteSetting: true,
 		Global:        true,
 	}); err != nil {
-		writeSDKError(w, err)
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }

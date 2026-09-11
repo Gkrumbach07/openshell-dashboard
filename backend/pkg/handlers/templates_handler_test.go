@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
 
 func TestListSandboxTemplates(t *testing.T) {
@@ -35,9 +37,9 @@ func TestListSandboxTemplates(t *testing.T) {
 			},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewTemplatesHandler(services.NewTemplateService(sdk))
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/templates", app.ListSandboxTemplates)
+	r.Get("/workspaces/{workspace}/templates", handler.ListSandboxTemplates)
 
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/templates", nil)
 	w := httptest.NewRecorder()
@@ -90,9 +92,9 @@ func TestCreateSandboxTemplate(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
-			app := newTestAppWithSDK(sdk)
+			handler := NewTemplatesHandler(services.NewTemplateService(sdk))
 			r := chi.NewRouter()
-			r.Post("/workspaces/{workspace}/templates", app.CreateSandboxTemplate)
+			r.Post("/workspaces/{workspace}/templates", handler.CreateSandboxTemplate)
 
 			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/templates", strings.NewReader(tc.body))
 			w := httptest.NewRecorder()
@@ -114,9 +116,9 @@ func TestCreateSandboxTemplatePassesWorkload(t *testing.T) {
 		}
 		return template, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewTemplatesHandler(services.NewTemplateService(sdk))
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/templates", app.CreateSandboxTemplate)
+	r.Post("/workspaces/{workspace}/templates", handler.CreateSandboxTemplate)
 
 	body := `{"name":"codex-harness","spec":{"workload":{"image":"base","environment":{"HARNESS":"codex"},"resources":{"cpu":"1","memory":"2Gi"}}}}`
 	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/templates", strings.NewReader(body))
@@ -139,9 +141,9 @@ func TestDeleteSandboxTemplate(t *testing.T) {
 		}
 		return true, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewTemplatesHandler(services.NewTemplateService(sdk))
 	r := chi.NewRouter()
-	r.Delete("/workspaces/{workspace}/templates/{name}", app.DeleteSandboxTemplate)
+	r.Delete("/workspaces/{workspace}/templates/{name}", handler.DeleteSandboxTemplate)
 
 	req := httptest.NewRequest(http.MethodDelete, "/workspaces/default/templates/gpu-kata", nil)
 	w := httptest.NewRecorder()
@@ -188,9 +190,9 @@ func TestCreateSandboxFromTemplate(t *testing.T) {
 				gotTemplate = templateName
 				return &openshell.Sandbox{Name: name}, nil
 			}
-			app := newTestAppWithSDK(sdk)
+			handler := NewTemplatesHandler(services.NewTemplateService(sdk))
 			r := chi.NewRouter()
-			r.Post("/workspaces/{workspace}/sandboxes/from-template", app.CreateSandboxFromTemplate)
+			r.Post("/workspaces/{workspace}/sandboxes/from-template", handler.CreateSandboxFromTemplate)
 
 			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/from-template", strings.NewReader(tc.body))
 			w := httptest.NewRecorder()

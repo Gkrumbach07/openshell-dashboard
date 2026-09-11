@@ -31,9 +31,9 @@ func TestDecodeBody(t *testing.T) {
 			var dst struct {
 				Name string `json:"name"`
 			}
-			ok := decodeBody(w, r, &dst)
+			ok := DecodeBody(w, r, &dst)
 			if ok != tc.wantOK {
-				t.Errorf("decodeBody() = %v, want %v", ok, tc.wantOK)
+				t.Errorf("DecodeBody() = %v, want %v", ok, tc.wantOK)
 			}
 			if !ok && tc.wantErr != "" {
 				var errResp ErrorResponse
@@ -168,7 +168,7 @@ func TestWriteSDKError(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			writeSDKError(w, tc.err)
+			WriteSDKError(w, tc.err)
 
 			if w.Code != tc.wantHTTP {
 				t.Errorf("HTTP status = %d, want %d", w.Code, tc.wantHTTP)

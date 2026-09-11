@@ -21,7 +21,8 @@ import (
 	"syscall"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/auth"
-	api "github.com/Gkrumbach07/openshell-dashboard/backend/pkg/handlers"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/server"
 )
 
 const (
@@ -70,11 +71,11 @@ func main() {
 		UserHeader:  *userHeader,
 	})
 
-	authCfg := api.AuthConfigResponse{
+	authCfg := models.AuthConfigResponse{
 		AuthDisabled: *authDisabled,
 		AdminRole:    *adminRole,
 		LogoutURL:    *logoutURL,
-		Features: api.FeatureFlags{
+		Features: models.FeatureFlags{
 			Terminal:          envOr("FEATURE_TERMINAL", "true") == "true",
 			FileTransfer:      envOr("FEATURE_FILE_TRANSFER", "true") == "true",
 			Settings:          envOr("FEATURE_SETTINGS", "true") == "true",
@@ -91,7 +92,7 @@ func main() {
 	}
 	defer clients.Close()
 
-	app := api.NewApp(clients.sdk, clients.uploadExec, authMiddleware, *staticDir, authCfg)
+	app := server.NewApp(clients.sdk, clients.uploadExec, authMiddleware, *staticDir, authCfg)
 
 	addr := net.JoinHostPort(*listenAddress, *port)
 	slog.Info("openshell-dashboard BFF listening",

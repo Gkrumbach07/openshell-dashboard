@@ -609,10 +609,6 @@ type mockInteractiveSession struct {
 	closed     bool
 }
 
-func newTestAppWithSDK(sdk *mockSDK) *App {
-	return &App{sdk: sdk}
-}
-
 func (m *mockInteractiveSession) Read(p []byte) (int, error) {
 	if m.reads == nil {
 		return 0, io.EOF

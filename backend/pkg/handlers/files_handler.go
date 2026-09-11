@@ -41,11 +41,13 @@ type FilesHandler struct {
 func NewFilesHandler(
 	svc services.FileServiceInterface,
 	execSvc services.ExecServiceInterface,
+	sandboxSvc services.SandboxServiceInterface,
 	cfg FilesHandlerConfig,
 ) *FilesHandler {
 	return &FilesHandler{
 		svc:           svc,
 		execSvc:       execSvc,
+		sandboxes:     sandboxSvc,
 		execTimeout:   cfg.ExecTimeout,
 		maxUploadSize: cfg.MaxUploadSize,
 	}

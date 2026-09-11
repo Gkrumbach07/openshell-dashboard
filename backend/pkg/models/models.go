@@ -221,3 +221,14 @@ type GatewayInfo struct {
 	GatewayVersion string          `json:"gatewayVersion"`
 	ComputeDrivers []ComputeDriver `json:"computeDrivers"`
 }
+
+// FeatureFlags controls which optional features the frontend should render.
+type FeatureFlags struct {
+	Terminal          bool `json:"terminal"`
+	FileTransfer      bool `json:"fileTransfer"`
+	Settings          bool `json:"settings"`
+	GlobalPolicy      bool `json:"globalPolicy"`
+	CredentialRefresh bool `json:"credentialRefresh"`
+	Services          bool `json:"services"`
+	DraftPolicy       bool `json:"draftPolicy"`
+}

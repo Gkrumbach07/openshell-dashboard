@@ -108,9 +108,9 @@ func TestTerminalRelay(t *testing.T) {
 	sdk := &mockSDK{}
 	sdk.exec.interactiveFn = stubInteractive(t, session, &gotCols, &gotRows)
 
-	app := newTestAppWithSDK(sdk)
+	handler := NewTerminalHandler(sdk.Exec())
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/terminal", app.Terminal)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/terminal", handler.Terminal)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 

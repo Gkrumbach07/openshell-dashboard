@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
@@ -99,10 +100,9 @@ func TestUploadFile(t *testing.T) {
 		}
 		return "5+0 records in", 0, nil
 	}}
-	app := newTestAppWithSDK(sdk)
-	app.execUpload = up
+	handler := NewFilesHandler(services.NewFileService(up), services.NewExecService(sdk.Exec()), services.NewSandboxService(sdk.Sandboxes()), FilesHandlerConfig{})
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", handler.UploadFile)
 
 	// Include a control byte (0x04 = EOT) that a PTY path would corrupt/truncate.
 	content := "he\x04llo"
@@ -129,10 +129,9 @@ func TestUploadFileSandboxNotFound(t *testing.T) {
 	sdk.sandboxes.getFn = func(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
 		return nil, &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "sandbox not found"}
 	}
-	app := newTestAppWithSDK(sdk)
-	app.execUpload = &mockUploader{}
+	handler := NewFilesHandler(services.NewFileService(&mockUploader{}), services.NewExecService(sdk.Exec()), services.NewSandboxService(sdk.Sandboxes()), FilesHandlerConfig{})
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", handler.UploadFile)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, uploadRequest(t, "hello.txt", "hi"))
 	if w.Code != http.StatusNotFound {
@@ -148,9 +147,9 @@ func TestDownloadFile(t *testing.T) {
 		}
 		return &openshell.ExecResult{ExitCode: 0, Stdout: []byte("hello")}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewFilesHandler(services.NewFileService(&mockUploader{}), services.NewExecService(sdk.Exec()), services.NewSandboxService(sdk.Sandboxes()), FilesHandlerConfig{})
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/files", app.DownloadFile)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/files", handler.DownloadFile)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/sb/files?path=/sandbox/hello.txt", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -167,9 +166,9 @@ func TestDownloadFileNotFound(t *testing.T) {
 	sdk.exec.runFn = func(_ context.Context, _, _ string, _ []string, _ ...openshell.ExecOptions) (*openshell.ExecResult, error) {
 		return &openshell.ExecResult{ExitCode: 1, Stderr: []byte("cat: no such file")}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewFilesHandler(services.NewFileService(&mockUploader{}), services.NewExecService(sdk.Exec()), services.NewSandboxService(sdk.Sandboxes()), FilesHandlerConfig{})
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/files", app.DownloadFile)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/files", handler.DownloadFile)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/sb/files?path=/sandbox/missing.txt", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -186,10 +185,9 @@ func TestUploadFileFailed(t *testing.T) {
 	up := &mockUploader{fn: func(_ context.Context, _ string, _ []string, _ []byte) (string, int, error) {
 		return "dd: write error", 1, nil
 	}}
-	app := newTestAppWithSDK(sdk)
-	app.execUpload = up
+	handler := NewFilesHandler(services.NewFileService(up), services.NewExecService(sdk.Exec()), services.NewSandboxService(sdk.Sandboxes()), FilesHandlerConfig{})
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", handler.UploadFile)
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, uploadRequest(t, "hello.txt", "hello"))
@@ -209,10 +207,9 @@ func TestUploadFileExecError(t *testing.T) {
 	up := &mockUploader{fn: func(_ context.Context, _ string, _ []string, _ []byte) (string, int, error) {
 		return "", 0, fmt.Errorf("exec unavailable")
 	}}
-	app := newTestAppWithSDK(sdk)
-	app.execUpload = up
+	handler := NewFilesHandler(services.NewFileService(up), services.NewExecService(sdk.Exec()), services.NewSandboxService(sdk.Sandboxes()), FilesHandlerConfig{})
 	r := chi.NewRouter()
-	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", app.UploadFile)
+	r.Post("/workspaces/{workspace}/sandboxes/{name}/files", handler.UploadFile)
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, uploadRequest(t, "hello.txt", "hello"))

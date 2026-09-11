@@ -20,9 +20,9 @@ func TestListServices(t *testing.T) {
 			{SandboxName: "my-sandbox", ServiceName: "web", TargetPort: 8080, URL: "https://web.example"},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewServicesHandler(sdk.Services())
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/sandboxes/{name}/services", app.ListServices)
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/services", handler.ListServices)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/default/sandboxes/my-sandbox/services", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -40,17 +40,19 @@ func TestExposeService(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
+		wantCode   string
 		wantStatus int
 	}{
 		{name: "success", body: `{"service":"web","targetPort":8080}`, wantStatus: http.StatusCreated},
-		{name: "missing service", body: `{"service":"","targetPort":8080}`, wantStatus: http.StatusBadRequest},
-		{name: "zero port", body: `{"service":"web","targetPort":0}`, wantStatus: http.StatusBadRequest},
+		{name: "missing service", body: `{"service":"","targetPort":8080}`, wantStatus: http.StatusBadRequest, wantCode: "invalid_service"},
+		{name: "zero port", body: `{"service":"web","targetPort":0}`, wantStatus: http.StatusBadRequest, wantCode: "invalid_port"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestAppWithSDK(&mockSDK{})
+			mock := &mockSDK{}
+			handler := NewServicesHandler(mock.Services())
 			r := chi.NewRouter()
-			r.Post("/workspaces/{workspace}/sandboxes/{name}/services", app.ExposeService)
+			r.Post("/workspaces/{workspace}/sandboxes/{name}/services", handler.ExposeService)
 			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/my-sandbox/services", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
@@ -58,14 +60,24 @@ func TestExposeService(t *testing.T) {
 			if w.Code != tc.wantStatus {
 				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
 			}
+			if tc.wantCode != "" {
+				var body map[string]any
+				if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
+				if body["code"] != tc.wantCode {
+					t.Errorf("code = %v, want %q", body["code"], tc.wantCode)
+				}
+			}
 		})
 	}
 }
 
 func TestDeleteService(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewServicesHandler(mock.Services())
 	r := chi.NewRouter()
-	r.Delete("/workspaces/{workspace}/sandboxes/{name}/services/{svc}", app.DeleteService)
+	r.Delete("/workspaces/{workspace}/sandboxes/{name}/services/{svc}", handler.DeleteService)
 	req := httptest.NewRequest(http.MethodDelete, "/workspaces/default/sandboxes/my-sandbox/services/web", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

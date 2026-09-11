@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"

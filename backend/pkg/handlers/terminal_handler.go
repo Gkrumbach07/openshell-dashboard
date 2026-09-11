@@ -8,10 +8,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
 
 const (
@@ -24,6 +25,16 @@ type resizeMessage struct {
 	Type string `json:"type"`
 	Cols uint32 `json:"cols"`
 	Rows uint32 `json:"rows"`
+}
+
+type TerminalHandler struct {
+	svc services.ExecServiceInterface
+}
+
+func NewTerminalHandler(svc services.ExecServiceInterface) *TerminalHandler {
+	return &TerminalHandler{
+		svc: svc,
+	}
 }
 
 func parseDimensions(r *http.Request) (cols, rows uint32) {
@@ -58,7 +69,7 @@ func relaySessionToWS(ws *websocket.Conn, session openshell.InteractiveSession, 
 	}
 }
 
-func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
+func (h *TerminalHandler) Terminal(w http.ResponseWriter, r *http.Request) {
 	workspace := r.PathValue("workspace")
 	name := r.PathValue("name")
 	cols, rows := parseDimensions(r)
@@ -78,7 +89,7 @@ func (app *App) Terminal(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	slog.Info("opening interactive session", "workspace", workspace, "name", name, "cols", cols, "rows", rows)
-	session, err := app.sdk.Exec().Interactive(ctx, workspace, name, []string{defaultShell}, cols, rows)
+	session, err := h.svc.Interactive(ctx, workspace, name, []string{defaultShell}, cols, rows)
 	if err != nil {
 		slog.Error("interactive session open failed", "error", err)
 		_ = ws.WriteMessage(websocket.CloseMessage,

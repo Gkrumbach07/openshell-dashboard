@@ -11,11 +11,9 @@ type StdinExecer interface {
 
 type FileServiceInterface interface {
 	StdinExecer
-	GetSandbox()
 }
 
 type FileService struct {
-	FileServiceInterface
 	StdinExecer
 }
 

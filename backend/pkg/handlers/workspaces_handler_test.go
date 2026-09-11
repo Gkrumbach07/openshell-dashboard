@@ -21,9 +21,9 @@ func TestListWorkspaces(t *testing.T) {
 			{Name: "team-b", Phase: openshell.WorkspaceTerminating},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewWorkspacesHandler(sdk.Workspaces())
 	r := chi.NewRouter()
-	r.Get("/workspaces", app.ListWorkspaces)
+	r.Get("/workspaces", handler.ListWorkspaces)
 
 	req := httptest.NewRequest(http.MethodGet, "/workspaces", nil)
 	w := httptest.NewRecorder()
@@ -48,9 +48,9 @@ func TestListWorkspacesUnavailable(t *testing.T) {
 	sdk.workspaces.listFn = func(_ context.Context, _ ...openshell.ListOptions) ([]*openshell.Workspace, error) {
 		return nil, &openshell.StatusError{Code: openshell.ErrorUnauthenticated, Message: "missing token"}
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewWorkspacesHandler(sdk.Workspaces())
 	r := chi.NewRouter()
-	r.Get("/workspaces", app.ListWorkspaces)
+	r.Get("/workspaces", handler.ListWorkspaces)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -73,9 +73,10 @@ func TestCreateWorkspace(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestAppWithSDK(&mockSDK{})
+			mock := &mockSDK{}
+			handler := NewWorkspacesHandler(mock.Workspaces())
 			r := chi.NewRouter()
-			r.Post("/workspaces", app.CreateWorkspace)
+			r.Post("/workspaces", handler.CreateWorkspace)
 			req := httptest.NewRequest(http.MethodPost, "/workspaces", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
@@ -84,10 +85,12 @@ func TestCreateWorkspace(t *testing.T) {
 				t.Errorf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
 			}
 			if tc.wantCode != "" {
-				var errBody ErrorResponse
-				_ = json.NewDecoder(w.Body).Decode(&errBody)
-				if errBody.Code != tc.wantCode {
-					t.Errorf("code = %q, want %q", errBody.Code, tc.wantCode)
+				var errBody map[string]any
+				if err := json.NewDecoder(w.Body).Decode(&errBody); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
+				if errBody["code"] != tc.wantCode {
+					t.Errorf("code = %v, want %q", errBody["code"], tc.wantCode)
 				}
 			}
 		})
@@ -95,9 +98,10 @@ func TestCreateWorkspace(t *testing.T) {
 }
 
 func TestGetWorkspace(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewWorkspacesHandler(mock.Workspaces())
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}", app.GetWorkspace)
+	r.Get("/workspaces/{workspace}", handler.GetWorkspace)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/team-a", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -115,9 +119,10 @@ func TestGetWorkspace(t *testing.T) {
 }
 
 func TestDeleteWorkspace(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewWorkspacesHandler(mock.Workspaces())
 	r := chi.NewRouter()
-	r.Delete("/workspaces/{workspace}", app.DeleteWorkspace)
+	r.Delete("/workspaces/{workspace}", handler.DeleteWorkspace)
 	req := httptest.NewRequest(http.MethodDelete, "/workspaces/team-a", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -136,9 +141,9 @@ func TestDeleteWorkspaceNotFound(t *testing.T) {
 	sdk.workspaces.deleteFn = func(_ context.Context, _ string) error {
 		return &openshell.StatusError{Code: openshell.ErrorNotFound, Message: "missing"}
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewWorkspacesHandler(sdk.Workspaces())
 	r := chi.NewRouter()
-	r.Delete("/workspaces/{workspace}", app.DeleteWorkspace)
+	r.Delete("/workspaces/{workspace}", handler.DeleteWorkspace)
 	req := httptest.NewRequest(http.MethodDelete, "/workspaces/missing", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -159,9 +164,10 @@ func TestAddMember(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			app := newTestAppWithSDK(&mockSDK{})
+			mock := &mockSDK{}
+			handler := NewWorkspacesHandler(mock.Workspaces())
 			r := chi.NewRouter()
-			r.Post("/workspaces/{workspace}/members", app.AddMember)
+			r.Post("/workspaces/{workspace}/members", handler.AddMember)
 			req := httptest.NewRequest(http.MethodPost, "/workspaces/team-a/members", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
@@ -174,9 +180,10 @@ func TestAddMember(t *testing.T) {
 }
 
 func TestRemoveMember(t *testing.T) {
-	app := newTestAppWithSDK(&mockSDK{})
+	mock := &mockSDK{}
+	handler := NewWorkspacesHandler(mock.Workspaces())
 	r := chi.NewRouter()
-	r.Delete("/workspaces/{workspace}/members/{subject}", app.RemoveMember)
+	r.Delete("/workspaces/{workspace}/members/{subject}", handler.RemoveMember)
 	req := httptest.NewRequest(http.MethodDelete, "/workspaces/team-a/members/user%40example.com", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -197,9 +204,9 @@ func TestListMembers(t *testing.T) {
 			{PrincipalSubject: "user@example.com", Role: openshell.WorkspaceRoleUser},
 		}, nil
 	}
-	app := newTestAppWithSDK(sdk)
+	handler := NewWorkspacesHandler(sdk.Workspaces())
 	r := chi.NewRouter()
-	r.Get("/workspaces/{workspace}/members", app.ListMembers)
+	r.Get("/workspaces/{workspace}/members", handler.ListMembers)
 	req := httptest.NewRequest(http.MethodGet, "/workspaces/team-a/members", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

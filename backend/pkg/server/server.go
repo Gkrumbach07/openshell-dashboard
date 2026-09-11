@@ -1,8 +1,7 @@
-// Package handlers exposes the BFF REST API consumed by the React frontend.
-package handlers
+// Package server wires the BFF REST API consumed by the React frontend.
+package server
 
 import (
-	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,63 +14,65 @@ import (
 
 	apiutils "github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/auth"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/handlers"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
-
-// StdinExecer runs a command in a sandbox with piped stdin and no TTY — the
-// binary-safe exec path the SDK does not expose. Used only for file upload.
-// Implemented by sdkclient.RawExecClient.
-type StdinExecer interface {
-	ExecWithStdin(ctx context.Context, sandboxID string, command []string, stdin []byte) (string, int, error)
-}
-
-// FeatureFlags controls which optional features the frontend should render.
-type FeatureFlags struct {
-	Terminal          bool `json:"terminal"`
-	FileTransfer      bool `json:"fileTransfer"`
-	Settings          bool `json:"settings"`
-	GlobalPolicy      bool `json:"globalPolicy"`
-	CredentialRefresh bool `json:"credentialRefresh"`
-	Services          bool `json:"services"`
-	DraftPolicy       bool `json:"draftPolicy"`
-}
-
-// AuthConfigResponse tells the frontend whether auth is enabled and which
-// features are available.
-type AuthConfigResponse struct {
-	AdminRole    string       `json:"adminRole,omitempty"`
-	LogoutURL    string       `json:"logoutUrl,omitempty"`
-	Features     FeatureFlags `json:"features"`
-	AuthDisabled bool         `json:"authDisabled"`
-}
 
 // App wires the OpenShell SDK client, auth middleware, and REST routes.
 type App struct { //nolint:govet // fieldalignment: readability over padding
-	sdk        openshell.ClientInterface
-	execUpload StdinExecer
-	auth       *auth.Middleware
 	// authConfig is serialized to the browser via GET /auth/config — never
 	// put secrets in it.
-	authConfig    AuthConfigResponse
+	auth          *auth.Middleware
+	authConfig    models.AuthConfigResponse
 	staticDir     string
 	maxUploadSize int64
 	execTimeout   uint32
+
+	drafts     *handlers.DraftsHandler
+	files      *handlers.FilesHandler
+	gateway    *handlers.GatewayHandler
+	inference  *handlers.InferenceHandler
+	logs       *handlers.LogsHandler
+	policies   *handlers.PoliciesHandler
+	providers  *handlers.ProvidersHandler
+	sandboxes  *handlers.SandboxHandler
+	services   *handlers.ServicesHandler
+	settings   *handlers.SettingsHandler
+	terminal   *handlers.TerminalHandler
+	templates  *handlers.TemplatesHandler
+	workspaces *handlers.WorkspacesHandler
 }
 
 // NewApp builds the application.
-func NewApp(sdkClient openshell.ClientInterface, execUpload StdinExecer, authMiddleware *auth.Middleware, staticDir string, authCfg AuthConfigResponse) *App {
+func NewApp(sdkClient openshell.ClientInterface, execUpload services.StdinExecer, authMiddleware *auth.Middleware, staticDir string, authCfg models.AuthConfigResponse) *App {
 	app := &App{
-		sdk:        sdkClient,
-		execUpload: execUpload,
-		auth:       authMiddleware,
-		authConfig: authCfg,
-		staticDir:  staticDir,
+		auth:          authMiddleware,
+		authConfig:    authCfg,
+		staticDir:     staticDir,
+		maxUploadSize: 64 << 20,
+		execTimeout:   30,
 	}
-	if app.maxUploadSize == 0 {
-		app.maxUploadSize = 64 << 20 // 64 MiB
-	}
-	if app.execTimeout == 0 {
-		app.execTimeout = 30
-	}
+
+	sandboxSvc := services.NewSandboxService(sdkClient.Sandboxes())
+	configSvc := services.NewConfig(sdkClient.Config())
+	execSvc := services.NewExecService(sdkClient.Exec())
+	policySvc := services.NewPolicyService(sdkClient.Policy())
+
+	app.drafts = handlers.NewDraftsHandler(policySvc)
+	app.files = handlers.NewFilesHandler(services.NewFileService(execUpload), execSvc, sandboxSvc, handlers.FilesHandlerConfig{ExecTimeout: app.execTimeout, MaxUploadSize: app.maxUploadSize})
+	app.gateway = handlers.NewGatewayHandler(services.NewGatewayService(sdkClient), authMiddleware, authCfg)
+	app.inference = handlers.NewInferenceHandler(services.NewInferenceService(sdkClient.Inference()))
+	app.logs = handlers.NewLogsHandler(sandboxSvc)
+	app.policies = handlers.NewPoliciesHandler(policySvc, configSvc)
+	app.providers = handlers.NewProvidersHandler(services.NewProviderService(sdkClient.Providers()))
+	app.sandboxes = handlers.NewSandboxHandler(sandboxSvc)
+	app.services = handlers.NewServicesHandler(services.NewServiceService(sdkClient.Services()))
+	app.settings = handlers.NewSettingsHandler(configSvc)
+	app.terminal = handlers.NewTerminalHandler(execSvc)
+	app.templates = handlers.NewTemplatesHandler(services.NewTemplateService(sdkClient))
+	app.workspaces = handlers.NewWorkspacesHandler(services.NewWorkspaceService(sdkClient.Workspaces()))
+
 	return app
 }
 
@@ -87,90 +88,90 @@ func (app *App) Routes() http.Handler {
 		r.Get("/auth/config", app.GetAuthConfig)
 		// BFF liveness (does not call the gateway).
 		r.Get("/healthz", app.GetHealthz)
-		r.Get("/readyz", app.GetReadyz)
+		r.Get("/readyz", app.gateway.GetReadyz)
 
 		r.Group(func(r chi.Router) {
 			r.Use(app.auth.Handler)
 
-			r.Get("/auth/whoami", app.GetWhoAmI)
-			r.Get("/gateway", app.GetGateway)
-			r.Get("/draft-summary", app.GetDraftSummary)
+			r.Get("/auth/whoami", app.gateway.GetWhoAmI)
+			r.Get("/gateway", app.gateway.GetGateway)
+			r.Get("/draft-summary", app.drafts.GetDraftSummary)
 
 			r.Route("/global-policy", func(r chi.Router) {
-				r.Get("/", app.GetGlobalPolicy)
-				r.Put("/", app.SetGlobalPolicy)
+				r.Get("/", app.policies.GetGlobalPolicy)
+				r.Put("/", app.policies.SetGlobalPolicy)
 			})
 
-			r.Get("/settings/global", app.GetGlobalSettings)
-			r.Put("/settings/global", app.SetGlobalSetting)
-			r.Delete("/settings/global", app.DeleteGlobalSetting)
-			r.Delete("/global-policy", app.DeleteGlobalPolicy)
+			r.Get("/settings/global", app.settings.GetGlobalSettings)
+			r.Put("/settings/global", app.settings.SetGlobalSetting)
+			r.Delete("/settings/global", app.settings.DeleteGlobalSetting)
+			r.Delete("/global-policy", app.policies.DeleteGlobalPolicy)
 
 			r.Route("/workspaces", func(r chi.Router) {
-				r.Get("/", app.ListWorkspaces)
-				r.Post("/", app.CreateWorkspace)
+				r.Get("/", app.workspaces.ListWorkspaces)
+				r.Post("/", app.workspaces.CreateWorkspace)
 				r.Route("/{workspace}", func(r chi.Router) {
-					r.Get("/", app.GetWorkspace)
-					r.Delete("/", app.DeleteWorkspace)
+					r.Get("/", app.workspaces.GetWorkspace)
+					r.Delete("/", app.workspaces.DeleteWorkspace)
 
-					r.Get("/members", app.ListMembers)
-					r.Post("/members", app.AddMember)
-					r.Delete("/members/{subject}", app.RemoveMember)
+					r.Get("/members", app.workspaces.ListMembers)
+					r.Post("/members", app.workspaces.AddMember)
+					r.Delete("/members/{subject}", app.workspaces.RemoveMember)
 
-					r.Get("/templates", app.ListSandboxTemplates)
-					r.Post("/templates", app.CreateSandboxTemplate)
-					r.Get("/templates/{name}", app.GetSandboxTemplate)
-					r.Delete("/templates/{name}", app.DeleteSandboxTemplate)
+					r.Get("/templates", app.templates.ListSandboxTemplates)
+					r.Post("/templates", app.templates.CreateSandboxTemplate)
+					r.Get("/templates/{name}", app.templates.GetSandboxTemplate)
+					r.Delete("/templates/{name}", app.templates.DeleteSandboxTemplate)
 
-					r.Get("/sandboxes", app.ListSandboxes)
-					r.Post("/sandboxes", app.CreateSandbox)
-					r.Post("/sandboxes/from-template", app.CreateSandboxFromTemplate)
-					r.Get("/sandboxes/{name}", app.GetSandbox)
-					r.Delete("/sandboxes/{name}", app.DeleteSandbox)
-					r.Post("/sandboxes/{name}/stop", app.StopSandbox)
-					r.Post("/sandboxes/{name}/start", app.StartSandbox)
-					r.Get("/sandboxes/{name}/logs", app.GetSandboxLogs)
-					r.Get("/sandboxes/{name}/terminal", app.Terminal)
-					r.Get("/sandboxes/{name}/providers", app.ListSandboxProviders)
-					r.Post("/sandboxes/{name}/providers/{provider}", app.AttachSandboxProvider)
-					r.Delete("/sandboxes/{name}/providers/{provider}", app.DetachSandboxProvider)
-					r.Get("/sandboxes/{name}/policy", app.GetSandboxPolicy)
-					r.Put("/sandboxes/{name}/policy", app.UpdateSandboxPolicy)
-					r.Get("/sandboxes/{name}/drafts", app.GetDraftPolicy)
-					r.Post("/sandboxes/{name}/drafts/{chunk}/approve", app.ApproveDraftChunk)
-					r.Post("/sandboxes/{name}/drafts/{chunk}/reject", app.RejectDraftChunk)
-					r.Post("/sandboxes/{name}/drafts/approve-all", app.ApproveAllDraftChunks)
-					r.Put("/sandboxes/{name}/drafts/{chunk}", app.EditDraftChunk)
-					r.Post("/sandboxes/{name}/drafts/{chunk}/undo", app.UndoDraftChunk)
-					r.Post("/sandboxes/{name}/drafts/clear", app.ClearDraftChunks)
-					r.Get("/sandboxes/{name}/drafts/history", app.GetDraftHistory)
-					r.Post("/sandboxes/{name}/files", app.UploadFile)
-					r.Get("/sandboxes/{name}/files", app.DownloadFile)
+					r.Get("/sandboxes", app.sandboxes.ListSandboxes)
+					r.Post("/sandboxes", app.sandboxes.CreateSandbox)
+					r.Post("/sandboxes/from-template", app.templates.CreateSandboxFromTemplate)
+					r.Get("/sandboxes/{name}", app.sandboxes.GetSandbox)
+					r.Delete("/sandboxes/{name}", app.sandboxes.DeleteSandbox)
+					r.Post("/sandboxes/{name}/stop", app.sandboxes.StopSandbox)
+					r.Post("/sandboxes/{name}/start", app.sandboxes.StartSandbox)
+					r.Get("/sandboxes/{name}/logs", app.logs.GetSandboxLogs)
+					r.Get("/sandboxes/{name}/terminal", app.terminal.Terminal)
+					r.Get("/sandboxes/{name}/providers", app.logs.ListSandboxProviders)
+					r.Post("/sandboxes/{name}/providers/{provider}", app.logs.AttachSandboxProvider)
+					r.Delete("/sandboxes/{name}/providers/{provider}", app.logs.DetachSandboxProvider)
+					r.Get("/sandboxes/{name}/policy", app.policies.GetSandboxPolicy)
+					r.Put("/sandboxes/{name}/policy", app.policies.UpdateSandboxPolicy)
+					r.Get("/sandboxes/{name}/drafts", app.drafts.GetDraftPolicy)
+					r.Post("/sandboxes/{name}/drafts/{chunk}/approve", app.drafts.ApproveDraftChunk)
+					r.Post("/sandboxes/{name}/drafts/{chunk}/reject", app.drafts.RejectDraftChunk)
+					r.Post("/sandboxes/{name}/drafts/approve-all", app.drafts.ApproveAllDraftChunks)
+					r.Put("/sandboxes/{name}/drafts/{chunk}", app.drafts.EditDraftChunk)
+					r.Post("/sandboxes/{name}/drafts/{chunk}/undo", app.drafts.UndoDraftChunk)
+					r.Post("/sandboxes/{name}/drafts/clear", app.drafts.ClearDraftChunks)
+					r.Get("/sandboxes/{name}/drafts/history", app.drafts.GetDraftHistory)
+					r.Post("/sandboxes/{name}/files", app.files.UploadFile)
+					r.Get("/sandboxes/{name}/files", app.files.DownloadFile)
 
-					r.Get("/sandboxes/{name}/services", app.ListServices)
-					r.Post("/sandboxes/{name}/services", app.ExposeService)
-					r.Delete("/sandboxes/{name}/services/{svc}", app.DeleteService)
+					r.Get("/sandboxes/{name}/services", app.services.ListServices)
+					r.Post("/sandboxes/{name}/services", app.services.ExposeService)
+					r.Delete("/sandboxes/{name}/services/{svc}", app.services.DeleteService)
 
-					r.Get("/inference", app.GetInferenceRoute)
-					r.Put("/inference", app.SetInferenceRoute)
-					r.Delete("/inference", app.DeleteInferenceRoute)
+					r.Get("/inference", app.inference.GetInferenceRoute)
+					r.Put("/inference", app.inference.SetInferenceRoute)
+					r.Delete("/inference", app.inference.DeleteInferenceRoute)
 
-					r.Get("/providers", app.ListProviders)
-					r.Post("/providers", app.CreateProvider)
-					r.Get("/providers/{name}", app.GetProvider)
-					r.Put("/providers/{name}", app.UpdateProvider)
-					r.Delete("/providers/{name}", app.DeleteProvider)
-					r.Get("/providers/{name}/refresh-status", app.GetProviderRefreshStatus)
-					r.Post("/providers/{name}/refresh", app.ConfigureProviderRefresh)
-					r.Post("/providers/{name}/refresh/rotate", app.RotateProviderCredential)
-					r.Delete("/providers/{name}/refresh", app.DeleteProviderRefresh)
+					r.Get("/providers", app.providers.ListProviders)
+					r.Post("/providers", app.providers.CreateProvider)
+					r.Get("/providers/{name}", app.providers.GetProvider)
+					r.Put("/providers/{name}", app.providers.UpdateProvider)
+					r.Delete("/providers/{name}", app.providers.DeleteProvider)
+					r.Get("/providers/{name}/refresh-status", app.providers.GetProviderRefreshStatus)
+					r.Post("/providers/{name}/refresh", app.providers.ConfigureProviderRefresh)
+					r.Post("/providers/{name}/refresh/rotate", app.providers.RotateProviderCredential)
+					r.Delete("/providers/{name}/refresh", app.providers.DeleteProviderRefresh)
 
-					r.Get("/provider-profiles", app.ListProviderProfiles)
-					r.Post("/provider-profiles", app.ImportProviderProfiles)
-					r.Post("/provider-profiles/lint", app.LintProviderProfiles)
-					r.Get("/provider-profiles/{profileId}", app.GetProviderProfile)
-					r.Put("/provider-profiles/{profileId}", app.UpdateProviderProfile)
-					r.Delete("/provider-profiles/{profileId}", app.DeleteProviderProfile)
+					r.Get("/provider-profiles", app.providers.ListProviderProfiles)
+					r.Post("/provider-profiles", app.providers.ImportProviderProfiles)
+					r.Post("/provider-profiles/lint", app.providers.LintProviderProfiles)
+					r.Get("/provider-profiles/{profileId}", app.providers.GetProviderProfile)
+					r.Put("/provider-profiles/{profileId}", app.providers.UpdateProviderProfile)
+					r.Delete("/provider-profiles/{profileId}", app.providers.DeleteProviderProfile)
 				})
 			})
 		})
@@ -186,7 +187,7 @@ func (app *App) Routes() http.Handler {
 // serveStatic serves the built frontend with SPA fallback to index.html.
 func (app *App) serveStatic(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/api/") {
-		apiutils.WriteError(w, http.StatusNotFound, "not_found", "unknown API route")
+		apiutils.WriteError(w, http.StatusNotFound, apiutils.NotFound, "unknown API route")
 		return
 	}
 	requested := filepath.Join(app.staticDir, filepath.Clean("/"+r.URL.Path))

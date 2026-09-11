@@ -37,7 +37,7 @@ type DraftsHandler struct {
 }
 
 func NewDraftsHandler(svc services.PolicyServiceInterface) *DraftsHandler {
-	return &DraftsHandler{}
+	return &DraftsHandler{svc: svc}
 }
 
 // GetDraftSummary returns an aggregated summary of pending draft policy chunks

@@ -17,7 +17,7 @@ import (
 // HealthInterface.GetGatewayInfo.
 type GatewayServiceInterface interface {
 	GetGatewayInfo(ctx context.Context) (*models.GatewayInfo, error)
-	CheckHealth(ctx context.Context) (*models.HealthInfo, error)
+	CheckHealth(ctx context.Context) error
 	GetCurrentUser(ctx context.Context) (*models.CurrentUser, error)
 }
 
@@ -41,12 +41,9 @@ func (s *GatewayService) GetGatewayInfo(ctx context.Context) (*models.GatewayInf
 	return &result, nil
 }
 
-func (s *GatewayService) CheckHealth(ctx context.Context) (*models.HealthInfo, error) {
-	health, err := s.sdk.Health().Check(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &models.HealthInfo{HealthResult: health}, nil
+func (s *GatewayService) CheckHealth(ctx context.Context) error {
+	_, err := s.sdk.Health().Check(ctx)
+	return err
 }
 
 func (s *GatewayService) GetCurrentUser(ctx context.Context) (*models.CurrentUser, error) {
