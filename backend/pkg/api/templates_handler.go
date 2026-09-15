@@ -8,7 +8,7 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
 )
 
 // ListSandboxTemplates lists the reusable workload templates in a workspace.

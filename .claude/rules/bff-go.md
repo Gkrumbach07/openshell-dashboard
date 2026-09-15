@@ -55,7 +55,7 @@ Handlers receive `openshell.ClientInterface` as `app.sdk` and call SDK sub-clien
 directly (`Sandboxes()`, `Workspaces()`, `Providers()`, `Exec()`, `Inference()`,
 `Policy()`, `Services()`, ...).
 
-The one intentional exception is `internal/sdkclient/rawexec.go`: it uses the
+The one intentional exception is `pkg/sdkclient/rawexec.go`: it uses the
 SDK's generated proto client for binary-safe uploads because the public exec API
 still lacks a non-TTY stdin path. Do not add new local wrappers, copied protos,
 or generated stub trees unless there is a concrete upstream SDK gap you can
@@ -168,7 +168,7 @@ go get github.com/NVIDIA/OpenShell/sdk/go@latest
 
 There is no local proto regeneration flow anymore. If you need to inspect an
 RPC or type shape, read the vendored SDK package (`openshell/v1`, `types/*`) or
-use `go doc`. `internal/models/policyproto.go` intentionally uses the SDK's
+use `go doc`. `pkg/models/policyproto.go` intentionally uses the SDK's
 vendored `proto/sandboxv1` package only to preserve the frontend's protojson
 policy contract; do not reintroduce `backend/proto/`, `backend/gen/`, or an
 `internal/gateway/` wrapper layer.

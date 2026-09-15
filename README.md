@@ -236,7 +236,7 @@ Browser ── REST ──► Go BFF ── gRPC (bearer) ──► OpenShell ga
            (React Query)     (OpenShell Go SDK)
 ```
 
-- **The vendored Go SDK is the source of truth.** Handlers call `github.com/NVIDIA/OpenShell/sdk/go` directly. The only remaining low-level escape hatch is `backend/internal/sdkclient/rawexec.go` for binary-safe file uploads, because the public SDK still lacks a non-TTY exec API that accepts raw stdin bytes.
+- **The vendored Go SDK is the source of truth.** Handlers call `github.com/NVIDIA/OpenShell/sdk/go` directly. The only remaining low-level escape hatch is `backend/pkg/sdkclient/rawexec.go` for binary-safe file uploads, because the public SDK still lacks a non-TTY exec API that accepts raw stdin bytes.
 - **Polling for status**: sandbox state uses polling (5s via React Query `refetchInterval`). WebSockets are used only for the interactive terminal.
 - **Secrets never reach the browser**: provider credentials are write-only; the BFF serializes only credential key names.
 - **Sandbox stop/start** (OpenShell v0.0.113+): the lifecycle is create → ready/error → (stop ⇄ start) → delete. Stopping retains persistent state; there is still no suspend/restart. The UI reflects the API as-is.

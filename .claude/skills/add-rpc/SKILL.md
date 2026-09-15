@@ -29,7 +29,7 @@ Start with `openshell/v1/` and `types/` in the pinned module version. Note:
 ### 2. Update models / request parsing
 
 If the gateway response needs JSON shaping, add or extend DTO converters in
-`backend/internal/models/`. Never serialize SDK objects directly.
+`backend/pkg/models/`. Never serialize SDK objects directly.
 
 ```go
 func FromSDKWorkspace(ws *openshell.Workspace) Workspace { ... }
@@ -44,10 +44,10 @@ For request bodies:
 
 ### 3. REST handler
 
-Add a handler in `backend/internal/api/`. Use package-level helpers from `respond.go`:
+Add a handler in `backend/pkg/api/`. Use package-level helpers from `respond.go`:
 
 ```go
-// backend/internal/api/workspaces_handler.go
+// backend/pkg/api/workspaces_handler.go
 func (app *App) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
     var body CreateWorkspaceRequest
     if !decodeBody(w, r, &body) {
@@ -133,7 +133,7 @@ export const useWorkspaces = () =>
 
 ### 7. Update test doubles
 
-Add the needed behavior to `backend/internal/api/mock_sdk_test.go`. Extend the
+Add the needed behavior to `backend/pkg/api/mock_sdk_test.go`. Extend the
 relevant mock SDK sub-client instead of inventing a parallel interface layer.
 
 ### 8. Verify

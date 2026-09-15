@@ -36,9 +36,9 @@ go mod tidy
 ### 3. Update call sites if the SDK shape changed
 
 - Handlers should keep calling `app.sdk.<SubClient>()...`
-- DTO shaping belongs in `backend/internal/models/sdk_converters.go`
-- Policy JSON compatibility belongs in `backend/internal/models/policyproto.go`
-- Only keep `backend/internal/sdkclient/rawexec.go` if the public SDK still lacks non-TTY stdin exec
+- DTO shaping belongs in `backend/pkg/models/sdk_converters.go`
+- Policy JSON compatibility belongs in `backend/pkg/models/policyproto.go`
+- Only keep `backend/pkg/sdkclient/rawexec.go` if the public SDK still lacks non-TTY stdin exec
 
 ### 4. Check for new user-facing capabilities
 

@@ -16,10 +16,10 @@ frontend/           React + TypeScript + PatternFly 6
   src/utils/        Formatters and helpers
 backend/            Go BFF
   cmd/              Entry point
-  internal/api/     REST handlers (respond.go helpers, *_handler.go)
-  internal/auth/    Proxy-delegated token extraction (proxy.go)
-  internal/sdkclient/ SDK auth helper + raw exec escape hatch for binary-safe uploads
-  internal/models/  Response DTOs (From*() converters) and request builders
+  pkg/api/     REST handlers (respond.go helpers, *_handler.go)
+  pkg/auth/    Proxy-delegated token extraction (proxy.go)
+  pkg/sdkclient/ SDK auth helper + raw exec escape hatch for binary-safe uploads
+  pkg/models/  Response DTOs (From*() converters) and request builders
 scripts/            Dev environment (dev-env.sh — Keycloak + gateway setup)
 docs/adrs/          Architecture Decision Records
 ```
@@ -46,11 +46,11 @@ Each rule has a corresponding Architecture Decision Record in [`docs/adrs/`](doc
 - **Relay-only auth** ([ADR 0002](docs/adrs/0002-auth-relay-only-bff.md)). The BFF never terminates authentication — a fronting proxy (oauth2-proxy standalone, the host platform's proxy when embedded) owns login/sessions/refresh/CSRF and injects `x-forwarded-access-token`. Bearer chain: proxy header → `Authorization: Bearer` → 401. The BFF never validates tokens and never authorizes. The only auth switch is `AUTH_DISABLED` (dev).
 - **Surface the API as-is.** The upstream OpenShell API defines what exists — never invent RPCs, fields, lifecycle states, or abstractions (no Agent object; Sandbox is fundamental, labels categorize). See `.claude/rules/openshell-api.md` for the hard rules.
 - **PatternFly 6 only.** No MUI, no custom design system, no inline styles with hardcoded values.
-- **Use the vendored Go SDK directly.** Prefer `github.com/NVIDIA/OpenShell/sdk/go` over local wrappers or copied protos. The one intentional exception is `internal/sdkclient/rawexec.go` for binary-safe uploads because the public SDK still does not expose non-TTY exec with stdin.
+- **Use the vendored Go SDK directly.** Prefer `github.com/NVIDIA/OpenShell/sdk/go` over local wrappers or copied protos. The one intentional exception is `pkg/sdkclient/rawexec.go` for binary-safe uploads because the public SDK still does not expose non-TTY exec with stdin.
 
 ## OpenShell API reference
 
-The gateway exposes RPCs across 2 services (`OpenShell`, `Inference`), consumed via the vendored `github.com/NVIDIA/OpenShell/sdk/go` (see `.claude/rules/openshell-api.md`). The file-upload path still uses the SDK's generated proto client under `internal/sdkclient/rawexec.go` because the public exec API does not yet accept raw stdin.
+The gateway exposes RPCs across 2 services (`OpenShell`, `Inference`), consumed via the vendored `github.com/NVIDIA/OpenShell/sdk/go` (see `.claude/rules/openshell-api.md`). The file-upload path still uses the SDK's generated proto client under `pkg/sdkclient/rawexec.go` because the public exec API does not yet accept raw stdin.
 
 ## Personas
 
