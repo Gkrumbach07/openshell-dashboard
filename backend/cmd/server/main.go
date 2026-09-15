@@ -29,6 +29,39 @@ const (
 	defaultGatewayURL = "localhost:50051"
 )
 
+// version is this dashboard's release. Set at build time with
+//
+//	-ldflags "-X main.version=$(VERSION)"
+//
+// and overridable at runtime with a VERSION env var. Advertised as apiVersion on
+// /api/v1/auth/config: the frontend ships to npm and the BFF ships as an image
+// through separate pipelines, so an embedding host that bundles one and talks to
+// the other needs a way to notice they have drifted apart.
+var version = "dev"
+
+func resolveVersion() string {
+	return envOr("VERSION", version)
+}
+
+// warnOIDCConfig flags a partially-advertised identity domain at startup. Nothing
+// here affects this BFF — it runs no flows — but an embedding host reads these
+// values to offer a sign-in, and a half-set config makes the gateway show up as
+// present but unconnectable with no obvious cause.
+func warnOIDCConfig(issuer, clientID, audience string, authDisabled bool) {
+	switch {
+	case issuer == "" && clientID == "":
+		if !authDisabled {
+			slog.Info("no OIDC client metadata advertised; embedding hosts cannot offer a sign-in for this gateway (set OIDC_ISSUER and OIDC_CLIENT_ID)")
+		}
+	case issuer == "" || clientID == "":
+		slog.Warn("incomplete OIDC client metadata — an embedding host needs both issuer and client id to start a sign-in",
+			"issuer", issuer, "clientId", clientID)
+	case audience == "":
+		slog.Warn("OIDC audience is empty — a token minted without the audience the gateway requires will be refused by the gateway",
+			"issuer", issuer)
+	}
+}
+
 func envOr(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -52,6 +85,16 @@ func main() {
 		userHeader        = flag.String("auth-user-header", envOr("AUTH_USER_HEADER", "x-auth-request-user"), "header injected by auth proxy containing the username (env AUTH_USER_HEADER)")
 		adminRole         = flag.String("admin-role", envOr("ADMIN_ROLE", "admin"), "role name that grants platform admin access (env ADMIN_ROLE)")
 		logoutURL         = flag.String("logout-url", envOr("LOGOUT_URL", "/oauth2/sign_out"), "auth proxy sign-out URL to redirect to on logout (env LOGOUT_URL)")
+
+		// Public OIDC client metadata advertised on /api/v1/auth/config. The BFF
+		// never uses these itself — it runs no flows and validates nothing (ADR
+		// 0002). They exist so an embedding host can send the user to the right
+		// provider for THIS gateway. Set them to match the gateway's own
+		// --oidc-issuer and --oidc-audience.
+		oidcIssuer   = flag.String("oidc-issuer", envOr("OIDC_ISSUER", ""), "OIDC issuer this gateway trusts, advertised to embedding hosts (env OIDC_ISSUER)")
+		oidcClientID = flag.String("oidc-client-id", envOr("OIDC_CLIENT_ID", ""), "public OIDC client id for browser sign-in, advertised to embedding hosts (env OIDC_CLIENT_ID)")
+		oidcAudience = flag.String("oidc-audience", envOr("OIDC_AUDIENCE", ""), "resource audience the gateway requires on a token (env OIDC_AUDIENCE)")
+		oidcScope    = flag.String("oidc-scope", envOr("OIDC_SCOPE", "openid profile"), "scope string for the browser authorization request (env OIDC_SCOPE)")
 	)
 	flag.Parse()
 
@@ -59,6 +102,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	warnGatewayConfig(*gatewayURL, *gatewayCACert, *authDisabled)
+	warnOIDCConfig(*oidcIssuer, *oidcClientID, *oidcAudience, *authDisabled)
 	if err := validateInboundTLS(*tlsCert, *tlsKey); err != nil {
 		slog.Error(err.Error())
 		os.Exit(1)
@@ -74,6 +118,11 @@ func main() {
 		AuthDisabled: *authDisabled,
 		AdminRole:    *adminRole,
 		LogoutURL:    *logoutURL,
+		Issuer:       *oidcIssuer,
+		ClientID:     *oidcClientID,
+		Audience:     *oidcAudience,
+		Scope:        *oidcScope,
+		APIVersion:   resolveVersion(),
 		Features: api.FeatureFlags{
 			Terminal:          envOr("FEATURE_TERMINAL", "true") == "true",
 			FileTransfer:      envOr("FEATURE_FILE_TRANSFER", "true") == "true",

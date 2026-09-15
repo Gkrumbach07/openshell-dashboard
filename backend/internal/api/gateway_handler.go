@@ -33,11 +33,35 @@ type FeatureFlags struct {
 	DraftPolicy       bool `json:"draftPolicy"`
 }
 
-// AuthConfigResponse tells the frontend whether auth is enabled and which
-// features are available.
+// AuthConfigResponse tells the frontend whether auth is enabled, which features
+// are available, and — for embedding hosts — which identity domain this gateway
+// trusts.
+//
+// The OIDC fields are public client metadata, not a credential: issuer, client id
+// and audience are exactly what any browser-based client sends in an authorization
+// request. Publishing them is not auth termination, token validation, or
+// authorization, so ADR 0002 still holds — the BFF still never runs a flow.
+//
+// They exist because a host embedding this dashboard (for example RHOAI, which
+// renders the npm package against several gateways) has to know where to send the
+// user to sign in, per gateway, before any token exists. Sourcing that from the
+// component co-deployed with the gateway keeps it closer to the gateway's own
+// --oidc-issuer/--oidc-audience than copying it into every embedding host.
 type AuthConfigResponse struct {
-	AdminRole    string       `json:"adminRole,omitempty"`
-	LogoutURL    string       `json:"logoutUrl,omitempty"`
+	AdminRole string `json:"adminRole,omitempty"`
+	LogoutURL string `json:"logoutUrl,omitempty"`
+	// Issuer is the OIDC provider this gateway's JWKS validation trusts.
+	Issuer string `json:"issuer,omitempty"`
+	// ClientID is the public (PKCE) client a browser should authenticate with.
+	ClientID string `json:"clientId,omitempty"`
+	// Audience is the resource audience the minted token must carry for the
+	// gateway to accept it. A mismatch here surfaces only as a gateway refusal.
+	Audience string `json:"audience,omitempty"`
+	// Scope is the space-separated scope string for the authorization request.
+	Scope string `json:"scope,omitempty"`
+	// APIVersion is this dashboard's release, so an embedding host can detect
+	// skew between the npm package it bundles and the image it talks to.
+	APIVersion   string       `json:"apiVersion,omitempty"`
 	Features     FeatureFlags `json:"features"`
 	AuthDisabled bool         `json:"authDisabled"`
 }

@@ -15,7 +15,10 @@ WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 go build -o /out/server ./cmd/server
+# VERSION is surfaced as apiVersion on /api/v1/auth/config so an embedding host
+# can detect skew between the npm package it bundles and this image.
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION}" -o /out/server ./cmd/server
 
 # --- Runtime ---
 FROM alpine:3.20

@@ -101,7 +101,16 @@ RBAC (admin/user roles) and workspace membership — the BFF never does.
 
 The BFF does NOT validate tokens, call JWKS endpoints, parse JWTs, or make authorization decisions. Zero dependency on `go-oidc`. There are no OIDC endpoints, no session codec, no CSRF middleware — if you find yourself adding any of these, stop and read ADR 0002.
 
-Auth-adjacent routes (under `/api/v1/`): `auth/config` (bootstrap: authDisabled + feature flags), `auth/whoami` (gateway `GetCurrentUser`). That's all.
+Auth-adjacent routes (under `/api/v1/`): `auth/config` (bootstrap: authDisabled, feature flags,
+and public OIDC client metadata), `auth/whoami` (gateway `GetCurrentUser`). That's all.
+
+`auth/config` also advertises `issuer`, `clientId`, `audience` and `scope` when the
+`OIDC_*` vars are set. This is **not** a violation of ADR 0002: the BFF still runs no
+flow, holds no session, and validates nothing — it publishes the same non-secret client
+metadata any browser client puts in an authorization request. It exists because an
+embedding host rendering this dashboard against several gateways has to know where to
+send the user to sign in, per gateway, before any token exists. Never put a client
+secret or any credential in this response; the route is public by design.
 
 Before adding anything auth-adjacent, check ADR 0002: no auth termination, no JWT validation, no RBAC, no k8s API calls, no credential brokering, no server-side state.
 
@@ -125,6 +134,11 @@ Env vars (some also available as CLI flags):
 | `AUTH_USER_HEADER` | `-auth-user-header` | `x-auth-request-user` | User header name |
 | `ADMIN_ROLE` | `-admin-role` | `admin` | OIDC role claim for admin (display gating only — gateway enforces) |
 | `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out` | Proxy sign-out path the frontend redirects to on logout |
+| `OIDC_ISSUER` | `-oidc-issuer` | | Issuer this gateway trusts — **advertised only**, never used by the BFF |
+| `OIDC_CLIENT_ID` | `-oidc-client-id` | | Public (PKCE) client id for browser sign-in — advertised only |
+| `OIDC_AUDIENCE` | `-oidc-audience` | | Audience the gateway requires on a token — advertised only |
+| `OIDC_SCOPE` | `-oidc-scope` | `openid profile` | Scope string for the authorization request — advertised only |
+| `VERSION` | | `dev` (ldflags) | Release reported as `apiVersion`, for npm-vs-image skew detection |
 | `FEATURE_*` | | varies | Feature flags: `FEATURE_TERMINAL`, `FEATURE_FILE_TRANSFER`, `FEATURE_SETTINGS`, `FEATURE_GLOBAL_POLICY`, `FEATURE_CREDENTIAL_REFRESH`, `FEATURE_SERVICES`, `FEATURE_DRAFT_POLICY` |
 
 ## Error handling

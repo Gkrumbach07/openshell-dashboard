@@ -112,3 +112,106 @@ func TestGetWhoAmIAuthDisabled(t *testing.T) {
 		t.Errorf("subject = %v", body["subject"])
 	}
 }
+
+func TestGetAuthConfig(t *testing.T) {
+	t.Run("advertises the gateway's identity domain", func(t *testing.T) {
+		app := newTestAppWithSDK(&mockSDK{})
+		app.authConfig = AuthConfigResponse{
+			AdminRole:  "openshell-admin",
+			LogoutURL:  "/oauth2/sign_out",
+			Issuer:     "https://idp.example/realms/openshell",
+			ClientID:   "openshell-dashboard",
+			Audience:   "openshell-gateway",
+			Scope:      "openid profile",
+			APIVersion: "0.1.3",
+			Features:   FeatureFlags{Terminal: true, FileTransfer: true},
+		}
+
+		w := httptest.NewRecorder()
+		app.GetAuthConfig(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/config", nil))
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for key, want := range map[string]string{
+			"issuer":     "https://idp.example/realms/openshell",
+			"clientId":   "openshell-dashboard",
+			"audience":   "openshell-gateway",
+			"scope":      "openid profile",
+			"apiVersion": "0.1.3",
+		} {
+			if got, _ := body[key].(string); got != want {
+				t.Errorf("%s = %q, want %q", key, got, want)
+			}
+		}
+	})
+
+	t.Run("never leaks a credential", func(t *testing.T) {
+		// The endpoint is public — it answers before any token exists — so it must
+		// carry only client metadata. A secret reaching it would be served
+		// unauthenticated to anyone who can hit the BFF.
+		app := newTestAppWithSDK(&mockSDK{})
+		app.authConfig = AuthConfigResponse{
+			Issuer:   "https://idp.example/realms/openshell",
+			ClientID: "openshell-dashboard",
+		}
+
+		w := httptest.NewRecorder()
+		app.GetAuthConfig(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/config", nil))
+
+		var body map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, forbidden := range []string{"clientSecret", "client_secret", "token", "secret", "password"} {
+			if _, present := body[forbidden]; present {
+				t.Errorf("auth config exposed %q", forbidden)
+			}
+		}
+	})
+
+	t.Run("omits OIDC fields when unset", func(t *testing.T) {
+		// A standalone deployment has a fronting proxy doing sign-in and advertises
+		// nothing; the response must not carry empty keys an embedding host would
+		// read as a configured-but-blank issuer.
+		app := newTestAppWithSDK(&mockSDK{})
+		app.authConfig = AuthConfigResponse{AuthDisabled: true}
+
+		w := httptest.NewRecorder()
+		app.GetAuthConfig(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/config", nil))
+
+		var body map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, key := range []string{"issuer", "clientId", "audience", "apiVersion"} {
+			if _, present := body[key]; present {
+				t.Errorf("%s should be omitted when unset", key)
+			}
+		}
+		if body["authDisabled"] != true {
+			t.Errorf("authDisabled = %v, want true", body["authDisabled"])
+		}
+	})
+
+	t.Run("is reachable without a bearer", func(t *testing.T) {
+		// Registered outside the auth middleware group in Routes(); this pins that
+		// so a future refactor cannot quietly move it behind auth and deadlock the
+		// frontend's bootstrap.
+		app := newTestAppWithSDK(&mockSDK{})
+		app.auth = auth.New(auth.Config{})
+		app.authConfig = AuthConfigResponse{Issuer: "https://idp.example"}
+
+		w := httptest.NewRecorder()
+		app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/config", nil))
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 without a bearer", w.Code)
+		}
+	})
+}

@@ -655,7 +655,32 @@ cmd_start() {
     fi
     start_gateway
     create_default_workspace
+    write_oidc_env
     print_env_vars
+}
+
+# Records the OIDC client metadata the BFF advertises on /api/v1/auth/config.
+# These must match what the gateway was started with (--oidc-issuer /
+# --oidc-audience) — an embedding host reads them to offer a sign-in, and a
+# mismatch surfaces only as a gateway refusal several hops away.
+write_oidc_env() {
+    step "Recording OIDC client metadata"
+
+    # Drop any previous values before re-appending, so repeated starts do not
+    # accumulate stale duplicates in the env file.
+    if [ -f "$ENV_FILE" ]; then
+        grep -v -E '^(OIDC_ISSUER|OIDC_CLIENT_ID|OIDC_AUDIENCE)=' "$ENV_FILE" > "${ENV_FILE}.tmp" 2>/dev/null || true
+        mv "${ENV_FILE}.tmp" "$ENV_FILE"
+    fi
+
+    {
+        echo "OIDC_ISSUER=http://localhost:${KEYCLOAK_PORT}/realms/openshell"
+        echo "OIDC_CLIENT_ID=openshell-dashboard"
+        # Matches the gateway's --oidc-audience in start_gateway.
+        echo "OIDC_AUDIENCE=openshell-cli"
+    } >> "$ENV_FILE" 2>/dev/null || true
+
+    info "OIDC metadata written to $ENV_FILE"
 }
 
 cmd_stop() {
