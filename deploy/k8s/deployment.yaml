@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openshell-dashboard
+  labels:
+    app.kubernetes.io/name: openshell-dashboard
+    app.kubernetes.io/component: bff
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      deployment: openshell-dashboard
+  template:
+    metadata:
+      labels:
+        deployment: openshell-dashboard
+        app.kubernetes.io/name: openshell-dashboard
+    spec:
+      serviceAccountName: openshell-dashboard
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        # OpenShift service serving cert. Terminating TLS here means the embedding
+        # host validates this BFF with the cluster's service CA, which it already
+        # trusts — no extra CA distribution.
+        - name: serving-cert
+          secret:
+            secretName: openshell-dashboard-tls
+            defaultMode: 420
+      containers:
+        - name: dashboard
+          image: dashboard-image
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8443
+              name: https
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8443"
+            - name: TLS_CERT_FILE
+              value: /etc/tls/private/tls.crt
+            - name: TLS_KEY_FILE
+              value: /etc/tls/private/tls.key
+            - name: OPENSHELL_GATEWAY_URL
+              value: gateway-url
+            # Relay-only (ADR 0002). Never set this true outside local dev: the
+            # BFF would forward no bearer and the gateway would see anonymous calls.
+            - name: AUTH_DISABLED
+              value: "false"
+            # Public OIDC client metadata, advertised on /api/v1/auth/config for
+            # embedding hosts. The BFF itself never uses these.
+            - name: OIDC_ISSUER
+              value: oidc-issuer
+            - name: OIDC_CLIENT_ID
+              value: oidc-client-id
+            - name: OIDC_AUDIENCE
+              value: oidc-audience
+            # Static assets are unused when embedded (the host renders the npm
+            # package) but are what the standalone console would serve.
+            - name: STATIC_DIR
+              value: /usr/share/openshell-dashboard/static
+          livenessProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            # healthz, not readyz: readyz calls the gateway, so a gateway blip
+            # would pull this BFF out of service and mask the real error behind
+            # a connection failure instead of surfacing it to the user.
+            httpGet:
+              path: /api/v1/healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: serving-cert
+              mountPath: /etc/tls/private
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

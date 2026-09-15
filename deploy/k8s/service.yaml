@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: openshell-dashboard
+  annotations:
+    # Issues openshell-dashboard-tls, signed by the cluster service CA.
+    service.beta.openshift.io/serving-cert-secret-name: openshell-dashboard-tls
+  labels:
+    app.kubernetes.io/name: openshell-dashboard
+spec:
+  # ClusterIP only, and deliberately no Route. See README: the BFF terminates no
+  # authentication, so exposing it directly would violate ADR 0002's deployment
+  # invariant. The embedding host is its fronting proxy.
+  type: ClusterIP
+  selector:
+    deployment: openshell-dashboard
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 8443
+      protocol: TCP

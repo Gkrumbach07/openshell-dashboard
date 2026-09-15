@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshell
+  labels:
+    # Lets the embedding host's NetworkPolicy select this namespace by name.
+    kubernetes.io/metadata.name: openshell

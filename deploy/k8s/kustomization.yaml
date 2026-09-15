@@ -1,0 +1,73 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Deploy into whichever namespace holds this OpenShell install. One install is
+# one gateway (OPENSHELL_GATEWAY_URL is a single endpoint and the SDK client is
+# built once at startup), so N gateways means N copies of this package.
+namespace: openshell
+
+resources:
+  - namespace.yaml
+  - service-account.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+
+configMapGenerator:
+  - name: openshell-dashboard-params
+    env: params.env
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: openshell-dashboard-params
+      fieldPath: data.dashboard-image
+    targets:
+      - select:
+          kind: Deployment
+          name: openshell-dashboard
+        fieldPaths:
+          - spec.template.spec.containers.[name=dashboard].image
+  - source:
+      kind: ConfigMap
+      name: openshell-dashboard-params
+      fieldPath: data.gateway-url
+    targets:
+      - select:
+          kind: Deployment
+          name: openshell-dashboard
+        fieldPaths:
+          - spec.template.spec.containers.[name=dashboard].env.[name=OPENSHELL_GATEWAY_URL].value
+  - source:
+      kind: ConfigMap
+      name: openshell-dashboard-params
+      fieldPath: data.oidc-issuer
+    targets:
+      - select:
+          kind: Deployment
+          name: openshell-dashboard
+        fieldPaths:
+          - spec.template.spec.containers.[name=dashboard].env.[name=OIDC_ISSUER].value
+  - source:
+      kind: ConfigMap
+      name: openshell-dashboard-params
+      fieldPath: data.oidc-client-id
+    targets:
+      - select:
+          kind: Deployment
+          name: openshell-dashboard
+        fieldPaths:
+          - spec.template.spec.containers.[name=dashboard].env.[name=OIDC_CLIENT_ID].value
+  - source:
+      kind: ConfigMap
+      name: openshell-dashboard-params
+      fieldPath: data.oidc-audience
+    targets:
+      - select:
+          kind: Deployment
+          name: openshell-dashboard
+        fieldPaths:
+          - spec.template.spec.containers.[name=dashboard].env.[name=OIDC_AUDIENCE].value

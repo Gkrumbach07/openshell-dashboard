@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openshell-dashboard-allow-embedding-host
+spec:
+  podSelector:
+    matchLabels:
+      deployment: openshell-dashboard
+  policyTypes:
+    - Ingress
+  ingress:
+    # ADR 0002 deployment invariant: trusting a forwarded bearer is only safe
+    # when the fronting proxy is the SOLE network path to the BFF. Here that
+    # proxy is the embedding host's OpenShell router, so nothing else may reach
+    # this port.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              # EDIT ME: the namespace running the embedding dashboard.
+              # redhat-ods-applications for RHOAI, opendatahub for ODH.
+              kubernetes.io/metadata.name: redhat-ods-applications
+      ports:
+        - port: 8443
+          protocol: TCP
