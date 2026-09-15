@@ -8,12 +8,12 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	sdkclient "github.com/Gkrumbach07/openshell-dashboard/backend/pkg/clients"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/clients"
 )
 
 type gatewayClients struct {
 	sdk        openshell.ClientInterface
-	uploadExec *sdkclient.RawExecClient
+	uploadExec *clients.RawExecClient
 }
 
 func (c *gatewayClients) Close() {
@@ -39,7 +39,7 @@ func newGatewayClients(gatewayURL, gatewayCACert, gatewayClientCert, gatewayClie
 
 	sdkCfg := openshell.Config{
 		Address: sdkAddress,
-		Auth:    sdkclient.ContextAuthProvider{RequireTLS: useTLS},
+		Auth:    clients.ContextAuthProvider{RequireTLS: useTLS},
 	}
 	if useTLS {
 		tlsCfg := &openshell.TLSConfig{CAFile: gatewayCACert}
@@ -58,7 +58,7 @@ func newGatewayClients(gatewayURL, gatewayCACert, gatewayClientCert, gatewayClie
 	}
 
 	rawHost := strings.TrimPrefix(strings.TrimPrefix(sdkAddress, "https://"), "http://")
-	uploadExec, err := sdkclient.NewRawExecClient(rawHost, gatewayCACert, gatewayClientCert, gatewayClientKey, useTLS)
+	uploadExec, err := clients.NewRawExecClient(rawHost, gatewayCACert, gatewayClientCert, gatewayClientKey, useTLS)
 	if err != nil {
 		if closeErr := sdkClient.Close(); closeErr != nil {
 			slog.Warn("SDK client close failed during setup rollback", "error", closeErr)
