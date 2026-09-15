@@ -22,6 +22,7 @@ import (
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/api"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/auth"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/sdkclient"
 )
 
 const (
@@ -134,13 +135,13 @@ func main() {
 		},
 	}
 
-	clients, err := newGatewayClients(*gatewayURL, *gatewayCACert, *gatewayClientCert, *gatewayClientKey)
+	clients, err := sdkclient.NewGatewayClients(*gatewayURL, *gatewayCACert, *gatewayClientCert, *gatewayClientKey)
 	if err != nil {
 		exitOnError("gateway client setup failed", err)
 	}
 	defer clients.Close()
 
-	app := api.NewApp(clients.sdk, clients.uploadExec, authMiddleware, *staticDir, authCfg)
+	app := api.NewApp(clients.SDK, clients.UploadExec, authMiddleware, *staticDir, authCfg)
 
 	addr := net.JoinHostPort(*listenAddress, *port)
 	slog.Info("openshell-dashboard BFF listening",
