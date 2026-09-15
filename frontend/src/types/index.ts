@@ -395,6 +395,17 @@ export type AuthConfig = {
   adminRole?: string;
   logoutUrl?: string;
   features: FeatureFlags;
+  /**
+   * Public OIDC client metadata for this gateway's identity domain. Unused by the
+   * standalone dashboard — its fronting proxy owns sign-in — and present for
+   * embedding hosts that must send the user to the right provider per gateway.
+   */
+  issuer?: string;
+  clientId?: string;
+  audience?: string;
+  scope?: string;
+  /** This dashboard's release, for detecting npm-package vs image skew. */
+  apiVersion?: string;
 };
 
 export type CurrentUser = {

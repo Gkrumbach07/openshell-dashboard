@@ -1,6 +1,11 @@
 # Auto-source dev environment config if available (written by scripts/dev-env.sh).
 -include scripts/.env.dev
-export OPENSHELL_DIR OPENSHELL_GATEWAY_URL GATEWAY_CA_CERT OIDC_ISSUER OIDC_CLIENT_ID
+export OPENSHELL_DIR OPENSHELL_GATEWAY_URL GATEWAY_CA_CERT OIDC_ISSUER OIDC_CLIENT_ID OIDC_AUDIENCE
+
+# Advertised as apiVersion on /api/v1/auth/config. Defaults to the frontend
+# package version so a local build reports something meaningful; release
+# pipelines should pass VERSION explicitly.
+VERSION ?= $(shell node -p "require('./frontend/package.json').version" 2>/dev/null || echo dev)
 
 .PHONY: setup dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean
 
@@ -25,13 +30,13 @@ dev-frontend:
 	cd frontend && npm start
 
 build: ## Build the container image (BFF + static frontend)
-	docker build -t openshell-dashboard:latest -f deploy/Dockerfile .
+	docker build --build-arg VERSION=$(VERSION) -t openshell-dashboard:latest -f deploy/Dockerfile .
 
 build-frontend:
 	cd frontend && npm run build
 
 build-backend:
-	cd backend && go build -o bin/server ./cmd/server
+	cd backend && go build -ldflags "-X main.version=$(VERSION)" -o bin/server ./cmd/server
 
 test: ## Frontend unit tests + go tests
 	cd frontend && npm test -- --passWithNoTests

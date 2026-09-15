@@ -89,6 +89,30 @@ because it was the only component present to meet a real need (browser
 login). Fixing the *deployment shape* — proxy ships alongside — makes the
 pure relay sustainable.
 
+## Clarification: advertising client metadata (2026-09)
+
+`GET /api/v1/auth/config` may advertise `issuer`, `clientId`, `audience` and
+`scope` when the `OIDC_*` environment variables are set. This does not relax
+anything above.
+
+The BFF still runs no flow, holds no session, validates no token, and makes no
+authorization decision. It publishes the same non-secret values a browser client
+already puts in an authorization request — the route is public precisely because
+the frontend needs it before any token exists, and no credential may ever be
+added to it.
+
+The need comes from embedding: a host rendering this dashboard against several
+gateways must know where to send the user to sign in *per gateway*, before any
+token exists, and there is no RPC exposing the gateway's OIDC configuration
+(`GetGatewayInfo` returns only status, version and compute drivers). Sourcing it
+from the component co-deployed with the gateway keeps one copy next to the
+gateway instead of one copy per embedding host.
+
+Note this is a second copy of values the gateway also holds as `--oidc-issuer`
+and `--oidc-audience`, so it can still drift from them. Closing that gap would
+mean asking upstream OpenShell to expose them on `GetGatewayInfo` so the BFF
+reads them from the gateway rather than from its own environment.
+
 ## Consequences
 
 - The BFF's entire auth surface is ~50 lines of header reading. Auth bugs
