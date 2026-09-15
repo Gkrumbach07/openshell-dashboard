@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/models"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/auth"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
 )
 
 // GetHealthz reports BFF liveness without touching the gateway.

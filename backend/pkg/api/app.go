@@ -13,7 +13,7 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/auth"
 )
 
 // StdinExecer runs a command in a sandbox with piped stdin and no TTY — the

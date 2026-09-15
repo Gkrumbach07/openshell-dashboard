@@ -9,7 +9,7 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/auth"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/auth"
 )
 
 func TestGetHealthz(t *testing.T) {
