@@ -49,7 +49,7 @@ const (
 	FileReadError      ResponseCode = "read_error"
 	FileUploadFailed   ResponseCode = "upload_failed"
 	FileNotFound       ResponseCode = "file_not_found"
-	IdMismatch         ResponseCode = "id_mismatch"
+	IDMismatch         ResponseCode = "id_mismatch"
 )
 
 func (rc ResponseCode) String() string {

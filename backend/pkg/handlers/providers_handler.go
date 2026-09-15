@@ -358,7 +358,7 @@ func (h *ProvidersHandler) UpdateProviderProfile(w http.ResponseWriter, r *http.
 	}
 	profileID := r.PathValue("profileId")
 	if body.Profile.ID != "" && body.Profile.ID != profileID {
-		apiutils.WriteError(w, http.StatusBadRequest, apiutils.IdMismatch, "profile id in body must match URL")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.IDMismatch, "profile id in body must match URL")
 		return
 	}
 	body.Profile.ID = profileID

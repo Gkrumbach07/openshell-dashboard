@@ -1,3 +1,0 @@
-package openshell
-
-// test factory
