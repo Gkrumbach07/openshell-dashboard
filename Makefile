@@ -33,9 +33,16 @@ build-frontend:
 build-backend:
 	cd backend && go build -o bin/server ./cmd/server
 
+.PHONY: test
 test: ## Frontend unit tests + go tests
-	cd frontend && npm test -- --passWithNoTests
+	test-backend
+	test-frontend
+
+test-backend:
 	cd backend && go test ./...
+
+test-frontend:
+	cd frontend && npm test -- --passWithNoTests
 
 lint: ## eslint + golangci-lint + prettier check
 	cd frontend && npm run lint
