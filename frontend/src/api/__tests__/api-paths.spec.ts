@@ -38,11 +38,6 @@ import {
 import { getGatewayInfo } from '../gateway';
 import { getAuthConfig, getCurrentUser } from '../auth';
 import {
-  getInferenceRoute,
-  setInferenceRoute,
-  deleteInferenceRoute,
-} from '../inference';
-import {
   getSandboxPolicy,
   getGlobalPolicy,
   getDraftPolicy,
@@ -321,38 +316,6 @@ describe('auth API', () => {
   it('getCurrentUser calls correct path', async () => {
     await getCurrentUser();
     expect(mockGet).toHaveBeenCalledWith('/api/v1/auth/whoami');
-  });
-});
-
-describe('inference API', () => {
-  it('getInferenceRoute calls correct path', async () => {
-    await getInferenceRoute('default', '');
-    expect(mockGet).toHaveBeenCalledWith(
-      '/api/v1/workspaces/default/inference',
-    );
-  });
-
-  it('getInferenceRoute with named route', async () => {
-    await getInferenceRoute('default', 'sandbox-system');
-    expect(mockGet).toHaveBeenCalledWith(
-      '/api/v1/workspaces/default/inference?route=sandbox-system',
-    );
-  });
-
-  it('setInferenceRoute puts to correct path', async () => {
-    const body = { providerName: 'claude', modelId: 'claude-3' };
-    await setInferenceRoute('default', body);
-    expect(mockApiFetch).toHaveBeenCalledWith(
-      '/api/v1/workspaces/default/inference',
-      expect.objectContaining({ method: 'PUT' }),
-    );
-  });
-
-  it('deleteInferenceRoute calls correct path', async () => {
-    await deleteInferenceRoute('default', '');
-    expect(mockDel).toHaveBeenCalledWith(
-      '/api/v1/workspaces/default/inference',
-    );
   });
 });
 

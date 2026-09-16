@@ -128,10 +128,6 @@ func (app *App) Routes() http.Handler {
 					r.Post("/sandboxes/{name}/services", app.ExposeService)
 					r.Delete("/sandboxes/{name}/services/{svc}", app.DeleteService)
 
-					r.Get("/inference", app.GetInferenceRoute)
-					r.Put("/inference", app.SetInferenceRoute)
-					r.Delete("/inference", app.DeleteInferenceRoute)
-
 					r.Get("/providers", app.ListProviders)
 					r.Post("/providers", app.CreateProvider)
 					r.Get("/providers/{name}", app.GetProvider)

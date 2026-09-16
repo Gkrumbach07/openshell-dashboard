@@ -60,12 +60,6 @@ export const authKeys = {
   whoami: ['auth', 'whoami'] as const,
 };
 
-export const inferenceKeys = {
-  route: (workspace: string, route: string) =>
-    ['inference', workspace, route] as const,
-  scope: (workspace: string) => ['inference', workspace] as const,
-};
-
 export const settingsKeys = {
   global: ['global-settings'] as const,
 };

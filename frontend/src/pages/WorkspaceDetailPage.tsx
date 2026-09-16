@@ -18,7 +18,6 @@ import { useProviders } from '../api/providers';
 import { useSandboxes } from '../api/sandboxes';
 import { useTemplates } from '../api/templates';
 import { useMembers, useWorkspace } from '../api/workspaces';
-import InferenceTab from '../components/InferenceTab';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
 import ProfilesTab from '../components/provider/ProfilesTab';
@@ -27,7 +26,7 @@ import { useSlots } from '../slots';
 import MemberListPage from './MemberListPage';
 import ProviderListPage from './ProviderListPage';
 import SandboxListPage from './SandboxListPage';
-import type { CredentialInputSlot, ModelPickerSlot } from '../types';
+import type { CredentialInputSlot } from '../types';
 
 type WorkspaceDetailPageProps = {
   workspace: string;
@@ -35,7 +34,6 @@ type WorkspaceDetailPageProps = {
   onViewSandbox?: (name: string, tab?: string) => void;
   onSelectProvider?: (name: string) => void;
   renderCredentialInput?: CredentialInputSlot;
-  renderModelPicker?: ModelPickerSlot;
 };
 
 const TabPanel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -48,12 +46,10 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
   onViewSandbox,
   onSelectProvider,
   renderCredentialInput,
-  renderModelPicker,
 }) => {
   const slots = useSlots();
   const resolvedCredentialInput =
     renderCredentialInput ?? slots.credentialInput;
-  const resolvedModelPicker = renderModelPicker ?? slots.modelPicker;
   const workspaceQuery = useWorkspace(workspace);
   const sandboxCount = useSandboxes(workspace);
   const templateCount = useTemplates(workspace);
@@ -186,18 +182,6 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
           >
             <TabPanel>
               <MemberListPage workspace={workspace} />
-            </TabPanel>
-          </Tab>
-          <Tab
-            eventKey="inference"
-            title={<TabTitleText>Inference</TabTitleText>}
-            data-testid="tab-inference"
-          >
-            <TabPanel>
-              <InferenceTab
-                workspace={workspace}
-                renderModelPicker={resolvedModelPicker}
-              />
             </TabPanel>
           </Tab>
           <Tab

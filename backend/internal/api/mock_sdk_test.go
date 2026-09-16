@@ -17,7 +17,6 @@ type mockSDK struct {
 	policy     mockSDKPolicy
 	config     mockSDKConfig
 	services   mockSDKServices
-	inference  mockSDKInference
 	health     mockSDKHealth
 	exec       mockSDKExec
 	files      mockSDKFiles
@@ -34,7 +33,6 @@ func (m *mockSDK) TCP() openshell.TCPInterface              { panic("not impleme
 func (m *mockSDK) Config() openshell.ConfigInterface        { return &m.config }
 func (m *mockSDK) Policy() openshell.PolicyInterface        { return &m.policy }
 func (m *mockSDK) Workspaces() openshell.WorkspaceInterface { return &m.workspaces }
-func (m *mockSDK) Inference() openshell.InferenceInterface  { return &m.inference }
 func (m *mockSDK) Close() error                             { return nil }
 
 func (m *mockSDK) SandboxTemplates() openshell.SandboxTemplateInterface { return &m.templates }
@@ -66,6 +64,13 @@ func (m *mockSDKTemplates) List(ctx context.Context, workspace string, opts ...o
 	if m.listFn != nil {
 		return m.listFn(ctx, workspace, opts...)
 	}
+	return nil, nil
+}
+
+// ListAll is the all-workspaces half of the SDK interface, added with the
+// gateway's typed workspace selectors. No handler under test uses it: every
+// route is nested under /workspaces/{workspace}, so List is the live path.
+func (m *mockSDKTemplates) ListAll(context.Context, ...openshell.ListOptions) ([]*openshell.SandboxWorkloadTemplate, error) {
 	return nil, nil
 }
 
@@ -111,6 +116,13 @@ func (m *mockSDKSandboxes) List(ctx context.Context, workspace string, opts ...o
 	if m.listFn != nil {
 		return m.listFn(ctx, workspace, opts...)
 	}
+	return nil, nil
+}
+
+// ListAll is the all-workspaces half of the SDK interface, added with the
+// gateway's typed workspace selectors. No handler under test uses it: every
+// route is nested under /workspaces/{workspace}, so List is the live path.
+func (m *mockSDKSandboxes) ListAll(context.Context, ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
 	return nil, nil
 }
 
@@ -223,6 +235,13 @@ func (m *mockSDKProviders) List(ctx context.Context, workspace string, opts ...o
 	if m.listFn != nil {
 		return m.listFn(ctx, workspace, opts...)
 	}
+	return nil, nil
+}
+
+// ListAll is the all-workspaces half of the SDK interface, added with the
+// gateway's typed workspace selectors. No handler under test uses it: every
+// route is nested under /workspaces/{workspace}, so List is the live path.
+func (m *mockSDKProviders) ListAll(context.Context, ...openshell.ListOptions) ([]*openshell.Provider, error) {
 	return nil, nil
 }
 
@@ -532,42 +551,16 @@ func (m *mockSDKServices) List(ctx context.Context, workspace, sandboxName strin
 	return nil, nil
 }
 
+// ListAll is the all-workspaces half of the SDK interface, added with the
+// gateway's typed workspace selectors. No handler under test uses it: every
+// route is nested under /workspaces/{workspace}, so List is the live path.
+func (m *mockSDKServices) ListAll(context.Context, ...openshell.ListOptions) ([]*openshell.ServiceEndpoint, error) {
+	return nil, nil
+}
+
 func (m *mockSDKServices) Delete(ctx context.Context, workspace, sandboxName, serviceName string) error {
 	if m.deleteFn != nil {
 		return m.deleteFn(ctx, workspace, sandboxName, serviceName)
-	}
-	return nil
-}
-
-type mockSDKInference struct {
-	setFn    func(ctx context.Context, workspace string, config *openshell.InferenceRouteConfig) (*openshell.InferenceRoute, error)
-	getFn    func(ctx context.Context, workspace, routeName string) (*openshell.InferenceRoute, error)
-	deleteFn func(ctx context.Context, workspace, routeName string) error
-}
-
-func (m *mockSDKInference) SetRoute(ctx context.Context, workspace string, config *openshell.InferenceRouteConfig) (*openshell.InferenceRoute, error) {
-	if m.setFn != nil {
-		return m.setFn(ctx, workspace, config)
-	}
-	return &openshell.InferenceRoute{
-		RouteName:    config.RouteName,
-		ProviderName: config.ProviderName,
-		ModelID:      config.ModelID,
-		TimeoutSecs:  config.TimeoutSecs,
-		Workspace:    workspace,
-	}, nil
-}
-
-func (m *mockSDKInference) GetRoute(ctx context.Context, workspace, routeName string) (*openshell.InferenceRoute, error) {
-	if m.getFn != nil {
-		return m.getFn(ctx, workspace, routeName)
-	}
-	return &openshell.InferenceRoute{RouteName: routeName, Workspace: workspace}, nil
-}
-
-func (m *mockSDKInference) DeleteRoute(ctx context.Context, workspace, routeName string) error {
-	if m.deleteFn != nil {
-		return m.deleteFn(ctx, workspace, routeName)
 	}
 	return nil
 }
