@@ -657,20 +657,6 @@ func FromSDKGatewaySettings(config *openshell.GatewayConfig) GatewaySettings {
 	return out
 }
 
-// FromSDKInferenceRoute converts an SDK InferenceRoute to the JSON DTO.
-func FromSDKInferenceRoute(route *openshell.InferenceRoute) InferenceRoute {
-	if route == nil {
-		return InferenceRoute{}
-	}
-	return InferenceRoute{
-		RouteName:    route.RouteName,
-		ProviderName: route.ProviderName,
-		ModelID:      route.ModelID,
-		Version:      route.Version,
-		TimeoutSecs:  route.TimeoutSecs,
-	}
-}
-
 // FromSDKCurrentUser converts an SDK CurrentUser to the JSON DTO.
 func FromSDKCurrentUser(user *openshell.CurrentUser) CurrentUser {
 	if user == nil {
