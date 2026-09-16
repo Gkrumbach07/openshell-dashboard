@@ -118,13 +118,3 @@ type GatewaySettings struct {
 	Settings         []SettingEntry `json:"settings"`
 	SettingsRevision uint64         `json:"settingsRevision"`
 }
-
-// InferenceRoute mirrors GetInferenceRouteResponse. Route "" is the
-// user-facing inference.local route; "sandbox-system" is the system route.
-type InferenceRoute struct {
-	RouteName    string `json:"routeName"`
-	ProviderName string `json:"providerName"`
-	ModelID      string `json:"modelId"`
-	Version      uint64 `json:"version"`
-	TimeoutSecs  uint64 `json:"timeoutSecs"`
-}

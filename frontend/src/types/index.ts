@@ -520,25 +520,6 @@ export type DraftSummary = {
   totalPending: number;
 };
 
-// --- Inference routes ---
-
-export type InferenceRoute = {
-  // "" = user-facing inference.local; "sandbox-system" = system route.
-  routeName: string;
-  providerName: string;
-  modelId: string;
-  version: number;
-  timeoutSecs: number;
-};
-
-export type SetInferenceRouteRequest = {
-  routeName?: string;
-  providerName: string;
-  modelId: string;
-  timeoutSecs?: number;
-  noVerify?: boolean;
-};
-
 // --- Service endpoints ---
 
 export type ServiceEndpoint = {
