@@ -32,7 +32,6 @@ type App struct { //nolint:govet // fieldalignment: readability over padding
 	drafts     *handlers.DraftsHandler
 	files      *handlers.FilesHandler
 	gateway    *handlers.GatewayHandler
-	inference  *handlers.InferenceHandler
 	logs       *handlers.LogsHandler
 	policies   *handlers.PoliciesHandler
 	providers  *handlers.ProvidersHandler
@@ -62,7 +61,6 @@ func NewApp(sdkClient openshell.ClientInterface, execUpload services.StdinExecer
 	app.drafts = handlers.NewDraftsHandler(policySvc)
 	app.files = handlers.NewFilesHandler(services.NewFileService(execUpload), execSvc, sandboxSvc, handlers.FilesHandlerConfig{ExecTimeout: app.execTimeout, MaxUploadSize: app.maxUploadSize})
 	app.gateway = handlers.NewGatewayHandler(services.NewGatewayService(sdkClient), authMiddleware, authCfg)
-	app.inference = handlers.NewInferenceHandler(services.NewInferenceService(sdkClient.Inference()))
 	app.logs = handlers.NewLogsHandler(sandboxSvc)
 	app.policies = handlers.NewPoliciesHandler(policySvc, configSvc)
 	app.providers = handlers.NewProvidersHandler(services.NewProviderService(sdkClient.Providers()))
@@ -151,10 +149,6 @@ func (app *App) Routes() http.Handler {
 					r.Get("/sandboxes/{name}/services", app.services.ListServices)
 					r.Post("/sandboxes/{name}/services", app.services.ExposeService)
 					r.Delete("/sandboxes/{name}/services/{svc}", app.services.DeleteService)
-
-					r.Get("/inference", app.inference.GetInferenceRoute)
-					r.Put("/inference", app.inference.SetInferenceRoute)
-					r.Delete("/inference", app.inference.DeleteInferenceRoute)
 
 					r.Get("/providers", app.providers.ListProviders)
 					r.Post("/providers", app.providers.CreateProvider)
