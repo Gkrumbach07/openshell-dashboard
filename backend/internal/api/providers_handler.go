@@ -12,7 +12,7 @@ import (
 )
 
 func (app *App) ListProviders(w http.ResponseWriter, r *http.Request) {
-	providers, err := app.sdk.Providers().List(r.Context(), chi.URLParam(r, "workspace"))
+	providers, err := app.sdk.Providers().ListAll(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -60,12 +60,11 @@ func (app *App) GetProvider(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) DeleteProvider(w http.ResponseWriter, r *http.Request) {
-	if err := app.sdk.Providers().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name")); err != nil {
+	if _, err := app.sdk.Providers().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name")); err != nil {
 		writeSDKError(w, err)
 		return
 	}
-	// SDK Delete returns nil error only on successful deletion. If the provider
-	// doesn't exist, NotFound is returned (mapped to 404 by writeSDKError).
+	// Missing providers remain NotFound by default (mapped to 404).
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
@@ -208,23 +207,22 @@ func (app *App) DeleteProviderRefresh(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "credentialKey query parameter is required")
 		return
 	}
-	deleted, err := app.sdk.Providers().Refresh().Delete(
+	if _, err := app.sdk.Providers().Refresh().Delete(
 		r.Context(),
 		chi.URLParam(r, "workspace"),
 		chi.URLParam(r, "name"),
 		credentialKey,
-	)
-	if err != nil {
+	); err != nil {
 		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // ListProviderProfiles returns the provider type profiles whose credential
 // schemas drive the Add Provider form.
 func (app *App) ListProviderProfiles(w http.ResponseWriter, r *http.Request) {
-	profiles, err := app.sdk.Providers().Profiles().List(r.Context(), chi.URLParam(r, "workspace"))
+	profiles, err := app.sdk.Providers().Profiles().ListAll(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -378,12 +376,11 @@ func (app *App) UpdateProviderProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) DeleteProviderProfile(w http.ResponseWriter, r *http.Request) {
-	deleted, err := app.sdk.Providers().Profiles().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "profileId"))
-	if err != nil {
+	if _, err := app.sdk.Providers().Profiles().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "profileId")); err != nil {
 		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 type LintProviderProfilesBody struct {

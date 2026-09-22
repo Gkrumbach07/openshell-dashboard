@@ -17,7 +17,7 @@ func (app *App) ListSandboxTemplates(w http.ResponseWriter, r *http.Request) {
 	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
 		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
 	}
-	templates, err := app.sdk.SandboxTemplates().List(r.Context(), chi.URLParam(r, "workspace"), opts...)
+	templates, err := app.sdk.SandboxTemplates().ListAll(r.Context(), chi.URLParam(r, "workspace"), opts...)
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -64,12 +64,11 @@ func (app *App) GetSandboxTemplate(w http.ResponseWriter, r *http.Request) {
 // DeleteSandboxTemplate deletes a reusable workload template. Sandboxes already
 // created from it are not affected.
 func (app *App) DeleteSandboxTemplate(w http.ResponseWriter, r *http.Request) {
-	deleted, err := app.sdk.SandboxTemplates().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
-	if err != nil {
+	if _, err := app.sdk.SandboxTemplates().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name")); err != nil {
 		writeSDKError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // CreateSandboxFromTemplate creates a sandbox from a named workload template.

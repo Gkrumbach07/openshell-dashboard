@@ -26,7 +26,7 @@ Skip `GatewayInterceptor`, `SupervisorMiddleware`, `ComputeDriver` — internal/
 3. **Sandbox-scoped `UpdateConfig` may only change `network_policies` and inference fields.** filesystem/landlock/process are immutable after create — render read-only.
 4. **No OCSF events API.** Observability = `GetSandboxLogs` (structured `fields` map on log lines) and `WatchSandbox` platform events. Never build an events query endpoint.
 5. **No member-role-update RPC.** Role change = `RemoveWorkspaceMember` + `AddWorkspaceMember`.
-6. **`sandbox_id` (UUID from `metadata.id`) vs name:** `ExecSandbox`, `ExecSandboxInteractive`, `GetSandboxLogs`, `WatchSandbox`, `CreateSshSession` take `sandbox_id`. CRUD RPCs take `name` + `workspace`. The BFF resolves name → id via `GetSandbox`.
+6. **Sandbox operation identity:** user-facing sandbox operations, including exec, logs, watch, and SSH session creation, take the canonical sandbox name plus a typed `workspace_scope`. Do not send `metadata.id` where the current request message expects `sandbox`.
 7. **No Z3 verify RPC.** Prover verdicts appear only in `PolicyChunk.validation_result` on draft chunks.
 8. **Provider model** (`datamodel.v1.Provider`): metadata, type (profile slug like "claude"/"gitlab"), credentials (map, `secret` option — strip before returning to browser), config (map), credential_expires_at_ms, profile_workspace. No endpoint-URL/status/model fields. Valid types come from `ListProviderProfiles`.
 9. **No list-images API.** Sandbox images are free-text OCI refs; community images by convention `ghcr.io/nvidia/openshell-community/sandboxes/<name>`.

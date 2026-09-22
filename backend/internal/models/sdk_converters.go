@@ -50,7 +50,7 @@ func FromSDKSandbox(sandbox *openshell.Sandbox) Sandbox {
 	}
 
 	out.Status = SandboxStatus{
-		SandboxName:          sandbox.Status.SandboxName,
+		SandboxName:          sandbox.Name,
 		AgentPod:             sandbox.Status.AgentPod,
 		Phase:                strings.ToUpper(string(sandbox.Status.Phase)),
 		CurrentPolicyVersion: sandbox.Status.CurrentPolicyVersion,
@@ -614,8 +614,8 @@ func FromSDKServiceEndpoint(svc *openshell.ServiceEndpoint) ServiceEndpoint {
 		return ServiceEndpoint{}
 	}
 	return ServiceEndpoint{
-		SandboxName: svc.SandboxName,
-		ServiceName: svc.ServiceName,
+		SandboxName: svc.Sandbox,
+		ServiceName: svc.Name,
 		TargetPort:  svc.TargetPort,
 		Domain:      svc.Domain,
 		URL:         svc.URL,

@@ -16,7 +16,7 @@ func (app *App) ListSandboxes(w http.ResponseWriter, r *http.Request) {
 	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
 		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
 	}
-	sandboxes, err := app.sdk.Sandboxes().List(r.Context(), chi.URLParam(r, "workspace"), opts...)
+	sandboxes, err := app.sdk.Sandboxes().ListAll(r.Context(), chi.URLParam(r, "workspace"), opts...)
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -98,11 +98,11 @@ func (app *App) StartSandbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) DeleteSandbox(w http.ResponseWriter, r *http.Request) {
-	if err := app.sdk.Sandboxes().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name")); err != nil {
+	if _, err := app.sdk.Sandboxes().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name")); err != nil {
 		writeSDKError(w, err)
 		return
 	}
-	// SDK Delete returns nil error only on successful deletion. If the sandbox
-	// doesn't exist, NotFound is returned (mapped to 404 by writeSDKError).
+	// A successful SDK deletion request may complete immediately or be accepted
+	// for asynchronous cleanup. Missing sandboxes remain 404 by default.
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }

@@ -22,7 +22,7 @@ func (app *App) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
 		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
 	}
-	workspaces, err := app.sdk.Workspaces().List(r.Context(), opts...)
+	workspaces, err := app.sdk.Workspaces().ListAll(r.Context(), opts...)
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -61,7 +61,7 @@ func (app *App) GetWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
-	if err := app.sdk.Workspaces().Delete(r.Context(), chi.URLParam(r, "workspace")); err != nil {
+	if _, err := app.sdk.Workspaces().Delete(r.Context(), chi.URLParam(r, "workspace")); err != nil {
 		writeSDKError(w, err)
 		return
 	}
@@ -75,7 +75,7 @@ type AddMemberRequest struct {
 }
 
 func (app *App) ListMembers(w http.ResponseWriter, r *http.Request) {
-	members, err := app.sdk.Workspaces().ListMembers(r.Context(), chi.URLParam(r, "workspace"))
+	members, err := app.sdk.Workspaces().ListAllMembers(r.Context(), chi.URLParam(r, "workspace"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -116,7 +116,7 @@ func (app *App) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_subject", "invalid member subject")
 		return
 	}
-	if err := app.sdk.Workspaces().RemoveMember(r.Context(), chi.URLParam(r, "workspace"), subject); err != nil {
+	if _, err := app.sdk.Workspaces().RemoveMember(r.Context(), chi.URLParam(r, "workspace"), subject); err != nil {
 		writeSDKError(w, err)
 		return
 	}

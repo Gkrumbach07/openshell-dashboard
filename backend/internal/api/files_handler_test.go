@@ -47,18 +47,20 @@ func TestValidateFilePath(t *testing.T) {
 
 // mockUploader is a test double for the non-TTY stdin exec (StdinExecer).
 type mockUploader struct {
-	fn       func(ctx context.Context, sandboxID string, command []string, stdin []byte) (string, int, error)
-	gotID    string
-	gotCmd   []string
-	gotStdin []byte
+	fn           func(ctx context.Context, workspace, sandboxName string, command []string, stdin []byte) (string, int, error)
+	gotWorkspace string
+	gotName      string
+	gotCmd       []string
+	gotStdin     []byte
 }
 
-func (m *mockUploader) ExecWithStdin(ctx context.Context, sandboxID string, command []string, stdin []byte) (string, int, error) {
-	m.gotID = sandboxID
+func (m *mockUploader) ExecWithStdin(ctx context.Context, workspace, sandboxName string, command []string, stdin []byte) (string, int, error) {
+	m.gotWorkspace = workspace
+	m.gotName = sandboxName
 	m.gotCmd = command
 	m.gotStdin = append([]byte(nil), stdin...)
 	if m.fn != nil {
-		return m.fn(ctx, sandboxID, command, stdin)
+		return m.fn(ctx, workspace, sandboxName, command, stdin)
 	}
 	return "", 0, nil
 }
@@ -90,9 +92,9 @@ func TestUploadFile(t *testing.T) {
 		}
 		return &openshell.Sandbox{ID: "sb-uuid-123"}, nil
 	}
-	up := &mockUploader{fn: func(_ context.Context, sandboxID string, command []string, _ []byte) (string, int, error) {
-		if sandboxID != "sb-uuid-123" {
-			t.Errorf("sandboxID = %q, want sb-uuid-123 (resolved UUID, not name)", sandboxID)
+	up := &mockUploader{fn: func(_ context.Context, workspace, sandboxName string, command []string, _ []byte) (string, int, error) {
+		if workspace != "default" || sandboxName != "sb" {
+			t.Errorf("target = %q/%q, want default/sb", workspace, sandboxName)
 		}
 		if len(command) != 3 || command[0] != "dd" || command[1] != "of=/sandbox/hello.txt" || command[2] != "bs=4096" {
 			t.Errorf("command = %v, want dd of=/sandbox/hello.txt bs=4096", command)
@@ -183,7 +185,7 @@ func TestUploadFileFailed(t *testing.T) {
 	sdk.sandboxes.getFn = func(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
 		return &openshell.Sandbox{ID: "sb-uuid-123"}, nil
 	}
-	up := &mockUploader{fn: func(_ context.Context, _ string, _ []string, _ []byte) (string, int, error) {
+	up := &mockUploader{fn: func(_ context.Context, _, _ string, _ []string, _ []byte) (string, int, error) {
 		return "dd: write error", 1, nil
 	}}
 	app := newTestAppWithSDK(sdk)
@@ -206,7 +208,7 @@ func TestUploadFileExecError(t *testing.T) {
 	sdk.sandboxes.getFn = func(_ context.Context, _, _ string) (*openshell.Sandbox, error) {
 		return &openshell.Sandbox{ID: "sb-uuid-123"}, nil
 	}
-	up := &mockUploader{fn: func(_ context.Context, _ string, _ []string, _ []byte) (string, int, error) {
+	up := &mockUploader{fn: func(_ context.Context, _, _ string, _ []string, _ []byte) (string, int, error) {
 		return "", 0, fmt.Errorf("exec unavailable")
 	}}
 	app := newTestAppWithSDK(sdk)

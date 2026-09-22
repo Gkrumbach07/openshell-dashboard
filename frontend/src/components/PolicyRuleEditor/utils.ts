@@ -16,9 +16,9 @@ export type EndpointFormValues = {
 export const emptyEndpoint: EndpointFormValues = {
   host: '',
   port: 443,
-  access: 'read-only',
+  access: 'NETWORK_ACCESS_PRESET_READ_ONLY',
   protocol: 'rest',
-  enforcement: 'enforce',
+  enforcement: 'NETWORK_ENFORCEMENT_MODE_ENFORCE',
   binaryPath: '',
 };
 

@@ -87,18 +87,17 @@ func (app *App) UploadFile(w http.ResponseWriter, r *http.Request) {
 	// The SDK exposes no non-TTY stdin exec (Run has no stdin; Interactive
 	// forces a PTY that corrupts binary payloads) and has no binary-safe upload
 	// helper yet. Stream the bytes into `dd` over the gateway's non-TTY
-	// ExecSandbox RPC via the dedicated raw client, resolving name -> sandbox
-	// UUID first.
+	// ExecSandbox RPC via the dedicated raw client. Resolve the sandbox first so
+	// raw gRPC not-found errors retain the BFF's normal SDK error mapping.
 	ctx, cancel := app.execContext(r.Context())
 	defer cancel()
 
-	sandbox, err := app.sdk.Sandboxes().Get(ctx, workspace, name)
-	if err != nil {
+	if _, err := app.sdk.Sandboxes().Get(ctx, workspace, name); err != nil {
 		writeSDKError(w, err)
 		return
 	}
 
-	stdout, exitCode, execErr := app.execUpload.ExecWithStdin(ctx, sandbox.ID, []string{"dd", "of=" + destPath, "bs=4096"}, fileBytes)
+	stdout, exitCode, execErr := app.execUpload.ExecWithStdin(ctx, workspace, name, []string{"dd", "of=" + destPath, "bs=4096"}, fileBytes)
 	if execErr != nil {
 		writeSDKError(w, execErr)
 		return

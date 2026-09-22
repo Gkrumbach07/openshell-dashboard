@@ -20,7 +20,7 @@ import (
 // binary-safe exec path the SDK does not expose. Used only for file upload.
 // Implemented by sdkclient.RawExecClient.
 type StdinExecer interface {
-	ExecWithStdin(ctx context.Context, sandboxID string, command []string, stdin []byte) (string, int, error)
+	ExecWithStdin(ctx context.Context, workspace, sandboxName string, command []string, stdin []byte) (string, int, error)
 }
 
 // App wires the OpenShell SDK client, auth middleware, and REST routes.

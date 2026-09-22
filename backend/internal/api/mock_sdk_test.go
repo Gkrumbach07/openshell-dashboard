@@ -35,6 +35,14 @@ func (m *mockSDK) Policy() openshell.PolicyInterface        { return &m.policy }
 func (m *mockSDK) Workspaces() openshell.WorkspaceInterface { return &m.workspaces }
 func (m *mockSDK) Close() error                             { return nil }
 
+func mockDeletionResult(deleted bool) *openshell.DeletionResult {
+	outcome := openshell.DeletionAlreadyAbsent
+	if deleted {
+		outcome = openshell.DeletionCompleted
+	}
+	return &openshell.DeletionResult{Outcome: outcome}
+}
+
 func (m *mockSDK) SandboxTemplates() openshell.SandboxTemplateInterface { return &m.templates }
 
 func (m *mockSDK) CreateSandboxFromTemplate(
@@ -60,17 +68,17 @@ type mockSDKTemplates struct {
 	createFromTemplateFn func(ctx context.Context, workspace, name, templateName string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error)
 }
 
-func (m *mockSDKTemplates) List(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.SandboxWorkloadTemplate, error) {
+func (m *mockSDKTemplates) List(workspace string, opts ...openshell.ListOptions) (*openshell.Pager[*openshell.SandboxWorkloadTemplate], error) {
+	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[*openshell.SandboxWorkloadTemplate], error) {
+		items, err := m.ListAll(ctx, workspace, opts...)
+		return &openshell.Page[*openshell.SandboxWorkloadTemplate]{Items: items}, err
+	}), nil
+}
+
+func (m *mockSDKTemplates) ListAll(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.SandboxWorkloadTemplate, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, workspace, opts...)
 	}
-	return nil, nil
-}
-
-// ListAll is the all-workspaces half of the SDK interface, added with the
-// gateway's typed workspace selectors. No handler under test uses it: every
-// route is nested under /workspaces/{workspace}, so List is the live path.
-func (m *mockSDKTemplates) ListAll(context.Context, ...openshell.ListOptions) ([]*openshell.SandboxWorkloadTemplate, error) {
 	return nil, nil
 }
 
@@ -91,11 +99,13 @@ func (m *mockSDKTemplates) Get(ctx context.Context, workspace, name string) (*op
 	return &openshell.SandboxWorkloadTemplate{Name: name}, nil
 }
 
-func (m *mockSDKTemplates) Delete(ctx context.Context, workspace, name string) (bool, error) {
+func (m *mockSDKTemplates) Delete(ctx context.Context, workspace, name string, _ ...openshell.DeleteOptions) (*openshell.DeletionResult, error) {
+	deleted := true
+	var err error
 	if m.deleteFn != nil {
-		return m.deleteFn(ctx, workspace, name)
+		deleted, err = m.deleteFn(ctx, workspace, name)
 	}
-	return true, nil
+	return mockDeletionResult(deleted), err
 }
 
 // mockSDKSandboxes provides injectable sandbox operations.
@@ -112,17 +122,17 @@ type mockSDKSandboxes struct {
 	startFn         func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
 }
 
-func (m *mockSDKSandboxes) List(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
+func (m *mockSDKSandboxes) List(workspace string, opts ...openshell.ListOptions) (*openshell.Pager[*openshell.Sandbox], error) {
+	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[*openshell.Sandbox], error) {
+		items, err := m.ListAll(ctx, workspace, opts...)
+		return &openshell.Page[*openshell.Sandbox]{Items: items}, err
+	}), nil
+}
+
+func (m *mockSDKSandboxes) ListAll(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, workspace, opts...)
 	}
-	return nil, nil
-}
-
-// ListAll is the all-workspaces half of the SDK interface, added with the
-// gateway's typed workspace selectors. No handler under test uses it: every
-// route is nested under /workspaces/{workspace}, so List is the live path.
-func (m *mockSDKSandboxes) ListAll(context.Context, ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
 	return nil, nil
 }
 
@@ -140,11 +150,13 @@ func (m *mockSDKSandboxes) Get(ctx context.Context, workspace, name string) (*op
 	return &openshell.Sandbox{Name: name}, nil
 }
 
-func (m *mockSDKSandboxes) Delete(ctx context.Context, workspace, name string) error {
+func (m *mockSDKSandboxes) Delete(ctx context.Context, workspace, name string, _ ...openshell.DeleteOptions) (*openshell.DeletionResult, error) {
 	if m.deleteFn != nil {
-		return m.deleteFn(ctx, workspace, name)
+		if err := m.deleteFn(ctx, workspace, name); err != nil {
+			return nil, err
+		}
 	}
-	return nil
+	return mockDeletionResult(true), nil
 }
 
 func (m *mockSDKSandboxes) AttachProvider(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshell.AttachProviderResult, error) {
@@ -231,17 +243,17 @@ func (m *mockSDKProviders) Get(ctx context.Context, workspace, name string) (*op
 	return &openshell.Provider{Name: name, Workspace: workspace}, nil
 }
 
-func (m *mockSDKProviders) List(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Provider, error) {
+func (m *mockSDKProviders) List(workspace string, opts ...openshell.ListOptions) (*openshell.Pager[*openshell.Provider], error) {
+	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[*openshell.Provider], error) {
+		items, err := m.ListAll(ctx, workspace, opts...)
+		return &openshell.Page[*openshell.Provider]{Items: items}, err
+	}), nil
+}
+
+func (m *mockSDKProviders) ListAll(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Provider, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, workspace, opts...)
 	}
-	return nil, nil
-}
-
-// ListAll is the all-workspaces half of the SDK interface, added with the
-// gateway's typed workspace selectors. No handler under test uses it: every
-// route is nested under /workspaces/{workspace}, so List is the live path.
-func (m *mockSDKProviders) ListAll(context.Context, ...openshell.ListOptions) ([]*openshell.Provider, error) {
 	return nil, nil
 }
 
@@ -252,11 +264,13 @@ func (m *mockSDKProviders) Update(ctx context.Context, workspace string, provide
 	return provider, nil
 }
 
-func (m *mockSDKProviders) Delete(ctx context.Context, workspace, name string) error {
+func (m *mockSDKProviders) Delete(ctx context.Context, workspace, name string, _ ...openshell.DeleteOptions) (*openshell.DeletionResult, error) {
 	if m.deleteFn != nil {
-		return m.deleteFn(ctx, workspace, name)
+		if err := m.deleteFn(ctx, workspace, name); err != nil {
+			return nil, err
+		}
 	}
-	return nil
+	return mockDeletionResult(true), nil
 }
 
 func (m *mockSDKProviders) Ensure(_ context.Context, _ string, _ *openshell.Provider) (*openshell.Provider, error) {
@@ -291,11 +305,13 @@ func (m *mockSDKRefresh) Rotate(ctx context.Context, workspace, provider, creden
 	return &openshell.RefreshStatus{CredentialKey: credentialKey}, nil
 }
 
-func (m *mockSDKRefresh) Delete(ctx context.Context, workspace, provider, credentialKey string) (bool, error) {
+func (m *mockSDKRefresh) Delete(ctx context.Context, workspace, provider, credentialKey string, _ ...openshell.DeleteOptions) (*openshell.DeletionResult, error) {
+	deleted := true
+	var err error
 	if m.deleteFn != nil {
-		return m.deleteFn(ctx, workspace, provider, credentialKey)
+		deleted, err = m.deleteFn(ctx, workspace, provider, credentialKey)
 	}
-	return true, nil
+	return mockDeletionResult(deleted), err
 }
 
 type mockSDKProfiles struct {
@@ -307,7 +323,14 @@ type mockSDKProfiles struct {
 	deleteFn func(ctx context.Context, workspace, id string) (bool, error)
 }
 
-func (m *mockSDKProfiles) List(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.ProviderProfile, error) {
+func (m *mockSDKProfiles) List(workspace string, opts ...openshell.ListOptions) (*openshell.Pager[*openshell.ProviderProfile], error) {
+	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[*openshell.ProviderProfile], error) {
+		items, err := m.ListAll(ctx, workspace, opts...)
+		return &openshell.Page[*openshell.ProviderProfile]{Items: items}, err
+	}), nil
+}
+
+func (m *mockSDKProfiles) ListAll(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.ProviderProfile, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, workspace, opts...)
 	}
@@ -347,11 +370,13 @@ func (m *mockSDKProfiles) Lint(ctx context.Context, workspace string, items []op
 	return &openshell.LintResult{Valid: true}, nil
 }
 
-func (m *mockSDKProfiles) Delete(ctx context.Context, workspace, id string) (bool, error) {
+func (m *mockSDKProfiles) Delete(ctx context.Context, workspace, id string, _ ...openshell.DeleteOptions) (*openshell.DeletionResult, error) {
+	deleted := true
+	var err error
 	if m.deleteFn != nil {
-		return m.deleteFn(ctx, workspace, id)
+		deleted, err = m.deleteFn(ctx, workspace, id)
 	}
-	return true, nil
+	return mockDeletionResult(deleted), err
 }
 
 type mockSDKWorkspaces struct {
@@ -378,18 +403,27 @@ func (m *mockSDKWorkspaces) Get(ctx context.Context, name string) (*openshell.Wo
 	return &openshell.Workspace{Name: name, Phase: openshell.WorkspaceActive}, nil
 }
 
-func (m *mockSDKWorkspaces) List(ctx context.Context, opts ...openshell.ListOptions) ([]*openshell.Workspace, error) {
+func (m *mockSDKWorkspaces) List(opts ...openshell.ListOptions) (*openshell.Pager[*openshell.Workspace], error) {
+	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[*openshell.Workspace], error) {
+		items, err := m.ListAll(ctx, opts...)
+		return &openshell.Page[*openshell.Workspace]{Items: items}, err
+	}), nil
+}
+
+func (m *mockSDKWorkspaces) ListAll(ctx context.Context, opts ...openshell.ListOptions) ([]*openshell.Workspace, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, opts...)
 	}
 	return nil, nil
 }
 
-func (m *mockSDKWorkspaces) Delete(ctx context.Context, name string) error {
+func (m *mockSDKWorkspaces) Delete(ctx context.Context, name string, _ ...openshell.DeleteOptions) (*openshell.DeletionResult, error) {
 	if m.deleteFn != nil {
-		return m.deleteFn(ctx, name)
+		if err := m.deleteFn(ctx, name); err != nil {
+			return nil, err
+		}
 	}
-	return nil
+	return mockDeletionResult(true), nil
 }
 
 func (m *mockSDKWorkspaces) AddMember(ctx context.Context, workspace, principalSubject string, role openshell.WorkspaceRole) (*openshell.WorkspaceMember, error) {
@@ -399,14 +433,23 @@ func (m *mockSDKWorkspaces) AddMember(ctx context.Context, workspace, principalS
 	return &openshell.WorkspaceMember{PrincipalSubject: principalSubject, Role: role}, nil
 }
 
-func (m *mockSDKWorkspaces) RemoveMember(ctx context.Context, workspace, principalSubject string) error {
+func (m *mockSDKWorkspaces) RemoveMember(ctx context.Context, workspace, principalSubject string, _ ...openshell.DeleteOptions) (*openshell.DeletionResult, error) {
 	if m.removeMemberFn != nil {
-		return m.removeMemberFn(ctx, workspace, principalSubject)
+		if err := m.removeMemberFn(ctx, workspace, principalSubject); err != nil {
+			return nil, err
+		}
 	}
-	return nil
+	return mockDeletionResult(true), nil
 }
 
-func (m *mockSDKWorkspaces) ListMembers(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.WorkspaceMember, error) {
+func (m *mockSDKWorkspaces) ListMembers(workspace string, opts ...openshell.ListOptions) (*openshell.Pager[*openshell.WorkspaceMember], error) {
+	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[*openshell.WorkspaceMember], error) {
+		items, err := m.ListAllMembers(ctx, workspace, opts...)
+		return &openshell.Page[*openshell.WorkspaceMember]{Items: items}, err
+	}), nil
+}
+
+func (m *mockSDKWorkspaces) ListAllMembers(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.WorkspaceMember, error) {
 	if m.listMembersFn != nil {
 		return m.listMembersFn(ctx, workspace, opts...)
 	}
@@ -475,7 +518,14 @@ func (m *mockSDKPolicy) GetStatus(ctx context.Context, workspace, sandboxName st
 	return &openshell.PolicyStatusResult{}, nil
 }
 
-func (m *mockSDKPolicy) List(ctx context.Context, workspace string, opts ...openshell.ListPolicyOption) ([]openshell.SandboxPolicyRevision, error) {
+func (m *mockSDKPolicy) List(workspace, sandboxName string, opts ...openshell.ListPolicyOption) (*openshell.Pager[openshell.SandboxPolicyRevision], error) {
+	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[openshell.SandboxPolicyRevision], error) {
+		items, err := m.ListAll(ctx, workspace, sandboxName, opts...)
+		return &openshell.Page[openshell.SandboxPolicyRevision]{Items: items}, err
+	}), nil
+}
+
+func (m *mockSDKPolicy) ListAll(ctx context.Context, workspace, _ string, opts ...openshell.ListPolicyOption) ([]openshell.SandboxPolicyRevision, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, workspace, opts...)
 	}
@@ -534,35 +584,37 @@ func (m *mockSDKServices) Expose(ctx context.Context, workspace, sandboxName, se
 	if m.exposeFn != nil {
 		return m.exposeFn(ctx, workspace, sandboxName, serviceName, targetPort, domain)
 	}
-	return &openshell.ServiceEndpoint{SandboxName: sandboxName, ServiceName: serviceName, TargetPort: targetPort, Domain: domain}, nil
+	return &openshell.ServiceEndpoint{Sandbox: sandboxName, Name: serviceName, TargetPort: targetPort, Domain: domain}, nil
 }
 
 func (m *mockSDKServices) Get(ctx context.Context, workspace, sandboxName, serviceName string) (*openshell.ServiceEndpoint, error) {
 	if m.getFn != nil {
 		return m.getFn(ctx, workspace, sandboxName, serviceName)
 	}
-	return &openshell.ServiceEndpoint{SandboxName: sandboxName, ServiceName: serviceName}, nil
+	return &openshell.ServiceEndpoint{Sandbox: sandboxName, Name: serviceName}, nil
 }
 
-func (m *mockSDKServices) List(ctx context.Context, workspace, sandboxName string, opts ...openshell.ListOptions) ([]*openshell.ServiceEndpoint, error) {
+func (m *mockSDKServices) List(workspace, sandboxName string, opts ...openshell.ListOptions) (*openshell.Pager[*openshell.ServiceEndpoint], error) {
+	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[*openshell.ServiceEndpoint], error) {
+		items, err := m.ListAll(ctx, workspace, sandboxName, opts...)
+		return &openshell.Page[*openshell.ServiceEndpoint]{Items: items}, err
+	}), nil
+}
+
+func (m *mockSDKServices) ListAll(ctx context.Context, workspace, sandboxName string, opts ...openshell.ListOptions) ([]*openshell.ServiceEndpoint, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, workspace, sandboxName, opts...)
 	}
 	return nil, nil
 }
 
-// ListAll is the all-workspaces half of the SDK interface, added with the
-// gateway's typed workspace selectors. No handler under test uses it: every
-// route is nested under /workspaces/{workspace}, so List is the live path.
-func (m *mockSDKServices) ListAll(context.Context, ...openshell.ListOptions) ([]*openshell.ServiceEndpoint, error) {
-	return nil, nil
-}
-
-func (m *mockSDKServices) Delete(ctx context.Context, workspace, sandboxName, serviceName string) error {
+func (m *mockSDKServices) Delete(ctx context.Context, workspace, sandboxName, serviceName string, _ ...openshell.DeleteOptions) (*openshell.DeletionResult, error) {
 	if m.deleteFn != nil {
-		return m.deleteFn(ctx, workspace, sandboxName, serviceName)
+		if err := m.deleteFn(ctx, workspace, sandboxName, serviceName); err != nil {
+			return nil, err
+		}
 	}
-	return nil
+	return mockDeletionResult(true), nil
 }
 
 type mockSDKHealth struct {

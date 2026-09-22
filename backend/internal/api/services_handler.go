@@ -15,7 +15,7 @@ type ExposeServiceRequest struct {
 }
 
 func (app *App) ListServices(w http.ResponseWriter, r *http.Request) {
-	services, err := app.sdk.Services().List(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
+	services, err := app.sdk.Services().ListAll(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"))
 	if err != nil {
 		writeSDKError(w, err)
 		return
@@ -49,7 +49,7 @@ func (app *App) ExposeService(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) DeleteService(w http.ResponseWriter, r *http.Request) {
-	if err := app.sdk.Services().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "svc")); err != nil {
+	if _, err := app.sdk.Services().Delete(r.Context(), chi.URLParam(r, "workspace"), chi.URLParam(r, "name"), chi.URLParam(r, "svc")); err != nil {
 		writeSDKError(w, err)
 		return
 	}

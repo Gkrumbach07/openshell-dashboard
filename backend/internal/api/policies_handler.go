@@ -105,7 +105,7 @@ func (app *App) UpdateSandboxPolicy(w http.ResponseWriter, r *http.Request) {
 
 // GetGlobalPolicy returns gateway-global policy revisions (Platform Admin).
 func (app *App) GetGlobalPolicy(w http.ResponseWriter, r *http.Request) {
-	revisions, err := app.sdk.Policy().List(r.Context(), "", openshell.WithListGlobal(true))
+	revisions, err := app.sdk.Policy().ListAll(r.Context(), "", "", openshell.WithListGlobal(true))
 	if err != nil {
 		writeSDKError(w, err)
 		return
