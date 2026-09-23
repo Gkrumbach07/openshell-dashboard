@@ -90,13 +90,27 @@ green is the trigger to promote a released tag to the floor.
 while this lane was being set up. A digest makes a run reproducible and makes
 bumping a deliberate act.
 
-**The sweep is forward-only, and that is inherent.** Sweeping *backwards* past
-the current pin is not meaningful: our code uses SDK APIs added after those
-releases, so it does not compile against them, and the result says nothing
-about gateway compatibility. The sweep therefore records three failure modes
-separately — the BFF did not compile, the gateway did not start, and the compat
-suite failed — because only the last is a compatibility result. An all-build-
-failure sweep is annotated as such rather than being reported as migration work.
+**The sweep is forward-only, and the guard is enforced.** Sweeping *backwards*
+past the current pin is not meaningful: the sweep moves the SDK and the gateway
+together, and below the pin this repo uses SDK APIs that do not exist yet, so
+the build fails before anything talks to a gateway. `discover` rejects a floor
+below the current one rather than producing a result that needs explaining.
+
+Two backward-looking questions are easy to conflate, and only one is real:
+
+| Question | Meaningful | Answered by |
+|----------|------------|-------------|
+| Can we compile and run at an *older SDK*? | No — we have adopted newer APIs | nobody |
+| Does our *current build* work against an older *gateway*? | **Yes** — this is the floor of the supported range | the `compat` matrix, by holding the SDK fixed and varying the gateway image |
+
+The second is what an advisory lane in `gateway-pins.json` is for. The sweep
+must not approximate it, because moving the SDK changes the experiment.
+
+The sweep records three failure modes separately — the BFF did not compile, the
+gateway did not start, and the compat suite failed — because only the last is a
+compatibility result. With the guard in place, an all-build-failure sweep means
+upstream removed or reshaped an API this repo depends on, which is real
+migration work.
 
 **Each sweep produces actionable pieces, and a bump is not a migration.** They
 have different lifecycles: a bump is mechanical and closes by merging a PR, a

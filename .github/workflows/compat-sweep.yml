@@ -48,12 +48,33 @@ jobs:
         id: floor
         run: |
           set -euo pipefail
-          floor='${{ inputs.since }}'
-          if [ -z "$floor" ]; then
-            floor=$(jq -r '.floor_release' deploy/ci/gateway-pins.json)
-          fi
-          echo "floor=$floor" >> "$GITHUB_OUTPUT"
+          default_floor=$(jq -r '.floor_release' deploy/ci/gateway-pins.json)
           pinned=$(jq -r '.floor' deploy/ci/gateway-pins.json)
+          floor="${{ inputs.since }}"
+          [ -n "$floor" ] || floor="$default_floor"
+
+          # The sweep is FORWARD-ONLY and the guard is not cosmetic.
+          #
+          # It moves the SDK and the gateway together to a candidate release.
+          # Below the current pin that cannot work: this repo uses SDK APIs
+          # added after those releases, so the build fails before anything ever
+          # talks to a gateway, and the result says nothing about gateway
+          # compatibility.
+          #
+          # The genuinely useful backward question — "does our CURRENT build
+          # still work against an older gateway?" — is what defines the floor of
+          # the supported range, and the `compat` matrix in ci.yml already
+          # answers it by holding the SDK fixed and varying the gateway image.
+          # That is a different experiment; do not approximate it here.
+          if [ "$(printf '%s\n%s\n' "$floor" "$default_floor" | sort -V | head -1)" != "$default_floor" ]; then
+            echo "::error::since=$floor is below the current floor ($default_floor)." \
+                 "The sweep only looks forward — see ADR 0005. To ask whether an older" \
+                 "gateway still works with the CURRENT SDK, add an advisory lane to" \
+                 "deploy/ci/gateway-pins.json instead."
+            exit 1
+          fi
+
+          echo "floor=$floor" >> "$GITHUB_OUTPUT"
           echo "pinned=$pinned" >> "$GITHUB_OUTPUT"
           echo "actually pinned to: $pinned"
           echo "sweeping releases newer than: $floor"
@@ -301,12 +322,11 @@ jobs:
                       "reach them. Each needs investigation: either we adapt, or upstream",
                       "has a regression.", ""]
               only_build = [r for r in failing if r["outcome"] == "build_failed"]
-              if len(only_build) == len(failing):
-                  body += ["> **Every failure here is a build failure**, which usually means the",
-                           "> sweep floor was set *below* the current pin. Our code uses APIs added",
-                           "> after those releases, so it cannot compile against them — that is",
-                           "> expected and not migration work. Sweep forwards from the real pin",
-                           f"> (`{PINNED}`) for a meaningful result.", ""]
+              if only_build and len(only_build) == len(failing):
+                  body += ["> **Every failure here is a build failure** — the BFF does not compile",
+                           "> against these SDKs. Since the sweep only looks forward, that means an",
+                           "> API this repo depends on was removed or changed shape upstream. Start",
+                           "> with the compiler errors in the sweep logs rather than the gateway.", ""]
               body += table(failing)
               if target:
                   body += ["", f"Independently, `{target['version']}` **does** pass — a bump PR for it",
