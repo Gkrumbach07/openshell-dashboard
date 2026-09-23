@@ -343,6 +343,11 @@ jobs:
                   out.append(f"| `{r['version']}` | {label.get(r['outcome'], r['outcome'])} | `{r['sdk'][:12]}` |")
               return out
 
+          # dev is not a release, so it must not be counted as one in the
+          # heading, the blurb or the title.
+          rel_fail = [r for r in failing if r["version"] != "dev"]
+          dev_fail = dev is not None and dev["outcome"] != "success"
+
           # --- migrate issue body (only written when something fails) ---
           if failing:
               body = ["<!-- compat-sweep-migrate -->",
@@ -351,16 +356,17 @@ jobs:
                       "Rewritten in place while open. **Close it once these are compatible** —",
                       "the next sweep that still finds failures opens a fresh one.", "",
                       f"Currently pinned: **`{PINNED}`** (sweep floor: `{FLOOR}`)", "",
-                      "## Migration needed", ""]
-              if dev is not None and dev["outcome"] != "success":
+                      ("## Migration needed" if rel_fail else "## Early warning"), ""]
+              if dev_fail:
                   body += ["### Upstream HEAD (`dev`) is incompatible", "",
-                           "This is early warning, not a released-gateway problem yet: whatever",
-                           "changed on HEAD will land in the next release. Worth looking at now,",
-                           "while it is one change rather than a release's worth.", ""]
-              body += [
-                      "These fail the compat suite, so the supported range cannot reach",
-                      "them. Each needs investigation: either we adapt, or upstream has a",
-                      "regression.", ""]
+                           "Nothing to act on directly — there is nothing to pin to. This is",
+                           "early warning: whatever changed on HEAD will land in the next",
+                           "release, and it is one change now rather than a release's worth",
+                           "later.", ""]
+              if rel_fail:
+                  body += ["These releases fail the compat suite, so the supported range cannot",
+                           "reach them. Each needs investigation: either we adapt, or upstream",
+                           "has a regression.", ""]
               only_build = [r for r in failing if r["outcome"] == "build_failed"]
               if only_build and len(only_build) == len(failing):
                   body += ["> **Every failure here is a build failure** — the BFF does not compile",
@@ -386,7 +392,15 @@ jobs:
               fh.write(f"SWEEP_HAS_BUMP={'1' if target else '0'}\n")
               fh.write(f"SWEEP_TARGET={target['version'] if target else ''}\n")
               fh.write(f"SWEEP_TARGET_SDK={target['sdk'] if target else ''}\n")
-              fh.write(f"SWEEP_MIGRATE_TITLE=Gateway compat: {len(failing)} release(s) need migration\n")
+              if rel_fail and dev_fail:
+                  t = f"Gateway compat: {len(rel_fail)} release(s) need migration, and HEAD is incompatible"
+              elif rel_fail:
+                  t = f"Gateway compat: {len(rel_fail)} release(s) need migration"
+              elif dev_fail:
+                  t = "Gateway compat: upstream HEAD (dev) is incompatible"
+              else:
+                  t = "Gateway compat: nothing outstanding"
+              fh.write(f"SWEEP_MIGRATE_TITLE={t}\n")
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write(f"has_bump={'1' if target else '0'}\n")
