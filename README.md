@@ -289,6 +289,13 @@ as an **advisory** lane: it fails by construction today and acts as a canary —
 when upstream cuts a release containing the renumbered proto it goes green and
 a released gateway becomes supportable again.
 
+`compat-sweep` also probes **upstream HEAD** (`dev`) on every run, as early
+warning. Once the pin sits on a release, nothing else watches HEAD — the sweep
+otherwise only walks release tags — so a HEAD regression would stay invisible
+until it shipped in a release. `dev` is informational only and **never a bump
+target**: ADR 0005 wants the pin on a release, so a green HEAD must not move us
+onto a moving tag. Disable it with `include_dev=0`.
+
 `compat-sweep` walks upstream release tags newer than the current floor,
 taking the gateway image *and* the matching SDK commit from the same tag
 (`sdk/go` is a submodule of `NVIDIA/OpenShell`, so a release tag resolves to an
