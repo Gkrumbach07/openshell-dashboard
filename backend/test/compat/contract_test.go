@@ -112,9 +112,9 @@ func TestPolicyEnumRoundTrip(t *testing.T) {
 			"readOnly":       []string{"/usr"},
 			"readWrite":      []string{"/sandbox"},
 		},
+		// networkPolicies is a MAP keyed by rule name, not a list of rules.
 		"networkPolicies": map[string]any{
-			"rules": []map[string]any{{
-				"name": "gh",
+			"gh": map[string]any{
 				"endpoints": []map[string]any{{
 					"host":        "api.github.com",
 					"port":        443,
@@ -122,7 +122,7 @@ func TestPolicyEnumRoundTrip(t *testing.T) {
 					"access":      "NETWORK_ACCESS_PRESET_READ_ONLY",
 					"enforcement": "NETWORK_ENFORCEMENT_MODE_ENFORCE",
 				}},
-			}},
+			},
 		},
 	}
 
@@ -135,8 +135,11 @@ func TestPolicyEnumRoundTrip(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	if status != http.StatusCreated {
-		t.Fatalf("create with proto-enum policy [gateway %s]: status = %d, want 201 — the gateway "+
-			"rejected the enum spellings the dashboard sends; body: %s", gatewayVersion, status, truncate(raw))
+		// A 400 with "invalid sandbox specification" is the BFF's own parser
+		// (models.BuildSDKSandboxSpec) rejecting the policy before it reaches
+		// the gateway; any other status is the gateway refusing it.
+		t.Fatalf("create with proto-enum policy [gateway %s]: status = %d, want 201 — the policy the "+
+			"dashboard sends is no longer accepted; body: %s", gatewayVersion, status, truncate(raw))
 	}
 	t.Cleanup(func() {
 		_, _, _ = do(http.MethodDelete, "/api/v1/workspaces/default/sandboxes/"+name, nil)

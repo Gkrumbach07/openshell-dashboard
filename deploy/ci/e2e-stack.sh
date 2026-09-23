@@ -23,6 +23,13 @@ export COMPAT_SANDBOX_IMAGE="${COMPAT_SANDBOX_IMAGE:-ghcr.io/nvidia/openshell-co
 # v1. Defaults to v2 because that is what the SDK we pin targets.
 OPENSHELL_CONFIG_SCHEMA="${OPENSHELL_CONFIG_SCHEMA:-v2}"
 
+# Callback address the in-sandbox supervisor uses to reach the gateway.
+# Sandbox containers are created by the gateway directly on the host daemon
+# (docker-outside-of-docker), so they are siblings of the gateway container and
+# do NOT inherit its compose `extra_hosts` aliases. Override this when the
+# default alias is not resolvable from a sibling container.
+OPENSHELL_GRPC_ENDPOINT="${OPENSHELL_GRPC_ENDPOINT:-http://host.openshell.internal:8080}"
+
 STATE_DIR="${OPENSHELL_STATE_DIR:-/var/lib/openshell}"
 export OPENSHELL_STATE_DIR="$STATE_DIR"
 COMPOSE="docker compose -f docker-compose.e2e.yml"
@@ -60,10 +67,12 @@ render_config() {
     exit 1
   fi
   echo "e2e-stack: config schema=${OPENSHELL_CONFIG_SCHEMA} ($tmpl)"
+  echo "e2e-stack: supervisor callback=${OPENSHELL_GRPC_ENDPOINT}"
   # envsubst would be another dependency; restrict substitution to the two
   # image placeholders so nothing else in the TOML is touched.
   sed -e "s|\${OPENSHELL_SUPERVISOR_IMAGE}|${OPENSHELL_SUPERVISOR_IMAGE}|g" \
       -e "s|\${COMPAT_SANDBOX_IMAGE}|${COMPAT_SANDBOX_IMAGE}|g" \
+      -e "s|\${OPENSHELL_GRPC_ENDPOINT}|${OPENSHELL_GRPC_ENDPOINT}|g" \
       "$tmpl" > .rendered/gateway.toml
   if grep -q '\${' .rendered/gateway.toml; then
     echo "e2e-stack: unsubstituted placeholder left in rendered config:" >&2
