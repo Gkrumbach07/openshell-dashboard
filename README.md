@@ -239,11 +239,32 @@ OPENSHELL_VERSION=0.0.116 make compat    # against a specific gateway release
 make compat-up && make compat-down       # manage the stack by hand
 ```
 
-CI runs it as a matrix (`.github/workflows/ci.yml`). The pinned versions are
-**required** and block the build; `latest` is advisory and allowed to fail, so
-an upstream release does not red-wall unrelated PRs but still gives early
-warning that a resync is due. Bumping the floor is a deliberate edit to that
-matrix.
+### The SDK and the gateway are wire-coupled
+
+Bumping `sdk/go` is not a local-only change. The Sep 2026 SDK renumbered
+`CreateSandboxRequest`'s protobuf fields — `workspace_scope` moved from field 8
+to field 7, where older gateways expect a string. Against an older gateway every
+workspace-scoped call then fails with:
+
+```
+workspace '\n\adefault' not found
+```
+
+That mangled name is the serialized `WorkspaceSelector` (`0A 07 "default"`)
+being read as a plain string. Always run `make compat` after an SDK bump.
+
+Two tag gotchas:
+
+- **`latest` is not the newest gateway.** It aliases the newest *release*
+  (`0.0.116`, built 2026-08-28). **`dev`** tracks upstream HEAD and is the only
+  tag that keeps pace with `sdk/go@latest`.
+- Gateway and supervisor share a tag and must match.
+
+CI runs `dev` as the **required** lane, because it is currently the only image
+whose proto matches the SDK we pin. The newest release (`0.0.116`) runs as an
+**advisory** lane: it fails by construction today, and acts as a canary — when
+upstream cuts a release containing the renumbered proto it goes green and a
+released gateway becomes supportable again.
 
 `OPENSHELL_VERSION` selects the gateway *and* supervisor tag — they are
 released together and must match. The community sandbox image publishes no

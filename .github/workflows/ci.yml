@@ -98,9 +98,14 @@ jobs:
   # breaking changes reached main unnoticed. This job runs the Go compat suite
   # (backend/test/compat) against several real gateway versions.
   #
-  # `required: true` versions block the build. `latest` is informational: it is
-  # allowed to fail so an upstream release does not red-wall unrelated PRs, but
-  # a failure there is the early warning that a resync is due.
+  # `required: true` lanes block the build; advisory lanes may fail.
+  #
+  # The gateway and the Go SDK are WIRE-COUPLED: the Sep 2026 SDK renumbered
+  # CreateSandboxRequest's protobuf fields, moving workspace_scope from field 8
+  # to field 7 — where older gateways expect a string. An older gateway then
+  # reads the serialized WorkspaceSelector as a workspace name and reports
+  # `workspace '\n\adefault' not found`. Every workspace-scoped call fails.
+  # They must be upgraded together.
   compat:
     name: compat (gateway ${{ matrix.version }})
     runs-on: ubuntu-latest
@@ -109,15 +114,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Floor: the oldest gateway we claim to support. Bump deliberately.
-          - version: "0.0.113"
+          # `dev` tracks upstream HEAD and is currently the ONLY image whose
+          # proto matches the SDK we pin. Required, because it is the only
+          # configuration in which the dashboard actually works today.
+          - version: "dev"
             required: true
-          - version: "0.0.115"
-            required: true
+          # Newest released gateway. Advisory: it predates the
+          # CreateSandboxRequest field renumbering (see below), so its
+          # workspace-scoped calls fail by construction. It is a canary — when
+          # upstream cuts a release containing the renumbered proto this lane
+          # goes green, and a released gateway becomes supportable again.
+          #
+          # NOTE: `latest` is NOT a moving pointer. It is an alias for the
+          # newest *release* (identical digest to 0.0.116, built 2026-08-28),
+          # so running both would test the same image twice.
           - version: "0.0.116"
-            required: true
-          # Tracks upstream HEAD — advisory only.
-          - version: "latest"
             required: false
     env:
       # The community sandbox image publishes no semver tags, so it is pinned

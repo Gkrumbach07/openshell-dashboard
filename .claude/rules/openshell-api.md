@@ -37,6 +37,9 @@ Skip `GatewayInterceptor`, `SupervisorMiddleware`, `ComputeDriver` — internal/
 15. **`Delete` returns `(*DeletionResult, error)`, and a nil error does not mean the resource is gone.** `DeletionOutcome` is one of Unspecified / Completed / Accepted / AlreadyAbsent. Only **Completed** and **AlreadyAbsent** establish completion; **Accepted** means the gateway queued asynchronous cleanup, and unrecognized numeric values must not be treated as completion. Convert through `models.FromSDKDeletion` rather than hardcoding `{"deleted": true}`.
 16. **Network policy enum fields are proto enums, not free strings.** `access`, `enforcement` and `tls` on a policy network endpoint serialize through protojson as `NETWORK_ACCESS_PRESET_*`, `NETWORK_ENFORCEMENT_MODE_*`, `NETWORK_TLS_MODE_*`. The old lowercase spellings (`read-only`, `enforce`, `verify`) are no longer accepted by the gateway.
 
+17. **The SDK and the gateway are wire-coupled — they must be upgraded together.** The Sep 2026 SDK renumbered `CreateSandboxRequest`'s protobuf fields: `workspace_scope` moved from field 8 to field 7, which older gateways decode as the *string* `workload_template_name`. Symptom: every workspace-scoped call fails with `workspace '\n\adefault' not found` — that mangled name is the serialized `WorkspaceSelector` bytes (`0A 07 "default"`) being read as a string. Bumping `sdk/go` is therefore never a local-only change; verify with `make compat`.
+18. **`latest` is not the newest gateway.** On ghcr.io, `latest` is an alias for the newest *release* (as of this writing `0.0.116`, built 2026-08-28). `dev` tracks upstream HEAD and is the only tag that keeps pace with `sdk/go@latest`. Pin `dev` when you need a gateway matching a fresh SDK; do not assume `latest` means current.
+
 13. **Secret fields** are annotated `[(openshell.options.v1.secret) = true]` in proto — grep for `secret` when adding a wrapper and never serialize those fields to the frontend.
 
 ## Auth per-RPC
