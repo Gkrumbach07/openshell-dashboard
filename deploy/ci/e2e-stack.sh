@@ -21,6 +21,10 @@ export COMPAT_SANDBOX_IMAGE="${COMPAT_SANDBOX_IMAGE:-ghcr.io/nvidia/openshell-co
 # The gateway's own config file is versioned and the schemas are mutually
 # exclusive: `dev` (upstream HEAD) requires v2, releases up to 0.0.116 require
 # v1. Defaults to v2 because that is what the SDK we pin targets.
+#
+# `auto` tries v2 and falls back to v1 when the gateway rejects the config
+# version. The compat sweep needs this because it walks across the v1/v2
+# boundary and cannot know in advance which side a given release sits on.
 OPENSHELL_CONFIG_SCHEMA="${OPENSHELL_CONFIG_SCHEMA:-v2}"
 
 # Callback address the in-sandbox supervisor uses to reach the gateway.
@@ -33,6 +37,7 @@ OPENSHELL_GRPC_ENDPOINT="${OPENSHELL_GRPC_ENDPOINT:-http://host.openshell.intern
 STATE_DIR="${OPENSHELL_STATE_DIR:-/var/lib/openshell}"
 export OPENSHELL_STATE_DIR="$STATE_DIR"
 COMPOSE="docker compose -f docker-compose.e2e.yml"
+RESOLVED_SCHEMA=""
 
 # sudo only when we cannot already write the state dir (CI runners need it,
 # a local docker-desktop user often does not).
@@ -47,6 +52,26 @@ as_root() {
 # wait_for POLLS a URL until it answers 200 or the budget runs out. Written in
 # plain bash because `timeout` is GNU coreutils and is not installed on stock
 # macOS, where this script is expected to work for local runs.
+# wait_for_gateway waits for health, but gives up as soon as the gateway
+# container has exited. A rejected config kills it in under a second, so
+# without this the auto fallback would burn the full health budget before
+# trying the other schema.
+wait_for_gateway() {
+  local budget="$1" waited=0
+  while [ "$waited" -lt "$budget" ]; do
+    if curl -sf http://localhost:50052/healthz >/dev/null 2>&1; then
+      return 0
+    fi
+    if [ -z "$($COMPOSE ps -q --status running gateway 2>/dev/null)" ]; then
+      echo "e2e-stack: gateway container is no longer running" >&2
+      return 1
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  return 1
+}
+
 wait_for() {
   local url="$1" budget="$2" waited=0
   while [ "$waited" -lt "$budget" ]; do
@@ -59,14 +84,16 @@ wait_for() {
   return 1
 }
 
+# render_config <schema>
 render_config() {
+  local schema="$1"
   mkdir -p .rendered
-  local tmpl="gateway.e2e.${OPENSHELL_CONFIG_SCHEMA}.toml.tmpl"
+  local tmpl="gateway.e2e.${schema}.toml.tmpl"
   if [ ! -f "$tmpl" ]; then
-    echo "e2e-stack: no config template for schema '${OPENSHELL_CONFIG_SCHEMA}' ($tmpl)" >&2
+    echo "e2e-stack: no config template for schema '${schema}' ($tmpl)" >&2
     exit 1
   fi
-  echo "e2e-stack: config schema=${OPENSHELL_CONFIG_SCHEMA} ($tmpl)"
+  echo "e2e-stack: config schema=${schema} ($tmpl)"
   echo "e2e-stack: supervisor callback=${OPENSHELL_GRPC_ENDPOINT}"
   # envsubst would be another dependency; restrict substitution to the two
   # image placeholders so nothing else in the TOML is touched.
@@ -99,17 +126,48 @@ up() {
 
   as_root mkdir -p "$STATE_DIR"
   ensure_jwt_keys
-  render_config
 
+  if [ "$OPENSHELL_CONFIG_SCHEMA" = "auto" ]; then
+    try_schema v2 || try_schema v1 || {
+      echo "e2e-stack: gateway did not start under either config schema" >&2
+      $COMPOSE logs --tail=120 >&2
+      exit 1
+    }
+  else
+    try_schema "$OPENSHELL_CONFIG_SCHEMA" || {
+      echo "e2e-stack: gateway did not become healthy — logs follow:" >&2
+      $COMPOSE logs --tail=120 >&2
+      exit 1
+    }
+  fi
+  echo "e2e-stack: gateway healthy (config schema ${RESOLVED_SCHEMA})"
+}
+
+# try_schema renders the given schema, starts the stack, and returns non-zero
+# if the gateway never reports healthy. Leaves the stack down on failure so the
+# next attempt starts clean.
+try_schema() {
+  local schema="$1"
+  render_config "$schema"
   $COMPOSE up -d
 
-  echo "e2e-stack: waiting for gateway health..."
-  if ! wait_for http://localhost:50052/healthz 300; then
-    echo "e2e-stack: gateway did not become healthy — logs follow:" >&2
-    $COMPOSE logs --tail=120 >&2
-    exit 1
+  echo "e2e-stack: waiting for gateway health (schema ${schema})..."
+  if wait_for_gateway 300; then
+    RESOLVED_SCHEMA="$schema"
+    return 0
   fi
-  echo "e2e-stack: gateway healthy"
+
+  # The two directions fail differently, so match both shapes:
+  #   v1 config on a v2 build -> "unsupported gateway config version 1"
+  #   v2 config on a v1 build -> "unknown field `compute_driver`" (TOML parse)
+  # This only picks the log message; the fallback happens either way.
+  if $COMPOSE logs 2>&1 | grep -qE "unsupported gateway config version|unknown field|failed to parse gateway config"; then
+    echo "e2e-stack: gateway rejected config schema ${schema}" >&2
+  else
+    echo "e2e-stack: gateway unhealthy under schema ${schema} (not a config rejection — see logs)" >&2
+  fi
+  $COMPOSE down -v >/dev/null 2>&1 || true
+  return 1
 }
 
 down() {

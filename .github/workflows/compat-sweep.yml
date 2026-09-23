@@ -1,0 +1,418 @@
+# Forward compatibility sweep (ADR 0005).
+#
+# The `compat` job in ci.yml answers "do we still honor the range we promised?"
+# This answers the other half: "how far ahead can we move?"
+#
+# Because sdk/go is a submodule of NVIDIA/OpenShell, a gateway release tag
+# resolves to an exact matching SDK commit, so this walks ONE axis — release
+# tags — taking both halves from the same tag. There is no SDK x gateway
+# cross-product.
+#
+# Advisory by construction: it reports, it never gates. A green row newer than
+# the current floor is the signal to open a range-bump PR.
+name: Compat sweep
+
+on:
+  schedule:
+    # Mondays 06:00 UTC — upstream cadence is roughly weekly.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Override the floor (defaults to floor_release in gateway-pins.json)"
+        required: false
+        default: ""
+      max_versions:
+        description: "Cap on how many releases to sweep (newest first)"
+        required: false
+        default: "5"
+
+permissions:
+  contents: write        # the bump job pushes its branch
+  pull-requests: write   # ...and opens the bump PR
+  # A weekly cron whose output only lands in the Actions tab does not get read.
+  issues: write
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.pick.outputs.versions }}
+      count: ${{ steps.pick.outputs.count }}
+      floor: ${{ steps.floor.outputs.floor }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the floor
+        id: floor
+        run: |
+          set -euo pipefail
+          floor='${{ inputs.since }}'
+          if [ -z "$floor" ]; then
+            floor=$(jq -r '.floor_release' deploy/ci/gateway-pins.json)
+          fi
+          echo "floor=$floor" >> "$GITHUB_OUTPUT"
+          echo "sweeping releases newer than $floor"
+
+      - name: Pick candidate releases
+        id: pick
+        env:
+          SINCE: ${{ steps.floor.outputs.floor }}
+          MAXV: ${{ inputs.max_versions || '5' }}
+        run: |
+          set -euo pipefail
+          # Upstream release tags that also have a published gateway image.
+          git ls-remote --tags --refs https://github.com/NVIDIA/OpenShell.git \
+            | awk '{print $1" "$2}' | sed 's|refs/tags/||' > /tmp/tags.txt
+          python3 - <<'PY' > /tmp/versions.json
+          import os, re, json, urllib.request
+
+          since = tuple(int(x) for x in os.environ["SINCE"].lstrip("v").split("."))
+          maxv  = int(os.environ["MAXV"])
+
+          rows = []
+          for line in open("/tmp/tags.txt"):
+              sha, tag = line.split()
+              m = re.fullmatch(r'v?(\d+)\.(\d+)\.(\d+)', tag)
+              if m:
+                  rows.append((tuple(int(g) for g in m.groups()), tag.lstrip("v"), sha))
+          rows.sort(reverse=True)
+
+          # Only tags with a real gateway image are worth a runner.
+          tok = json.load(urllib.request.urlopen(
+              "https://ghcr.io/token?scope=repository:nvidia/openshell/gateway:pull&service=ghcr.io"))["token"]
+          def published(tag):
+              req = urllib.request.Request(
+                  f"https://ghcr.io/v2/nvidia/openshell/gateway/manifests/{tag}",
+                  headers={"Authorization": "Bearer " + tok,
+                           "Accept": "application/vnd.oci.image.index.v1+json,"
+                                     "application/vnd.docker.distribution.manifest.list.v2+json"})
+              try:
+                  urllib.request.urlopen(req); return True
+              except Exception:
+                  return False
+
+          out = []
+          for ver, tag, sha in rows:
+              if ver <= since:
+                  break
+              if published(tag):
+                  out.append({"version": tag, "sha": sha})
+              if len(out) >= maxv:
+                  break
+          print(json.dumps(out))
+          PY
+          echo "versions=$(cat /tmp/versions.json)" >> "$GITHUB_OUTPUT"
+          echo "count=$(python3 -c 'import json,sys;print(len(json.load(open("/tmp/versions.json"))))')" >> "$GITHUB_OUTPUT"
+          echo "Candidates:"; cat /tmp/versions.json
+
+  sweep:
+    needs: discover
+    if: needs.discover.outputs.count != '0'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        target: ${{ fromJSON(needs.discover.outputs.versions) }}
+    env:
+      COMPAT_SANDBOX_IMAGE: ghcr.io/nvidia/openshell-community/sandboxes/base:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Move the SDK to this release's commit
+        run: |
+          set -euo pipefail
+          cd backend
+          # Both halves come from one tree: take the SDK at the same commit the
+          # gateway image was built from.
+          go get "github.com/NVIDIA/OpenShell/sdk/go@${{ matrix.target.sha }}"
+          echo "SDK now: $(go list -m github.com/NVIDIA/OpenShell/sdk/go)"
+
+      - name: Build BFF
+        id: build
+        run: cd backend && go build -o ../bin/server ./cmd/server
+
+      - name: Pull images
+        run: |
+          set -euo pipefail
+          docker pull "ghcr.io/nvidia/openshell/gateway:${{ matrix.target.version }}"
+          docker pull "ghcr.io/nvidia/openshell/supervisor:${{ matrix.target.version }}"
+          docker pull "$COMPAT_SANDBOX_IMAGE"
+
+      - name: Start gateway stack
+        env:
+          OPENSHELL_VERSION: ${{ matrix.target.version }}
+          # A sweep crosses the v1/v2 config boundary and cannot know in
+          # advance which side a release sits on.
+          OPENSHELL_CONFIG_SCHEMA: auto
+        run: |
+          set -euo pipefail
+          BRIDGE=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+          export OPENSHELL_GRPC_ENDPOINT="http://${BRIDGE}:8080"
+          deploy/ci/e2e-stack.sh up
+
+      - name: Start BFF
+        run: |
+          set -euo pipefail
+          AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:8080 PORT=9080 ./bin/server &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:9080/api/v1/healthz >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:9080/api/v1/healthz >/dev/null
+
+      - name: Run compat suite
+        id: compat
+        continue-on-error: true
+        env:
+          BFF_URL: http://localhost:9080
+        run: cd backend && go test -tags compat -timeout 20m ./test/compat/...
+
+      # Matrix job outputs overwrite each other in GitHub Actions, so each leg
+      # records its own result as an artifact for the report job to collect.
+      # outcome is skipped when the stack never came up, which is a result too.
+      - name: Record result
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sweep
+          printf '{"version":"%s","sdk":"%s","outcome":"%s"}\n' \
+            '${{ matrix.target.version }}' \
+            '${{ matrix.target.sha }}' \
+            '${{ steps.compat.outcome }}' > '/tmp/sweep/${{ matrix.target.version }}.json'
+          cat '/tmp/sweep/${{ matrix.target.version }}.json'
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sweep-result-${{ matrix.target.version }}
+          path: /tmp/sweep/*.json
+          retention-days: 7
+
+      - name: Gateway logs on failure
+        if: failure()
+        run: docker compose -f deploy/ci/docker-compose.e2e.yml logs --tail=150
+
+      - name: Clean up
+        if: always()
+        run: deploy/ci/e2e-stack.sh down
+
+  report:
+    outputs:
+      has_bump: ${{ steps.render.outputs.has_bump }}
+      target: ${{ steps.render.outputs.target }}
+      target_sdk: ${{ steps.render.outputs.target_sdk }}
+    needs: [discover, sweep]
+    # Runs even when nothing was swept: an already-open issue still needs
+    # refreshing so a stale "bump available" does not linger after the bump.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        # No artifacts is a legitimate state (nothing newer released).
+        continue-on-error: true
+        with:
+          pattern: sweep-result-*
+          path: /tmp/results
+          merge-multiple: true
+
+      - name: Ensure results dir exists
+        run: mkdir -p /tmp/results
+
+      - name: Render report
+        id: render
+        env:
+          FLOOR: ${{ needs.discover.outputs.floor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, glob, os
+
+          FLOOR = os.environ["FLOOR"]
+          RUN_URL = os.environ["RUN_URL"]
+
+          rows = [json.load(open(f)) for f in sorted(glob.glob("/tmp/results/*.json"))]
+          rows.sort(key=lambda r: tuple(int(x) for x in r["version"].split(".")), reverse=True)
+
+          passing = [r for r in rows if r["outcome"] == "success"]
+          failing = [r for r in rows if r["outcome"] != "success"]
+          label = {"success": "compatible", "failure": "NOT compatible",
+                   "skipped": "stack did not start"}
+
+          # Two independent work items, because they have different lifecycles:
+          #   BUMP    -> a PR. Exists when any newer release passes. Closes by merging.
+          #   MIGRATE -> an issue. Exists when any newer release fails. Closes when
+          #              the incompatibility is resolved.
+          # A run can produce both, either, or neither.
+          target = passing[0] if passing else None
+
+          def table(rs):
+              out = ["| Gateway | Result | SDK commit |", "|---|---|---|"]
+              for r in rs:
+                  out.append(f"| `{r['version']}` | {label.get(r['outcome'], r['outcome'])} | `{r['sdk'][:12]}` |")
+              return out
+
+          # --- migrate issue body (only written when something fails) ---
+          if failing:
+              body = ["<!-- compat-sweep-migrate -->",
+                      "Maintained by `.github/workflows/compat-sweep.yml` "
+                      "([ADR 0005](docs/adrs/0005-gateway-version-compatibility.md)).",
+                      "Rewritten in place while open. **Close it once these are compatible** —",
+                      "the next sweep that still finds failures opens a fresh one.", "",
+                      f"Currently pinned: **`{FLOOR}`**", "",
+                      "## Migration needed", "",
+                      "These releases are newer than the pin and fail the compat suite, so",
+                      "the supported range cannot reach them. Each needs investigation:",
+                      "either we adapt, or upstream has a regression.", ""]
+              body += table(failing)
+              if target:
+                  body += ["", f"Independently, `{target['version']}` **does** pass — a bump PR for it",
+                           "should be open alongside this issue."]
+              body += ["", f"[Sweep run]({RUN_URL})"]
+              open("/tmp/migrate.md", "w").write("\n".join(body) + "\n")
+
+          # --- step summary always gets the full picture ---
+          summary = [f"## Compat sweep (floor `{FLOOR}`)", ""]
+          summary += table(rows) if rows else ["No releases newer than the floor."]
+          summary += ["", f"bump target: `{target['version'] if target else 'none'}`",
+                      f"migrations outstanding: {len(failing)}"]
+          open("/tmp/summary.md", "w").write("\n".join(summary) + "\n")
+
+          with open(os.environ["GITHUB_ENV"], "a") as fh:
+              fh.write(f"SWEEP_HAS_MIGRATE={'1' if failing else '0'}\n")
+              fh.write(f"SWEEP_HAS_BUMP={'1' if target else '0'}\n")
+              fh.write(f"SWEEP_TARGET={target['version'] if target else ''}\n")
+              fh.write(f"SWEEP_TARGET_SDK={target['sdk'] if target else ''}\n")
+              fh.write(f"SWEEP_MIGRATE_TITLE=Gateway compat: {len(failing)} release(s) need migration\n")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"has_bump={'1' if target else '0'}\n")
+              fh.write(f"target={target['version'] if target else ''}\n")
+              fh.write(f"target_sdk={target['sdk'] if target else ''}\n")
+          PY
+          cat /tmp/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Migration issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Keyed by label, not title, so retitling does not spawn a duplicate.
+          # Scoped to OPEN issues: closing one means "handled", and the next
+          # sweep that still finds failures opens a fresh one.
+          gh label create compat-migrate --color b60205 \
+            --description "Gateway release the dashboard cannot follow yet" --force >/dev/null 2>&1 || true
+
+          num=$(gh issue list --label compat-migrate --state open \
+                  --json number --jq '.[0].number // empty')
+
+          if [ "$SWEEP_HAS_MIGRATE" = "1" ]; then
+            if [ -n "$num" ]; then
+              gh issue edit "$num" --title "$SWEEP_MIGRATE_TITLE" --body-file /tmp/migrate.md
+              echo "updated migration issue #$num"
+            else
+              gh issue create --label compat-migrate --title "$SWEEP_MIGRATE_TITLE" --body-file /tmp/migrate.md
+              echo "opened migration issue"
+            fi
+          elif [ -n "$num" ]; then
+            gh issue comment "$num" --body "All previously failing releases now pass. Closing — reopened automatically by the next sweep that finds a failure."
+            gh issue close "$num"
+            echo "closed migration issue #$num (nothing fails any more)"
+          else
+            echo "no migrations outstanding"
+          fi
+
+  bump:
+    needs: [discover, sweep, report]
+    if: always() && needs.report.outputs.has_bump == '1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Apply the bump
+        env:
+          TARGET: ${{ needs.report.outputs.target }}
+          TARGET_SDK: ${{ needs.report.outputs.target_sdk }}
+        run: |
+          set -euo pipefail
+          # Per ADR 0005 the SDK pin and the gateway pins move together.
+          cd backend && go get "github.com/NVIDIA/OpenShell/sdk/go@${TARGET_SDK}" && go mod tidy && cd ..
+
+          export SDK_VER=$(cd backend && go list -m -f "{{.Version}}" github.com/NVIDIA/OpenShell/sdk/go)
+
+          # The sweep proved this version passes, so its config schema is
+          # whatever e2e-stack.sh auto-detected. Resolve it the same way the
+          # lane will: v2 unless the gateway is old enough to need v1.
+          python3 - <<'PY'
+          import json, os
+          tgt = os.environ["TARGET"]
+          sdk = os.environ["SDK_VER"]
+          p = "deploy/ci/gateway-pins.json"
+          d = json.load(open(p))
+          d["floor"] = tgt
+          d["floor_release"] = tgt
+          d["sdk"] = sdk
+          d["lanes"] = [{
+              "version": tgt,
+              "label": f"{tgt} (pinned release)",
+              "required": True,
+              "config_schema": "v2",
+              "gateway_image": f"ghcr.io/nvidia/openshell/gateway:{tgt}",
+              "supervisor_image": f"ghcr.io/nvidia/openshell/supervisor:{tgt}",
+          }]
+          json.dump(d, open(p, "w"), indent=2)
+          open(p, "a").write("\n")
+          PY
+          git diff --stat
+
+      - name: Open or update the bump PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ needs.report.outputs.target }}
+        run: |
+          set -euo pipefail
+          branch="chore/compat-bump-${TARGET}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "already at ${TARGET}; nothing to open"
+            exit 0
+          fi
+          git commit -m "chore(compat): bump supported gateway to ${TARGET}
+
+          Opened automatically by the compat sweep, which verified that gateway
+          ${TARGET} passes backend/test/compat. Per ADR 0005 the SDK pin and the
+          gateway pins move together.
+
+          Review the config schema in deploy/ci/gateway-pins.json before merging:
+          the sweep runs with schema auto-detection, this PR assumes v2."
+          git push -f origin "$branch"
+
+          if gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty' | grep -q .; then
+            echo "bump PR already open for $branch"
+          else
+            gh pr create --head "$branch" --base main \
+              --title "chore(compat): bump supported gateway to ${TARGET}" \
+              --body "Opened automatically by the [compat sweep](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}), which verified that gateway \`${TARGET}\` passes \`backend/test/compat\`.
+
+          Per [ADR 0005](docs/adrs/0005-gateway-version-compatibility.md) the SDK pin and the gateway pins move together, so this changes both.
+
+          **Two things to check before merging.** The sweep runs with \`OPENSHELL_CONFIG_SCHEMA=auto\`, but this PR writes \`v2\` into the lane — if \`${TARGET}\` needs v1, fix it here; CI's compat lane will tell you. And this replaces the lane list with a single pinned-release lane, dropping any advisory canary: add one back if you still want early warning from a newer or unreleased gateway.
+
+          Merging this closes out the bump. Any *newer* release that still fails is tracked separately in the \`compat-migrate\` issue."
+          fi
