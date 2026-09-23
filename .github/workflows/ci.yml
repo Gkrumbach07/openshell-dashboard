@@ -125,7 +125,15 @@ jobs:
           echo "lanes=$(jq -c '.lanes' deploy/ci/gateway-pins.json)" >> "$GITHUB_OUTPUT"
           jq -r '"floor=\(.floor)  floor_release=\(.floor_release)  sdk=\(.sdk)"' deploy/ci/gateway-pins.json
 
-  # Gateway compatibility matrix. Lanes come from deploy/ci/gateway-pins.json.
+  # Gateway compatibility. Lanes come from deploy/ci/gateway-pins.json.
+  #
+  # A PR tests the PIN — the gateway this dashboard claims to work with — and
+  # nothing else. Looking around at other releases is the scheduled sweep's
+  # job (compat-sweep.yml), not something every PR should pay for.
+  #
+  # An advisory lane pinned to an OLDER release is a trap: the SDK only moves
+  # forward, so such a lane is red forever rather than being a canary. If you
+  # add an advisory lane, make it one that can actually change state.
   #
   # `required: true` lanes block the build; advisory lanes may fail.
   #

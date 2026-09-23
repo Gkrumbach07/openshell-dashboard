@@ -5,8 +5,12 @@
     "by the sweep's automated bump PR. Per ADR 0005 the SDK pin in",
     "backend/go.mod and these pins move together in one change.",
     "",
-    "floor: the gateway the dashboard is pinned to. The sweep only looks at",
-    "releases strictly newer than floor_release.",
+    "PRs test the PIN and nothing else. Looking around \u2014 at newer releases \u2014 is",
+    "the scheduled sweep's job, not every PR's. Adding an advisory lane here is",
+    "possible but should be deliberate: a lane pinned to an older release can",
+    "never go green, because the SDK only moves forward.",
+    "",
+    "floor: the gateway the dashboard is pinned to.",
     "floor_release: the newest RELEASED version at or below the pin. While the",
     "pin is an unreleased dev build these differ; see ADR 0005."
   ],
@@ -21,14 +25,6 @@
       "config_schema": "v2",
       "gateway_image": "ghcr.io/nvidia/openshell/gateway@sha256:cd32f77ce59f66e9640aa3679173da1b4528d605c074d391ed232cf051764f5c",
       "supervisor_image": "ghcr.io/nvidia/openshell/supervisor@sha256:d91d8cb1192a189cb53ea5dd105d1bb17499933b03ad8550879756a5cbf46f7e"
-    },
-    {
-      "version": "0.0.116",
-      "label": "0.0.116 (newest release)",
-      "required": false,
-      "config_schema": "v1",
-      "gateway_image": "ghcr.io/nvidia/openshell/gateway:0.0.116",
-      "supervisor_image": "ghcr.io/nvidia/openshell/supervisor:0.0.116"
     }
   ]
 }

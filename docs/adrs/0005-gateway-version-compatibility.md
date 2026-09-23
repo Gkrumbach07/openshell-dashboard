@@ -78,13 +78,19 @@ the gateway a deployment needs. Raising the floor can break a running
 installation while looking like a patch, so the range must be published
 separately — tracked in #66.
 
+**A PR tests the pin and nothing else.** The pin is what the dashboard claims
+to work with; proving that is the PR's job. Surveying other releases is the
+sweep's job, on a schedule. An advisory lane pinned to an *older* release is
+not a canary but a permanently failing job — the SDK only moves forward, so
+that pairing can never come back into compatibility. Advisory lanes are only
+worth adding where the state can actually change.
+
 **The required lane may legitimately be an unreleased build.** As of this ADR
 no released gateway carries the renumbered proto (every published release is
-2026-08-28), so the required lane is pinned to a `dev` *digest* and the newest
-release runs as an advisory canary. This inverts the healthy steady state — we
-are pinned ahead of every release and probing backward instead of pinning to a
-release and probing forward. It is explicitly temporary. The canary turning
-green is the trigger to promote a released tag to the floor.
+2026-08-28), so the pin is a `dev` *digest*. This inverts the healthy steady
+state — we are pinned ahead of every release rather than pinned to a release
+and probing forward. It is explicitly temporary: the sweep reporting a passing
+release is the trigger to promote a released tag to the pin.
 
 **Pin by digest, never by a moving tag.** `dev` moved twice in one afternoon
 while this lane was being set up. A digest makes a run reproducible and makes
