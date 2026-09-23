@@ -283,11 +283,14 @@ pins a supported **range** and never claims `latest`:
 | `compat` (ci.yml) | per PR | yes | do we still honor the range we promised? |
 | `compat-sweep` | weekly / manual | no | how far ahead can we move? |
 
-`compat` runs `dev` as the **required** lane, because it is currently the only
-image whose proto matches the SDK we pin. The newest release (`0.0.116`) runs
-as an **advisory** lane: it fails by construction today and acts as a canary —
-when upstream cuts a release containing the renumbered proto it goes green and
-a released gateway becomes supportable again.
+`compat` runs exactly one lane: **the pin**. That is the gateway this dashboard
+claims to work with, and it is what a PR needs to prove. Looking around at
+other releases is the sweep's job, on a schedule, not something every PR pays
+for.
+
+Today the pin is a `dev` digest, because no released gateway carries the
+renumbered proto. An advisory lane on an *older* release would be a trap rather
+than a canary: the SDK only moves forward, so such a lane can never go green.
 
 `compat-sweep` walks upstream release tags newer than the current floor,
 taking the gateway image *and* the matching SDK commit from the same tag
