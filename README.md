@@ -273,11 +273,32 @@ Two tag gotchas:
   tag that keeps pace with `sdk/go@latest`.
 - Gateway and supervisor share a tag and must match.
 
-CI runs `dev` as the **required** lane, because it is currently the only image
-whose proto matches the SDK we pin. The newest release (`0.0.116`) runs as an
-**advisory** lane: it fails by construction today, and acts as a canary — when
-upstream cuts a release containing the renumbered proto it goes green and a
-released gateway becomes supportable again.
+### Two jobs, two questions
+
+Per [ADR 0005](docs/adrs/0005-gateway-version-compatibility.md) the dashboard
+pins a supported **range** and never claims `latest`:
+
+| Job | When | Blocking | Question |
+|---|---|---|---|
+| `compat` (ci.yml) | per PR | yes | do we still honor the range we promised? |
+| `compat-sweep` | weekly / manual | no | how far ahead can we move? |
+
+`compat` runs `dev` as the **required** lane, because it is currently the only
+image whose proto matches the SDK we pin. The newest release (`0.0.116`) runs
+as an **advisory** lane: it fails by construction today and acts as a canary —
+when upstream cuts a release containing the renumbered proto it goes green and
+a released gateway becomes supportable again.
+
+`compat-sweep` walks upstream release tags newer than the current floor,
+taking the gateway image *and* the matching SDK commit from the same tag
+(`sdk/go` is a submodule of `NVIDIA/OpenShell`, so a release tag resolves to an
+exact SDK version). A green row newer than the floor is the signal to open a
+range-bump PR — and per ADR 0005 the SDK pin, the gateway pins and the declared
+range all move together in that one PR, never separately.
+
+Because a sweep crosses the v1/v2 config boundary, it runs with
+`OPENSHELL_CONFIG_SCHEMA=auto`, which tries v2 and falls back to v1 when the
+gateway rejects the config.
 
 `OPENSHELL_VERSION` selects the gateway *and* supervisor tag — they are
 released together and must match. The community sandbox image publishes no
