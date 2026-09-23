@@ -132,9 +132,18 @@ const AddEndpointModal: React.FC<AddEndpointModalProps> = ({
                 setAddForm((f) => ({ ...f, access: value }))
               }
             >
-              <FormSelectOption value="read-only" label="Read-only" />
-              <FormSelectOption value="read-write" label="Read-write" />
-              <FormSelectOption value="full" label="Full" />
+              <FormSelectOption
+                value="NETWORK_ACCESS_PRESET_READ_ONLY"
+                label="Read-only"
+              />
+              <FormSelectOption
+                value="NETWORK_ACCESS_PRESET_READ_WRITE"
+                label="Read-write"
+              />
+              <FormSelectOption
+                value="NETWORK_ACCESS_PRESET_FULL"
+                label="Full"
+              />
             </FormSelect>
           </FormGroup>
           <FormGroup label="Protocol" fieldId="endpoint-protocol">
@@ -163,10 +172,13 @@ const AddEndpointModal: React.FC<AddEndpointModalProps> = ({
               }
             >
               <FormSelectOption
-                value="enforce"
+                value="NETWORK_ENFORCEMENT_MODE_ENFORCE"
                 label="Enforce (block violations)"
               />
-              <FormSelectOption value="audit" label="Audit (log only)" />
+              <FormSelectOption
+                value="NETWORK_ENFORCEMENT_MODE_AUDIT"
+                label="Audit (log only)"
+              />
             </FormSelect>
           </FormGroup>
           <FormGroup label="Binary path" fieldId="endpoint-binary">

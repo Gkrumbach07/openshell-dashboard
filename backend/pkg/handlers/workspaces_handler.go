@@ -32,7 +32,7 @@ func (h *WorkspacesHandler) ListWorkspaces(w http.ResponseWriter, r *http.Reques
 	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
 		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
 	}
-	workspaces, err := h.svc.List(r.Context(), opts...)
+	workspaces, err := h.svc.ListAll(r.Context(), opts...)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
@@ -71,11 +71,12 @@ func (h *WorkspacesHandler) GetWorkspace(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *WorkspacesHandler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.Context(), r.PathValue("workspace")); err != nil {
+	res, err := h.svc.Delete(r.Context(), r.PathValue("workspace"))
+	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
 	}
-	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKDeletion(res))
 }
 
 // AddMemberRequest is the add-member body. Role is USER or ADMIN.
@@ -85,7 +86,7 @@ type AddMemberRequest struct {
 }
 
 func (h *WorkspacesHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
-	members, err := h.svc.ListMembers(r.Context(), r.PathValue("workspace"))
+	members, err := h.svc.ListAllMembers(r.Context(), r.PathValue("workspace"))
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
@@ -126,9 +127,10 @@ func (h *WorkspacesHandler) RemoveMember(w http.ResponseWriter, r *http.Request)
 		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidSubject, "invalid member subject")
 		return
 	}
-	if err := h.svc.RemoveMember(r.Context(), r.PathValue("workspace"), subject); err != nil {
+	res, err := h.svc.RemoveMember(r.Context(), r.PathValue("workspace"), subject)
+	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
 	}
-	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"removed": true})
+	apiutils.WriteJSON(w, http.StatusOK, map[string]any{"removed": models.FromSDKDeletion(res).Deleted})
 }

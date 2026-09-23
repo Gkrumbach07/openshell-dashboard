@@ -120,7 +120,7 @@ func (h *PoliciesHandler) UpdateSandboxPolicy(w http.ResponseWriter, r *http.Req
 
 // GetGlobalPolicy returns gateway-global policy revisions (Platform Admin).
 func (h *PoliciesHandler) GetGlobalPolicy(w http.ResponseWriter, r *http.Request) {
-	revisions, err := h.svc.List(r.Context(), "", openshell.WithListGlobal(true))
+	revisions, err := h.svc.ListAll(r.Context(), "", "", openshell.WithListGlobal(true))
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return

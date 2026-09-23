@@ -17,7 +17,7 @@ func TestListServices(t *testing.T) {
 	sdk := &mockSDK{}
 	sdk.services.listFn = func(_ context.Context, _, _ string, _ ...openshell.ListOptions) ([]*openshell.ServiceEndpoint, error) {
 		return []*openshell.ServiceEndpoint{
-			{SandboxName: "my-sandbox", ServiceName: "web", TargetPort: 8080, URL: "https://web.example"},
+			{Sandbox: "my-sandbox", Name: "web", TargetPort: 8080, URL: "https://web.example"},
 		}, nil
 	}
 	handler := NewServicesHandler(sdk.Services())
