@@ -106,6 +106,10 @@ jobs:
   # reads the serialized WorkspaceSelector as a workspace name and reports
   # `workspace '\n\adefault' not found`. Every workspace-scoped call fails.
   # They must be upgraded together.
+  #
+  # The gateway's own TOML config is versioned too, and the schemas are
+  # mutually exclusive: `dev` requires v2, releases up to 0.0.116 require v1.
+  # Each lane therefore selects its config template.
   compat:
     name: compat (gateway ${{ matrix.version }})
     runs-on: ubuntu-latest
@@ -119,6 +123,7 @@ jobs:
           # configuration in which the dashboard actually works today.
           - version: "dev"
             required: true
+            config_schema: "v2"
           # Newest released gateway. Advisory: it predates the
           # CreateSandboxRequest field renumbering (see below), so its
           # workspace-scoped calls fail by construction. It is a canary — when
@@ -130,6 +135,7 @@ jobs:
           # so running both would test the same image twice.
           - version: "0.0.116"
             required: false
+            config_schema: "v1"
     env:
       # The community sandbox image publishes no semver tags, so it is pinned
       # by digest and held constant across the matrix: we are varying the
@@ -157,6 +163,9 @@ jobs:
       - name: Start gateway stack
         env:
           OPENSHELL_VERSION: ${{ matrix.version }}
+          # The gateway config schema is versioned and the two are mutually
+          # exclusive — see deploy/ci/gateway.e2e.*.toml.tmpl.
+          OPENSHELL_CONFIG_SCHEMA: ${{ matrix.config_schema }}
         run: deploy/ci/e2e-stack.sh up
 
       - uses: actions/setup-go@v5

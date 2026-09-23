@@ -253,6 +253,19 @@ workspace '\n\adefault' not found
 That mangled name is the serialized `WorkspaceSelector` (`0A 07 "default"`)
 being read as a plain string. Always run `make compat` after an SDK bump.
 
+The gateway's **TOML config is versioned too**, and the schemas are mutually
+exclusive — `dev` requires v2, releases up to `0.0.116` require v1:
+
+| | v1 (≤ 0.0.116) | v2 (`dev`) |
+|---|---|---|
+| `version` | `1` | `2` |
+| compute driver | `compute_drivers = ["docker"]` | `compute_driver = "docker"` |
+| `image_pull_policy` | `"IfNotPresent"` | `"if_not_present"` |
+| `sandbox_namespace` | supported | removed |
+
+`OPENSHELL_CONFIG_SCHEMA` (`v1`\|`v2`, default `v2`) picks the template in
+`deploy/ci/gateway.e2e.*.toml.tmpl`.
+
 Two tag gotchas:
 
 - **`latest` is not the newest gateway.** It aliases the newest *release*

@@ -1,0 +1,34 @@
+# Gateway config template for the compat stack — schema VERSION 2.
+# Required by gateways at upstream HEAD (`dev`). Released gateways up to
+# 0.0.116 require the version 1 schema — see gateway.e2e.v1.toml.tmpl.
+#
+# Differences from v1, all discovered by running the dev gateway:
+#   version            1 -> 2
+#   compute_drivers    ["docker"] -> compute_driver = "docker" (singular)
+#   image_pull_policy  "IfNotPresent" -> "if_not_present" (snake_case)
+#   sandbox_namespace  removed (no longer a recognized field)
+# Rendered to .rendered/gateway.toml by e2e-stack.sh, which substitutes the
+# image placeholders below.
+[openshell]
+version = 2
+
+[openshell.gateway]
+bind_address        = "0.0.0.0:8080"
+health_bind_address = "0.0.0.0:8081"
+log_level           = "info"
+compute_driver      = "docker"
+disable_tls         = true
+
+[openshell.gateway.auth]
+allow_unauthenticated_users = true
+
+[openshell.gateway.gateway_jwt]
+signing_key_path = "/var/lib/openshell/jwt/signing.pem"
+public_key_path  = "/var/lib/openshell/jwt/public.pem"
+kid_path         = "/var/lib/openshell/jwt/kid"
+
+[openshell.drivers.docker]
+default_image     = "${COMPAT_SANDBOX_IMAGE}"
+supervisor_image  = "${OPENSHELL_SUPERVISOR_IMAGE}"
+image_pull_policy = "if_not_present"
+grpc_endpoint     = "http://host.openshell.internal:8080"

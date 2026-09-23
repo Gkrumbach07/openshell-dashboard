@@ -18,6 +18,11 @@ export OPENSHELL_GATEWAY_IMAGE="${OPENSHELL_GATEWAY_IMAGE:-ghcr.io/nvidia/opensh
 export OPENSHELL_SUPERVISOR_IMAGE="${OPENSHELL_SUPERVISOR_IMAGE:-ghcr.io/nvidia/openshell/supervisor:${VERSION}}"
 export COMPAT_SANDBOX_IMAGE="${COMPAT_SANDBOX_IMAGE:-ghcr.io/nvidia/openshell-community/sandboxes/base:latest}"
 
+# The gateway's own config file is versioned and the schemas are mutually
+# exclusive: `dev` (upstream HEAD) requires v2, releases up to 0.0.116 require
+# v1. Defaults to v2 because that is what the SDK we pin targets.
+OPENSHELL_CONFIG_SCHEMA="${OPENSHELL_CONFIG_SCHEMA:-v2}"
+
 STATE_DIR="${OPENSHELL_STATE_DIR:-/var/lib/openshell}"
 export OPENSHELL_STATE_DIR="$STATE_DIR"
 COMPOSE="docker compose -f docker-compose.e2e.yml"
@@ -49,11 +54,17 @@ wait_for() {
 
 render_config() {
   mkdir -p .rendered
+  local tmpl="gateway.e2e.${OPENSHELL_CONFIG_SCHEMA}.toml.tmpl"
+  if [ ! -f "$tmpl" ]; then
+    echo "e2e-stack: no config template for schema '${OPENSHELL_CONFIG_SCHEMA}' ($tmpl)" >&2
+    exit 1
+  fi
+  echo "e2e-stack: config schema=${OPENSHELL_CONFIG_SCHEMA} ($tmpl)"
   # envsubst would be another dependency; restrict substitution to the two
   # image placeholders so nothing else in the TOML is touched.
   sed -e "s|\${OPENSHELL_SUPERVISOR_IMAGE}|${OPENSHELL_SUPERVISOR_IMAGE}|g" \
       -e "s|\${COMPAT_SANDBOX_IMAGE}|${COMPAT_SANDBOX_IMAGE}|g" \
-      gateway.e2e.toml.tmpl > .rendered/gateway.toml
+      "$tmpl" > .rendered/gateway.toml
   if grep -q '\${' .rendered/gateway.toml; then
     echo "e2e-stack: unsubstituted placeholder left in rendered config:" >&2
     grep -n '\${' .rendered/gateway.toml >&2
