@@ -90,6 +90,14 @@ green is the trigger to promote a released tag to the floor.
 while this lane was being set up. A digest makes a run reproducible and makes
 bumping a deliberate act.
 
+**The sweep is forward-only, and that is inherent.** Sweeping *backwards* past
+the current pin is not meaningful: our code uses SDK APIs added after those
+releases, so it does not compile against them, and the result says nothing
+about gateway compatibility. The sweep therefore records three failure modes
+separately — the BFF did not compile, the gateway did not start, and the compat
+suite failed — because only the last is a compatibility result. An all-build-
+failure sweep is annotated as such rather than being reported as migration work.
+
 **Each sweep produces actionable pieces, and a bump is not a migration.** They
 have different lifecycles: a bump is mechanical and closes by merging a PR, a
 migration needs investigation and closes when the incompatibility is resolved.

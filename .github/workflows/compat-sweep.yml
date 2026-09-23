@@ -40,6 +40,7 @@ jobs:
       versions: ${{ steps.pick.outputs.versions }}
       count: ${{ steps.pick.outputs.count }}
       floor: ${{ steps.floor.outputs.floor }}
+      pinned: ${{ steps.floor.outputs.pinned }}
     steps:
       - uses: actions/checkout@v4
 
@@ -52,7 +53,10 @@ jobs:
             floor=$(jq -r '.floor_release' deploy/ci/gateway-pins.json)
           fi
           echo "floor=$floor" >> "$GITHUB_OUTPUT"
-          echo "sweeping releases newer than $floor"
+          pinned=$(jq -r '.floor' deploy/ci/gateway-pins.json)
+          echo "pinned=$pinned" >> "$GITHUB_OUTPUT"
+          echo "actually pinned to: $pinned"
+          echo "sweeping releases newer than: $floor"
 
       - name: Pick candidate releases
         id: pick
@@ -135,8 +139,13 @@ jobs:
           go get "github.com/NVIDIA/OpenShell/sdk/go@${{ matrix.target.sha }}"
           echo "SDK now: $(go list -m github.com/NVIDIA/OpenShell/sdk/go)"
 
+      # A build failure here is a real result, not an error: it means our code
+      # does not compile against that release's SDK. Going BACKWARDS that is
+      # expected (we use APIs added later); going forwards it means an API we
+      # depend on was removed.
       - name: Build BFF
         id: build
+        continue-on-error: true
         run: cd backend && go build -o ../bin/server ./cmd/server
 
       - name: Pull images
@@ -147,6 +156,9 @@ jobs:
           docker pull "$COMPAT_SANDBOX_IMAGE"
 
       - name: Start gateway stack
+        id: stack
+        continue-on-error: true
+        if: steps.build.outcome == 'success'
         env:
           OPENSHELL_VERSION: ${{ matrix.target.version }}
           # A sweep crosses the v1/v2 config boundary and cannot know in
@@ -159,6 +171,7 @@ jobs:
           deploy/ci/e2e-stack.sh up
 
       - name: Start BFF
+        if: steps.build.outcome == 'success' && steps.stack.outcome == 'success'
         run: |
           set -euo pipefail
           AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:8080 PORT=9080 ./bin/server &
@@ -171,6 +184,7 @@ jobs:
       - name: Run compat suite
         id: compat
         continue-on-error: true
+        if: steps.build.outcome == 'success' && steps.stack.outcome == 'success'
         env:
           BFF_URL: http://localhost:9080
         run: cd backend && go test -tags compat -timeout 20m ./test/compat/...
@@ -178,15 +192,25 @@ jobs:
       # Matrix job outputs overwrite each other in GitHub Actions, so each leg
       # records its own result as an artifact for the report job to collect.
       # outcome is skipped when the stack never came up, which is a result too.
+      # The three failure modes mean different things, so they are recorded
+      # separately rather than collapsed into one "it failed".
       - name: Record result
         if: always()
+        env:
+          BUILD: ${{ steps.build.outcome }}
+          STACK: ${{ steps.stack.outcome }}
+          COMPAT: ${{ steps.compat.outcome }}
         run: |
           set -euo pipefail
+          if   [ "$BUILD"  != "success" ]; then outcome=build_failed
+          elif [ "$STACK"  != "success" ]; then outcome=stack_failed
+          elif [ "$COMPAT" = "success" ];  then outcome=success
+          else                                  outcome=incompatible
+          fi
           mkdir -p /tmp/sweep
           printf '{"version":"%s","sdk":"%s","outcome":"%s"}\n' \
-            '${{ matrix.target.version }}' \
-            '${{ matrix.target.sha }}' \
-            '${{ steps.compat.outcome }}' > '/tmp/sweep/${{ matrix.target.version }}.json'
+            '${{ matrix.target.version }}' '${{ matrix.target.sha }}' "$outcome" \
+            > '/tmp/sweep/${{ matrix.target.version }}.json'
           cat '/tmp/sweep/${{ matrix.target.version }}.json'
 
       - uses: actions/upload-artifact@v4
@@ -230,6 +254,7 @@ jobs:
         id: render
         env:
           FLOOR: ${{ needs.discover.outputs.floor }}
+          PINNED: ${{ needs.discover.outputs.pinned }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -237,6 +262,7 @@ jobs:
           import json, glob, os
 
           FLOOR = os.environ["FLOOR"]
+          PINNED = os.environ["PINNED"]
           RUN_URL = os.environ["RUN_URL"]
 
           rows = [json.load(open(f)) for f in sorted(glob.glob("/tmp/results/*.json"))]
@@ -244,8 +270,10 @@ jobs:
 
           passing = [r for r in rows if r["outcome"] == "success"]
           failing = [r for r in rows if r["outcome"] != "success"]
-          label = {"success": "compatible", "failure": "NOT compatible",
-                   "skipped": "stack did not start"}
+          label = {"success": "compatible",
+                   "incompatible": "NOT compatible (compat suite failed)",
+                   "stack_failed": "gateway did not start",
+                   "build_failed": "BFF does not compile against that SDK"}
 
           # Two independent work items, because they have different lifecycles:
           #   BUMP    -> a PR. Exists when any newer release passes. Closes by merging.
@@ -267,11 +295,18 @@ jobs:
                       "([ADR 0005](docs/adrs/0005-gateway-version-compatibility.md)).",
                       "Rewritten in place while open. **Close it once these are compatible** —",
                       "the next sweep that still finds failures opens a fresh one.", "",
-                      f"Currently pinned: **`{FLOOR}`**", "",
+                      f"Currently pinned: **`{PINNED}`** (sweep floor: `{FLOOR}`)", "",
                       "## Migration needed", "",
-                      "These releases are newer than the pin and fail the compat suite, so",
-                      "the supported range cannot reach them. Each needs investigation:",
-                      "either we adapt, or upstream has a regression.", ""]
+                      "These releases fail the compat suite, so the supported range cannot",
+                      "reach them. Each needs investigation: either we adapt, or upstream",
+                      "has a regression.", ""]
+              only_build = [r for r in failing if r["outcome"] == "build_failed"]
+              if len(only_build) == len(failing):
+                  body += ["> **Every failure here is a build failure**, which usually means the",
+                           "> sweep floor was set *below* the current pin. Our code uses APIs added",
+                           "> after those releases, so it cannot compile against them — that is",
+                           "> expected and not migration work. Sweep forwards from the real pin",
+                           f"> (`{PINNED}`) for a meaningful result.", ""]
               body += table(failing)
               if target:
                   body += ["", f"Independently, `{target['version']}` **does** pass — a bump PR for it",
