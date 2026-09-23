@@ -111,7 +111,7 @@ jobs:
   # mutually exclusive: `dev` requires v2, releases up to 0.0.116 require v1.
   # Each lane therefore selects its config template.
   compat:
-    name: compat (gateway ${{ matrix.version }})
+    name: compat (gateway ${{ matrix.label }})
     runs-on: ubuntu-latest
     continue-on-error: ${{ !matrix.required }}
     strategy:
@@ -121,9 +121,18 @@ jobs:
           # `dev` tracks upstream HEAD and is currently the ONLY image whose
           # proto matches the SDK we pin. Required, because it is the only
           # configuration in which the dashboard actually works today.
+          # Pinned by DIGEST, not by the moving `dev` tag, so a run is
+          # reproducible and an upstream commit cannot turn this repo red on
+          # its own schedule. Bump deliberately, the same as a release bump:
+          #   crane digest ghcr.io/nvidia/openshell/gateway:dev
+          # This is a stopgap — no released gateway carries the renumbered
+          # proto yet. Move this lane to a released tag as soon as one does.
           - version: "dev"
+            label: "dev @ 0.0.117-dev.253"
             required: true
             config_schema: "v2"
+            gateway_image: "ghcr.io/nvidia/openshell/gateway@sha256:cd32f77ce59f66e9640aa3679173da1b4528d605c074d391ed232cf051764f5c"
+            supervisor_image: "ghcr.io/nvidia/openshell/supervisor@sha256:d91d8cb1192a189cb53ea5dd105d1bb17499933b03ad8550879756a5cbf46f7e"
           # Newest released gateway. Advisory: it predates the
           # CreateSandboxRequest field renumbering (see below), so its
           # workspace-scoped calls fail by construction. It is a canary — when
@@ -134,8 +143,11 @@ jobs:
           # newest *release* (identical digest to 0.0.116, built 2026-08-28),
           # so running both would test the same image twice.
           - version: "0.0.116"
+            label: "0.0.116 (newest release)"
             required: false
             config_schema: "v1"
+            gateway_image: "ghcr.io/nvidia/openshell/gateway:0.0.116"
+            supervisor_image: "ghcr.io/nvidia/openshell/supervisor:0.0.116"
     env:
       # The community sandbox image publishes no semver tags, so it is pinned
       # by digest and held constant across the matrix: we are varying the
@@ -147,26 +159,28 @@ jobs:
       - name: Pull images
         run: |
           set -euo pipefail
-          docker pull "ghcr.io/nvidia/openshell/gateway:${{ matrix.version }}"
-          docker pull "ghcr.io/nvidia/openshell/supervisor:${{ matrix.version }}"
+          docker pull "${{ matrix.gateway_image }}"
+          docker pull "${{ matrix.supervisor_image }}"
           docker pull "$COMPAT_SANDBOX_IMAGE"
-
-      - name: Report resolved image digests
-        run: |
-          set -euo pipefail
-          for img in "ghcr.io/nvidia/openshell/gateway:${{ matrix.version }}" \
-                     "ghcr.io/nvidia/openshell/supervisor:${{ matrix.version }}" \
-                     "$COMPAT_SANDBOX_IMAGE"; do
-            echo "$img -> $(docker image inspect "$img" --format '{{index .RepoDigests 0}}' 2>/dev/null || echo 'no digest')"
-          done
+          echo "sandbox image digest: $(docker image inspect "$COMPAT_SANDBOX_IMAGE" --format '{{index .RepoDigests 0}}' 2>/dev/null || echo unknown)"
 
       - name: Start gateway stack
         env:
-          OPENSHELL_VERSION: ${{ matrix.version }}
+          OPENSHELL_GATEWAY_IMAGE: ${{ matrix.gateway_image }}
+          OPENSHELL_SUPERVISOR_IMAGE: ${{ matrix.supervisor_image }}
           # The gateway config schema is versioned and the two are mutually
           # exclusive — see deploy/ci/gateway.e2e.*.toml.tmpl.
           OPENSHELL_CONFIG_SCHEMA: ${{ matrix.config_schema }}
-        run: deploy/ci/e2e-stack.sh up
+        run: |
+          set -euo pipefail
+          # Sandbox containers are created by the gateway on the host daemon,
+          # so they are siblings of the gateway container and do not inherit
+          # its compose extra_hosts aliases. Reach the gateway's published port
+          # via the docker bridge gateway address instead of a host alias.
+          BRIDGE=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+          echo "docker bridge gateway: $BRIDGE"
+          export OPENSHELL_GRPC_ENDPOINT="http://${BRIDGE}:8080"
+          deploy/ci/e2e-stack.sh up
 
       - uses: actions/setup-go@v5
         with:
