@@ -123,12 +123,16 @@ jobs:
           # configuration in which the dashboard actually works today.
           # Pinned by DIGEST, not by the moving `dev` tag, so a run is
           # reproducible and an upstream commit cannot turn this repo red on
-          # its own schedule. Bump deliberately, the same as a release bump:
+          # its own schedule. `dev` moved twice in one afternoon while this
+          # lane was being set up, which is the whole argument for the pin.
+          # Bump deliberately, the same as a release bump:
           #   crane digest ghcr.io/nvidia/openshell/gateway:dev
+          # The label must match what the gateway reports at that digest
+          # (compat prints it: "compat: ... gateway=<version>").
           # This is a stopgap — no released gateway carries the renumbered
           # proto yet. Move this lane to a released tag as soon as one does.
           - version: "dev"
-            label: "dev @ 0.0.117-dev.253"
+            label: "dev @ 0.0.117-dev.259"
             required: true
             config_schema: "v2"
             gateway_image: "ghcr.io/nvidia/openshell/gateway@sha256:cd32f77ce59f66e9640aa3679173da1b4528d605c074d391ed232cf051764f5c"
