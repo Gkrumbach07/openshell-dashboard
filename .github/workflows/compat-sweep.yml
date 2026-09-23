@@ -303,6 +303,10 @@ jobs:
       - name: Migration issue
         env:
           GH_TOKEN: ${{ github.token }}
+          # This job never checks out the repo — it only downloads artifacts —
+          # so gh has no git remote to infer the repository from. Without this
+          # every gh call dies with "not a git repository".
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           # Keyed by label, not title, so retitling does not spawn a duplicate.
