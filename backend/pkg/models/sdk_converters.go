@@ -50,7 +50,7 @@ func FromSDKSandbox(sandbox *openshell.Sandbox) Sandbox {
 	}
 
 	out.Status = SandboxStatus{
-		SandboxName:          sandbox.Status.SandboxName,
+		SandboxName:          sandbox.Name,
 		AgentPod:             sandbox.Status.AgentPod,
 		Phase:                strings.ToUpper(string(sandbox.Status.Phase)),
 		CurrentPolicyVersion: sandbox.Status.CurrentPolicyVersion,
@@ -614,8 +614,8 @@ func FromSDKServiceEndpoint(svc *openshell.ServiceEndpoint) ServiceEndpoint {
 		return ServiceEndpoint{}
 	}
 	return ServiceEndpoint{
-		SandboxName: svc.SandboxName,
-		ServiceName: svc.ServiceName,
+		SandboxName: svc.Sandbox,
+		ServiceName: svc.Name,
 		TargetPort:  svc.TargetPort,
 		Domain:      svc.Domain,
 		URL:         svc.URL,
@@ -720,4 +720,37 @@ func FromSDKSandboxLogs(result *openshell.LogResult) SandboxLogs {
 		})
 	}
 	return out
+}
+
+// DeleteResult is the BFF's response envelope for every delete endpoint.
+//
+// Outcome carries the gateway's own answer. Deleted stays for the existing
+// frontend contract and is true only when completion is actually established:
+// per the SDK (openshell/v1/types/mutations.go) that means DeletionCompleted
+// or DeletionAlreadyAbsent. DeletionAccepted means the gateway queued
+// asynchronous cleanup and the resource may still exist, and unrecognized
+// numeric outcomes must not be treated as completion.
+type DeleteResult struct {
+	Outcome string `json:"outcome"`
+	Deleted bool   `json:"deleted"`
+}
+
+// FromSDKDeletion converts an SDK DeletionResult into the BFF response.
+// A nil result (older gateway, or an SDK path that reports no outcome) is
+// reported as completed, preserving the pre-pagination behavior where a nil
+// error meant the delete succeeded.
+func FromSDKDeletion(res *openshell.DeletionResult) DeleteResult {
+	if res == nil {
+		return DeleteResult{Deleted: true, Outcome: "completed"}
+	}
+	switch res.Outcome {
+	case openshell.DeletionCompleted:
+		return DeleteResult{Deleted: true, Outcome: "completed"}
+	case openshell.DeletionAlreadyAbsent:
+		return DeleteResult{Deleted: true, Outcome: "already_absent"}
+	case openshell.DeletionAccepted:
+		return DeleteResult{Deleted: false, Outcome: "accepted"}
+	default:
+		return DeleteResult{Deleted: false, Outcome: "unspecified"}
+	}
 }

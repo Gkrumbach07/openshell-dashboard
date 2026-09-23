@@ -215,7 +215,78 @@ make build      # docker image (multi-stage: frontend + Go binary)
 make test       # jest + go test
 make lint       # eslint + golangci-lint + prettier
 make typecheck  # tsc --noEmit
+make compat     # gateway compatibility suite (needs Docker; see below)
 ```
+
+## Gateway compatibility testing
+
+The BFF pins its SDK in `backend/go.mod`; the gateway is a separately released
+artifact. Those two drift silently — a gateway release can break the dashboard
+with no change on our side, which is exactly how the Sep 2026 SDK breaking
+changes reached `main` unnoticed.
+
+`backend/test/compat` is the guard: a Go suite that drives the BFF's REST API
+against a **real** gateway and asserts the contracts the frontend depends on —
+list endpoints returning arrays (not pagination envelopes), the delete outcome
+envelope, the policy enum spellings, and a full sandbox lifecycle.
+
+It is build-tagged `compat`, so `go test ./...` never picks it up.
+
+```bash
+make compat                              # against gateway:latest
+OPENSHELL_VERSION=0.0.116 make compat    # against a specific gateway release
+
+make compat-up && make compat-down       # manage the stack by hand
+```
+
+### The SDK and the gateway are wire-coupled
+
+Bumping `sdk/go` is not a local-only change. The Sep 2026 SDK renumbered
+`CreateSandboxRequest`'s protobuf fields — `workspace_scope` moved from field 8
+to field 7, where older gateways expect a string. Against an older gateway every
+workspace-scoped call then fails with:
+
+```
+workspace '\n\adefault' not found
+```
+
+That mangled name is the serialized `WorkspaceSelector` (`0A 07 "default"`)
+being read as a plain string. Always run `make compat` after an SDK bump.
+
+The gateway's **TOML config is versioned too**, and the schemas are mutually
+exclusive — `dev` requires v2, releases up to `0.0.116` require v1:
+
+| | v1 (≤ 0.0.116) | v2 (`dev`) |
+|---|---|---|
+| `version` | `1` | `2` |
+| compute driver | `compute_drivers = ["docker"]` | `compute_driver = "docker"` |
+| `image_pull_policy` | `"IfNotPresent"` | `"if_not_present"` |
+| `sandbox_namespace` | supported | removed |
+
+`OPENSHELL_CONFIG_SCHEMA` (`v1`\|`v2`, default `v2`) picks the template in
+`deploy/ci/gateway.e2e.*.toml.tmpl`.
+
+Two tag gotchas:
+
+- **`latest` is not the newest gateway.** It aliases the newest *release*
+  (`0.0.116`, built 2026-08-28). **`dev`** tracks upstream HEAD and is the only
+  tag that keeps pace with `sdk/go@latest`.
+- Gateway and supervisor share a tag and must match.
+
+CI runs `dev` as the **required** lane, because it is currently the only image
+whose proto matches the SDK we pin. The newest release (`0.0.116`) runs as an
+**advisory** lane: it fails by construction today, and acts as a canary — when
+upstream cuts a release containing the renumbered proto it goes green and a
+released gateway becomes supportable again.
+
+`OPENSHELL_VERSION` selects the gateway *and* supervisor tag — they are
+released together and must match. The community sandbox image publishes no
+semver tags, so it is pinned separately via `COMPAT_SANDBOX_IMAGE` and
+deliberately does not move with the gateway.
+
+> Local runs need a Docker-compatible socket at `/var/run/docker.sock`. Rootless
+> Podman on macOS does not satisfy the gateway's Docker driver out of the box —
+> override with `DOCKER_SOCK` and `OPENSHELL_STATE_DIR` if your setup differs.
 
 ## Container image
 

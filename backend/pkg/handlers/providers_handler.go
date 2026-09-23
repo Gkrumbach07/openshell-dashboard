@@ -73,7 +73,7 @@ func NewProvidersHandler(svc services.ProviderServiceInterface) *ProvidersHandle
 }
 
 func (h *ProvidersHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
-	providers, err := h.svc.List(r.Context(), r.PathValue("workspace"))
+	providers, err := h.svc.ListAll(r.Context(), r.PathValue("workspace"))
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
@@ -121,13 +121,13 @@ func (h *ProvidersHandler) GetProvider(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProvidersHandler) DeleteProvider(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.Context(), r.PathValue("workspace"), r.PathValue("name")); err != nil {
+	res, err := h.svc.Delete(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
+	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
 	}
-	// SDK Delete returns nil error only on successful deletion. If the provider
-	// doesn't exist, NotFound is returned (mapped to 404 by apiutils.WriteSDKError).
-	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+	// A missing provider is still NotFound (mapped to 404 by WriteSDKError).
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKDeletion(res))
 }
 
 func (h *ProvidersHandler) UpdateProvider(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +244,7 @@ func (h *ProvidersHandler) DeleteProviderRefresh(w http.ResponseWriter, r *http.
 		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidRequest, "credentialKey query parameter is required")
 		return
 	}
-	deleted, err := h.svc.Refresh().Delete(
+	res, err := h.svc.Refresh().Delete(
 		r.Context(),
 		r.PathValue("workspace"),
 		r.PathValue("name"),
@@ -254,13 +254,13 @@ func (h *ProvidersHandler) DeleteProviderRefresh(w http.ResponseWriter, r *http.
 		apiutils.WriteSDKError(w, err)
 		return
 	}
-	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKDeletion(res))
 }
 
 // ListProviderProfiles returns the provider type profiles whose credential
 // schemas drive the Add Provider form.
 func (h *ProvidersHandler) ListProviderProfiles(w http.ResponseWriter, r *http.Request) {
-	profiles, err := h.svc.Profiles().List(r.Context(), r.PathValue("workspace"))
+	profiles, err := h.svc.Profiles().ListAll(r.Context(), r.PathValue("workspace"))
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
@@ -386,12 +386,12 @@ func (h *ProvidersHandler) UpdateProviderProfile(w http.ResponseWriter, r *http.
 }
 
 func (h *ProvidersHandler) DeleteProviderProfile(w http.ResponseWriter, r *http.Request) {
-	deleted, err := h.svc.Profiles().Delete(r.Context(), r.PathValue("workspace"), r.PathValue("profileId"))
+	res, err := h.svc.Profiles().Delete(r.Context(), r.PathValue("workspace"), r.PathValue("profileId"))
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
 	}
-	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"deleted": deleted})
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKDeletion(res))
 }
 
 type LintProviderProfilesBody struct {

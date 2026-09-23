@@ -42,6 +42,19 @@ test-backend:
 test-frontend:
 	cd frontend && npm test -- --passWithNoTests
 
+OPENSHELL_VERSION ?= latest
+export OPENSHELL_VERSION
+
+.PHONY: compat compat-up compat-down
+compat: ## Gateway compat suite vs a real gateway (OPENSHELL_VERSION=0.0.116 make compat)
+	deploy/ci/e2e-stack.sh run
+
+compat-up: ## Bring up just the gateway stack (leaves it running)
+	deploy/ci/e2e-stack.sh up
+
+compat-down: ## Tear down the gateway stack
+	deploy/ci/e2e-stack.sh down
+
 lint: ## eslint + golangci-lint + prettier check
 	cd frontend && npm run lint
 	cd frontend && npm run format:check

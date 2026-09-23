@@ -33,7 +33,14 @@ export const getEnforcementLabel = (rule: NetworkPolicyRule): string => {
   const ep = rule.endpoints?.[0];
   if (!ep) return 'enforce';
   if (ep.advisorProposed) return 'advisor';
-  return ep.enforcement ?? 'enforce';
+  switch (ep.enforcement) {
+    case 'NETWORK_ENFORCEMENT_MODE_ENFORCE':
+      return 'enforce';
+    case 'NETWORK_ENFORCEMENT_MODE_AUDIT':
+      return 'audit';
+    default:
+      return ep.enforcement ?? 'enforce';
+  }
 };
 
 export const getEnforcementColor = (

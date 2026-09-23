@@ -57,7 +57,7 @@ func TestExecWithStdinForwardsRawBytesNoTTY(t *testing.T) {
 
 	// Binary payload with control bytes a PTY would corrupt.
 	payload := []byte("bin\x00\x04\x03\x11\x13data")
-	stdout, code, err := rc.ExecWithStdin(context.Background(), "sb-uuid", []string{"dd", "of=/x"}, payload)
+	stdout, code, err := rc.ExecWithStdin(context.Background(), "default", "sb", []string{"dd", "of=/x"}, payload)
 	if err != nil {
 		t.Fatalf("ExecWithStdin: %v", err)
 	}
@@ -73,8 +73,11 @@ func TestExecWithStdinForwardsRawBytesNoTTY(t *testing.T) {
 	if string(fake.gotReq.GetStdin()) != string(payload) {
 		t.Errorf("stdin = %q, want %q (exact bytes, unmangled)", fake.gotReq.GetStdin(), payload)
 	}
-	if fake.gotReq.GetSandboxId() != "sb-uuid" {
-		t.Errorf("sandboxId = %q, want sb-uuid", fake.gotReq.GetSandboxId())
+	if fake.gotReq.GetWorkspaceScope().GetWorkspace() != "default" {
+		t.Errorf("workspace = %q, want default", fake.gotReq.GetWorkspaceScope().GetWorkspace())
+	}
+	if fake.gotReq.GetSandbox() != "sb" {
+		t.Errorf("sandbox = %q, want sb", fake.gotReq.GetSandbox())
 	}
 	if got := fake.gotReq.GetCommand(); len(got) != 2 || got[0] != "dd" || got[1] != "of=/x" {
 		t.Errorf("command = %v", got)
@@ -83,7 +86,7 @@ func TestExecWithStdinForwardsRawBytesNoTTY(t *testing.T) {
 
 func TestExecWithStdinNonZeroExit(t *testing.T) {
 	rc := newTestRawExec(t, &fakeExecServer{exitCode: 1})
-	_, code, err := rc.ExecWithStdin(context.Background(), "sb", []string{"dd"}, []byte("x"))
+	_, code, err := rc.ExecWithStdin(context.Background(), "default", "sb", []string{"dd"}, []byte("x"))
 	if err != nil {
 		t.Fatalf("ExecWithStdin: %v", err)
 	}

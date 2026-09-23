@@ -25,7 +25,7 @@ func NewServicesHandler(svc services.ServiceServiceInterface) *ServicesHandler {
 }
 
 func (h *ServicesHandler) ListServices(w http.ResponseWriter, r *http.Request) {
-	serviceEndpoints, err := h.svc.List(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
+	serviceEndpoints, err := h.svc.ListAll(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
@@ -59,9 +59,10 @@ func (h *ServicesHandler) ExposeService(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.Context(), r.PathValue("workspace"), r.PathValue("name"), r.PathValue("svc")); err != nil {
+	res, err := h.svc.Delete(r.Context(), r.PathValue("workspace"), r.PathValue("name"), r.PathValue("svc"))
+	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
 	}
-	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKDeletion(res))
 }

@@ -1,29 +1,31 @@
-# Integration e2e stack: OpenShell gateway (Docker driver) + dashboard BFF.
-# Used by CI to run real e2e tests — actual sandbox creation, not mocked.
+# Compat stack: a real OpenShell gateway (Docker driver) for the Go compat
+# suite in backend/test/compat. Brought up by e2e-stack.sh, which pins the
+# image version and renders .rendered/gateway.toml — do not run compose
+# directly or the config bind will be missing.
 #
 # The gateway creates real Docker containers as sandboxes via DooD
 # (Docker-outside-of-Docker) through the mounted Docker socket.
 services:
   gateway:
-    image: ghcr.io/nvidia/openshell/gateway:latest
+    image: ${OPENSHELL_GATEWAY_IMAGE:-ghcr.io/nvidia/openshell/gateway:latest}
     command: []
     user: "0"
     ports:
       - "8080:8080"
       - "127.0.0.1:50052:8081"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
       - type: bind
-        source: /var/lib/openshell
+        source: ${OPENSHELL_STATE_DIR:-/var/lib/openshell}
         target: /var/lib/openshell
         bind:
           create_host_path: true
       - type: bind
-        source: ./gateway.e2e.toml
+        source: ./.rendered/gateway.toml
         target: /etc/openshell/gateway.toml
         read_only: true
       - type: bind
-        source: /var/lib/openshell/jwt
+        source: ${OPENSHELL_STATE_DIR:-/var/lib/openshell}/jwt
         target: /var/lib/openshell/jwt
         read_only: true
     extra_hosts:

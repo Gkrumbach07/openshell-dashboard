@@ -23,9 +23,9 @@ const fullPolicyJSON = `{
           "port": 443,
           "ports": [443, 8443],
           "protocol": "https",
-          "tls": "verify",
-          "enforcement": "enforce",
-          "access": "allow",
+          "tls": "NETWORK_TLS_MODE_SKIP",
+          "enforcement": "NETWORK_ENFORCEMENT_MODE_ENFORCE",
+          "access": "NETWORK_ACCESS_PRESET_READ_WRITE",
           "allowedIps": ["1.2.3.4", "5.6.7.8"],
           "allowEncodedSlash": true,
           "persistedQueries": "strict",
@@ -33,6 +33,8 @@ const fullPolicyJSON = `{
           "path": "/v1",
           "websocketCredentialRewrite": true,
           "requestBodyCredentialRewrite": true,
+          "allowUninspectedCredentials": true,
+          "providerCredentialed": true,
           "advisorProposed": true,
           "credentialSigning": "aws-sigv4",
           "signingService": "bedrock",
@@ -100,6 +102,8 @@ func TestSandboxPolicyRoundTripAdvancedFieldsSurvive(t *testing.T) {
 		{"L7 deny rules", len(ep.DenyRules) == 1 && ep.DenyRules[0].Method == "DELETE"},
 		{"mcp options", ep.Mcp != nil && ep.Mcp.StrictToolNames != nil && *ep.Mcp.StrictToolNames},
 		{"credentialBinding", ep.CredentialBinding != nil && ep.CredentialBinding.Provider == "claude-code"},
+		{"allowUninspectedCredentials", ep.AllowUninspectedCredentials},
+		{"providerCredentialed", ep.ProviderCredentialed},
 		{"jsonRpcMaxBodyBytes", ep.JSONRPCMaxBodyBytes == 65536},
 		{"graphqlPersistedQueries + graphqlMaxBodyBytes", ep.GraphqlMaxBodyBytes == 1048576},
 		{"networkMiddlewares", len(policy.NetworkMiddlewares) == 1},
@@ -112,7 +116,7 @@ func TestSandboxPolicyRoundTripAdvancedFieldsSurvive(t *testing.T) {
 }
 
 func TestNetworkPolicyRuleRoundTrip(t *testing.T) {
-	const ruleJSON = `{"name":"gh","endpoints":[{"host":"api.github.com","port":443,"protocol":"https","access":"allow","allowedIps":["140.82.0.0"],"denyRules":[{"method":"POST","path":"/graphql"}]}],"binaries":[{"path":"/usr/bin/gh"}]}`
+	const ruleJSON = `{"name":"gh","endpoints":[{"host":"api.github.com","port":443,"protocol":"https","access":"NETWORK_ACCESS_PRESET_READ_WRITE","allowedIps":["140.82.0.0"],"denyRules":[{"method":"POST","path":"/graphql"}]}],"binaries":[{"path":"/usr/bin/gh"}]}`
 	rule, err := ParseSDKNetworkPolicyRule([]byte(ruleJSON))
 	if err != nil {
 		t.Fatalf("ParseSDKNetworkPolicyRule: %v", err)

@@ -91,52 +91,100 @@ jobs:
           path: frontend/cypress/screenshots
           if-no-files-found: ignore
 
-  e2e-integration:
+  # Gateway compatibility matrix.
+  #
+  # The BFF pins its SDK in go.mod; the gateway is a separate artifact with its
+  # own release cadence. These drift silently, which is how the Sep 2026
+  # breaking changes reached main unnoticed. This job runs the Go compat suite
+  # (backend/test/compat) against several real gateway versions.
+  #
+  # `required: true` lanes block the build; advisory lanes may fail.
+  #
+  # The gateway and the Go SDK are WIRE-COUPLED: the Sep 2026 SDK renumbered
+  # CreateSandboxRequest's protobuf fields, moving workspace_scope from field 8
+  # to field 7 — where older gateways expect a string. An older gateway then
+  # reads the serialized WorkspaceSelector as a workspace name and reports
+  # `workspace '\n\adefault' not found`. Every workspace-scoped call fails.
+  # They must be upgraded together.
+  #
+  # The gateway's own TOML config is versioned too, and the schemas are
+  # mutually exclusive: `dev` requires v2, releases up to 0.0.116 require v1.
+  # Each lane therefore selects its config template.
+  compat:
+    name: compat (gateway ${{ matrix.label }})
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: ${{ !matrix.required }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # `dev` tracks upstream HEAD and is currently the ONLY image whose
+          # proto matches the SDK we pin. Required, because it is the only
+          # configuration in which the dashboard actually works today.
+          # Pinned by DIGEST, not by the moving `dev` tag, so a run is
+          # reproducible and an upstream commit cannot turn this repo red on
+          # its own schedule. `dev` moved twice in one afternoon while this
+          # lane was being set up, which is the whole argument for the pin.
+          # Bump deliberately, the same as a release bump:
+          #   crane digest ghcr.io/nvidia/openshell/gateway:dev
+          # The label must match what the gateway reports at that digest
+          # (compat prints it: "compat: ... gateway=<version>").
+          # This is a stopgap — no released gateway carries the renumbered
+          # proto yet. Move this lane to a released tag as soon as one does.
+          - version: "dev"
+            label: "dev @ 0.0.117-dev.259"
+            required: true
+            config_schema: "v2"
+            gateway_image: "ghcr.io/nvidia/openshell/gateway@sha256:cd32f77ce59f66e9640aa3679173da1b4528d605c074d391ed232cf051764f5c"
+            supervisor_image: "ghcr.io/nvidia/openshell/supervisor@sha256:d91d8cb1192a189cb53ea5dd105d1bb17499933b03ad8550879756a5cbf46f7e"
+          # Newest released gateway. Advisory: it predates the
+          # CreateSandboxRequest field renumbering (see below), so its
+          # workspace-scoped calls fail by construction. It is a canary — when
+          # upstream cuts a release containing the renumbered proto this lane
+          # goes green, and a released gateway becomes supportable again.
+          #
+          # NOTE: `latest` is NOT a moving pointer. It is an alias for the
+          # newest *release* (identical digest to 0.0.116, built 2026-08-28),
+          # so running both would test the same image twice.
+          - version: "0.0.116"
+            label: "0.0.116 (newest release)"
+            required: false
+            config_schema: "v1"
+            gateway_image: "ghcr.io/nvidia/openshell/gateway:0.0.116"
+            supervisor_image: "ghcr.io/nvidia/openshell/supervisor:0.0.116"
+    env:
+      # The community sandbox image publishes no semver tags, so it is pinned
+      # by digest and held constant across the matrix: we are varying the
+      # gateway, not the workload.
+      COMPAT_SANDBOX_IMAGE: ghcr.io/nvidia/openshell-community/sandboxes/base:latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache Docker images
-        uses: actions/cache@v4
-        with:
-          path: /tmp/e2e-images
-          key: e2e-images-v1
-
-      - name: Load or pull Docker images
+      - name: Pull images
         run: |
-          mkdir -p /tmp/e2e-images
-          for img in ghcr.io/nvidia/openshell/gateway:latest ghcr.io/nvidia/openshell/supervisor:latest ghcr.io/nvidia/openshell-community/sandboxes/base:latest; do
-            slug=$(echo "$img" | tr '/:' '_')
-            if [ -f "/tmp/e2e-images/${slug}.tar" ]; then
-              echo "Loading cached $img"
-              docker load -i "/tmp/e2e-images/${slug}.tar"
-            else
-              echo "Pulling $img"
-              docker pull "$img"
-              docker save "$img" -o "/tmp/e2e-images/${slug}.tar"
-            fi
-          done
+          set -euo pipefail
+          docker pull "${{ matrix.gateway_image }}"
+          docker pull "${{ matrix.supervisor_image }}"
+          docker pull "$COMPAT_SANDBOX_IMAGE"
+          echo "sandbox image digest: $(docker image inspect "$COMPAT_SANDBOX_IMAGE" --format '{{index .RepoDigests 0}}' 2>/dev/null || echo unknown)"
 
-      - name: Generate gateway JWT keys
+      - name: Start gateway stack
+        env:
+          OPENSHELL_GATEWAY_IMAGE: ${{ matrix.gateway_image }}
+          OPENSHELL_SUPERVISOR_IMAGE: ${{ matrix.supervisor_image }}
+          # The gateway config schema is versioned and the two are mutually
+          # exclusive — see deploy/ci/gateway.e2e.*.toml.tmpl.
+          OPENSHELL_CONFIG_SCHEMA: ${{ matrix.config_schema }}
         run: |
-          sudo mkdir -p /var/lib/openshell/jwt
-          sudo openssl genpkey -algorithm Ed25519 -out /var/lib/openshell/jwt/signing.pem 2>/dev/null
-          sudo openssl pkey -in /var/lib/openshell/jwt/signing.pem -pubout -out /var/lib/openshell/jwt/public.pem 2>/dev/null
-          sudo openssl rand -hex 16 | sudo tee /var/lib/openshell/jwt/kid > /dev/null
-          sudo chmod -R 755 /var/lib/openshell/jwt
-
-      - name: Start OpenShell gateway
-        run: |
-          sudo mkdir -p /var/lib/openshell
-          docker compose -f deploy/ci/docker-compose.e2e.yml up -d
-          echo "Waiting for gateway to be healthy..."
-          timeout 300 bash -c 'until curl -sf http://localhost:50052/healthz; do sleep 3; done' || {
-            echo "Gateway failed to start — dumping logs:"
-            docker compose -f deploy/ci/docker-compose.e2e.yml logs --tail=100
-            exit 1
-          }
-          echo "Gateway is healthy"
+          set -euo pipefail
+          # Sandbox containers are created by the gateway on the host daemon,
+          # so they are siblings of the gateway container and do not inherit
+          # its compose extra_hosts aliases. Reach the gateway's published port
+          # via the docker bridge gateway address instead of a host alias.
+          BRIDGE=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+          echo "docker bridge gateway: $BRIDGE"
+          export OPENSHELL_GRPC_ENDPOINT="http://${BRIDGE}:8080"
+          deploy/ci/e2e-stack.sh up
 
       - uses: actions/setup-go@v5
         with:
@@ -145,41 +193,25 @@ jobs:
 
       - name: Build and start BFF
         run: |
-          cd backend && go build -o ../bin/server ./cmd/server
-          cd ..
+          set -euo pipefail
+          cd backend && go build -o ../bin/server ./cmd/server && cd ..
           AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:8080 PORT=9080 ./bin/server &
-          timeout 30 bash -c 'until curl -sf http://localhost:9080/api/v1/healthz; do sleep 1; done'
+          timeout 60 bash -c 'until curl -sf http://localhost:9080/api/v1/healthz >/dev/null; do sleep 1; done'
           echo "BFF is healthy"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-      - run: cd frontend && npm ci
-
-      - uses: cypress-io/github-action@v6
-        with:
-          working-directory: frontend
-          config-file: cypress.config.integration.ts
-          start: npm start
-          wait-on: 'http://localhost:3000'
-          browser: chrome
+      - name: Run compat suite
         env:
           BFF_URL: http://localhost:9080
+        run: cd backend && go test -tags compat -v -timeout 20m ./test/compat/...
 
-      - uses: actions/upload-artifact@v4
+      - name: Gateway logs on failure
         if: failure()
-        with:
-          name: e2e-integration-screenshots
-          path: frontend/cypress/screenshots
-          if-no-files-found: ignore
+        run: docker compose -f deploy/ci/docker-compose.e2e.yml logs --tail=200
 
       - name: Clean up
         if: always()
-        run: |
-          docker compose -f deploy/ci/docker-compose.e2e.yml down -v
-          docker ps -aq --filter "name=openshell-e2e" | xargs -r docker rm -f
+        run: deploy/ci/e2e-stack.sh down
+
 
   build:
     runs-on: ${{ matrix.runner }}

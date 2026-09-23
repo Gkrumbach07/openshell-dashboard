@@ -1,4 +1,9 @@
-# Gateway config for CI e2e tests — Docker compute driver, no auth.
+# Gateway config template for the compat stack — schema VERSION 1.
+# For released gateways up to and including 0.0.116 (2026-08-28).
+# Gateways at upstream HEAD require the version 2 schema — see
+# gateway.e2e.v2.toml.tmpl. The two are mutually exclusive.
+# Rendered to .rendered/gateway.toml by e2e-stack.sh, which substitutes the
+# image placeholders below.
 [openshell]
 version = 1
 
@@ -18,8 +23,8 @@ public_key_path  = "/var/lib/openshell/jwt/public.pem"
 kid_path         = "/var/lib/openshell/jwt/kid"
 
 [openshell.drivers.docker]
-default_image     = "ghcr.io/nvidia/openshell-community/sandboxes/base:latest"
-supervisor_image  = "ghcr.io/nvidia/openshell/supervisor:latest"
+default_image     = "${COMPAT_SANDBOX_IMAGE}"
+supervisor_image  = "${OPENSHELL_SUPERVISOR_IMAGE}"
 image_pull_policy = "IfNotPresent"
 sandbox_namespace = "openshell-e2e"
-grpc_endpoint     = "http://host.openshell.internal:8080"
+grpc_endpoint     = "${OPENSHELL_GRPC_ENDPOINT}"

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	dm "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
 	pb "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -70,15 +71,18 @@ func NewRawExecClient(address, caFile, clientCert, clientKey string, useTLS bool
 // Close closes the underlying gRPC connection.
 func (r *RawExecClient) Close() error { return r.conn.Close() }
 
-// ExecWithStdin runs command in the sandbox (identified by UUID) with stdin
-// piped in and no TTY, returning merged stdout+stderr and the process exit
-// code. exitCode is -1 if the gateway sent no exit event.
-func (r *RawExecClient) ExecWithStdin(ctx context.Context, sandboxID string, command []string, stdin []byte) (string, int, error) {
+// ExecWithStdin runs command in the named workspace sandbox with stdin piped
+// in and no TTY, returning merged stdout+stderr and the process exit code.
+// exitCode is -1 if the gateway sent no exit event.
+func (r *RawExecClient) ExecWithStdin(ctx context.Context, workspace, sandboxName string, command []string, stdin []byte) (string, int, error) {
 	stream, err := r.client.ExecSandbox(ctx, &pb.ExecSandboxRequest{
-		SandboxId: sandboxID,
-		Command:   command,
-		Stdin:     stdin,
-		Tty:       false,
+		WorkspaceScope: &dm.WorkspaceSelector{
+			Selection: &dm.WorkspaceSelector_Workspace{Workspace: workspace},
+		},
+		Sandbox: sandboxName,
+		Command: command,
+		Stdin:   stdin,
+		Tty:     false,
 	})
 	if err != nil {
 		return "", 0, err
