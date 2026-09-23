@@ -53,8 +53,10 @@ func (h *SandboxHandler) ListSandboxes(w http.ResponseWriter, r *http.Request)
 ```
 
 URL params via `r.PathValue("workspace")`. chi populates these through
-`SetPathValue` on every matched route, so handlers do not import chi. This
-makes chi >= v5.1 a hard floor — do not downgrade it.
+`SetPathValue` on every matched route (`mux.go`, `routeHTTP`), so handlers do
+not import chi. chi added that call in **v5.2.4** — on anything older every
+`r.PathValue` silently returns `""`, so treat v5.2.4 as a hard floor and never
+downgrade `github.com/go-chi/chi/v5` below it.
 
 ## Gateway client
 
