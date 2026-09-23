@@ -192,14 +192,21 @@ jobs:
 
   report:
     needs: [discover, sweep]
-    if: always() && needs.discover.outputs.count != '0'
+    # Runs even when nothing was swept: an already-open issue still needs
+    # refreshing so a stale "bump available" does not linger after the bump.
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
+        # No artifacts is a legitimate state (nothing newer released).
+        continue-on-error: true
         with:
           pattern: sweep-result-*
           path: /tmp/results
           merge-multiple: true
+
+      - name: Ensure results dir exists
+        run: mkdir -p /tmp/results
 
       - name: Render report
         env:
@@ -210,43 +217,83 @@ jobs:
           python3 - <<'PY'
           import json, glob, os
 
+          FLOOR = os.environ["FLOOR"]
+          RUN_URL = os.environ["RUN_URL"]
+
           rows = [json.load(open(f)) for f in sorted(glob.glob("/tmp/results/*.json"))]
           rows.sort(key=lambda r: tuple(int(x) for x in r["version"].split(".")), reverse=True)
+
           passing = [r for r in rows if r["outcome"] == "success"]
-          label = {"success": "pass", "failure": "fail", "skipped": "stack did not start"}
+          failing = [r for r in rows if r["outcome"] != "success"]
+          label = {"success": "compatible", "failure": "NOT compatible", "skipped": "stack did not start"}
+
+          # State machine. `newer` = released gateways above the current pin.
+          #   ALL_PASS  -> bump to the newest; nothing to chase
+          #   ALL_FAIL  -> blocked: upstream moved somewhere we cannot follow yet
+          #   MIXED     -> bump to the highest that passes, AND keep tracking the rest
+          #   NONE      -> nothing released above the pin
+          if not rows:
+              state = "NONE"
+          elif not failing:
+              state = "ALL_PASS"
+          elif not passing:
+              state = "ALL_FAIL"
+          else:
+              state = "MIXED"
+
+          target = passing[0] if passing else None
 
           out = ["<!-- compat-sweep-singleton -->",
-                 "Maintained by `.github/workflows/compat-sweep.yml` (ADR 0005).",
-                 "This issue is a singleton: it is rewritten on each run while open.",
-                 "**Close it once the bump has landed** — the next sweep with a new",
-                 "result will open a fresh one.", ""]
+                 "Maintained by `.github/workflows/compat-sweep.yml` ([ADR 0005](docs/adrs/0005-gateway-version-compatibility.md)).",
+                 "Rewritten in place on each run. **Close it when there is nothing left to chase** —",
+                 "the next sweep with a result opens a fresh one.", "",
+                 f"Currently pinned: **`{FLOOR}`**", ""]
 
-          if passing:
-              best = passing[0]
-              out += [f"### A newer gateway passes: `{best['version']}`", "",
-                      "The supported range can move. Per ADR 0005 the SDK pin, the gateway",
-                      "pins and the declared range move together in **one** PR:", "",
-                      "```bash",
-                      f"cd backend && go get github.com/NVIDIA/OpenShell/sdk/go@{best['sdk']}",
-                      "```", "",
-                      "Then update the `compat` matrix in `.github/workflows/ci.yml`:",
-                      f"gateway `{best['version']}`, and the config schema its build expects.", ""]
+          if state == "ALL_FAIL":
+              out += ["## Blocked — no released gateway above the pin works", "",
+                      "Every release newer than the pin fails the compat suite. This is not a",
+                      "bump we can take: it needs migration work, or upstream needs a fix.",
+                      "Until it is resolved the supported range cannot move.", ""]
+          elif state == "MIXED":
+              out += [f"## Bump available to `{target['version']}` — but newer releases still fail", "",
+                      f"`{target['version']}` passes, so the pin can move there now. The failures",
+                      "below are still outstanding and this issue stays open to track them.", ""]
+          elif state == "ALL_PASS":
+              out += [f"## Bump available to `{target['version']}`", "",
+                      "Every release above the pin passes.", ""]
           else:
-              out += [f"### Nothing newer than the floor (`{os.environ['FLOOR']}`) passes",
-                      "", "The declared range stays where it is. No action needed.", ""]
+              out += ["## Nothing released above the pin", "", "No action needed.", ""]
+
+          if target:
+              out += ["Per ADR 0005 the SDK pin, the gateway pins and the declared range move",
+                      "together in **one** PR:", "", "```bash",
+                      f"cd backend && go get github.com/NVIDIA/OpenShell/sdk/go@{target['sdk']}",
+                      "```", "",
+                      f"…and set the `compat` matrix in `.github/workflows/ci.yml` to gateway "
+                      f"`{target['version']}`.", ""]
 
           out += ["| Gateway | Result | SDK commit |", "|---|---|---|"]
           for r in rows:
               out.append(f"| `{r['version']}` | {label.get(r['outcome'], r['outcome'])} | `{r['sdk'][:12]}` |")
-          out += ["", f"[Sweep run]({os.environ['RUN_URL']})"]
+          out += ["", f"[Sweep run]({RUN_URL})"]
 
           open("/tmp/body.md", "w").write("\n".join(out) + "\n")
 
-          title = (f"Gateway compatibility: {passing[0]['version']} passes — SDK bump available"
-                   if passing else "Gateway compatibility: no newer release passes")
+          title = {
+              "ALL_FAIL": "Gateway compat: BLOCKED — no newer release works",
+              "MIXED":    f"Gateway compat: bump to {target['version']} available; newer releases fail" if target else "",
+              "ALL_PASS": f"Gateway compat: bump available to {target['version']}" if target else "",
+              "NONE":     "Gateway compat: nothing newer released",
+          }[state]
+
+          # Post whenever there is anything at all to say. Only NONE is silent, and even
+          # then an already-open issue is updated so it does not go stale.
           with open(os.environ["GITHUB_ENV"], "a") as fh:
               fh.write(f"SWEEP_TITLE={title}\n")
-              fh.write(f"SWEEP_ACTIONABLE={'1' if passing else '0'}\n")
+              fh.write(f"SWEEP_STATE={state}\n")
+              fh.write(f"SWEEP_POST={'0' if state == 'NONE' else '1'}\n")
+              fh.write(f"SWEEP_TARGET={target['version'] if target else ''}\n")
+
           PY
           cat /tmp/body.md >> "$GITHUB_STEP_SUMMARY"
 
@@ -255,10 +302,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Keyed by label rather than title, so a human retitling the issue
-          # does not cause the next run to open a duplicate. Scoped to OPEN
-          # issues: closing one means "handled", and the next run with a
-          # result opens a fresh one.
+          # Keyed by label rather than title, so retitling does not spawn a
+          # duplicate. Scoped to OPEN issues: closing one means "handled", and
+          # the next sweep with a result opens a fresh one.
           gh label create compat-sweep --color 1d76db \
             --description "Automated gateway compatibility sweep" --force >/dev/null 2>&1 || true
 
@@ -266,21 +312,13 @@ jobs:
                   --json number --jq '.[0].number // empty')
 
           if [ -n "$num" ]; then
+            # Always refresh an open issue, even in the NONE state, so a stale
+            # "bump available" does not linger after the bump has landed.
             gh issue edit "$num" --title "$SWEEP_TITLE" --body-file /tmp/body.md
-            echo "updated singleton issue #$num"
-          elif [ "$SWEEP_ACTIONABLE" = "1" ]; then
+            echo "updated singleton issue #$num ($SWEEP_STATE)"
+          elif [ "$SWEEP_POST" = "1" ]; then
             gh issue create --label compat-sweep --title "$SWEEP_TITLE" --body-file /tmp/body.md
-            echo "opened a new singleton issue"
+            echo "opened singleton issue ($SWEEP_STATE)"
           else
-            # Nothing actionable and nothing open — do not create noise.
-            echo "no newer release passes and no open sweep issue; nothing posted"
+            echo "nothing released above the pin and no open issue; nothing posted"
           fi
-
-  none:
-    needs: discover
-    if: needs.discover.outputs.count == '0'
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "No published gateway release newer than the sweep floor." >> "$GITHUB_STEP_SUMMARY"
-          echo "Nothing to sweep — the declared range is already at the newest release." >> "$GITHUB_STEP_SUMMARY"

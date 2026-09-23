@@ -90,6 +90,14 @@ green is the trigger to promote a released tag to the floor.
 while this lane was being set up. A digest makes a run reproducible and makes
 bumping a deliberate act.
 
+**Failures are reported, not just opportunities.** The sweep's most valuable
+output is not "you can move forward" but "upstream moved somewhere we cannot
+follow". It reports four states: every newer release passes (bump to the
+newest), every one fails (blocked — migration work needed), a mix (bump to the
+highest that passes and keep tracking the rest), and nothing newer released.
+Only the last is silent, and even then an already-open issue is refreshed so it
+cannot go stale.
+
 **The sweep reports to a singleton issue, not just to CI.** A weekly cron whose
 output lands only in the Actions tab does not get read — that is the same
 failure mode as the `continue-on-error` job this work replaced. The sweep

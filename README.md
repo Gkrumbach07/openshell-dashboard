@@ -301,11 +301,20 @@ Because a sweep crosses the v1/v2 config boundary, it runs with
 gateway rejects the config.
 
 Results go to a **singleton tracking issue** labelled `compat-sweep`, rewritten
-in place on each run rather than opening a new issue weekly. It carries the
-per-version table and the exact `go get` for the bump. The singleton is scoped
-to *open* issues: **close it once the bump has landed**, and the next sweep with
-an actionable result opens a fresh one. When nothing newer passes and no issue
-is open, the sweep posts nothing rather than creating noise.
+in place on each run rather than opening a new issue weekly. It reports four
+states:
+
+| Newer releases | Issue says |
+|---|---|
+| all compatible | bump available to the newest |
+| all incompatible | **blocked** — needs migration work or an upstream fix |
+| mixed | bump to the highest that passes, *and* keep tracking the failures |
+| none released | nothing to do |
+
+A failure is the most important result, so only the last state is silent — and
+even then an already-open issue is refreshed so a stale "bump available" cannot
+linger. The singleton is scoped to *open* issues: **close it when there is
+nothing left to chase**, and the next sweep with a result opens a fresh one.
 
 `OPENSHELL_VERSION` selects the gateway *and* supervisor tag — they are
 released together and must match. The community sandbox image publishes no
