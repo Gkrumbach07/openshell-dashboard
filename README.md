@@ -300,6 +300,13 @@ Because a sweep crosses the v1/v2 config boundary, it runs with
 `OPENSHELL_CONFIG_SCHEMA=auto`, which tries v2 and falls back to v1 when the
 gateway rejects the config.
 
+Results go to a **singleton tracking issue** labelled `compat-sweep`, rewritten
+in place on each run rather than opening a new issue weekly. It carries the
+per-version table and the exact `go get` for the bump. The singleton is scoped
+to *open* issues: **close it once the bump has landed**, and the next sweep with
+an actionable result opens a fresh one. When nothing newer passes and no issue
+is open, the sweep posts nothing rather than creating noise.
+
 `OPENSHELL_VERSION` selects the gateway *and* supervisor tag — they are
 released together and must match. The community sandbox image publishes no
 semver tags, so it is pinned separately via `COMPAT_SANDBOX_IMAGE` and

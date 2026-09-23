@@ -90,6 +90,14 @@ green is the trigger to promote a released tag to the floor.
 while this lane was being set up. A digest makes a run reproducible and makes
 bumping a deliberate act.
 
+**The sweep reports to a singleton issue, not just to CI.** A weekly cron whose
+output lands only in the Actions tab does not get read — that is the same
+failure mode as the `continue-on-error` job this work replaced. The sweep
+maintains one issue labelled `compat-sweep`, rewritten in place, carrying the
+per-version table and the exact `go get` for the bump. It is scoped to open
+issues, so closing it is the acknowledgement that the bump landed and the next
+actionable result opens a fresh one.
+
 **The sweep can cross a config-schema boundary.** `e2e-stack.sh` therefore
 supports `OPENSHELL_CONFIG_SCHEMA=auto`, which tries v2 and falls back to v1
 when the gateway rejects the config version. Without it a sweep stops dead at

@@ -29,6 +29,9 @@ on:
 
 permissions:
   contents: read
+  # The sweep maintains a single tracking issue. A weekly cron whose output
+  # only lands in the Actions tab does not get read.
+  issues: write
 
 jobs:
   discover:
@@ -152,9 +155,32 @@ jobs:
           curl -sf http://localhost:9080/api/v1/healthz >/dev/null
 
       - name: Run compat suite
+        id: compat
+        continue-on-error: true
         env:
           BFF_URL: http://localhost:9080
         run: cd backend && go test -tags compat -timeout 20m ./test/compat/...
+
+      # Matrix job outputs overwrite each other in GitHub Actions, so each leg
+      # records its own result as an artifact for the report job to collect.
+      # outcome is skipped when the stack never came up, which is a result too.
+      - name: Record result
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sweep
+          printf '{"version":"%s","sdk":"%s","outcome":"%s"}\n' \
+            '${{ matrix.target.version }}' \
+            '${{ matrix.target.sha }}' \
+            '${{ steps.compat.outcome }}' > '/tmp/sweep/${{ matrix.target.version }}.json'
+          cat '/tmp/sweep/${{ matrix.target.version }}.json'
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sweep-result-${{ matrix.target.version }}
+          path: /tmp/sweep/*.json
+          retention-days: 7
 
       - name: Gateway logs on failure
         if: failure()
@@ -169,22 +195,86 @@ jobs:
     if: always() && needs.discover.outputs.count != '0'
     runs-on: ubuntu-latest
     steps:
-      - name: Summarize
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sweep-result-*
+          path: /tmp/results
+          merge-multiple: true
+
+      - name: Render report
         env:
-          VERSIONS: ${{ needs.discover.outputs.versions }}
-          SWEEP: ${{ needs.sweep.result }}
+          FLOOR: ${{ inputs.since || '0.0.116' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          {
-            echo "## Compat sweep"
-            echo
-            echo "Swept: \`$(echo "$VERSIONS" | python3 -c 'import json,sys;print(", ".join(r["version"] for r in json.load(sys.stdin)))')\`"
-            echo
-            echo "Per-version results are the \`sweep\` matrix jobs above — a green"
-            echo "row newer than the current floor means the range can move."
-            echo
-            echo "To adopt one, per ADR 0005 the SDK pin, the gateway pins and the"
-            echo "declared range move together in a single PR."
-          } >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, glob, os
+
+          rows = [json.load(open(f)) for f in sorted(glob.glob("/tmp/results/*.json"))]
+          rows.sort(key=lambda r: tuple(int(x) for x in r["version"].split(".")), reverse=True)
+          passing = [r for r in rows if r["outcome"] == "success"]
+          label = {"success": "pass", "failure": "fail", "skipped": "stack did not start"}
+
+          out = ["<!-- compat-sweep-singleton -->",
+                 "Maintained by `.github/workflows/compat-sweep.yml` (ADR 0005).",
+                 "This issue is a singleton: it is rewritten on each run while open.",
+                 "**Close it once the bump has landed** — the next sweep with a new",
+                 "result will open a fresh one.", ""]
+
+          if passing:
+              best = passing[0]
+              out += [f"### A newer gateway passes: `{best['version']}`", "",
+                      "The supported range can move. Per ADR 0005 the SDK pin, the gateway",
+                      "pins and the declared range move together in **one** PR:", "",
+                      "```bash",
+                      f"cd backend && go get github.com/NVIDIA/OpenShell/sdk/go@{best['sdk']}",
+                      "```", "",
+                      "Then update the `compat` matrix in `.github/workflows/ci.yml`:",
+                      f"gateway `{best['version']}`, and the config schema its build expects.", ""]
+          else:
+              out += [f"### Nothing newer than the floor (`{os.environ['FLOOR']}`) passes",
+                      "", "The declared range stays where it is. No action needed.", ""]
+
+          out += ["| Gateway | Result | SDK commit |", "|---|---|---|"]
+          for r in rows:
+              out.append(f"| `{r['version']}` | {label.get(r['outcome'], r['outcome'])} | `{r['sdk'][:12]}` |")
+          out += ["", f"[Sweep run]({os.environ['RUN_URL']})"]
+
+          open("/tmp/body.md", "w").write("\n".join(out) + "\n")
+
+          title = (f"Gateway compatibility: {passing[0]['version']} passes — SDK bump available"
+                   if passing else "Gateway compatibility: no newer release passes")
+          with open(os.environ["GITHUB_ENV"], "a") as fh:
+              fh.write(f"SWEEP_TITLE={title}\n")
+              fh.write(f"SWEEP_ACTIONABLE={'1' if passing else '0'}\n")
+          PY
+          cat /tmp/body.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update the singleton issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Keyed by label rather than title, so a human retitling the issue
+          # does not cause the next run to open a duplicate. Scoped to OPEN
+          # issues: closing one means "handled", and the next run with a
+          # result opens a fresh one.
+          gh label create compat-sweep --color 1d76db \
+            --description "Automated gateway compatibility sweep" --force >/dev/null 2>&1 || true
+
+          num=$(gh issue list --label compat-sweep --state open \
+                  --json number --jq '.[0].number // empty')
+
+          if [ -n "$num" ]; then
+            gh issue edit "$num" --title "$SWEEP_TITLE" --body-file /tmp/body.md
+            echo "updated singleton issue #$num"
+          elif [ "$SWEEP_ACTIONABLE" = "1" ]; then
+            gh issue create --label compat-sweep --title "$SWEEP_TITLE" --body-file /tmp/body.md
+            echo "opened a new singleton issue"
+          else
+            # Nothing actionable and nothing open — do not create noise.
+            echo "no newer release passes and no open sweep issue; nothing posted"
+          fi
 
   none:
     needs: discover
