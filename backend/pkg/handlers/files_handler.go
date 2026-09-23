@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/apiutils"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
 

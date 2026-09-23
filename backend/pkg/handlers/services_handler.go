@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/apiutils"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )

@@ -33,10 +33,8 @@ build-frontend:
 build-backend:
 	cd backend && go build -o bin/server ./cmd/server
 
-.PHONY: test
-test: ## Frontend unit tests + go tests
-	test-backend
-	test-frontend
+.PHONY: test test-backend test-frontend
+test: test-backend test-frontend ## Frontend unit tests + go tests
 
 test-backend:
 	cd backend && go test ./...

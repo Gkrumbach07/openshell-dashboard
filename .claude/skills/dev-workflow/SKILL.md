@@ -18,7 +18,7 @@ description: Full development workflow for OpenShell Dashboard. Implements the c
 
 - Follow rules in `.claude/rules/` (react.md, bff-go.md, openshell-api.md, security.md)
 - Page components must be self-contained and exportable (no dashboard-specific wrappers)
-- BFF handlers call the vendored Go SDK through `app.sdk`; the only approved low-level exception is `internal/sdkclient/rawexec.go` for binary-safe uploads
+- BFF handlers reach the vendored Go SDK through an injected `pkg/services` interface (`h.svc`), never a raw client; the only approved low-level exception is `pkg/clients/rawexec.go` for binary-safe uploads
 
 ## Verify
 

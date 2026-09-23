@@ -8,40 +8,53 @@ alwaysApply: false
 
 ## Directory structure
 
+Everything the BFF exposes lives under `pkg/` so downstream consumers can
+import it. There is no `backend/internal/` tree.
+
 ```
 backend/
 ├── cmd/server/main.go        # Entry point, flag parsing, server setup
-├── internal/
-│   ├── api/                   # HTTP handlers and routing
-│   │   ├── app.go             # App struct, NewApp(), Routes()
-│   │   ├── respond.go         # writeJSON, writeError, writeSDKError, decodeBody, validDNS1123
-│   │   ├── *_handler.go       # Per-resource handlers (sandboxes, workspaces, providers, etc.)
+├── pkg/
+│   ├── server/                # App wiring and routing
+│   │   └── app.go             # App struct, NewApp(), Routes()
+│   ├── handlers/              # HTTP handlers, one struct per resource
+│   │   ├── *_handler.go       # SandboxHandler, WorkspacesHandler, ...
 │   │   ├── *_handler_test.go  # Table-driven handler tests
 │   │   └── mock_sdk_test.go   # SDK test doubles
+│   ├── services/              # Thin interfaces over the SDK — the extension seam
+│   │   ├── sandbox.go         # SandboxServiceInterface, NewSandboxService
+│   │   └── ...                # One file per resource
+│   ├── apiutils/              # Shared HTTP helpers
+│   │   └── respond.go         # WriteJSON, WriteError, WriteSDKError, DecodeBody,
+│   │                          # ValidDNS1123, ResponseCode constants
 │   ├── auth/                  # Proxy-delegated auth middleware
 │   │   └── proxy.go           # Token extraction from headers
+│   ├── clients/               # Narrow SDK escape hatches
+│   │   ├── auth.go            # Per-request bearer forwarding
+│   │   └── rawexec.go         # Non-TTY stdin exec for binary uploads
 │   └── models/                # Response DTOs and request builders
 │       ├── models.go          # DTOs shared with the frontend
+│       ├── auth.go            # AuthConfigResponse, FeatureFlags
 │       ├── builders.go        # Request structs and lightweight builders
 │       ├── sdk_converters.go  # SDK <-> frontend JSON conversion
 │       ├── policyproto.go     # SDK policy <-> vendored proto bridge
 │       └── observability.go   # Observability/metrics helpers
-│   └── sdkclient/             # Narrow SDK escape hatches
-│       ├── auth.go            # Per-request bearer forwarding
-│       └── rawexec.go         # Non-TTY stdin exec for binary uploads
 ├── go.mod
 └── go.sum
 ```
 
 ## Router
 
-Use `go-chi/chi` for routing. Handler signature (no `Handler` suffix):
+Routes are declared in `pkg/server/app.go` with `go-chi/chi` and dispatch to a
+handler struct. Method names carry no `Handler` suffix — the struct does:
 
 ```go
-func (app *App) ListSandboxes(w http.ResponseWriter, r *http.Request)
+func (h *SandboxHandler) ListSandboxes(w http.ResponseWriter, r *http.Request)
 ```
 
-URL params via `chi.URLParam(r, "workspace")`.
+URL params via `r.PathValue("workspace")`. chi populates these through
+`SetPathValue` on every matched route, so handlers do not import chi. This
+makes chi >= v5.1 a hard floor — do not downgrade it.
 
 ## Gateway client
 
@@ -51,11 +64,13 @@ The vendored Go SDK is the source of truth:
 import openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 ```
 
-Handlers receive `openshell.ClientInterface` as `app.sdk` and call SDK sub-clients
-directly (`Sandboxes()`, `Workspaces()`, `Providers()`, `Exec()`, `Inference()`,
-`Policy()`, `Services()`, ...).
+Handlers never hold `openshell.ClientInterface` directly. `NewApp` resolves the
+SDK sub-clients once (`Sandboxes()`, `Workspaces()`, `Providers()`, `Exec()`,
+`Policy()`, `Services()`, ...), wraps each in a `pkg/services` type, and injects
+that interface into the handler as `h.svc`. Downstream can substitute its own
+implementation of any `services.*Interface` without forking the handler.
 
-The one intentional exception is `internal/sdkclient/rawexec.go`: it uses the
+The one intentional exception is `pkg/clients/rawexec.go`: it uses the
 SDK's generated proto client for binary-safe uploads because the public exec API
 still lacks a non-TTY stdin path. Do not add new local wrappers, copied protos,
 or generated stub trees unless there is a concrete upstream SDK gap you can
@@ -63,25 +78,25 @@ point to.
 
 ## Handlers
 
-Handlers use package-level helpers from `respond.go`:
+Handlers use the exported helpers from `pkg/apiutils`:
 
 ```go
-func (app *App) GetSandbox(w http.ResponseWriter, r *http.Request) {
-    sandbox, err := app.sdk.Sandboxes().Get(r.Context(), workspace, name)
+func (h *SandboxHandler) GetSandbox(w http.ResponseWriter, r *http.Request) {
+    sandbox, err := h.svc.Get(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
     if err != nil {
-        writeSDKError(w, err)
+        apiutils.WriteSDKError(w, err)
         return
     }
-    writeJSON(w, http.StatusOK, models.FromSDKSandbox(sandbox))
+    apiutils.WriteJSON(w, http.StatusOK, models.FromSDKSandbox(sandbox))
 }
 ```
 
 Key patterns:
-- `decodeBody(w, r, &dst)` — handles MaxBytesReader, DisallowUnknownFields, writes error response on failure, returns false
-- `writeJSON(w, statusCode, payload)` — marshals and writes
-- `writeError(w, statusCode, code, message)` — writes ErrorResponse envelope
-- `writeSDKError(w, err)` — maps SDK and fallback gRPC status errors to HTTP status codes
-- `validDNS1123(name)` — validates resource names
+- `apiutils.DecodeBody(w, r, &dst)` — handles MaxBytesReader, DisallowUnknownFields, writes error response on failure, returns false
+- `apiutils.WriteJSON(w, statusCode, payload)` — marshals and writes
+- `apiutils.WriteError(w, statusCode, code, message)` — writes ErrorResponse envelope; `code` is an `apiutils.ResponseCode` constant, never a bare string. Add a new constant rather than inlining a literal.
+- `apiutils.WriteSDKError(w, err)` — maps SDK and fallback gRPC status errors to HTTP status codes
+- `apiutils.ValidDNS1123(name)` — validates resource names
 - Convert SDK responses through `models.FromSDK*()` helpers or explicit DTO assembly before serializing to JSON
 - For policy JSON, preserve the existing protojson contract through `models.ParseSDKPolicy` / `marshalSDKPolicy`; do not hand-roll `map[string]any` policy parsing
 
@@ -89,13 +104,13 @@ Key patterns:
 
 Relay-only (ADR 0002): the BFF never terminates authentication. A fronting proxy (oauth2-proxy standalone, the host platform's proxy when embedded) owns login/sessions/refresh/CSRF and injects the bearer.
 
-Bearer resolution is one precedence chain in `auth/proxy.go`, identical everywhere:
+Bearer resolution is one precedence chain in `pkg/auth/proxy.go`, identical everywhere:
 
 1. `x-forwarded-access-token` header (injected by the fronting proxy)
 2. `Authorization: Bearer` header (API clients)
 3. No bearer → 401
 
-The token lands in request context; `sdkclient.ContextAuthProvider` forwards it
+The token lands in request context; `clients.ContextAuthProvider` forwards it
 on every SDK/gRPC call as `authorization: Bearer` metadata. Gateway enforces
 RBAC (admin/user roles) and workspace membership — the BFF never does.
 
@@ -133,10 +148,13 @@ Standard error envelope:
 
 ```go
 type ErrorResponse struct {
-    Code    string `json:"code"`
-    Message string `json:"message"`
+    Code    ResponseCode `json:"code"`
+    Message string       `json:"message"`
 }
 ```
+
+`ResponseCode` is a string enum in `pkg/apiutils/respond.go`. Every code the BFF
+can return is declared there so the frontend has one authoritative list.
 
 ## Testing
 
@@ -154,7 +172,7 @@ go get github.com/NVIDIA/OpenShell/sdk/go@latest
 
 There is no local proto regeneration flow anymore. If you need to inspect an
 RPC or type shape, read the vendored SDK package (`openshell/v1`, `types/*`) or
-use `go doc`. `internal/models/policyproto.go` intentionally uses the SDK's
+use `go doc`. `pkg/models/policyproto.go` intentionally uses the SDK's
 vendored `proto/sandboxv1` package only to preserve the frontend's protojson
 policy contract; do not reintroduce `backend/proto/`, `backend/gen/`, or an
-`internal/gateway/` wrapper layer.
+`backend/internal/` wrapper layer.

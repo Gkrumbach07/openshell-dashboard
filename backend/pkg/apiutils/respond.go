@@ -1,4 +1,5 @@
-// Package http holds http helper functions
+// Package apiutils holds the shared HTTP helpers (JSON/error responses,
+// body decoding, name validation) used by every BFF handler.
 package apiutils
 
 import (
@@ -43,6 +44,7 @@ const (
 	InvalidSubject     ResponseCode = "invalid_subject"
 	InvalidRole        ResponseCode = "invalid_role"
 	InvalidPolicy      ResponseCode = "invalid_policy"
+	InvalidRule        ResponseCode = "invalid_rule"
 	InvalidStrategy    ResponseCode = "invalid_strategy"
 	InvalidProfile     ResponseCode = "invalid_profile"
 	MissingFile        ResponseCode = "missing_file"

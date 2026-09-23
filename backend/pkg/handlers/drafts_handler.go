@@ -8,7 +8,7 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
-	"github.com/Gkrumbach07/openshell-dashboard/backend/internal/apiutils"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/apiutils"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
@@ -172,13 +172,13 @@ func (h *DraftsHandler) EditDraftChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(body.ProposedRule) == 0 {
-		apiutils.WriteError(w, http.StatusBadRequest, "invalid_rule", "proposedRule is required")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidRule, "proposedRule is required")
 		return
 	}
 	rule, err := models.ParseSDKNetworkPolicyRule(body.ProposedRule)
 	if err != nil {
 		slog.Error("invalid network policy rule", "error", err)
-		apiutils.WriteError(w, http.StatusBadRequest, "invalid_rule", "proposedRule does not match NetworkPolicyRule schema: "+err.Error())
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidRule, "proposedRule does not match NetworkPolicyRule schema: "+err.Error())
 		return
 	}
 	if err := h.svc.EditDraftChunk(r.Context(), r.PathValue("workspace"), r.PathValue("name"), r.PathValue("chunk"), rule); err != nil {
