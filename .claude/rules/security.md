@@ -12,7 +12,7 @@ alwaysApply: false
 - Bearer resolution is one precedence chain — `x-forwarded-access-token` → `Authorization: Bearer` → 401. No cookies, no session codec, no OIDC endpoints in the BFF
 - The BFF NEVER validates tokens (no JWKS, no go-oidc, no JWT parsing) and NEVER authorizes (ADR 0002). The gateway validates against its own OIDC JWKS and enforces RBAC
 - Deployment invariant: trusting `x-forwarded-access-token` is safe only when the proxy is the sole network path to the BFF (localhost sidecar, pod-internal port, proxy-only ingress). Manifests must enforce this; never expose the BFF port directly in an authenticated deployment
-- Never expose raw gateway errors to the frontend — use `writeSDKError()` which maps SDK and fallback gRPC status codes to safe HTTP status codes
+- Never expose raw gateway errors to the frontend — use `apiutils.WriteSDKError()` which maps SDK and fallback gRPC status codes to safe HTTP status codes
 - The BFF has no CORS middleware — it is accessed same-origin (behind a proxy or via the Vite dev server proxy)
 
 ## Secrets
@@ -25,10 +25,10 @@ alwaysApply: false
 ## Input validation
 
 - Validate all user input at the BFF layer before forwarding to the gateway
-- Sandbox names: DNS-1123 label format (`validDNS1123()` in `respond.go`)
+- Sandbox names: DNS-1123 label format (`apiutils.ValidDNS1123()` in `pkg/apiutils/respond.go`)
 - Workspace names: DNS-1123 label format
 - Policy JSON: validate structure via `models.ParseSDKPolicy()` before sending to the gateway
-- Request bodies: use `decodeBody()` which enforces `MaxBytesReader` and `DisallowUnknownFields`
+- Request bodies: use `apiutils.DecodeBody()` which enforces `MaxBytesReader` and `DisallowUnknownFields`
 
 ## No inline credentials
 

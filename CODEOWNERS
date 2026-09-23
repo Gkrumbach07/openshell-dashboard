@@ -8,6 +8,6 @@
 docs/adrs/ @Gkrumbach07
 
 # Auth and security changes require explicit review
-backend/internal/auth/ @Gkrumbach07
+backend/pkg/auth/ @Gkrumbach07
 frontend/src/app/oidc/ @Gkrumbach07
 .claude/rules/security.md @Gkrumbach07
