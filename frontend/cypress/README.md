@@ -7,10 +7,12 @@ Uses fixture-based intercepts (`support/intercepts.ts`) to mock all API response
 
 Run: `npx cypress run` (uses `cypress.config.ts`)
 
-### `e2e-integration/` — Integration tests
-Hits the real BFF and gateway — no mocks. Verifies the full request path (UI → BFF → gRPC → gateway) returns correct data.
+### Integration tests live in Go, not here
+The former `e2e-integration/` suite was pure `cy.request()` HTTP assertions with
+no browser interaction, so it moved to `backend/test/compat` where it runs
+against a matrix of real gateway versions without paying for Chrome, an npm
+install and a frontend dev server.
 
-Run: `npx cypress run --config-file cypress.config.integration.ts`
-
-Requires a running BFF + gateway (`make dev` or `OPENSHELL_GATEWAY_URL` pointing at a live gateway).
+Run: `make compat` (see the repo README). Cypress keeps the stubbed UI suite
+above, which is what it is actually good at.
 

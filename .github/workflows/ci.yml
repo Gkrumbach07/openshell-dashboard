@@ -91,52 +91,62 @@ jobs:
           path: frontend/cypress/screenshots
           if-no-files-found: ignore
 
-  e2e-integration:
+  # Gateway compatibility matrix.
+  #
+  # The BFF pins its SDK in go.mod; the gateway is a separate artifact with its
+  # own release cadence. These drift silently, which is how the Sep 2026
+  # breaking changes reached main unnoticed. This job runs the Go compat suite
+  # (backend/test/compat) against several real gateway versions.
+  #
+  # `required: true` versions block the build. `latest` is informational: it is
+  # allowed to fail so an upstream release does not red-wall unrelated PRs, but
+  # a failure there is the early warning that a resync is due.
+  compat:
+    name: compat (gateway ${{ matrix.version }})
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: ${{ !matrix.required }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Floor: the oldest gateway we claim to support. Bump deliberately.
+          - version: "0.0.113"
+            required: true
+          - version: "0.0.115"
+            required: true
+          - version: "0.0.116"
+            required: true
+          # Tracks upstream HEAD — advisory only.
+          - version: "latest"
+            required: false
+    env:
+      # The community sandbox image publishes no semver tags, so it is pinned
+      # by digest and held constant across the matrix: we are varying the
+      # gateway, not the workload.
+      COMPAT_SANDBOX_IMAGE: ghcr.io/nvidia/openshell-community/sandboxes/base:latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache Docker images
-        uses: actions/cache@v4
-        with:
-          path: /tmp/e2e-images
-          key: e2e-images-v1
-
-      - name: Load or pull Docker images
+      - name: Pull images
         run: |
-          mkdir -p /tmp/e2e-images
-          for img in ghcr.io/nvidia/openshell/gateway:latest ghcr.io/nvidia/openshell/supervisor:latest ghcr.io/nvidia/openshell-community/sandboxes/base:latest; do
-            slug=$(echo "$img" | tr '/:' '_')
-            if [ -f "/tmp/e2e-images/${slug}.tar" ]; then
-              echo "Loading cached $img"
-              docker load -i "/tmp/e2e-images/${slug}.tar"
-            else
-              echo "Pulling $img"
-              docker pull "$img"
-              docker save "$img" -o "/tmp/e2e-images/${slug}.tar"
-            fi
+          set -euo pipefail
+          docker pull "ghcr.io/nvidia/openshell/gateway:${{ matrix.version }}"
+          docker pull "ghcr.io/nvidia/openshell/supervisor:${{ matrix.version }}"
+          docker pull "$COMPAT_SANDBOX_IMAGE"
+
+      - name: Report resolved image digests
+        run: |
+          set -euo pipefail
+          for img in "ghcr.io/nvidia/openshell/gateway:${{ matrix.version }}" \
+                     "ghcr.io/nvidia/openshell/supervisor:${{ matrix.version }}" \
+                     "$COMPAT_SANDBOX_IMAGE"; do
+            echo "$img -> $(docker image inspect "$img" --format '{{index .RepoDigests 0}}' 2>/dev/null || echo 'no digest')"
           done
 
-      - name: Generate gateway JWT keys
-        run: |
-          sudo mkdir -p /var/lib/openshell/jwt
-          sudo openssl genpkey -algorithm Ed25519 -out /var/lib/openshell/jwt/signing.pem 2>/dev/null
-          sudo openssl pkey -in /var/lib/openshell/jwt/signing.pem -pubout -out /var/lib/openshell/jwt/public.pem 2>/dev/null
-          sudo openssl rand -hex 16 | sudo tee /var/lib/openshell/jwt/kid > /dev/null
-          sudo chmod -R 755 /var/lib/openshell/jwt
-
-      - name: Start OpenShell gateway
-        run: |
-          sudo mkdir -p /var/lib/openshell
-          docker compose -f deploy/ci/docker-compose.e2e.yml up -d
-          echo "Waiting for gateway to be healthy..."
-          timeout 300 bash -c 'until curl -sf http://localhost:50052/healthz; do sleep 3; done' || {
-            echo "Gateway failed to start — dumping logs:"
-            docker compose -f deploy/ci/docker-compose.e2e.yml logs --tail=100
-            exit 1
-          }
-          echo "Gateway is healthy"
+      - name: Start gateway stack
+        env:
+          OPENSHELL_VERSION: ${{ matrix.version }}
+        run: deploy/ci/e2e-stack.sh up
 
       - uses: actions/setup-go@v5
         with:
@@ -145,41 +155,25 @@ jobs:
 
       - name: Build and start BFF
         run: |
-          cd backend && go build -o ../bin/server ./cmd/server
-          cd ..
+          set -euo pipefail
+          cd backend && go build -o ../bin/server ./cmd/server && cd ..
           AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:8080 PORT=9080 ./bin/server &
-          timeout 30 bash -c 'until curl -sf http://localhost:9080/api/v1/healthz; do sleep 1; done'
+          timeout 60 bash -c 'until curl -sf http://localhost:9080/api/v1/healthz >/dev/null; do sleep 1; done'
           echo "BFF is healthy"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-      - run: cd frontend && npm ci
-
-      - uses: cypress-io/github-action@v6
-        with:
-          working-directory: frontend
-          config-file: cypress.config.integration.ts
-          start: npm start
-          wait-on: 'http://localhost:3000'
-          browser: chrome
+      - name: Run compat suite
         env:
           BFF_URL: http://localhost:9080
+        run: cd backend && go test -tags compat -v -timeout 20m ./test/compat/...
 
-      - uses: actions/upload-artifact@v4
+      - name: Gateway logs on failure
         if: failure()
-        with:
-          name: e2e-integration-screenshots
-          path: frontend/cypress/screenshots
-          if-no-files-found: ignore
+        run: docker compose -f deploy/ci/docker-compose.e2e.yml logs --tail=200
 
       - name: Clean up
         if: always()
-        run: |
-          docker compose -f deploy/ci/docker-compose.e2e.yml down -v
-          docker ps -aq --filter "name=openshell-e2e" | xargs -r docker rm -f
+        run: deploy/ci/e2e-stack.sh down
+
 
   build:
     runs-on: ${{ matrix.runner }}

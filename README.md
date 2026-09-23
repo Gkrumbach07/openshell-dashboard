@@ -215,7 +215,44 @@ make build      # docker image (multi-stage: frontend + Go binary)
 make test       # jest + go test
 make lint       # eslint + golangci-lint + prettier
 make typecheck  # tsc --noEmit
+make compat     # gateway compatibility suite (needs Docker; see below)
 ```
+
+## Gateway compatibility testing
+
+The BFF pins its SDK in `backend/go.mod`; the gateway is a separately released
+artifact. Those two drift silently — a gateway release can break the dashboard
+with no change on our side, which is exactly how the Sep 2026 SDK breaking
+changes reached `main` unnoticed.
+
+`backend/test/compat` is the guard: a Go suite that drives the BFF's REST API
+against a **real** gateway and asserts the contracts the frontend depends on —
+list endpoints returning arrays (not pagination envelopes), the delete outcome
+envelope, the policy enum spellings, and a full sandbox lifecycle.
+
+It is build-tagged `compat`, so `go test ./...` never picks it up.
+
+```bash
+make compat                              # against gateway:latest
+OPENSHELL_VERSION=0.0.116 make compat    # against a specific gateway release
+
+make compat-up && make compat-down       # manage the stack by hand
+```
+
+CI runs it as a matrix (`.github/workflows/ci.yml`). The pinned versions are
+**required** and block the build; `latest` is advisory and allowed to fail, so
+an upstream release does not red-wall unrelated PRs but still gives early
+warning that a resync is due. Bumping the floor is a deliberate edit to that
+matrix.
+
+`OPENSHELL_VERSION` selects the gateway *and* supervisor tag — they are
+released together and must match. The community sandbox image publishes no
+semver tags, so it is pinned separately via `COMPAT_SANDBOX_IMAGE` and
+deliberately does not move with the gateway.
+
+> Local runs need a Docker-compatible socket at `/var/run/docker.sock`. Rootless
+> Podman on macOS does not satisfy the gateway's Docker driver out of the box —
+> override with `DOCKER_SOCK` and `OPENSHELL_STATE_DIR` if your setup differs.
 
 ## Container image
 

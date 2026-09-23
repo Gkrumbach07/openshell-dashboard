@@ -25,3 +25,6 @@ frontend/cypress/screenshots/
 .env
 .env.*
 .claude/worktrees/
+
+# compat stack rendered config
+deploy/ci/.rendered/
