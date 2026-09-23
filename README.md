@@ -300,21 +300,28 @@ Because a sweep crosses the v1/v2 config boundary, it runs with
 `OPENSHELL_CONFIG_SCHEMA=auto`, which tries v2 and falls back to v1 when the
 gateway rejects the config.
 
-Results go to a **singleton tracking issue** labelled `compat-sweep`, rewritten
-in place on each run rather than opening a new issue weekly. It reports four
-states:
+Each run produces **actionable pieces** — up to two, because a bump and a
+migration are different work with different lifecycles:
 
-| Newer releases | Issue says |
-|---|---|
-| all compatible | bump available to the newest |
-| all incompatible | **blocked** — needs migration work or an upstream fix |
-| mixed | bump to the highest that passes, *and* keep tracking the failures |
-| none released | nothing to do |
+| Newer releases | Bump PR | Migration issue |
+|---|---|---|
+| all compatible | to the newest | — |
+| all incompatible | — | **opened** |
+| mixed | to the highest that passes | opened for the rest |
+| none released | — | closed if one was open |
 
-A failure is the most important result, so only the last state is silent — and
-even then an already-open issue is refreshed so a stale "bump available" cannot
-linger. The singleton is scoped to *open* issues: **close it when there is
-nothing left to chase**, and the next sweep with a result opens a fresh one.
+- **Bump PR** — `chore/compat-bump-<version>`. Moves the SDK pin *and*
+  `deploy/ci/gateway-pins.json` together, as ADR 0005 requires. Closes by
+  merging. Never auto-merged.
+- **Migration issue** — labelled `compat-migrate`, a singleton rewritten in
+  place. Tracks releases we cannot follow yet, which need investigation rather
+  than a bump. Scoped to *open* issues, and auto-closed once nothing fails.
+
+A failure is the most valuable result, so it is never silent.
+
+The pins live in `deploy/ci/gateway-pins.json`, read by the `compat` matrix in
+`ci.yml` and edited structurally by the bump PR — which is why they are not
+inlined in the workflow.
 
 `OPENSHELL_VERSION` selects the gateway *and* supervisor tag — they are
 released together and must match. The community sandbox image publishes no

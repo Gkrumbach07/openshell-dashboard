@@ -90,6 +90,19 @@ green is the trigger to promote a released tag to the floor.
 while this lane was being set up. A digest makes a run reproducible and makes
 bumping a deliberate act.
 
+**Each sweep produces actionable pieces, and a bump is not a migration.** They
+have different lifecycles: a bump is mechanical and closes by merging a PR, a
+migration needs investigation and closes when the incompatibility is resolved.
+A run can produce either, both, or neither, so they are separate artifacts — a
+`chore/compat-bump-<version>` PR and a singleton `compat-migrate` issue —
+rather than one item that means different things on different weeks.
+
+**The pins are machine-readable.** `deploy/ci/gateway-pins.json` is the single
+source of truth: the `compat` matrix in ci.yml reads it, and the bump PR edits
+it structurally. Keeping the pins inline in the workflow would have forced the
+automation into YAML surgery, and would have left the SDK pin and the gateway
+pins in two places that could drift.
+
 **Failures are reported, not just opportunities.** The sweep's most valuable
 output is not "you can move forward" but "upstream moved somewhere we cannot
 follow". It reports four states: every newer release passes (bump to the
