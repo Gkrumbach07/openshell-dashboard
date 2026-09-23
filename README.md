@@ -319,6 +319,12 @@ migration are different work with different lifecycles:
 
 A failure is the most valuable result, so it is never silent.
 
+The sweep only looks **forward**. Sweeping below the current pin is not
+meaningful — our code uses SDK APIs added after older releases, so it cannot
+compile against them, which says nothing about the gateway. The three failure
+modes are recorded separately (BFF did not compile / gateway did not start /
+compat suite failed) because only the last is a compatibility result.
+
 The pins live in `deploy/ci/gateway-pins.json`, read by the `compat` matrix in
 `ci.yml` and edited structurally by the bump PR — which is why they are not
 inlined in the workflow.
