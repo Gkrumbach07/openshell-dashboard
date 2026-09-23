@@ -292,6 +292,13 @@ Today the pin is a `dev` digest, because no released gateway carries the
 renumbered proto. An advisory lane on an *older* release would be a trap rather
 than a canary: the SDK only moves forward, so such a lane can never go green.
 
+`compat-sweep` also probes **upstream HEAD** (`dev`) on every run, as early
+warning. Once the pin sits on a release, nothing else watches HEAD — the sweep
+otherwise only walks release tags — so a HEAD regression would stay invisible
+until it shipped in a release. `dev` is informational only and **never a bump
+target**: ADR 0005 wants the pin on a release, so a green HEAD must not move us
+onto a moving tag. Disable it with `include_dev=0`.
+
 `compat-sweep` walks upstream release tags newer than the current floor,
 taking the gateway image *and* the matching SDK commit from the same tag
 (`sdk/go` is a submodule of `NVIDIA/OpenShell`, so a release tag resolves to an

@@ -26,6 +26,10 @@ on:
         description: "Cap on how many releases to sweep (newest first)"
         required: false
         default: "5"
+      include_dev:
+        description: "Also probe upstream HEAD (dev) as early warning — 1 or 0"
+        required: false
+        default: "1"
 
 permissions:
   contents: write        # the bump job pushes its branch
@@ -84,6 +88,7 @@ jobs:
         env:
           SINCE: ${{ steps.floor.outputs.floor }}
           MAXV: ${{ inputs.max_versions || '5' }}
+          INCLUDE_DEV: ${{ inputs.include_dev || '1' }}
         run: |
           set -euo pipefail
           # Upstream release tags that also have a published gateway image.
@@ -122,9 +127,22 @@ jobs:
               if ver <= since:
                   break
               if published(tag):
-                  out.append({"version": tag, "sha": sha})
+                  out.append({"version": tag, "sha": sha, "bumpable": True})
               if len(out) >= maxv:
                   break
+
+          # Upstream HEAD, as early warning. `bumpable` is false: ADR 0005 wants
+          # the pin on a RELEASE, so a passing dev must never open a bump PR. It
+          # only answers "is HEAD still compatible with us?" — which nothing else
+          # asks once the pin moves onto a release, because the sweep otherwise
+          # only walks release tags.
+          #
+          # The SDK is taken at @latest rather than at the dev image's exact
+          # commit, so the two can be skewed by however long ago the image was
+          # built. That is inherent to tracking a moving tag.
+          if os.environ.get("INCLUDE_DEV", "1") == "1":
+              out.append({"version": "dev", "sha": "latest", "bumpable": False})
+
           print(json.dumps(out))
           PY
           echo "versions=$(cat /tmp/versions.json)" >> "$GITHUB_OUTPUT"
@@ -174,6 +192,9 @@ jobs:
           set -euo pipefail
           docker pull "ghcr.io/nvidia/openshell/gateway:${{ matrix.target.version }}"
           docker pull "ghcr.io/nvidia/openshell/supervisor:${{ matrix.target.version }}"
+          for i in gateway supervisor; do
+            echo "$i -> $(docker image inspect "ghcr.io/nvidia/openshell/$i:${{ matrix.target.version }}" --format '{{index .RepoDigests 0}}' 2>/dev/null || echo unknown)"
+          done
           docker pull "$COMPAT_SANDBOX_IMAGE"
 
       - name: Start gateway stack
@@ -287,10 +308,23 @@ jobs:
           RUN_URL = os.environ["RUN_URL"]
 
           rows = [json.load(open(f)) for f in sorted(glob.glob("/tmp/results/*.json"))]
-          rows.sort(key=lambda r: tuple(int(x) for x in r["version"].split(".")), reverse=True)
+
+          # "dev" is not a version number; sort it above every release since it
+          # is upstream HEAD.
+          def order(r):
+              v = r["version"]
+              if v == "dev":
+                  return (1, ())
+              return (0, tuple(int(x) for x in v.split(".")))
+          rows.sort(key=order, reverse=True)
 
           passing = [r for r in rows if r["outcome"] == "success"]
           failing = [r for r in rows if r["outcome"] != "success"]
+
+          # dev is early warning only — never a bump target. ADR 0005 wants the
+          # pin on a release, so a green HEAD must not move us onto a moving tag.
+          bumpable = [r for r in passing if r.get("bumpable", True)]
+          dev = next((r for r in rows if r["version"] == "dev"), None)
           label = {"success": "compatible",
                    "incompatible": "NOT compatible (compat suite failed)",
                    "stack_failed": "gateway did not start",
@@ -301,13 +335,18 @@ jobs:
           #   MIGRATE -> an issue. Exists when any newer release fails. Closes when
           #              the incompatibility is resolved.
           # A run can produce both, either, or neither.
-          target = passing[0] if passing else None
+          target = bumpable[0] if bumpable else None
 
           def table(rs):
               out = ["| Gateway | Result | SDK commit |", "|---|---|---|"]
               for r in rs:
                   out.append(f"| `{r['version']}` | {label.get(r['outcome'], r['outcome'])} | `{r['sdk'][:12]}` |")
               return out
+
+          # dev is not a release, so it must not be counted as one in the
+          # heading, the blurb or the title.
+          rel_fail = [r for r in failing if r["version"] != "dev"]
+          dev_fail = dev is not None and dev["outcome"] != "success"
 
           # --- migrate issue body (only written when something fails) ---
           if failing:
@@ -317,10 +356,17 @@ jobs:
                       "Rewritten in place while open. **Close it once these are compatible** —",
                       "the next sweep that still finds failures opens a fresh one.", "",
                       f"Currently pinned: **`{PINNED}`** (sweep floor: `{FLOOR}`)", "",
-                      "## Migration needed", "",
-                      "These releases fail the compat suite, so the supported range cannot",
-                      "reach them. Each needs investigation: either we adapt, or upstream",
-                      "has a regression.", ""]
+                      ("## Migration needed" if rel_fail else "## Early warning"), ""]
+              if dev_fail:
+                  body += ["### Upstream HEAD (`dev`) is incompatible", "",
+                           "Nothing to act on directly — there is nothing to pin to. This is",
+                           "early warning: whatever changed on HEAD will land in the next",
+                           "release, and it is one change now rather than a release's worth",
+                           "later.", ""]
+              if rel_fail:
+                  body += ["These releases fail the compat suite, so the supported range cannot",
+                           "reach them. Each needs investigation: either we adapt, or upstream",
+                           "has a regression.", ""]
               only_build = [r for r in failing if r["outcome"] == "build_failed"]
               if only_build and len(only_build) == len(failing):
                   body += ["> **Every failure here is a build failure** — the BFF does not compile",
@@ -346,7 +392,15 @@ jobs:
               fh.write(f"SWEEP_HAS_BUMP={'1' if target else '0'}\n")
               fh.write(f"SWEEP_TARGET={target['version'] if target else ''}\n")
               fh.write(f"SWEEP_TARGET_SDK={target['sdk'] if target else ''}\n")
-              fh.write(f"SWEEP_MIGRATE_TITLE=Gateway compat: {len(failing)} release(s) need migration\n")
+              if rel_fail and dev_fail:
+                  t = f"Gateway compat: {len(rel_fail)} release(s) need migration, and HEAD is incompatible"
+              elif rel_fail:
+                  t = f"Gateway compat: {len(rel_fail)} release(s) need migration"
+              elif dev_fail:
+                  t = "Gateway compat: upstream HEAD (dev) is incompatible"
+              else:
+                  t = "Gateway compat: nothing outstanding"
+              fh.write(f"SWEEP_MIGRATE_TITLE={t}\n")
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write(f"has_bump={'1' if target else '0'}\n")

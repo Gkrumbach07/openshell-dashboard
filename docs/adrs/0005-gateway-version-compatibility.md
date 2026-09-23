@@ -118,6 +118,15 @@ compatibility result. With the guard in place, an all-build-failure sweep means
 upstream removed or reshaped an API this repo depends on, which is real
 migration work.
 
+**The sweep probes upstream HEAD, but never pins to it.** Once the pin sits on
+a release, the sweep's release-tag walk is blind to HEAD, so a regression there
+stays invisible until it ships. Each sweep therefore also runs `dev` — purely
+as early warning, flagged `bumpable: false`. A green HEAD must not open a bump
+PR, because that would move the pin onto a moving tag and defeat the point of
+pinning releases. Its SDK is taken at `@latest` rather than at the dev image's
+exact commit, so the two may be skewed by however long ago the image was built;
+that is inherent to tracking a moving tag.
+
 **Each sweep produces actionable pieces, and a bump is not a migration.** They
 have different lifecycles: a bump is mechanical and closes by merging a PR, a
 migration needs investigation and closes when the incompatibility is resolved.
