@@ -11,17 +11,17 @@ import (
 // outcomes must not be treated as completion.
 func TestFromSDKDeletion(t *testing.T) {
 	tests := []struct {
-		name        string
 		res         *openshell.DeletionResult
-		wantDeleted bool
+		name        string
 		wantOutcome string
+		wantDeleted bool
 	}{
-		{"completed", &openshell.DeletionResult{Outcome: openshell.DeletionCompleted}, true, "completed"},
-		{"already absent", &openshell.DeletionResult{Outcome: openshell.DeletionAlreadyAbsent}, true, "already_absent"},
-		{"accepted is not completion", &openshell.DeletionResult{Outcome: openshell.DeletionAccepted}, false, "accepted"},
-		{"unspecified is not completion", &openshell.DeletionResult{Outcome: openshell.DeletionUnspecified}, false, "unspecified"},
-		{"unknown future value is not completion", &openshell.DeletionResult{Outcome: openshell.DeletionOutcome(99)}, false, "unspecified"},
-		{"nil result stays backward compatible", nil, true, "completed"},
+		{&openshell.DeletionResult{Outcome: openshell.DeletionCompleted}, "completed", "completed", true},
+		{&openshell.DeletionResult{Outcome: openshell.DeletionAlreadyAbsent}, "already absent", "already_absent", true},
+		{&openshell.DeletionResult{Outcome: openshell.DeletionAccepted}, "accepted is not completion", "accepted", false},
+		{&openshell.DeletionResult{Outcome: openshell.DeletionUnspecified}, "unspecified is not completion", "unspecified", false},
+		{&openshell.DeletionResult{Outcome: openshell.DeletionOutcome(99)}, "unknown future value is not completion", "unspecified", false},
+		{nil, "nil result stays backward compatible", "completed", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
