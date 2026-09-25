@@ -11,11 +11,11 @@ import (
 
 type GatewayHandler struct {
 	svc        services.GatewayServiceInterface
-	auth       *auth.Middleware
+	auth       auth.MiddlewareInterface
 	authConfig models.AuthConfigResponse
 }
 
-func NewGatewayHandler(svc services.GatewayServiceInterface, authMiddleware *auth.Middleware, authConfig models.AuthConfigResponse) *GatewayHandler {
+func NewGatewayHandler(svc services.GatewayServiceInterface, authMiddleware auth.MiddlewareInterface, authConfig models.AuthConfigResponse) *GatewayHandler {
 	return &GatewayHandler{svc: svc, auth: authMiddleware, authConfig: authConfig}
 }
 

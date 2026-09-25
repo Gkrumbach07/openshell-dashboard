@@ -23,7 +23,7 @@ import (
 type App struct { //nolint:govet // fieldalignment: readability over padding
 	// authConfig is serialized to the browser via GET /auth/config — never
 	// put secrets in it.
-	auth          *auth.Middleware
+	auth          auth.MiddlewareInterface
 	authConfig    models.AuthConfigResponse
 	staticDir     string
 	maxUploadSize int64
@@ -41,10 +41,19 @@ type App struct { //nolint:govet // fieldalignment: readability over padding
 	terminal   *handlers.TerminalHandler
 	templates  *handlers.TemplatesHandler
 	workspaces *handlers.WorkspacesHandler
+
+	extensions []Extension
 }
 
 // NewApp builds the application.
-func NewApp(sdkClient openshell.ClientInterface, execUpload services.StdinExecer, authMiddleware *auth.Middleware, staticDir string, authCfg models.AuthConfigResponse) *App {
+func NewApp(
+	sdkClient openshell.ClientInterface,
+	execUpload services.StdinExecer,
+	authMiddleware auth.MiddlewareInterface,
+	staticDir string,
+	authCfg models.AuthConfigResponse,
+	extensions ...Extension,
+) *App {
 	app := &App{
 		auth:          authMiddleware,
 		authConfig:    authCfg,
@@ -70,6 +79,7 @@ func NewApp(sdkClient openshell.ClientInterface, execUpload services.StdinExecer
 	app.terminal = handlers.NewTerminalHandler(execSvc)
 	app.templates = handlers.NewTemplatesHandler(services.NewTemplateService(sdkClient))
 	app.workspaces = handlers.NewWorkspacesHandler(services.NewWorkspaceService(sdkClient.Workspaces()))
+	app.extensions = extensions
 
 	return app
 }
@@ -168,6 +178,10 @@ func (app *App) Routes() http.Handler {
 					r.Delete("/provider-profiles/{profileId}", app.providers.DeleteProviderProfile)
 				})
 			})
+
+			// for _, extension := range app.extensions {
+			// 	extension(r)
+			// }
 		})
 	})
 
