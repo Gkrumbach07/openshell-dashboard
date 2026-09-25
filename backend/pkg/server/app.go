@@ -179,9 +179,9 @@ func (app *App) Routes() http.Handler {
 				})
 			})
 
-			// for _, extension := range app.extensions {
-			// 	extension(r)
-			// }
+			for _, extension := range app.extensions {
+				extension(r)
+			}
 		})
 	})
 
