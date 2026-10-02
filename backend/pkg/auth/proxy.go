@@ -34,6 +34,12 @@ type Config struct {
 	Disabled    bool
 }
 
+type MiddlewareInterface interface {
+	Disabled() bool
+	TokenHeader() string
+	Handler(next http.Handler) http.Handler
+}
+
 // Middleware extracts the request's bearer token and stores it on the
 // request context for the gateway client to forward.
 type Middleware struct {
