@@ -1,18 +1,23 @@
 #!/usr/bin/env node
 // Proves what release.config.cjs does, without releasing anything.
 //
-// The release configuration only ever runs for real on main, after a merge, so
-// a mistake in it is found by a publish that should not have happened — or by
-// one that silently did not. This loads the configuration the way
-// semantic-release does, then feeds sample commit messages to
-// @semantic-release/commit-analyzer with the configured rules and prints which
-// release each one would cut. It fails if a decision is not the documented one.
+// The release configuration only ever runs for real on main, so a mistake in
+// it is found by a publish that should not have happened, or by one that
+// silently did not. This loads the configuration the way semantic-release
+// does and checks three things:
 //
-// It then hands the same commits to @semantic-release/release-notes-generator
-// and checks that the notes agree with the decisions: a commit is listed
-// exactly when it cuts a release, and BREAKING CHANGES is printed exactly when
-// the release is a major one. The two plugins are configured separately and
-// know nothing of each other, so nothing else keeps them in step.
+//   1. It loads, and nothing but the release-type plugin can decide a release.
+//      Releases are cut by hand with a chosen type; if the stock commit
+//      analyzer were still listed, a commit title could raise the release
+//      above what the person chose.
+//   2. The release-type plugin does what it says: the chosen type is what gets
+//      released, no choice is an error, no commits is no release, and what it
+//      reports as "the commits suggest" matches the table in CONTRIBUTING.md.
+//   3. The release notes agree with those suggestions: a commit is listed
+//      exactly when it suggests a release, and BREAKING CHANGES is printed
+//      exactly when it suggests a major one. The plugin and the notes
+//      generator know nothing of each other, so nothing else keeps them in
+//      step.
 //
 // It needs the semantic-release that publish.yml runs, installed somewhere:
 //
@@ -26,18 +31,22 @@ import { parseArgs } from 'node:util';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RANGE_PLUGIN = './scripts/release/gateway-range-plugin.mjs';
+const TYPE_PLUGIN = './scripts/release/release-type-plugin.mjs';
+const STOCK_ANALYZER = '@semantic-release/commit-analyzer';
 
-// What CONTRIBUTING.md promises. `none` means the commit cuts no release.
+// What CONTRIBUTING.md says each title suggests. `none` means it suggests no
+// release. The person cutting the release still chooses; this is what they
+// are told the commits say.
 const EXPECTED = [
-  // CI changes never release, whether `ci` is the type or the scope, and
-  // whatever else the commit claims to be.
+  // CI changes never suggest a release, whether `ci` is the type or the scope,
+  // and whatever else the commit claims to be.
   ['ci: x', 'none'],
   ['fix(ci): x', 'none'],
   ['feat(ci): x', 'none'],
   ['feat(ci)!: x', 'none'],
   ['ci!: x', 'none'],
   ['ci: x\n\nBREAKING CHANGE: y', 'none'],
-  // Everything else keeps the default behaviour.
+  // Everything else follows Conventional Commits.
   ['fix(bff): x', 'patch'],
   ['perf: x', 'patch'],
   ['feat: x', 'minor'],
@@ -46,11 +55,12 @@ const EXPECTED = [
   ['fix(bff): x\n\nBREAKING CHANGE: y', 'major'],
   ['docs: x', 'none'],
   ['chore(deps): x', 'none'],
-  // A squash title that is not a Conventional Commit is ignored entirely.
+  // A squash title that is not a Conventional Commit suggests nothing.
   ['Add foo (#74)', 'none'],
   // A revert is a patch, and git's own title for one has no type or scope, so
-  // the `ci` rules cannot see what was reverted. Reverting a CI change without
-  // cutting a release takes a `ci:` title, which is what CONTRIBUTING.md asks for.
+  // the `ci` rule cannot see what was reverted. A revert of a CI change that
+  // should stay out of the notes takes a `ci:` title, which is what
+  // CONTRIBUTING.md asks for.
   ['Revert "ci: x"\n\nThis reverts commit 0123abc.', 'patch'],
   ['ci: revert "x"', 'none'],
 ];
@@ -100,14 +110,19 @@ async function main() {
   }
   console.log(`  ${RANGE_PLUGIN}: generateNotes and prepare loaded, ahead of the npm plugin`);
 
-  // 2. The release rules decide what CONTRIBUTING.md says they decide.
-  const analyzerConfig = options.plugins.find(
-    (plugin) => Array.isArray(plugin) && plugin[0] === '@semantic-release/commit-analyzer',
-  )?.[1];
-  if (!analyzerConfig) {
-    throw new Error('@semantic-release/commit-analyzer is not configured with options');
+  // Nothing but the release-type plugin may decide a release. semantic-release
+  // takes the LARGEST answer when several plugins analyze the commits, so the
+  // stock analyzer alongside it would let a commit title override the choice.
+  if (!loaded.includes(`Loaded plugin "analyzeCommits" from "${TYPE_PLUGIN}"`)) {
+    throw new Error(`${TYPE_PLUGIN} did not load for the analyzeCommits step`);
   }
-  const { analyzeCommits } = await importFrom(requireFrom.resolve('@semantic-release/commit-analyzer'));
+  if (pluginNames.includes(STOCK_ANALYZER)) {
+    throw new Error(`${STOCK_ANALYZER} is configured; a commit title could then decide a release`);
+  }
+  console.log(`  ${TYPE_PLUGIN}: the only plugin that decides a release`);
+
+  // 2. The release-type plugin releases what was chosen and nothing else.
+  const { analyzeCommits, suggestFor } = await importFrom(join(repoRoot, TYPE_PLUGIN));
 
   // Two digits repeated: distinct, and nothing a sample revert could name.
   const commits = EXPECTED.map(([message], index) => ({
@@ -115,27 +130,46 @@ async function main() {
     message,
   }));
   const shown = (message) => JSON.stringify(message).padEnd(SHOWN_WIDTH);
-
-  console.log(`\n@semantic-release/commit-analyzer ${versionOf('@semantic-release/commit-analyzer')} decisions:`);
+  const decide = (env, released) => analyzeCommits({}, { commits: released, env, logger: quiet });
   let wrong = 0;
-  for (const [index, [message, expected]] of EXPECTED.entries()) {
-    const type = await analyzeCommits(analyzerConfig, {
-      cwd: repoRoot,
-      commits: [commits[index]],
-      logger: quiet,
-    });
-    const decision = type ?? 'none';
+
+  console.log('\nrelease-type plugin:');
+  const chosen = [];
+  for (const type of ['patch', 'minor', 'major']) {
+    // Every sample at once, including the ones that suggest a major release.
+    chosen.push(`${type} -> ${await decide({ RELEASE_TYPE: type }, commits)}`);
+    wrong += chosen.at(-1) === `${type} -> ${type}` ? 0 : 1;
+  }
+  console.log(`  chosen type is what is released, whatever the commits say: ${chosen.join(', ')}`);
+  const nothing = await decide({ RELEASE_TYPE: 'minor' }, []);
+  wrong += nothing === null ? 0 : 1;
+  console.log(`  no commits since the last release -> ${nothing === null ? 'no release' : `WRONG, ${nothing}`}`);
+  for (const env of [{}, { RELEASE_TYPE: '' }, { RELEASE_TYPE: 'auto' }, { RELEASE_TYPE: 'Major' }]) {
+    const refused = await decide(env, commits).then(
+      (type) => `WRONG, released ${type}`,
+      () => 'refused',
+    );
+    wrong += refused === 'refused' ? 0 : 1;
+    console.log(`  RELEASE_TYPE=${JSON.stringify(env.RELEASE_TYPE ?? null)} -> ${refused}`);
+  }
+  if (wrong > 0) {
+    throw new Error(`the release-type plugin got ${wrong} case(s) wrong`);
+  }
+
+  console.log('\nwhat each commit title suggests:');
+  for (const [message, expected] of EXPECTED) {
+    const decision = suggestFor(message) ?? 'none';
     const ok = decision === expected;
     wrong += ok ? 0 : 1;
     console.log(`  ${shown(message)} -> ${decision.padEnd(5)} ${ok ? '' : `WRONG, expected ${expected}`}`.trimEnd());
   }
   if (wrong > 0) {
-    throw new Error(`${wrong} commit(s) would not release as documented`);
+    throw new Error(`${wrong} commit title(s) do not suggest what CONTRIBUTING.md says`);
   }
 
-  // 3. The release notes agree with those decisions. A commit is in the notes
-  //    exactly when it cuts a release, and the notes announce breaking changes
-  //    exactly when the release is a major one. Without the `skip` in
+  // 3. The release notes agree with those suggestions. A commit is in the notes
+  //    exactly when it suggests a release, and the notes announce breaking
+  //    changes exactly when it suggests a major one. Without the `skip` in
   //    release.config.cjs this fails for every `ci` commit that the rules
   //    silence: `fix(ci): x` is listed as a bug fix, and `ci!: x` prints
   //    BREAKING CHANGES in what the rules made a patch release.
@@ -164,7 +198,7 @@ async function main() {
     const ok = notes.listed === (expected === 'none' ? 0 : 1) && notes.breaking === (expected === 'major' ? 1 : 0);
     wrong += ok ? 0 : 1;
     const said = `${notes.listed ? 'listed' : 'not listed'}${notes.breaking ? ', BREAKING CHANGES' : ''}`;
-    console.log(`  ${shown(message)} -> ${said}${ok ? '' : `   WRONG for a commit that cuts ${expected}`}`);
+    console.log(`  ${shown(message)} -> ${said}${ok ? '' : `   WRONG for a commit that suggests ${expected}`}`);
   }
 
   // And all of them in one release, which is how a silenced commit really
@@ -180,7 +214,7 @@ async function main() {
       `${together.mentionsCi ? 'a ci entry is present' : 'no ci entry'}${togetherOk ? '' : '   WRONG'}`,
   );
   if (wrong > 0) {
-    throw new Error(`the release notes disagree with the release rules for ${wrong} case(s)`);
+    throw new Error(`the release notes disagree with what the commits suggest for ${wrong} case(s)`);
   }
 }
 

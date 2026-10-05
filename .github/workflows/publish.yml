@@ -1,4 +1,16 @@
-# Cuts a release of main when the commits since the last one call for it.
+# Cuts a release of main when a person asks for one.
+#
+# Releases are cut by hand. Start this workflow on main, choose patch, minor or
+# major, and leave "dry run" ticked to see the version and the notes first;
+# run it again with "dry run" cleared to publish. Merging a pull request never
+# publishes anything by itself, whatever its title says.
+#
+# The one exception is a pull request the compat sweep opened to raise the
+# gateway ceiling or move the SDK. Once it is merged and CI has passed on main,
+# this workflow cuts a patch for it without being asked: that release is the
+# point of the pull request and the one most likely to be forgotten. Which
+# commits qualify is decided from where they came from, not from their title;
+# see scripts/release/sweep-bump.mjs.
 #
 # One version, three artifacts, each of which says which OpenShell gateways it
 # supports (#66, ADR 0005):
@@ -8,7 +20,7 @@
 #   container image  the image CI already built for this commit gets the tags
 #                    X.Y.Z and X.Y; it carries the range as env vars and labels
 #
-# What cuts a release, and what it declares, is in release.config.cjs.
+# What a release contains and declares is in release.config.cjs.
 # docs/releasing.md walks through the whole pipeline.
 #
 # This file must stay named publish.yml: npm trusted publishing is bound to the
@@ -16,11 +28,30 @@
 name: Publish to npm
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "What kind of release to cut from main"
+        type: choice
+        required: true
+        # The first option is not a release type on purpose. GitHub preselects
+        # the first option, and a release nobody chose is what this is here to
+        # prevent; the run fails until one of the other three is picked.
+        options:
+          - "(choose one)"
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: "Dry run: show the version and the notes, publish nothing"
+        type: boolean
+        default: true
+  # Only for merged compat-sweep bumps; every other CI run that finishes on
+  # main ends this workflow without releasing.
   workflow_run:
     workflows: [CI]
     types: [completed]
     branches: [main]
-  workflow_dispatch:
 
 concurrency:
   group: publish
@@ -31,8 +62,9 @@ jobs:
     runs-on: ubuntu-latest
     # Two ways in, and both must mean "main":
     #
-    #   workflow_dispatch  a maintainer asked for it, on main.
+    #   workflow_dispatch  a maintainer asked for a release, on main.
     #   workflow_run       CI passed for a PUSH to main in THIS repository.
+    #                      Releases only if that push is a merged sweep bump.
     #
     # The event and repository checks are not redundant. `branches: [main]`
     # above matches the head branch NAME of the run that finished, so a pull
@@ -52,6 +84,8 @@ jobs:
       id-token: write
       issues: write
       pull-requests: write
+      # To ask whether CI passed for the commit a person wants to release.
+      actions: read
     outputs:
       version: ${{ steps.released.outputs.version }}
       image_tags: ${{ steps.released.outputs.image_tags }}
@@ -75,37 +109,108 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
+      # Decides what this run releases, if anything, before anything is built.
+      #
+      #   asked for by a person   the type they chose; a dry run unless they
+      #                           cleared the box. A real release also needs CI
+      #                           to have passed for this commit: the image the
+      #                           release tags is the one that CI run built.
+      #   CI finished on main     a patch, but only when the commit is a merged
+      #                           compat-sweep bump that stayed on its axis.
+      #                           Anything else: nothing, and the job ends green.
+      - name: What does this run release?
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          CHOSEN: ${{ inputs.release_type }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          type=""
+          dry_run="false"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            case "$CHOSEN" in
+              patch|minor|major) type="$CHOSEN" ;;
+              *)
+                echo "::error::Choose the kind of release to cut: patch, minor or major."
+                exit 1
+                ;;
+            esac
+            dry_run="$DRY_RUN"
+            green="$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$sha&event=push&status=success&per_page=1" --jq '.total_count')"
+            if [ "$green" -lt 1 ]; then
+              if [ "$dry_run" = "true" ]; then
+                echo "::warning::CI has not passed for $sha on main. This dry run goes ahead; a real release of this commit would be refused."
+              else
+                echo "::error::CI has not passed for $sha on main, so there is no tested image to release. Wait for CI, or fix it, then run this again."
+                exit 1
+              fi
+            fi
+            echo "Asked for by a person: a $type release$([ "$dry_run" = "true" ] && echo ' (dry run)')." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            axis="$(node scripts/release/sweep-bump.mjs --sha "$sha" --repo "$REPO" | sed -n 's/^axis=//p')"
+            if [ -n "$axis" ]; then
+              type="patch"
+              echo "Merged compat-sweep bump on the $axis axis: cutting a patch." | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              echo "CI passed for $sha, which is not a compat-sweep bump. Nothing is released automatically; releases are cut by hand (docs/releasing.md)." | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          {
+            echo "type=$type"
+            echo "dry_run=$dry_run"
+          } >> "$GITHUB_OUTPUT"
+
       # npm trusted publishing requires npm >= 11.5.1. It exchanges the
       # job's GitHub OIDC token for a short-lived npm publish credential.
       - name: Configure npm trusted publishing
+        if: steps.plan.outputs.type != ''
         run: npm install --global npm@11.5.1
 
       - name: Install dependencies
+        if: steps.plan.outputs.type != ''
         run: cd frontend && npm ci
 
       - name: Build library
+        if: steps.plan.outputs.type != ''
         run: cd frontend && npm run build:lib
 
       - name: Verify packed package imports in Node ESM
+        if: steps.plan.outputs.type != ''
         run: cd frontend && npm run verify:consumer
 
-      # If the commits call for a release this tags vX.Y.Z, publishes the npm
-      # package and creates the GitHub release. If they do not — or if main has
-      # moved on since this commit, in which case the newer commit's run will
-      # release both — it does nothing and still succeeds.
+      # Tags vX.Y.Z, publishes the npm package and creates the GitHub release,
+      # for the kind of release decided above (RELEASE_TYPE; the release
+      # configuration refuses to run without it). With --dry-run it prints the
+      # version and the notes and changes nothing. If there are no commits
+      # since the last release, or main has moved on since this commit, it
+      # does nothing and still succeeds.
       #
       # The version is pinned here and only here; ci.yml's release-tooling job
       # reads it from this line to test release.config.cjs against the same one.
       - name: Publish
+        if: steps.plan.outputs.type != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release@25.0.9
+          RELEASE_TYPE: ${{ steps.plan.outputs.type }}
+          DRY_RUN: ${{ steps.plan.outputs.dry_run }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          npx semantic-release@25.0.9 "${args[@]}"
 
       # "Was a release cut" is answered by the repository, not by parsing what
       # semantic-release printed: is there a vX.Y.Z tag on the commit we checked
       # out? That holds for both triggers, it is empty when nothing was
-      # released, and it is still true on a re-run after a release whose image
-      # tagging failed. See scripts/release/released-version.mjs.
+      # released (a dry run, or a commit nobody asked to release), and it is
+      # still true on a re-run after a release whose image tagging failed. See
+      # scripts/release/released-version.mjs.
       - name: Was a release cut at this commit?
         id: released
         run: |

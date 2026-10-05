@@ -36,13 +36,20 @@ The guard accepts a README change that is confined to that block (between the
 `<!-- gateway-range:begin ... -->` and `<!-- gateway-range:end -->` markers)
 and refuses any other.
 
-Both PRs are `fix:` commits (`fix(compat): support gateway X`,
-`fix(sdk): move to the OpenShell SDK at vX`), so merging one cuts a release:
-the range the artifacts declare, or the SDK the BFF is built against, changed.
+Merging either one cuts a patch release by itself, once CI has passed on
+`main`: the range the artifacts declare, or the SDK the BFF is built against,
+changed. It is the one automatic release (every other release is cut by hand,
+see `docs/releasing.md` and ADR 0007). `publish.yml` recognises a sweep pull
+request by the branch it was merged from and by the one-axis guard passing on
+the merged commit, not by its title, so a sweep pull request that someone
+added other changes to is not released automatically. The titles are `fix:`
+commits (`fix(compat): support gateway X`,
+`fix(sdk): move to the OpenShell SDK at vX`) so that the release notes list
+them under Bug Fixes.
 
 ## Before the sweep can open a pull request
 
-One of these has to be true. As of 2026-10-05 neither is:
+One of these has to be true. The first was enabled on 2026-10-05:
 
 - the repository setting **Settings > Actions > General > Workflow
   permissions > Allow GitHub Actions to create and approve pull requests** is
