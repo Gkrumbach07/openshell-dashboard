@@ -537,8 +537,8 @@ class LegsThatCannotBeSetUp(unittest.TestCase):
     """A leg that cannot pull, start the gateway or start the BFF still reports.
 
     Those steps come before "Record result". If one of them failed the leg,
-    nothing would be uploaded and a failure that repeats every week would
-    read, every week, as "the leg did not report; re-run the sweep".
+    nothing would be uploaded and a failure that repeats on every run would
+    read, every time, as "the leg did not report; re-run the sweep".
     """
 
     def test_every_setup_step_is_a_result_and_gates_the_next(self):

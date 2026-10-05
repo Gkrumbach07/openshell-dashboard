@@ -175,7 +175,7 @@ of its own. Never `go get ...@latest`, a branch or a pre-release tag: `@latest`
 is whatever upstream HEAD is that minute, and nothing was tested against it
 (ADR 0006; hard facts 17 and 20 in `openshell-api.md`).
 
-You normally do not do this by hand. The weekly compat sweep tries the newest
+You normally do not do this by hand. The daily compat sweep tries the newest
 release's SDK against every required gateway lane and proposes the PR when it
 passes (`fix(sdk): move to the OpenShell SDK at vX`, on the branch
 `compat-sweep/sdk`). When it reports a **source migration** instead — the BFF

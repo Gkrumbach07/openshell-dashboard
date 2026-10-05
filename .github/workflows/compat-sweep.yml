@@ -61,8 +61,11 @@ name: Compat sweep
 
 on:
   schedule:
-    # Mondays 06:00 UTC. Upstream releases roughly weekly.
-    - cron: "0 6 * * 1"
+    # Every day at 06:00 UTC. Upstream cut 0.1.0, 0.1.1 and 0.1.2 inside four
+    # days, so a weekly look can be three releases behind. A run takes about six
+    # minutes, reports to one issue that is rewritten in place, and keeps at
+    # most one pull request per axis, so running daily adds no noise.
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       max_versions:
@@ -208,7 +211,7 @@ jobs:
       # be pulled, a gateway that never starts and a BFF that never becomes
       # healthy are all recorded as "could not be tested" - no request reached
       # the gateway, so they say nothing about either link. If they failed the
-      # leg instead, a failure that repeats every week would be reported
+      # leg instead, a failure that repeats on every run would be reported
       # forever as "the leg did not report; re-run the sweep".
       - name: Pull images
         id: pull

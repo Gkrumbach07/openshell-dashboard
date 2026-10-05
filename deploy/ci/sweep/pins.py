@@ -302,7 +302,7 @@ def move_ceiling(doc, version, gateway_image, supervisor_image, config_schema):
     ahead of the sweep). It is promoted: the new required lane takes its
     place, with the images that were just tested. Leaving it beside the new
     lane would give the file two lanes for one version, which validate()
-    refuses - and the bump would then fail every week.
+    refuses - and the bump would then fail on every run.
     """
     new_release = parse_release(version)
     if new_release is None:

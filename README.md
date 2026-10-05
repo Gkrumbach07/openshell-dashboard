@@ -26,7 +26,7 @@ A dashboard build works with a **range** of OpenShell gateway releases, never wi
 | OpenShell Go SDK | `v0.0.0-20260928030816-6648bd0c290e` |
 <!-- gateway-range:end -->
 
-A gateway newer than the newest tested one is *untested by this build*, not known to be broken. The weekly [compat sweep](#two-jobs-two-questions) looks ahead, and raising the ceiling is a deliberate change.
+A gateway newer than the newest tested one is *untested by this build*, not known to be broken. The daily [compat sweep](#two-jobs-two-questions) looks ahead, and raising the ceiling is a deliberate change.
 
 ### Which dashboard for which gateway
 
@@ -337,7 +337,7 @@ supported **range** and never claims `latest`:
 | Job | When | Blocking | Question |
 |---|---|---|---|
 | `compat` (ci.yml) | per PR | yes | do we still honor the range we promised? |
-| `compat-sweep` | weekly / manual | no | how far ahead can we move? |
+| `compat-sweep` | daily / manual | no | how far ahead can we move? |
 
 `compat` runs the **required lanes** in `deploy/ci/gateway-pins.json`: the
 oldest gateway release the dashboard still works with and the newest it has
