@@ -15,16 +15,18 @@
 // crosses the wire proves that the SDK we pin still speaks the protocol of a
 // given gateway. So the map below is organized by what crosses the wire.
 //
-// # Counts
+// # What a green lane looks like
 //
-// The suite has 33 test functions: 28 drive the gateway and 5 check the suite's
-// own guards against canned answers and send the gateway nothing
-// (guard_test.go). TestGuardDocCounts fails when that sentence stops being
-// true, so it cannot drift the way a hand count does.
+// Almost every test drives the gateway through the BFF's real routes. The ones
+// in guard_test.go do not: they check the suite's own guards against canned
+// answers and send the gateway nothing.
 //
 // While the five known bugs listed at the end of this comment stand, a green
-// lane on gateways 0.1.0 to 0.1.2 prints 31 PASS and 2 SKIP at the top level,
-// and 3 more SKIP among the subtests.
+// lane on gateways 0.1.0 to 0.1.2 has two tests that SKIP at the top level
+// (TestProviderFromWorkspaceProfile and TestProviderCredentialKeyedByName) and
+// three subtests that SKIP, each with a message starting "KNOWN BUG:". Any
+// other skip, or any failure, is news. The comment does not state how many
+// tests there are: a count is wrong as soon as another change adds a test.
 //
 // # Coverage map
 //
