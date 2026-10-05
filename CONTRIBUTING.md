@@ -73,13 +73,15 @@ Use `fix:` or `feat:` only for something a user of the dashboard or a consumer o
 
 #### If you move the supported gateway range
 
-The range of OpenShell gateways a release supports is derived from the required lanes in `deploy/ci/gateway-pins.json`, never written by hand. After changing that file, regenerate the one place that restates it and commit the result (CI fails if you forget):
+The range of OpenShell gateways a release supports is derived from the required lanes in `deploy/ci/gateway-pins.json`, never written by hand. The README restates it in one generated table, which has to be regenerated in the same change that moves the pins:
 
 ```bash
 node scripts/readme-gateway-range.mjs --write
 ```
 
-The SDK pin in `backend/go.mod`, the gateway pins and the range move together in one pull request (ADR 0005).
+The compat sweep's automated pull requests run this themselves, so their table is already up to date when they are opened. Run it yourself when you change the pins file by hand, and commit the result with the pins.
+
+One thing has to agree between the pins file and the code: its `sdk` field must equal the OpenShell SDK version in `backend/go.mod`. `node scripts/gateway-range.mjs --check` fails when it does not. Nothing else is tied together. The SDK and the gateway lanes are separate changes with separate evidence: one pull request moves the SDK (`go.mod`, `go.sum` and the `sdk` field), another moves a gateway lane, and neither needs the other ([ADR 0006](docs/adrs/0006-compat-links-and-sweep-axes.md)).
 
 ### Developer Certificate of Origin (DCO)
 

@@ -13,7 +13,7 @@ UI copy goes through an English-only i18n layer (`openshell-dashboard/i18n`; con
 
 ## Compatibility
 
-A dashboard build works with a **range** of OpenShell gateway releases, never with "whatever is latest". It reaches the gateway through one pinned Go SDK, and that SDK and the gateway are [wire-coupled](#the-sdk-and-the-gateway-are-wire-coupled). Outside the range you do not get a clean error: you get `workspace '\n\adefault' not found` on every workspace-scoped call, or `workspace_scope is required`.
+A dashboard build works with a **range** of OpenShell gateway releases, never with "whatever is latest". It reaches the gateway through one pinned Go SDK, and whether that SDK and a given gateway understand each other is [proven for the pair](#the-sdk-and-the-gateway-are-wire-coupled), not read off their version numbers. Outside the range you do not get a clean error. You get `workspace '\n\adefault' not found` on every workspace-scoped call, or `workspace_scope is required`, or no error at all and the wrong workspace.
 
 ### What this branch supports
 
@@ -32,10 +32,14 @@ A gateway newer than the newest tested one is *untested by this build*, not know
 
 | Your gateway | Dashboard | npm | Container image |
 |---|---|---|---|
-| in the range above | **1.x**, the current line, released from `main` | `openshell-dashboard@1` | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>` |
-| `0.0.116` | **0.x**, maintenance only; its last release is `v0.3.0` | `openshell-dashboard@0.3.0` | `quay.io/gkrumbach07/openshell-dashboard:sha-978bcb5` |
+| in the range above | **1.x**, the current line, released from `main` | `openshell-dashboard@1` | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>`; for `1.1.1` and earlier, the [commit tag](#container-image) |
+| `0.0.116` | **0.2.x**: `v0.2.0` today; a 0.2.x maintenance line is being set up | `openshell-dashboard@0.2.0` | `quay.io/gkrumbach07/openshell-dashboard:sha-701454a` |
 
-No build spans both lines. Upstream renumbered a protobuf field between `0.0.116` and `0.1.0`, so 1.x against `0.0.116` fails every workspace-scoped call, and 0.x against `0.1.0` or newer fails with `workspace_scope is required`. Gateway `0.0.116` also has no sandbox-template RPCs (it answers them with gRPC `UNIMPLEMENTED`), so sandbox templates are not available on the 0.x line.
+**Do not use dashboard `0.3.0`.** It works correctly with none of these gateways. Against `0.1.0` and newer it fails. Against `0.0.116` it does something worse than fail: it silently ignores the workspace. A sandbox created in workspace `team-a` lands in `default`, every workspace page lists the contents of `default`, and nothing reports an error. Its SDK sends the workspace in a field that gateway `0.0.116` does not have, and a protobuf field the receiver does not know is ignored without complaint.
+
+No build spans `0.0.116` and `0.1.x`. 1.x against `0.0.116` fails every workspace-scoped call with `workspace '\n\adefault' not found`. `0.2.0` against `0.1.0` or newer fails with `workspace_scope is required` or a bare `internal error`. Gateway `0.0.116` also has no sandbox-template RPCs (it answers them with gRPC `UNIMPLEMENTED`), so sandbox templates do not work against it with any dashboard.
+
+**1.x is not a stability claim.** The version numbers were assigned automatically from commit messages; nobody decided that a 1.0 milestone had been reached (see [#78](https://github.com/Gkrumbach07/openshell-dashboard/issues/78)). The package will be renamed, with a fresh version history, when the repository moves to another organisation.
 
 ### How the range is established
 
@@ -43,14 +47,15 @@ Nobody types it. [`deploy/ci/gateway-pins.json`](deploy/ci/gateway-pins.json) li
 
 ```bash
 node scripts/gateway-range.mjs                    # print the range
+node scripts/gateway-range.mjs --check            # ...and fail unless the pins' sdk field is the SDK in backend/go.mod
 node scripts/readme-gateway-range.mjs --write     # regenerate the table above after the pins move
 ```
 
-CI fails when that table is stale. Only the two ends of the range run on every pull request; a release between them is covered by the claim but not re-run each time.
+CI fails when that table is stale. The [compat sweep](#the-sweep-has-two-axes)'s automated pull requests regenerate it themselves; a pull request that changes the pins by hand has to run `--write` too. Only the two ends of the range run on every pull request; a release between them is covered by the claim but not re-run each time.
 
 ### Where each artifact says it
 
-Every release declares the range it was cut with, so you do not need this repository to find out what a given version needs:
+Starting with the first release cut after `1.1.1`, every release declares the range it was cut with, so you do not need this repository to find out what a given version needs:
 
 | Artifact | Where | How to read it |
 |---|---|---|
@@ -58,7 +63,7 @@ Every release declares the range it was cut with, so you do not need this reposi
 | npm package | `openshell.gateway` (a semver range) and `openshell.sdk` in `package.json` | `npm view openshell-dashboard@<version> openshell` |
 | Container image | env `GATEWAY_SUPPORTED_MIN` and `GATEWAY_SUPPORTED_MAX`; labels `io.github.gkrumbach07.openshell-dashboard.gateway.min`, `.gateway.max` and `.sdk` | `skopeo inspect docker://quay.io/gkrumbach07/openshell-dashboard:<tag>` |
 
-Releases up to and including `1.1.0` predate this and declare nothing.
+Releases up to and including `1.1.1` predate this and declare nothing: their release notes have no such section, their package has no `openshell` field, and their images carry neither the variables nor the labels. For those, the table under [Which dashboard for which gateway](#which-dashboard-for-which-gateway) is the only statement there is.
 
 ## Quick start (local dev)
 
@@ -323,8 +328,9 @@ Two tag gotchas:
 
 ### Two jobs, two questions
 
-Per [ADR 0005](docs/adrs/0005-gateway-version-compatibility.md) the dashboard
-pins a supported **range** and never claims `latest`:
+Per [ADR 0005](docs/adrs/0005-gateway-version-compatibility.md), as amended by
+[ADR 0006](docs/adrs/0006-compat-links-and-sweep-axes.md), the dashboard pins a
+supported **range** and never claims `latest`:
 
 | Job | When | Blocking | Question |
 |---|---|---|---|
@@ -344,60 +350,81 @@ which is how a digest-pinned `dev` lane turned `main` red on 2026-10-02 with no
 change on our side. A required lane must therefore be a release, and
 `scripts/gateway-range.mjs` refuses to derive a range from anything else.
 
-`compat-sweep` also probes **upstream HEAD** (`dev`) on every run, as early
-warning. Once the pin sits on a release, nothing else watches HEAD — the sweep
-otherwise only walks release tags — so a HEAD regression would stay invisible
-until it shipped in a release. `dev` is informational only and **never a bump
-target**: ADR 0005 wants the pin on a release, so a green HEAD must not move us
-onto a moving tag. Disable it with `include_dev=0`.
+### Three links, each proven separately
 
-`compat-sweep` walks upstream release tags newer than the current floor,
-taking the gateway image *and* the matching SDK commit from the same tag
-(`sdk/go` is a submodule of `NVIDIA/OpenShell`, so a release tag resolves to an
-exact SDK version). A green row newer than the floor is the signal to open a
-range-bump PR — and per ADR 0005 the SDK pin, the gateway pins and the declared
-range all move together in that one PR, never separately.
+The chain is gateway → SDK → BFF → UI, and no link is inferred from another:
 
-Because a sweep crosses the v1/v2 config boundary, it runs with
+| Link | Proven by |
+|---|---|
+| **wire:** gateway ↔ SDK | `backend/test/compat` against a real gateway, with `-count=1` |
+| **source:** SDK ↔ BFF | the compiler, `go vet` and the unit tests |
+| BFF ↔ UI | shipping both from one commit |
+
+The newest gateway is not assumed to work with the newest SDK, in either
+direction. A result always names the link it is about: a compile error is a
+source migration, and is never reported as a gateway problem.
+
+### The sweep has two axes
+
+`compat-sweep` asks two questions, and each holds the other side still:
+
+| Axis | Held still | Varies | Question | Its pull request changes |
+|---|---|---|---|---|
+| gateway | the SDK pin in `backend/go.mod` | the gateway image | which gateways does the code we ship today work with? | `deploy/ci/gateway-pins.json` only: the ceiling lane moves |
+| SDK | the required lanes | the SDK | can we move to a newer SDK without losing a gateway we support? | `backend/go.mod`, `backend/go.sum` and the `sdk` field of the pins file |
+
+Each pull request also regenerates the [table under Compatibility](#what-this-branch-supports),
+because each moves a value that table restates.
+
+**Gateway axis.** The BFF is built once, from the checked-in `go.mod`, and run
+against upstream releases from the floor up. A release above the ceiling that
+passes moves the ceiling lane to it; the floor lane stays, and the ceiling
+never moves past a release that failed. A release that fails is a *wire*
+incompatibility between the SDK we pin and that gateway. The axis can also be
+asked to look below the floor; that answer is informational and never a pull
+request.
+
+**SDK axis.** There is one possible target: the SDK at the commit of the newest
+upstream release tag, when that is newer than the pin. It is built, vetted and
+unit-tested first. If that fails, the result is a *source* migration (the BFF
+does not compile against that SDK) and no gateway is consulted. If it passes,
+the compat suite runs against every required lane. Passing all of them opens
+the pull request. Failing the floor is reported as "this SDK would drop gateway
+*floor*" and a person decides; the floor is never raised automatically.
+
+Both axes also probe **upstream HEAD** (the `dev` gateway, `sdk@latest`) as
+early warning: once the pins sit on releases, nothing else watches HEAD.
+Neither is ever pinned, and neither ever opens a pull request.
+
+So the SDK and the gateway lanes do **not** move together. One thing ties the
+two files to each other: the `sdk` field of `deploy/ci/gateway-pins.json` must
+equal the SDK version in `backend/go.mod`, and CI fails when it does not
+(`node scripts/gateway-range.mjs --check`). When both pull requests are open,
+each was proven against `main` as it stood, not against the other: merge one,
+update the other so the required lanes run on the combination, then merge the
+second.
+
+What a sweep finds goes to one place each:
+
+- **At most one pull request per axis**, rewritten in place by later sweeps and
+  never merged automatically. A pull request opened with the workflow's default
+  token does not start CI by itself; its description says how to start it.
+- **One issue**, labelled `compat-migrate`, rewritten in place and closed
+  automatically once nothing is outstanding. Every row says which link failed
+  (wire or source) and what to do about it.
+
+A failure is the most valuable result, so it is never silent. A sweep leg that
+does not report is neither a pass nor a failure: it leaves the issue and that
+axis's pull request untouched and turns the run red.
+
+A sweep crosses the v1/v2 config boundary, so its gateway legs run with
 `OPENSHELL_CONFIG_SCHEMA=auto`, which tries v2 and falls back to v1 when the
 gateway rejects the config.
 
-Each run produces **actionable pieces** — up to two, because a bump and a
-migration are different work with different lifecycles:
-
-| Newer releases | Bump PR | Migration issue |
-|---|---|---|
-| all compatible | to the newest | — |
-| all incompatible | — | **opened** |
-| mixed | to the highest that passes | opened for the rest |
-| none released | — | closed if one was open |
-
-- **Bump PR** — `chore/compat-bump-<version>`. Moves the SDK pin *and*
-  `deploy/ci/gateway-pins.json` together, as ADR 0005 requires. Closes by
-  merging. Never auto-merged.
-- **Migration issue** — labelled `compat-migrate`, a singleton rewritten in
-  place. Tracks releases we cannot follow yet, which need investigation rather
-  than a bump. Scoped to *open* issues, and auto-closed once nothing fails.
-
-A failure is the most valuable result, so it is never silent.
-
-The sweep only looks **forward**, and refuses a floor below the current pin.
-It moves the SDK and gateway together, so below the pin the build fails before
-anything talks to a gateway — which says nothing about compatibility.
-
-The useful backward question is a *different experiment*: "does our current
-build still work against an older gateway?" That holds the SDK fixed and varies
-only the gateway image, which is what an advisory lane in
-`deploy/ci/gateway-pins.json` does, and it is how the floor of the supported
-range gets established.
-
-The three failure modes are recorded separately (BFF did not compile / gateway
-did not start / compat suite failed) because only the last is a compatibility
-result.
-
 The pins live in `deploy/ci/gateway-pins.json`, read by the `compat` matrix in
-`ci.yml` and edited structurally by the bump PR — which is why they are not
-inlined in the workflow.
+`ci.yml` and edited structurally by the sweep's pull requests, which is why
+they are not inlined in the workflow. The sweep's decisions are plain code with
+tests, in [`deploy/ci/sweep/`](deploy/ci/sweep/).
 
 `OPENSHELL_VERSION` selects the gateway *and* supervisor tag — they are
 released together and must match. The community sandbox image publishes no
@@ -414,15 +441,22 @@ CI publishes `quay.io/gkrumbach07/openshell-dashboard` (linux/amd64 and linux/ar
 
 | Tag | Points at | Moves when |
 |---|---|---|
-| `X.Y.Z` | the image built for the commit released as `vX.Y.Z` | never |
+| `X.Y.Z` | the image built for the commit released as `vX.Y.Z` | never: it is written once, and the retag refuses to point it anywhere else |
 | `X.Y` | the newest `X.Y.z` release | a patch release is cut |
-| `latest` | the newest commit on `main` that passed **every** CI job, including the required compat lanes | CI goes green on `main` |
-| `sha-<7>` | the image built for that commit, whether or not its checks passed | never |
+| `latest` | the newest commit on `main` that passed **every** CI job, including the required compat lanes, while it was the tip of `main` | CI goes green on the tip of `main`; it only moves forward, so re-running an older run does not pull it back |
+| `sha-<7>` | the image built for that commit, whether or not its checks passed | only when CI is re-run in full for that commit, which builds it again |
 | `pr-<n>` | the latest build of that pull request | the PR is updated |
 
-Version tags start with the first release cut after `1.1.0`. Before that only the commit tags exist: `1.1.0` is `sha-71335e5`, and `0.3.0`, the last release of the 0.x line, is `sha-978bcb5`.
+Version tags start with the first release cut after `1.1.1`. Releases up to and including `1.1.1` have no `X.Y.Z` or `X.Y` tag and never get one automatically. What exists for them is the commit tag, `sha-` plus the first seven characters of the released commit. The ones you are likely to need:
 
-For a deployment, pin `X.Y.Z` and check it against your gateway in [Compatibility](#compatibility). How releases are cut is in [docs/releasing.md](docs/releasing.md).
+| Release | Commit tag |
+|---|---|
+| `1.1.1` | `sha-9fbdc37` |
+| `1.1.0` | `sha-71335e5` |
+| `0.3.0` | `sha-978bcb5` ([do not use](#which-dashboard-for-which-gateway)) |
+| `0.2.0` | `sha-701454a` |
+
+For a deployment, pin `X.Y.Z` (or the commit tag, for a release in the table above) and check it against your gateway in [Compatibility](#compatibility). How releases are cut is in [docs/releasing.md](docs/releasing.md).
 
 To build it yourself:
 

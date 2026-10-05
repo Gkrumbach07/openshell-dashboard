@@ -97,12 +97,24 @@ and everything else calls that script:
 | GitHub release | a *Supported OpenShell gateways* section, which also calls out a range that changed since the previous release | `generateNotes` in `scripts/release/gateway-range-plugin.mjs` |
 | npm package | `"openshell": { "gateway": ">=A <=B", "sdk": "…" }` in `package.json` | `prepare` in the same plugin, via `scripts/release/stamp-package.mjs` |
 | Container image | env `GATEWAY_SUPPORTED_MIN` / `GATEWAY_SUPPORTED_MAX`, and labels `io.github.gkrumbach07.openshell-dashboard.gateway.min`, `.gateway.max`, `.sdk` | build args in `ci.yml`'s `build` job, consumed by `deploy/Dockerfile`; `image-range` reads the pushed image back and fails if they are missing |
-| README | the table under *Compatibility* | `scripts/readme-gateway-range.mjs --write`, checked in CI |
+| README | the table under *Compatibility* | `scripts/readme-gateway-range.mjs --write`, run by whatever moves the pins (the compat sweep's pull requests do it themselves) and checked in CI |
 
 The committed `frontend/package.json` has no `openshell` field, for the same
 reason its version is `0.0.0-semantically-released`: the value is stamped into
 the CI checkout just before `npm publish` and never committed, so there is no
 second copy to drift.
+
+The only thing that has to agree with the pins file is `backend/go.mod`: the
+`sdk` field must equal the SDK version there, and
+`node scripts/gateway-range.mjs --check` fails when it does not. The SDK and the
+gateway lanes are otherwise independent and move in separate pull requests
+([ADR 0006](adrs/0006-compat-links-and-sweep-axes.md)).
+
+**Releases up to and including `1.1.1` have none of this.** They were cut by
+the previous pipeline: no *Supported OpenShell gateways* section, no `openshell`
+field, no range on the image, and no `X.Y.Z` or `X.Y` image tag. Nothing here
+adds them after the fact. The first release cut by this pipeline is the first
+one that carries them.
 
 Our semver describes the npm API, not the gateway a deployment needs. A release
 that moves the range can break a running installation while looking like a
@@ -191,10 +203,11 @@ git checkout -- frontend/package.json             # the stamp is never committed
 
 ## What this pipeline does not do
 
-- **It releases from `main` only.** The 0.x maintenance line (last release
-  `v0.3.0`, the one that works with gateway `0.0.116`) has no release branch.
-  Cutting a `0.3.1` would need a maintenance branch added to `branches` in
-  `release.config.cjs`.
+- **It releases from `main` only.** `branches` in `release.config.cjs` names
+  nothing else. The dashboard for gateway `0.0.116` is `0.2.0`, and a 0.2.x
+  maintenance line for it is being set up separately; nothing described on this
+  page releases it. (`0.3.0` is not that line: see *Compatibility* in the
+  README for why it must not be used.)
 - **It does not rebuild images for a release.** The version is decided after the
   image exists, so the image's own `org.opencontainers.image.version` label
   names the branch it was built from (`main`), not `X.Y.Z`. The tag is what
