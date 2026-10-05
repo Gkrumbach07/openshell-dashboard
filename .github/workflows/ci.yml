@@ -113,6 +113,8 @@ jobs:
     outputs:
       lanes: ${{ steps.read.outputs.lanes }}
       sandbox_image: ${{ steps.read.outputs.sandbox_image }}
+      supported_min: ${{ steps.read.outputs.supported_min }}
+      supported_max: ${{ steps.read.outputs.supported_max }}
     steps:
       - uses: actions/checkout@v4
       # The validator below and the scheduled sweep share this code. A second
@@ -126,6 +128,11 @@ jobs:
           set -euo pipefail
           echo "lanes=$(jq -c '.lanes' deploy/ci/gateway-pins.json)" >> "$GITHUB_OUTPUT"
           echo "sandbox_image=$(jq -er '.sandbox_image' deploy/ci/gateway-pins.json)" >> "$GITHUB_OUTPUT"
+          # The supported range, derived from the required lanes. The compat
+          # lanes start the BFF with it, the way a released image carries it.
+          python3 deploy/ci/sweep/sweep.py range deploy/ci/gateway-pins.json \
+            | python3 -c 'import json, sys; r = json.load(sys.stdin); print("supported_min=" + r["floor"]); print("supported_max=" + r["ceiling"])' \
+            >> "$GITHUB_OUTPUT"
 
   # One job per lane in deploy/ci/gateway-pins.json.
   #
@@ -180,6 +187,15 @@ jobs:
       OPENSHELL_GATEWAY_IMAGE: ${{ matrix.gateway_image }}
       OPENSHELL_SUPERVISOR_IMAGE: ${{ matrix.supervisor_image }}
       OPENSHELL_CONFIG_SCHEMA: ${{ matrix.config_schema }}
+      # The BFF under test gets the supported range, exactly as a released
+      # image does, and a required lane then has to be judged "supported":
+      # every required lane is inside the range by construction, so any other
+      # verdict means the version comparison, the range derivation or the
+      # gateway's version report broke. An advisory lane may sit outside the
+      # range, so nothing is asserted for it.
+      GATEWAY_SUPPORTED_MIN: ${{ needs.compat-pins.outputs.supported_min }}
+      GATEWAY_SUPPORTED_MAX: ${{ needs.compat-pins.outputs.supported_max }}
+      COMPAT_EXPECT_COMPATIBILITY: ${{ matrix.required && 'supported' || '' }}
     steps:
       - uses: actions/checkout@v4
 
