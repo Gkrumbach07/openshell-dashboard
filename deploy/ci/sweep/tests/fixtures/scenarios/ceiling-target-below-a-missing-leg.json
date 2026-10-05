@@ -1,0 +1,47 @@
+{
+  "description": "0.1.3 and 0.1.4 are released. 0.1.3 passes; the leg for 0.1.4 never reported. This run cannot say where the ceiling belongs, so it proposes nothing: no bump, the gateway PR is left as it is, and the 0.1.3 row does not send the reader to a pull request this run did not open.",
+  "upstream": {
+    "tags": [
+      "a0130000a0130000a0130000a0130000a0130000\trefs/tags/v0.1.3",
+      "a0140000a0140000a0140000a0140000a0140000\trefs/tags/v0.1.4"
+    ],
+    "images": {
+      "gateway:0.1.3": "sha256:1313131313131313131313131313131313131313131313131313131313131313",
+      "supervisor:0.1.3": "sha256:3131313131313131313131313131313131313131313131313131313131313131",
+      "gateway:0.1.4": "sha256:1414141414141414141414141414141414141414141414141414141414141414",
+      "supervisor:0.1.4": "sha256:4141414141414141414141414141414141414141414141414141414141414141"
+    },
+    "sdk": {
+      "a0130000a0130000a0130000a0130000a0130000": "v0.0.0-20261012090000-a0130000a013",
+      "a0140000a0140000a0140000a0140000a0140000": "v0.0.0-20261019090000-a0140000a014",
+      "latest": "v0.0.0-20261019090000-a0140000a014"
+    }
+  },
+  "legs": {
+    "gateway-0.1.4": null
+  },
+  "expect": {
+    "issue_action": "keep",
+    "gateway_pr": "skip",
+    "sdk_pr": "open",
+    "incomplete": true,
+    "gateway_statuses": {
+      "0.1.4": "missing",
+      "0.1.3": "ok",
+      "0.1.2": "ok",
+      "0.1.1": "ok",
+      "0.1.0": "ok",
+      "dev": "ok"
+    },
+    "sdk_statuses": {
+      "v0.1.4": "bump"
+    },
+    "summary_contains": [
+      "Nothing from this run. It passes, but a leg above the ceiling did not report, so this run cannot say where the ceiling belongs and proposes nothing.",
+      "This run is INCOMPLETE"
+    ],
+    "summary_lacks": [
+      "opens or rewrites the pull request on `compat-sweep/gateway`"
+    ]
+  }
+}

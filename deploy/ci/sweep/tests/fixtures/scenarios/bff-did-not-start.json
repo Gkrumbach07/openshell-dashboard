@@ -1,0 +1,44 @@
+{
+  "description": "0.1.3 is released. Its SDK builds and passes the unit tests, but on the floor lane the BFF built against it never becomes healthy in front of the gateway. No request was made, so it is not a compat failure; and it is recorded, so it is not 'the leg did not report' either.",
+  "upstream": {
+    "tags": [
+      "a0130000a0130000a0130000a0130000a0130000\trefs/tags/v0.1.3"
+    ],
+    "images": {
+      "gateway:0.1.3": "sha256:1313131313131313131313131313131313131313131313131313131313131313",
+      "supervisor:0.1.3": "sha256:3131313131313131313131313131313131313131313131313131313131313131"
+    },
+    "sdk": {
+      "a0130000a0130000a0130000a0130000a0130000": "v0.0.0-20261012090000-a0130000a013",
+      "latest": "v0.0.0-20261012090000-a0130000a013"
+    }
+  },
+  "legs": {
+    "sdk-release-0.1.0": {
+      "bff": "failure"
+    }
+  },
+  "expect": {
+    "issue_action": "upsert",
+    "gateway_pr": "open",
+    "sdk_pr": "close",
+    "incomplete": false,
+    "gateway_statuses": {
+      "0.1.3": "bump",
+      "0.1.2": "ok",
+      "0.1.1": "ok",
+      "0.1.0": "ok",
+      "dev": "ok"
+    },
+    "sdk_statuses": {
+      "v0.1.3": "stack"
+    },
+    "title_contains": [
+      "SDK v0.1.3 could not be tested"
+    ],
+    "issue_contains": [
+      "source check passes; gateway 0.1.0: the BFF did not start against it; gateway 0.1.2 passes",
+      "Inconclusive: gateway 0.1.0: the BFF did not start against it, so the wire was not tested there."
+    ]
+  }
+}

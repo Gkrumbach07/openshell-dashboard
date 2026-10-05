@@ -1,0 +1,50 @@
+{
+  "description": "0.1.3 is released. On both SDK legs the source check ended without saying which step failed (it crashed). `sweep.py record-sdk` refuses to record that, so the legs upload nothing. The row is 'no leg reported' - not a made-up '`go build` failed (the BFF does not compile)'.",
+  "upstream": {
+    "tags": [
+      "a0130000a0130000a0130000a0130000a0130000\trefs/tags/v0.1.3"
+    ],
+    "images": {
+      "gateway:0.1.3": "sha256:1313131313131313131313131313131313131313131313131313131313131313",
+      "supervisor:0.1.3": "sha256:3131313131313131313131313131313131313131313131313131313131313131"
+    },
+    "sdk": {
+      "a0130000a0130000a0130000a0130000a0130000": "v0.0.0-20261012090000-a0130000a013",
+      "latest": "v0.0.0-20261012090000-a0130000a013"
+    }
+  },
+  "legs": {
+    "sdk-release-0.1.0": {
+      "source": "failure",
+      "source_step": ""
+    },
+    "sdk-release-0.1.2": {
+      "source": "failure",
+      "source_step": ""
+    }
+  },
+  "expect": {
+    "issue_action": "keep",
+    "gateway_pr": "open",
+    "sdk_pr": "skip",
+    "incomplete": true,
+    "gateway_statuses": {
+      "0.1.3": "bump",
+      "0.1.2": "ok",
+      "0.1.1": "ok",
+      "0.1.0": "ok",
+      "dev": "ok"
+    },
+    "sdk_statuses": {
+      "v0.1.3": "missing"
+    },
+    "summary_contains": [
+      "no leg reported; gateway 0.1.0 no result; gateway 0.1.2 no result"
+    ],
+    "summary_lacks": [
+      "does not compile",
+      "source check passes",
+      "source migration"
+    ]
+  }
+}

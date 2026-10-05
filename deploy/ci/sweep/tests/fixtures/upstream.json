@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "Upstream on 2026-10-05, captured from the real `git ls-remote --tags`",
+    "and the real ghcr.io digests. Scenarios layer hypothetical releases on",
+    "top of this; their hashes and digests are obviously made up."
+  ],
+  "tags": [
+    "35e0c53718edfaf4cafaf5f291dada62f339e11f\trefs/tags/dev",
+    "e7fdd6beef98f7f92d86271a169fdd4d3be44cf3\trefs/tags/dev^{}",
+    "f68867b8691e72ba25e0fa7d9ee4f32adbc4701c\trefs/tags/v0.0.115",
+    "d1155aa70042d3e2ee49dbfa15346b108b7c1d92\trefs/tags/v0.0.116",
+    "496ebba293f5cc2bb2753444dddd534f0b4aeb6a\trefs/tags/v0.1.0",
+    "0ba004e79fb3923133e0c1e288b08ced075a29be\trefs/tags/v0.1.0-pre.1",
+    "f54a7a617760295cc101d6ec7f31df1dba50fc23\trefs/tags/v0.1.0-pre.1^{}",
+    "d3480d2a7efab3fd0217ab67828655617b9af777\trefs/tags/v0.1.0-pre.8",
+    "4ce767fc0cadad773c398e15109c0286f4b7aa30\trefs/tags/v0.1.1",
+    "6648bd0c290efbc41ba131ee9831ee45cd431f94\trefs/tags/v0.1.2",
+    "e7fdd6beef98f7f92d86271a169fdd4d3be44cf3\trefs/tags/v0.1.3-pre.4",
+    "8d1720688581751c3bf895218bee02dca2a1f0f4\trefs/tags/vm-runtime",
+    "96c08f111b7ccf3d048a876c23e724014babb585\trefs/tags/vm-runtime^{}"
+  ],
+  "images": {
+    "gateway:0.0.116": "sha256:05cf77bbb022a739aed6f22daa0e7e164415f4ab273b5f84319e46d91eb8f645",
+    "supervisor:0.0.116": "sha256:c8c42aef16c200063e32cbf72e553e4ead027085427b555efafd95063ecead42",
+    "gateway:0.1.0": "sha256:9be15b267390fb73353b8862dade4dc13476f13175cf709e174d74bdf5f08e39",
+    "supervisor:0.1.0": "sha256:cda950db60c83a770c54bfeea5326de8a3345c100938cc843b4537ab67a4e62f",
+    "gateway:0.1.1": "sha256:09ce3db99430e973743f94adf032d79089f41f2c3fe571e3670d8ba7c92c6313",
+    "supervisor:0.1.1": "sha256:297b4b681e13a4dccda4b4796e155e2231134aae1f9e3c94aba5bb981c0e1240",
+    "gateway:0.1.2": "sha256:2fe4dad9118e14ab80a8258b545ea6e6cd74c3469e24ad4e6610f964d98913a2",
+    "supervisor:0.1.2": "sha256:d7b5264bb6bc56f4796e6fa3617b8e4a8d785be0b7293542efd8cc250b0fb67a",
+    "gateway:dev": "sha256:13fb3fee6c2bf0f2d99336f19c5a1f2357e9bfb01715701eaae347e12d6524a7",
+    "supervisor:dev": "sha256:75f2bf546b6fce063a3a86f34cd04b7216c39527d1963a649064db316cbb5f0c"
+  },
+  "sdk": {
+    "latest": "v0.0.0-20260928030816-6648bd0c290e"
+  }
+}

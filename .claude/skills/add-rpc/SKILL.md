@@ -26,6 +26,15 @@ Start with `openshell/v1/` and `types/` in the pinned module version. Note:
 - Secret-bearing fields or write-only fields that must not be sent back to the frontend
 - Whether the public SDK is actually missing what you need; if so, document the gap before adding any escape hatch
 
+If the capability exists upstream but not in the **pinned** SDK, do not run
+`go get ...@latest` to reach it. Moving the SDK is a separate PR with its own
+proof (see "SDK updates" in `.claude/rules/bff-go.md` and ADR 0006): the pin
+only ever moves to the commit of an upstream release tag, and only after the
+compat suite passes against every gateway we support. Land that first, then
+add the endpoint. Also check that the gateways in the supported range
+(`python3 deploy/ci/sweep/sweep.py range`) actually serve the RPC — an older
+gateway answers gRPC `UNIMPLEMENTED` for one it predates.
+
 ### 2. Update models / request parsing
 
 If the gateway response needs JSON shaping, add or extend DTO converters in

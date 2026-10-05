@@ -176,6 +176,10 @@ no signal about whether the next release works.
 break like the field renumbering makes some windows impossible to honor. The
 range has to be discovered by test, not promised in advance.
 
+## Amendments
+
+- [ADR 0006](0006-compat-links-and-sweep-axes.md) — replaces decision 4 and the rule that the SDK pin and the gateway pins move together; no `dev` pins.
+
 ## References
 
 - ADR 0003 — adopting the SDK, which created this coupling
