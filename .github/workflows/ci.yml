@@ -240,10 +240,14 @@ jobs:
       # is main's (1.x); a 0.2.x image under it would hand everyone who pulls
       # the default a dashboard that only works with gateway 0.0.116. So
       # there is no `latest` rule below, and `flavor: latest=false` stops the
-      # action from adding one of its own accord. A push to 0.2.x moves the
-      # `0.2.x` tag instead. Every build also gets its commit (sha-<7>), a
-      # pull request gets pr-<n>, and publish.yml adds X.Y.Z to the sha-<7>
-      # image when a release is cut.
+      # action from adding one of its own accord.
+      #
+      # This job only pushes the tags that name ONE build: its commit
+      # (sha-<7>) and, for a pull request, pr-<n>. They go out as soon as the
+      # image exists, before the tests have finished, because that is what
+      # they are for. The tags people deploy from come later: the moving
+      # `0.2.x` tag is set by tag-line-image below, once every job has passed,
+      # and publish.yml adds X.Y.Z when a release is cut.
       - uses: docker/metadata-action@v5
         id: meta
         with:
@@ -251,7 +255,6 @@ jobs:
           flavor: |
             latest=false
           tags: |
-            type=raw,value=0.2.x,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/0.2.x' }}
             type=sha,prefix=sha-
             type=ref,event=pr,prefix=pr-
       - name: Create and push multi-arch manifest
@@ -260,3 +263,33 @@ jobs:
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf 'quay.io/gkrumbach07/openshell-dashboard@sha256:%s ' *)
+
+  # Moves the line's `0.2.x` tag to this commit's image — the tag the README
+  # tells users of this line to pull — and only after every other job has
+  # passed, the real-gateway job included. push-manifest used to set it
+  # itself, straight after the build, so a commit that broke the dashboard
+  # against gateway 0.0.116 had already replaced the `0.2.x` image by the time
+  # e2e-integration went red.
+  #
+  # It is a retag BY DIGEST of the sha-<7> image push-manifest pushed: the
+  # manifest is copied as it is and nothing is rebuilt, so `0.2.x` is byte for
+  # byte the image the other jobs tested. Nothing is checked out and the job
+  # token has no permissions; the registry credentials are all it needs.
+  tag-line-image:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/0.2.x'
+    needs: [check-frontend, check-backend, check-scripts, e2e, e2e-integration, push-manifest]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Move the 0.2.x tag to this commit's image
+        env:
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_ROBOT_TOKEN: ${{ secrets.QUAY_ROBOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          image=quay.io/gkrumbach07/openshell-dashboard
+          source="$image:sha-${GITHUB_SHA::7}"
+          echo "$QUAY_ROBOT_TOKEN" | docker login quay.io --username "$QUAY_USERNAME" --password-stdin
+          digest=$(docker buildx imagetools inspect "$source" --format '{{json .Manifest}}' | jq -er '.digest')
+          docker buildx imagetools create --tag "$image:0.2.x" "$image@$digest"
+          echo "$image:0.2.x -> $digest (from $source)"
