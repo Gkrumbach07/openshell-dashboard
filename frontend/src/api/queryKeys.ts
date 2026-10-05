@@ -53,6 +53,7 @@ export const policyKeys = {
 
 export const gatewayKeys = {
   info: ['gateway'] as const,
+  compatibility: ['gateway', 'compatibility'] as const,
 };
 
 export const authKeys = {

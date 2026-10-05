@@ -246,8 +246,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   return (
     <Page masthead={masthead} sidebar={sidebar} isManagedSidebar>
       {/* Above every route, so an unsupported gateway is explained on the
-          same screen as the errors it causes. Wrapped only when shown. */}
+          same screen as the errors it causes, for every signed-in user. It
+          lives here rather than in a page so that it stays mounted across
+          navigation and is announced once, when it appears. The title is not
+          a heading: it sits above each page's h1, where a heading would break
+          the outline. Wrapped in a section only when shown. */}
       <GatewayCompatibilityAlert
+        component="div"
         wrapper={(alert) => <PageSection>{alert}</PageSection>}
       />
       {children}

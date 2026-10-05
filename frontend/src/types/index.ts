@@ -392,11 +392,22 @@ export type GatewayCompatibility = {
 // are everything the gateway exposes about itself. compatibility is the one
 // field the BFF adds; it is optional because an older BFF, or a host that
 // replaces the /gateway route, does not send it.
+//
+// The gateway answers this for platform admins only. A user without that role
+// gets a 403 here; GatewayCompatibilityInfo is what they can read.
 export type GatewayInfo = {
   status: ServiceStatus;
   gatewayVersion: string;
   computeDrivers: ComputeDriver[];
   compatibility?: GatewayCompatibility;
+};
+
+// GET /gateway/compatibility — the gateway's version and the verdict on it,
+// for every signed-in user. Both keys mean what they mean on GatewayInfo; the
+// version here comes from the gateway's health check, which needs no role.
+export type GatewayCompatibilityInfo = {
+  gatewayVersion: string;
+  compatibility: GatewayCompatibility;
 };
 
 // --- Auth / misc ---
