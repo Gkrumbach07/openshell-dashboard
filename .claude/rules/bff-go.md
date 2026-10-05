@@ -142,7 +142,7 @@ Env vars (some also available as CLI flags):
 | `AUTH_USER_HEADER` | `-auth-user-header` | `x-auth-request-user` | User header name |
 | `ADMIN_ROLE` | `-admin-role` | `admin` | OIDC role claim for admin (display gating only — gateway enforces) |
 | `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out` | Proxy sign-out path the frontend redirects to on logout |
-| `GATEWAY_SUPPORTED_MIN` | `-gateway-supported-min` | | Oldest gateway release this build supports, plain `x.y.z`. Set together with `GATEWAY_SUPPORTED_MAX`; with either unset or unparsable, `GET /gateway` reports `compatibility.status` as `unknown`. Informational only — the BFF never blocks on it |
+| `GATEWAY_SUPPORTED_MIN` | `-gateway-supported-min` | | Oldest gateway release this build supports, plain `x.y.z`. Set together with `GATEWAY_SUPPORTED_MAX`; with either unset or unparsable, `compatibility.status` is `unknown`. The verdict is served by `GET /gateway/compatibility` to every signed-in user (version read from the gateway's unauthenticated health check) and also rides on `GET /gateway`, which the gateway answers for platform admins only. Informational only — the BFF never blocks on it |
 | `GATEWAY_SUPPORTED_MAX` | `-gateway-supported-max` | | Newest gateway release this build was tested against, plain `x.y.z`. Both are derived from the required lanes in `deploy/ci/gateway-pins.json` (`make dev` does this) — never hand-write a range |
 | `FEATURE_*` | | varies | Feature flags: `FEATURE_TERMINAL`, `FEATURE_FILE_TRANSFER`, `FEATURE_SETTINGS`, `FEATURE_GLOBAL_POLICY`, `FEATURE_CREDENTIAL_REFRESH`, `FEATURE_SERVICES`, `FEATURE_DRAFT_POLICY` |
 
