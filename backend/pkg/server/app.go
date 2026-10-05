@@ -85,9 +85,10 @@ func NewApp(
 }
 
 // SetGatewaySupport declares the range of gateway releases this build
-// supports. GET /gateway then reports where the connected gateway falls
-// relative to it; without a range it reports "unknown". Nothing is ever
-// blocked on the result.
+// supports. GET /gateway/compatibility (for every signed-in user) and
+// GET /gateway (for platform admins) then report where the connected gateway
+// falls relative to it; without a range they report "unknown". Nothing is
+// ever blocked on the result.
 //
 // It is a method rather than a NewApp parameter because NewApp's trailing
 // parameter is already the variadic extension list, and downstream callers of
@@ -115,6 +116,9 @@ func (app *App) Routes() http.Handler {
 
 			r.Get("/auth/whoami", app.gateway.GetWhoAmI)
 			r.Get("/gateway", app.gateway.GetGateway)
+			// The verdict on its own: /gateway carries it too, but the
+			// gateway only answers that one for platform admins.
+			r.Get("/gateway/compatibility", app.gateway.GetGatewayCompatibility)
 			r.Get("/draft-summary", app.drafts.GetDraftSummary)
 
 			r.Route("/global-policy", func(r chi.Router) {

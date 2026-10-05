@@ -8,6 +8,31 @@ import (
 	"testing"
 )
 
+// compatibilityVerdict is the dashboard's verdict as both gateway routes
+// serialize it.
+type compatibilityVerdict struct {
+	Status       string `json:"status"`
+	SupportedMin string `json:"supportedMin"`
+	SupportedMax string `json:"supportedMax"`
+}
+
+// gatewayCompatibility reads GET /api/v1/gateway/compatibility, the route the
+// notice in the UI is built on. Its version comes from the gateway's health
+// check, so it answers every signed-in user.
+func gatewayCompatibility(t *testing.T) (version string, verdict compatibilityVerdict) {
+	t.Helper()
+	var body struct {
+		Compatibility  *compatibilityVerdict `json:"compatibility"`
+		GatewayVersion string                `json:"gatewayVersion"`
+	}
+	mustJSON(t, http.MethodGet, "/api/v1/gateway/compatibility", nil, &body, http.StatusOK)
+	if body.Compatibility == nil {
+		t.Fatalf("GET /api/v1/gateway/compatibility [gateway %s] has no compatibility object — the BFF "+
+			"always reports one, \"unknown\" included", gatewayVersion)
+	}
+	return body.GatewayVersion, *body.Compatibility
+}
+
 // TestGatewayCompatibility checks the BFF's verdict on a REAL gateway's
 // version string. The unit tests cover the comparison; what only a live
 // gateway can show is that the version it reports is one the BFF can read at
@@ -27,27 +52,13 @@ import (
 // gateway below it (0.0.116 against 0.1.0..0.1.2), "untested" for one above it
 // (upstream HEAD). Run it alone with -run 'TestGatewayCompatibility$' against
 // a gateway outside the range, where the rest of this suite is expected to
-// fail: GetGatewayInfo sends an empty request, so the field renumbering that
+// fail: the health check sends an empty request, so the field renumbering that
 // breaks workspace-scoped calls on an older gateway does not reach it.
 func TestGatewayCompatibility(t *testing.T) {
 	want := os.Getenv("COMPAT_EXPECT_COMPATIBILITY")
-	var info struct {
-		Compatibility *struct {
-			Status       string `json:"status"`
-			SupportedMin string `json:"supportedMin"`
-			SupportedMax string `json:"supportedMax"`
-		} `json:"compatibility"`
-		GatewayVersion string `json:"gatewayVersion"`
-	}
-	mustJSON(t, http.MethodGet, "/api/v1/gateway", nil, &info, http.StatusOK)
-
-	if info.Compatibility == nil {
-		t.Fatalf("GET /api/v1/gateway [gateway %s] has no compatibility object — the BFF "+
-			"always reports one, \"unknown\" included", gatewayVersion)
-	}
-	got := info.Compatibility
+	reported, got := gatewayCompatibility(t)
 	t.Logf("gateway reports %q; BFF verdict %q against range %q..%q",
-		info.GatewayVersion, got.Status, got.SupportedMin, got.SupportedMax)
+		reported, got.Status, got.SupportedMin, got.SupportedMax)
 
 	switch got.Status {
 	case "unsupported", "supported", "untested", "unknown":
@@ -69,13 +80,50 @@ func TestGatewayCompatibility(t *testing.T) {
 		t.Skip("the BFF was started without GATEWAY_SUPPORTED_MIN / GATEWAY_SUPPORTED_MAX; no verdict to check")
 	}
 
-	if got.Status == "unknown" {
+	// "unknown" with a range is a legitimate answer only when it was asked
+	// for: a gateway built without a version stamp reports 0.0.0, which the
+	// BFF refuses to place. Any other gateway must get a real verdict.
+	if got.Status == "unknown" && want != "unknown" {
 		t.Errorf("the BFF has a range (%s..%s) but could not place gateway version %q in it — "+
-			"the gateway's version format is not one the BFF parses",
-			got.SupportedMin, got.SupportedMax, info.GatewayVersion)
+			"the gateway's version format is not one the BFF parses, or the gateway does not "+
+			"know its own version", got.SupportedMin, got.SupportedMax, reported)
 	}
 	if want != "" && got.Status != want {
 		t.Errorf("compatibility.status = %q for gateway %q against %s..%s, want %q (COMPAT_EXPECT_COMPATIBILITY)",
-			got.Status, info.GatewayVersion, got.SupportedMin, got.SupportedMax, want)
+			got.Status, reported, got.SupportedMin, got.SupportedMax, want)
+	}
+}
+
+// TestGatewayCompatibilityVersionSource checks the one thing the verdict route
+// takes on trust from reading upstream's source: that the gateway's health
+// check reports the SAME version string as GetGatewayInfo.
+//
+// The verdict is computed from the health check because the gateway answers it
+// for every caller, where GetGatewayInfo is for platform admins only. If the
+// two ever disagreed, a user would be shown a verdict about a version the
+// Gateway page and the About dialog do not display. It needs no range, so it
+// runs in every lane.
+func TestGatewayCompatibilityVersionSource(t *testing.T) {
+	var info struct {
+		Compatibility  *compatibilityVerdict `json:"compatibility"`
+		GatewayVersion string                `json:"gatewayVersion"`
+	}
+	mustJSON(t, http.MethodGet, "/api/v1/gateway", nil, &info, http.StatusOK)
+	fromHealth, verdict := gatewayCompatibility(t)
+
+	if fromHealth == "" {
+		t.Errorf("GET /api/v1/gateway/compatibility [gateway %s] reports no gatewayVersion — the "+
+			"gateway's health check no longer carries a version", gatewayVersion)
+	}
+	if fromHealth != info.GatewayVersion {
+		t.Errorf("the health check reports version %q but GetGatewayInfo reports %q — the verdict "+
+			"would be about a different version than the one the UI shows", fromHealth, info.GatewayVersion)
+	}
+	if info.Compatibility == nil {
+		t.Fatalf("GET /api/v1/gateway [gateway %s] has no compatibility object", gatewayVersion)
+	}
+	if *info.Compatibility != verdict {
+		t.Errorf("GET /api/v1/gateway says %+v but GET /api/v1/gateway/compatibility says %+v — "+
+			"both routes must give the same verdict", *info.Compatibility, verdict)
 	}
 }

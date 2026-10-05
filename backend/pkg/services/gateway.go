@@ -21,6 +21,21 @@ type GatewayServiceInterface interface {
 	GetCurrentUser(ctx context.Context) (*models.CurrentUser, error)
 }
 
+// GatewayVersionReader reads the gateway's version without needing a role.
+//
+// GetGatewayInfo also returns the version, but the gateway answers that RPC
+// only for platform admins (its proto declares global_role "platform_admin").
+// The health check carries the same version string and is declared
+// "unauthenticated", so it is the one source every signed-in user can read.
+//
+// It is an interface of its own, rather than a method added to
+// GatewayServiceInterface, so that a downstream type written against that
+// interface keeps compiling. GatewayHandler uses it when the service has it —
+// GatewayService does — and falls back to GetGatewayInfo when it does not.
+type GatewayVersionReader interface {
+	GetGatewayVersion(ctx context.Context) (string, error)
+}
+
 type GatewayService struct {
 	// clients openshell.Factory
 	sdk openshell.ClientInterface
@@ -44,6 +59,20 @@ func (s *GatewayService) GetGatewayInfo(ctx context.Context) (*models.GatewayInf
 func (s *GatewayService) CheckHealth(ctx context.Context) error {
 	_, err := s.sdk.Health().Check(ctx)
 	return err
+}
+
+// GetGatewayVersion returns the version the gateway's health check reports.
+// It is the same call CheckHealth makes, keeping the half of the answer that
+// CheckHealth drops.
+func (s *GatewayService) GetGatewayVersion(ctx context.Context) (string, error) {
+	result, err := s.sdk.Health().Check(ctx)
+	if err != nil {
+		return "", err
+	}
+	if result == nil {
+		return "", nil
+	}
+	return result.Version, nil
 }
 
 func (s *GatewayService) GetCurrentUser(ctx context.Context) (*models.CurrentUser, error) {

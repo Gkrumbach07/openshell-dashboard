@@ -227,6 +227,19 @@ type GatewayInfo struct { //nolint:govet // fieldalignment: gateway fields first
 	Compatibility  *GatewayCompatibility `json:"compatibility,omitempty"`
 }
 
+// GatewayCompatibilityInfo is the body of GET /gateway/compatibility: the
+// version the gateway reported and the dashboard's verdict on it.
+//
+// The two keys carry the same names and meaning as on GatewayInfo, so a client
+// reads either response the same way. What differs is who may ask. GatewayInfo
+// comes from GetGatewayInfo, which the gateway answers only for platform
+// admins; this comes from the gateway's health check, which it answers for
+// anyone, so every signed-in user can learn that the gateway is out of range.
+type GatewayCompatibilityInfo struct {
+	GatewayVersion string               `json:"gatewayVersion"`
+	Compatibility  GatewayCompatibility `json:"compatibility"`
+}
+
 // FeatureFlags controls which optional features the frontend should render.
 type FeatureFlags struct {
 	Terminal          bool `json:"terminal"`
