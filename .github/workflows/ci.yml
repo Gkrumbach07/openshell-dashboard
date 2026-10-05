@@ -411,9 +411,11 @@ jobs:
   #   - the README's Compatibility section states that range (it is generated;
   #     this fails when someone moved the pins and did not regenerate it)
   #   - the scripts that write release notes, stamp package.json, detect a
-  #     release and retag the image do what they say, against a stand-in docker
+  #     release, decide whether `latest` may move and retag the image do what
+  #     they say, against a stand-in docker and a throwaway git remote
   #   - release.config.cjs loads in the semantic-release that publish.yml runs,
-  #     and its rules cut the releases CONTRIBUTING.md says they cut
+  #     its rules cut the releases CONTRIBUTING.md says they cut, and the
+  #     release notes list a commit exactly when it cuts one
   release-tooling:
     runs-on: ubuntu-latest
     steps:

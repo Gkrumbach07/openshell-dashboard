@@ -103,10 +103,10 @@ for tag in "$@"; do
     fi
     if [ -n "$existing" ] && [ "$existing" != "$digest" ]; then
       echo "::error::${image}:${tag} already names ${existing}, and a version tag is never moved." \
-           "${image}:${source_tag} is now ${digest}, which means the commit was built again" \
-           "after it was released (a full re-run of its CI run does that). The released image" \
-           "is untouched and nothing was pushed. There is nothing to repair: ${tag} still" \
-           "names the image that was released." >&2
+           "${image}:${source_tag} is now ${digest}. That is what it looks like when a commit" \
+           "is built again after it was released, which a full re-run of its CI run does." \
+           "Nothing was pushed, and ${tag} still names what it named before, so if that is" \
+           "what happened there is nothing to repair." >&2
       exit 1
     fi
     if [ -n "$existing" ]; then

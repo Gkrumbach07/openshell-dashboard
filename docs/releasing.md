@@ -142,13 +142,14 @@ looks for a release tag on the commit and finds it. `X.Y.Z` already names that
 image, so it is left alone. `X.Y` only moves when the release is the newest
 patch of that minor, so re-running an old release does not pull `X.Y` backwards.
 
-**`tag-image` says `X.Y.Z` already names another digest.** The commit was built
-again after it was released. *Re-run all jobs* on a released commit's CI run
-does that: the second build has a new digest, because its labels carry the build
-time, and `sha-<7>` now points at it. The release is not allowed to follow.
-`X.Y.Z` still names the image that was released, nothing was pushed, and there
-is nothing to repair. To retry a failed job of an old run, use *Re-run failed
-jobs*, which leaves a build that passed alone.
+**`tag-image` says `X.Y.Z` already names another digest.** Unless someone pushed
+that tag by hand, the commit was built again after it was released. *Re-run all
+jobs* on a released commit's CI run does that: the second build has a new
+digest, because its labels carry the build time, and `sha-<7>` now points at
+it. The release is not allowed to follow. `X.Y.Z` still names the image that
+was released, nothing was pushed, and there is nothing to repair. To retry a
+failed job of an old run, use *Re-run failed jobs*, which leaves a build that
+passed alone.
 
 **`tag-image` says it could not tell whether `X.Y.Z` exists.** The registry
 answered the lookup with something other than "here it is" or "no such tag", so
