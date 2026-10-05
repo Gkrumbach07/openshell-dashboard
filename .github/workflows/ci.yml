@@ -358,13 +358,22 @@ jobs:
       - name: The pushed image declares the supported gateway range
         run: node scripts/check-image-range.mjs "quay.io/gkrumbach07/openshell-dashboard:sha-${GITHUB_SHA::7}"
 
-  # `latest` only moves to a commit that passed everything.
+  # `latest` only moves to a commit that passed everything, and only forward.
   #
   # This is a retag, not a build: it points `latest` at the digest that
   # push-manifest already pushed as sha-<commit>, so `latest` is byte-for-byte
   # the image built for the commit whose jobs passed, not a later rebuild of it.
   # On a pull request, or if any job in `needs` fails or is cancelled, this job
   # is skipped and `latest` stays where it was.
+  #
+  # "Passed everything" is not enough on its own. A run can be re-run for
+  # thirty days and keeps the commit it was started for, and this job depends on
+  # every other job, so re-running a failed job on an OLDER run of main runs
+  # this one too. Without the tip check below, "Re-run failed jobs" on last
+  # week's flaky run would finish green and pull `latest` back to last week. So
+  # the job first asks the remote whether its commit is still the tip of main,
+  # and when it is not it stands down: it succeeds, touches nothing and never
+  # logs in to the registry. The run for the tip is the one that promotes.
   #
   # publish.yml only runs after this workflow succeeds on main, so by the time
   # a release is cut `latest` and the new X.Y.Z tag name the same digest.
@@ -374,13 +383,22 @@ jobs:
     needs: [push-manifest, image-range, check-frontend, check-backend, e2e, compat, release-tooling]
     steps:
       - uses: actions/checkout@v4
+      - name: Is this commit still the tip of main?
+        id: tip
+        run: |
+          # pipefail, or a failing check would hide behind tee's exit 0.
+          set -euo pipefail
+          scripts/branch-tip.sh origin main "$GITHUB_SHA" | tee -a "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
+        if: steps.tip.outputs.is_tip == 'true'
       - uses: docker/login-action@v3
+        if: steps.tip.outputs.is_tip == 'true'
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_ROBOT_TOKEN }}
       - name: Point latest at this commit's image
+        if: steps.tip.outputs.is_tip == 'true'
         run: scripts/retag-image.sh quay.io/gkrumbach07/openshell-dashboard "sha-${GITHUB_SHA::7}" latest
 
   # The release pipeline (publish.yml, release.config.cjs, scripts/release/)

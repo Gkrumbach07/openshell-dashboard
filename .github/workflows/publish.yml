@@ -121,6 +121,10 @@ jobs:
   # same digest, so the versioned image is the one CI built for the released
   # commit, not a rebuild.
   #
+  # X.Y.Z is written once. If CI was re-run in full for a commit that is already
+  # released, sha-<commit> names a new build by now, and retag-image.sh fails
+  # here rather than move the release onto it. See docs/releasing.md.
+  #
   # A separate job so that the registry credentials are never in the job that
   # holds the npm and repository permissions, and so that a registry hiccup can
   # be retried on its own ("Re-run failed jobs") without touching the release.
