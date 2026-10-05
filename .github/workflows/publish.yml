@@ -1,10 +1,58 @@
 name: Publish to npm
 
+# The 0.x maintenance line's copy of this workflow. Releases from 0.x are cut
+# BY HAND and never automatically:
+#
+#   Actions → "Publish to npm" → Run workflow → "Use workflow from: 0.x"
+#   (or: gh workflow run publish.yml --ref 0.x)
+#
+# Why there is no automatic trigger. On main this workflow starts through
+# `workflow_run` when CI completes. A workflow_run workflow always executes
+# the copy of the file on the repository's DEFAULT branch, and reports the
+# default branch as its github.ref and github.sha. So a CI run on 0.x could
+# at most start main's copy, which would act as main; this copy would never
+# run. workflow_dispatch is the one trigger that runs the file from the branch
+# you choose.
+#
+# Why the file is still called publish.yml. npm trusted publishing identifies
+# the publisher by repository and workflow FILENAME. A separate
+# release-0.x.yml would not be trusted and `npm publish` would be refused.
+#
+# What a run does (semantic-release 25, reading .releaserc.json on this branch):
+#   - 0.x is a maintenance branch limited to 0.3.x. `fix:` commits cut 0.3.1,
+#     0.3.2, and so on; a `feat:` (0.4.0) or a breaking change is refused as
+#     out of range. The range is spelled out in .releaserc.json because the
+#     one semantic-release derives from a branch NAMED 0.x is empty: semver
+#     normalises "0.x" to "<1.0.0-0", semantic-release takes the first
+#     version in that string as the lower bound, and the result,
+#     ">=1.0.0 <1.0.0", refuses every release. main stays in `branches`
+#     because semantic-release needs a release branch.
+#   - npm: published under the dist-tag `release-0.x`, never `latest`. The
+#     channel is the branch name, and @semantic-release/npm prefixes a channel
+#     that is a valid semver range with `release-`, because npm does not accept
+#     a range as a dist-tag.
+#   - GitHub: a release that is not marked as the repository's latest.
+#   - The container image CI built for the released commit is tagged X.Y.Z.
+#   - With no `fix:` commit since the last release, nothing is released.
+#
+# Before the FIRST release from this branch, run this once from a machine that
+# is logged in to npm:
+#
+#   npm dist-tag add openshell-dashboard@0.3.0 release-0.x
+#
+# v0.3.0 was released from main, so semantic-release starts by adding it to
+# this branch's channel: it records that in a git note and then runs that
+# command. Trusted publishing only covers `npm publish`, so inside this job
+# the command has no credentials — but the npm CLI returns before writing
+# when the dist-tag already points at that version. Without the manual step
+# the first run fails there; the note is already pushed by then, so a second
+# run skips the step and releases normally.
+#
+# The semantic-release half of this (the range, the note, the second run) was
+# rehearsed against a local copy of the repository. The npm and GitHub half
+# was read from their documentation and source and has not been run: the
+# first real release is its test.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -14,24 +62,39 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    if: >
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+    # workflow_dispatch can be pointed at any branch that carries this file.
+    # Only 0.x itself may release.
+    if: github.ref == 'refs/heads/0.x'
     permissions:
+      actions: read
       contents: write
       id-token: write
       issues: write
       pull-requests: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          # For workflow_run, publish exactly the commit whose CI completed.
-          # For manual runs, publish the selected main branch commit.
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+
+      # On main the workflow_run trigger guarantees that only a commit whose
+      # CI passed is published. A manual run has no such guarantee, so ask for
+      # it: the commit must have a green CI run on 0.x, which includes the
+      # real-gateway job and the image build.
+      - name: Require a green CI run for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          conclusion=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+            --branch 0.x --event push --commit "$GITHUB_SHA" \
+            --json conclusion --jq '.[0].conclusion // ""')
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::CI has not passed for $GITHUB_SHA on 0.x (conclusion: ${conclusion:-none}). Wait for it, or fix it, then run this again."
+            exit 1
+          fi
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -58,3 +121,42 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release@25.0.9
+
+      # semantic-release tags the commit it released as vX.Y.Z. Looking for
+      # that tag, rather than parsing the tool's output, also makes a re-run
+      # after a failed image step pick the release up again.
+      - name: Find the release cut from this commit
+        id: release
+        run: |
+          set -euo pipefail
+          tag=$(git tag --points-at "$GITHUB_SHA" --list 'v[0-9]*' --sort=-v:refname | head -n 1)
+          if [ -z "$tag" ]; then
+            echo "No release was cut from $GITHUB_SHA."
+          else
+            echo "Released $tag from $GITHUB_SHA."
+          fi
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+  # Gives the image of the released commit its version: X.Y.Z, alongside the
+  # sha-<7> tag CI pushed. It is a retag BY DIGEST — the manifest is copied as
+  # it is, nothing is rebuilt — so X.Y.Z is byte for byte the image CI tested.
+  # `latest` is never touched: that tag belongs to main.
+  tag-image:
+    needs: publish
+    if: needs.publish.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Tag the released image
+        env:
+          VERSION: ${{ needs.publish.outputs.version }}
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_ROBOT_TOKEN: ${{ secrets.QUAY_ROBOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          image=quay.io/gkrumbach07/openshell-dashboard
+          source="$image:sha-${GITHUB_SHA::7}"
+          echo "$QUAY_ROBOT_TOKEN" | docker login quay.io --username "$QUAY_USERNAME" --password-stdin
+          digest=$(docker buildx imagetools inspect "$source" --format '{{json .Manifest}}' | jq -er '.digest')
+          docker buildx imagetools create --tag "$image:$VERSION" "$image@$digest"
+          echo "$image:$VERSION -> $digest (from $source)"
