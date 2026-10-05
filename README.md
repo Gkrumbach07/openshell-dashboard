@@ -11,6 +11,55 @@ The frontend's page components are self-contained and exported (`openshell-dashb
 
 UI copy goes through an English-only i18n layer (`openshell-dashboard/i18n`; contract in [ADR 0004](docs/adrs/0004-downstream-consumption-i18n.md)). See [`frontend/src/i18n/README.md`](frontend/src/i18n/README.md) for contributor usage and how hosts can override strings or add locales.
 
+## Compatibility
+
+A dashboard build works with a **range** of OpenShell gateway releases, never with "whatever is latest". It reaches the gateway through one pinned Go SDK, and that SDK and the gateway are [wire-coupled](#the-sdk-and-the-gateway-are-wire-coupled). Outside the range you do not get a clean error: you get `workspace '\n\adefault' not found` on every workspace-scoped call, or `workspace_scope is required`.
+
+### What this branch supports
+
+<!-- gateway-range:begin (generated from deploy/ci/gateway-pins.json by scripts/readme-gateway-range.mjs; do not edit) -->
+| | |
+|---|---|
+| Oldest supported gateway | `0.1.0` |
+| Newest tested gateway | `0.1.2` |
+| Declared as | `>=0.1.0 <=0.1.2` |
+| OpenShell Go SDK | `v0.0.0-20260928030816-6648bd0c290e` |
+<!-- gateway-range:end -->
+
+A gateway newer than the newest tested one is *untested by this build*, not known to be broken. The weekly [compat sweep](#two-jobs-two-questions) looks ahead, and raising the ceiling is a deliberate change.
+
+### Which dashboard for which gateway
+
+| Your gateway | Dashboard | npm | Container image |
+|---|---|---|---|
+| in the range above | **1.x**, the current line, released from `main` | `openshell-dashboard@1` | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>` |
+| `0.0.116` | **0.x**, maintenance only; its last release is `v0.3.0` | `openshell-dashboard@0.3.0` | `quay.io/gkrumbach07/openshell-dashboard:sha-978bcb5` |
+
+No build spans both lines. Upstream renumbered a protobuf field between `0.0.116` and `0.1.0`, so 1.x against `0.0.116` fails every workspace-scoped call, and 0.x against `0.1.0` or newer fails with `workspace_scope is required`. Gateway `0.0.116` also has no sandbox-template RPCs (it answers them with gRPC `UNIMPLEMENTED`), so sandbox templates are not available on the 0.x line.
+
+### How the range is established
+
+Nobody types it. [`deploy/ci/gateway-pins.json`](deploy/ci/gateway-pins.json) lists gateway *releases*, pinned by digest. Every lane marked `required` runs the compat suite ([`backend/test/compat`](backend/test/compat)) against that real gateway on every pull request, and CI fails when it does not pass. The floor is the lowest required lane and the ceiling is the highest; [`scripts/gateway-range.mjs`](scripts/gateway-range.mjs) derives both, and everything that states the range calls it:
+
+```bash
+node scripts/gateway-range.mjs                    # print the range
+node scripts/readme-gateway-range.mjs --write     # regenerate the table above after the pins move
+```
+
+CI fails when that table is stale. Only the two ends of the range run on every pull request; a release between them is covered by the claim but not re-run each time.
+
+### Where each artifact says it
+
+Every release declares the range it was cut with, so you do not need this repository to find out what a given version needs:
+
+| Artifact | Where | How to read it |
+|---|---|---|
+| GitHub release | a *Supported OpenShell gateways* section in the release notes | the [releases page](https://github.com/Gkrumbach07/openshell-dashboard/releases) |
+| npm package | `openshell.gateway` (a semver range) and `openshell.sdk` in `package.json` | `npm view openshell-dashboard@<version> openshell` |
+| Container image | env `GATEWAY_SUPPORTED_MIN` and `GATEWAY_SUPPORTED_MAX`; labels `io.github.gkrumbach07.openshell-dashboard.gateway.min`, `.gateway.max` and `.sdk` | `skopeo inspect docker://quay.io/gkrumbach07/openshell-dashboard:<tag>` |
+
+Releases up to and including `1.1.0` predate this and declare nothing.
+
 ## Quick start (local dev)
 
 Prereqs: Go 1.25.1+, Node 20+, and a running OpenShell gateway (`openshell gateway start`).
@@ -234,7 +283,7 @@ It is build-tagged `compat`, so `go test ./...` never picks it up.
 
 ```bash
 make compat                              # against gateway:latest
-OPENSHELL_VERSION=0.0.116 make compat    # against a specific gateway release
+OPENSHELL_VERSION=0.1.0 make compat      # against a specific gateway release
 
 make compat-up && make compat-down       # manage the stack by hand
 ```
@@ -254,9 +303,9 @@ That mangled name is the serialized `WorkspaceSelector` (`0A 07 "default"`)
 being read as a plain string. Always run `make compat` after an SDK bump.
 
 The gateway's **TOML config is versioned too**, and the schemas are mutually
-exclusive — `dev` requires v2, releases up to `0.0.116` require v1:
+exclusive — `0.1.0` and newer require v2, releases up to `0.0.116` require v1:
 
-| | v1 (≤ 0.0.116) | v2 (`dev`) |
+| | v1 (≤ 0.0.116) | v2 (≥ 0.1.0) |
 |---|---|---|
 | `version` | `1` | `2` |
 | compute driver | `compute_drivers = ["docker"]` | `compute_driver = "docker"` |
@@ -268,9 +317,8 @@ exclusive — `dev` requires v2, releases up to `0.0.116` require v1:
 
 Two tag gotchas:
 
-- **`latest` is not the newest gateway.** It aliases the newest *release*
-  (`0.0.116`, built 2026-08-28). **`dev`** tracks upstream HEAD and is the only
-  tag that keeps pace with `sdk/go@latest`.
+- **`latest` is not upstream HEAD.** It is the newest *release*. **`dev`** tracks
+  upstream HEAD and is the only tag that keeps pace with `sdk/go@latest`.
 - Gateway and supervisor share a tag and must match.
 
 ### Two jobs, two questions
@@ -283,14 +331,18 @@ pins a supported **range** and never claims `latest`:
 | `compat` (ci.yml) | per PR | yes | do we still honor the range we promised? |
 | `compat-sweep` | weekly / manual | no | how far ahead can we move? |
 
-`compat` runs exactly one lane: **the pin**. That is the gateway this dashboard
-claims to work with, and it is what a PR needs to prove. Looking around at
-other releases is the sweep's job, on a schedule, not something every PR pays
-for.
+`compat` runs the **required lanes** in `deploy/ci/gateway-pins.json`: the
+oldest gateway release the dashboard still works with and the newest it has
+been tested against. Those two are the ends of the [supported
+range](#compatibility), and proving them is what a PR needs to do. Looking
+around at other releases is the sweep's job, on a schedule, not something every
+PR pays for.
 
-Today the pin is a `dev` digest, because no released gateway carries the
-renumbered proto. An advisory lane on an *older* release would be a trap rather
-than a canary: the SDK only moves forward, so such a lane can never go green.
+Lanes are releases, pinned by digest. A `dev` gateway cannot be pinned that
+way: it pulls `ghcr.io/nvidia/openshell/sandbox:dev`, a moving tag, at runtime,
+which is how a digest-pinned `dev` lane turned `main` red on 2026-10-02 with no
+change on our side. A required lane must therefore be a release, and
+`scripts/gateway-range.mjs` refuses to derive a range from anything else.
 
 `compat-sweep` also probes **upstream HEAD** (`dev`) on every run, as early
 warning. Once the pin sits on a release, nothing else watches HEAD — the sweep
@@ -358,6 +410,22 @@ deliberately does not move with the gateway.
 
 ## Container image
 
+CI publishes `quay.io/gkrumbach07/openshell-dashboard` (linux/amd64 and linux/arm64). The image is built once per commit; every other tag is that same image, retagged by digest:
+
+| Tag | Points at | Moves when |
+|---|---|---|
+| `X.Y.Z` | the image built for the commit released as `vX.Y.Z` | never |
+| `X.Y` | the newest `X.Y.z` release | a patch release is cut |
+| `latest` | the newest commit on `main` that passed **every** CI job, including the required compat lanes | CI goes green on `main` |
+| `sha-<7>` | the image built for that commit, whether or not its checks passed | never |
+| `pr-<n>` | the latest build of that pull request | the PR is updated |
+
+Version tags start with the first release cut after `1.1.0`. Before that only the commit tags exist: `1.1.0` is `sha-71335e5`, and `0.3.0`, the last release of the 0.x line, is `sha-978bcb5`.
+
+For a deployment, pin `X.Y.Z` and check it against your gateway in [Compatibility](#compatibility). How releases are cut is in [docs/releasing.md](docs/releasing.md).
+
+To build it yourself:
+
 ```bash
 make build
 podman run -p 8080:8080 \
@@ -365,6 +433,8 @@ podman run -p 8080:8080 \
   -e AUTH_DISABLED=true \
   openshell-dashboard:latest
 ```
+
+A plain build like this does not pass the range build args, so `GATEWAY_SUPPORTED_MIN`, `GATEWAY_SUPPORTED_MAX` and the labels are empty: the image makes no claim. CI fills them in from `node scripts/gateway-range.mjs`.
 
 For local OIDC testing without containers, use `./scripts/dev-env.sh start` instead (see above).
 
