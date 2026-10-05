@@ -48,10 +48,30 @@ func TestGatewaySupportCheck(t *testing.T) {
 		// Pre-releases sort below the release they lead up to.
 		{name: "pre-release of the floor is below the floor", reported: "0.1.0-pre.8", want: GatewayUnsupported},
 		{name: "pre-release of the next release", reported: "0.1.3-pre.4", want: GatewayUntested},
+		{name: "release candidate of the floor is below the floor", reported: "0.1.0-rc.1", want: GatewayUnsupported},
+		{name: "release candidate of the next release", reported: "0.1.3-rc1", want: GatewayUntested},
 		{name: "build metadata on a release changes nothing", reported: "0.1.2+build.5", want: GatewaySupported},
 		{name: "build metadata containing a dash is not a pre-release", reported: "0.1.2+g-abc", want: GatewaySupported},
 
-		// Never a guess.
+		// A downstream rebuild (x.y.z-rhaiv.N is how the RHOAI midstream
+		// tags its gateways) is the release it rebuilds, not a build before
+		// it: only upstream's dev / pre / rc markers mean "earlier".
+		{name: "downstream rebuild of the ceiling", reported: "0.1.2-rhaiv.5", want: GatewaySupported},
+		{name: "downstream rebuild of the floor", reported: "0.1.0-rhaiv.2", want: GatewaySupported},
+		{name: "downstream rebuild carrying build metadata", reported: "0.1.2-rhaiv.5+g1a2b3c4", want: GatewaySupported},
+		{name: "downstream rebuild below the floor stays unsupported", reported: "0.0.116-rhaiv.12", want: GatewayUnsupported},
+		{name: "downstream rebuild above the ceiling stays untested", reported: "0.1.3-rhaiv.0", want: GatewayUntested},
+
+		// Never a guess: a gateway that does not know its own version. Both
+		// forms would otherwise sort below every release and be reported as
+		// unsupported, whatever the gateway really is.
+		{name: "unstamped build reports the Cargo placeholder", reported: "0.0.0", want: GatewayUnknown},
+		{name: "placeholder with a suffix", reported: "0.0.0-rhaiv.3", want: GatewayUnknown},
+		{name: "build with no release tag reachable", reported: "0.0.1-dev.7+gabcdef123", want: GatewayUnknown},
+		{name: "0.0.1 is a real release number", reported: "0.0.1", want: GatewayUnsupported},
+		{name: "dev build after a real release is a real version", reported: "0.0.2-dev.3+gabc1234", want: GatewayUnsupported},
+
+		// Never a guess: a version that cannot be read.
 		{name: "empty version", reported: "", want: GatewayUnknown},
 		{name: "not a version", reported: "dev", want: GatewayUnknown},
 		{name: "two components", reported: "0.1", want: GatewayUnknown},
@@ -85,6 +105,36 @@ func TestGatewaySupportCheckSingleVersionRange(t *testing.T) {
 	} {
 		if got := support.Check(reported).Status; got != want {
 			t.Errorf("Check(%q).Status = %q, want %q", reported, got, want)
+		}
+	}
+}
+
+// The floor moves: when the sweep raises the range onto a newer release, that
+// release becomes the minimum. A downstream rebuild of it must then still be
+// supported — read as a SemVer pre-release, 0.1.2-rhaiv.5 sorted below 0.1.2
+// and the gateway the downstream ships was told to upgrade.
+func TestGatewaySupportCheckRebuildOfTheFloor(t *testing.T) {
+	tests := []struct {
+		minVersion string
+		maxVersion string
+		reported   string
+		want       GatewayCompatibilityStatus
+	}{
+		{minVersion: "0.1.2", maxVersion: "0.1.2", reported: "0.1.2-rhaiv.5", want: GatewaySupported},
+		{minVersion: "0.1.2", maxVersion: "0.1.4", reported: "0.1.2-rhaiv.5", want: GatewaySupported},
+		{minVersion: "0.1.2", maxVersion: "0.1.4", reported: "0.1.4-rhaiv.0", want: GatewaySupported},
+		{minVersion: "0.1.2", maxVersion: "0.1.4", reported: "0.1.5-rhaiv.0", want: GatewayUntested},
+		{minVersion: "0.1.2", maxVersion: "0.1.4", reported: "0.0.116-rhaiv.12", want: GatewayUnsupported},
+		// Upstream's own pre-release of the floor really is earlier than it.
+		{minVersion: "0.1.2", maxVersion: "0.1.4", reported: "0.1.2-pre.3", want: GatewayUnsupported},
+		{minVersion: "0.1.2", maxVersion: "0.1.4", reported: "0.1.2-dev.40+gabc1234", want: GatewayUnsupported},
+		// And a gateway with no version of its own is unknown at any floor.
+		{minVersion: "0.1.2", maxVersion: "0.1.4", reported: "0.0.0", want: GatewayUnknown},
+	}
+	for _, tc := range tests {
+		support := mustGatewaySupport(t, tc.minVersion, tc.maxVersion)
+		if got := support.Check(tc.reported).Status; got != tc.want {
+			t.Errorf("range %s: Check(%q).Status = %q, want %q", support.String(), tc.reported, got, tc.want)
 		}
 	}
 }
@@ -124,6 +174,7 @@ func TestParseGatewaySupport(t *testing.T) {
 		{name: "inverted", minVersion: "0.1.2", maxVersion: "0.1.0", wantErr: "newer than maximum"},
 		{name: "v prefix", minVersion: "v0.1.0", maxVersion: "0.1.2", wantErr: "minimum"},
 		{name: "pre-release end", minVersion: "0.1.0", maxVersion: "0.1.3-dev.84", wantErr: "maximum"},
+		{name: "downstream rebuild end", minVersion: "0.1.2-rhaiv.5", maxVersion: "0.1.4", wantErr: "minimum"},
 		{name: "build metadata", minVersion: "0.1.0", maxVersion: "0.1.2+g1", wantErr: "maximum"},
 		{name: "moving tag", minVersion: "0.1.0", maxVersion: "latest", wantErr: "maximum"},
 		{name: "leading zero", minVersion: "0.01.0", maxVersion: "0.1.2", wantErr: "minimum"},
@@ -159,8 +210,9 @@ func TestParseGatewaySupport(t *testing.T) {
 	}
 }
 
-// SemVer 2.0.0 §11, plus the dev-build shapes upstream publishes. Each entry
-// is older than the one after it.
+// SemVer 2.0.0 §11 over the build shapes upstream publishes (x.y.z,
+// x.y.z-pre.N, x.y.(z+1)-dev.N+gSHA) plus release candidates. Each entry is
+// older than the one after it.
 func TestGatewayVersionOrdering(t *testing.T) {
 	ascending := []string{
 		"0.0.116",
@@ -171,12 +223,13 @@ func TestGatewayVersionOrdering(t *testing.T) {
 		"0.1.1",
 		"0.1.2-dev.7",
 		"0.1.2",
-		"0.1.3-alpha",
-		"0.1.3-alpha.1",
-		"0.1.3-alpha.beta",
 		"0.1.3-dev.9",
 		"0.1.3-dev.84+ge7fdd6bee",
 		"0.1.3-pre.4",
+		"0.1.3-pre.4.1",
+		"0.1.3-pre.10",
+		"0.1.3-rc.1",
+		"0.1.3-rc1",
 		"0.1.3",
 		"0.1.10",
 		"0.2.0",
@@ -210,6 +263,45 @@ func TestGatewayVersionOrdering(t *testing.T) {
 	b, _ := parseGatewayVersion("0.1.3-dev.84+g0000000")
 	if a.compare(b) != 0 {
 		t.Errorf("versions differing only in build metadata compare as %d, want 0", a.compare(b))
+	}
+}
+
+// Only upstream's markers make a suffix a pre-release. Every other suffix
+// leaves the version equal to its x.y.z core, so it can never push a release
+// across an end of the range.
+func TestGatewayVersionSuffixes(t *testing.T) {
+	core, err := parseGatewayVersion("0.1.2")
+	if err != nil {
+		t.Fatalf("parseGatewayVersion: %v", err)
+	}
+	tests := []struct {
+		raw  string
+		want int // compare(raw, 0.1.2)
+	}{
+		// Before the release: upstream's own markers, by prefix.
+		{raw: "0.1.2-dev.7+gabc1234", want: -1},
+		{raw: "0.1.2-pre.3", want: -1},
+		{raw: "0.1.2-preview.1", want: -1},
+		{raw: "0.1.2-rc.1", want: -1},
+		{raw: "0.1.2-rc2", want: -1},
+		// The release itself, rebuilt.
+		{raw: "0.1.2-rhaiv.5", want: 0},
+		{raw: "0.1.2-rhaiv.0+g1a2b3c4", want: 0},
+		{raw: "0.1.2-1", want: 0},
+		{raw: "0.1.2-el9", want: 0},
+		{raw: "0.1.2-alpha", want: 0},
+		// A marker further along the suffix does not make it a pre-release.
+		{raw: "0.1.2-rhaiv.dev", want: 0},
+	}
+	for _, tc := range tests {
+		version, err := parseGatewayVersion(tc.raw)
+		if err != nil {
+			t.Errorf("parseGatewayVersion(%q): %v", tc.raw, err)
+			continue
+		}
+		if got := version.compare(core); got != tc.want {
+			t.Errorf("compare(%q, 0.1.2) = %d, want %d", tc.raw, got, tc.want)
+		}
 	}
 }
 

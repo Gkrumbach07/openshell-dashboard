@@ -20,14 +20,15 @@ const (
 	// GatewayUntested means the gateway is newer than the newest release this
 	// build was tested against. It may well work; nobody has checked.
 	GatewayUntested GatewayCompatibilityStatus = "untested"
-	// GatewayUnknown means no verdict: either no range is configured or the
-	// gateway reported a version that cannot be read. It is never a guess.
+	// GatewayUnknown means no verdict: no range is configured, the gateway
+	// reported a version that cannot be read, or the gateway does not know
+	// its own version. It is never a guess.
 	GatewayUnknown GatewayCompatibilityStatus = "unknown"
 )
 
 // GatewayCompatibility is the dashboard's own judgement of the gateway — it is
-// NOT gateway data. The gateway reports only its version (GetGatewayInfo); the
-// BFF compares that to the range it was built for and says where it falls.
+// NOT gateway data. The gateway reports only its version; the BFF compares
+// that to the range it was built for and says where it falls.
 //
 // It informs and nothing else. The BFF never refuses a request because of it
 // (ADR 0002: relay only).
@@ -95,22 +96,32 @@ func (s GatewaySupport) String() string {
 
 // Check places the version a gateway reported relative to the range.
 //
-// Versions are ordered by SemVer 2.0.0 precedence, which settles how the
-// builds a gateway can actually report compare:
+// Versions are ordered by SemVer 2.0.0 precedence, read the way the builds a
+// gateway can actually report are produced:
 //
 //   - Build metadata ("+ge7fdd6bee") is ignored.
-//   - A pre-release or dev build sorts just BELOW the release it leads up to:
-//     0.1.2 < 0.1.3-dev.84 < 0.1.3. A dev build of the next release is
-//     therefore newer than the maximum and is GatewayUntested, and a
-//     pre-release of the minimum itself (0.1.0-pre.8 against 0.1.0) is
-//     GatewayUnsupported — the range starts at the release.
-//   - Nothing else is special-cased. In particular a dev build is never
-//     trusted because it happens to work: late 0.0.117-dev builds already
-//     carry the wire format 0.1.0 shipped (one was this repo's CI pin), but
-//     they sort below 0.1.0 and are reported as GatewayUnsupported like every
-//     other build below the floor. The range is made of releases.
+//   - Upstream's own "before the release" builds sort just BELOW the release
+//     they lead up to: 0.1.2 < 0.1.3-dev.84 < 0.1.3-pre.4 < 0.1.3. A dev build
+//     of the next release is therefore newer than the maximum and is
+//     GatewayUntested, and a pre-release of the minimum itself (0.1.0-pre.8
+//     against 0.1.0) is GatewayUnsupported — the range starts at the release.
+//     Only upstream's markers count: a suffix whose first identifier begins
+//     "dev", "pre" or "rc" (see isUpstreamPreRelease).
+//   - Any other suffix is a rebuild OF that release, not a build before it. A
+//     downstream that rebuilds 0.1.2 reports 0.1.2-rhaiv.5, and that build is
+//     hundreds of commits AFTER upstream's 0.1.2. Read as a SemVer pre-release
+//     it would sort below 0.1.2 and the one gateway that downstream ships
+//     would be called unsupported the day 0.1.2 becomes the minimum. It
+//     compares as its x.y.z core instead: 0.1.2-rhaiv.5 is 0.1.2, and
+//     0.0.116-rhaiv.12 is still below a 0.1.0 minimum.
+//   - A dev build is never trusted because it happens to work: late
+//     0.0.117-dev builds already carry the wire format 0.1.0 shipped (one was
+//     this repo's CI pin), but they sort below 0.1.0 and are reported as
+//     GatewayUnsupported like every other build below the floor. The range is
+//     made of releases.
 //
-// A version that cannot be parsed is GatewayUnknown, not a guess.
+// Two answers are GatewayUnknown rather than a guess: a version that cannot be
+// parsed, and a gateway that does not know its own version (see unstamped).
 func (s GatewaySupport) Check(reported string) GatewayCompatibility {
 	if !s.configured {
 		return GatewayCompatibility{Status: GatewayUnknown}
@@ -121,7 +132,7 @@ func (s GatewaySupport) Check(reported string) GatewayCompatibility {
 		SupportedMax: s.max.String(),
 	}
 	version, err := parseGatewayVersion(reported)
-	if err != nil {
+	if err != nil || version.unstamped() {
 		return out
 	}
 	switch {
@@ -135,17 +146,20 @@ func (s GatewaySupport) Check(reported string) GatewayCompatibility {
 	return out
 }
 
-// gatewayVersion is a parsed semantic version. Build metadata is dropped while
-// parsing because it never takes part in ordering.
+// gatewayVersion is a parsed semantic version, reduced to what orders it.
+// Build metadata and a downstream rebuild suffix are dropped while parsing
+// because neither takes part in ordering.
 type gatewayVersion struct {
-	// pre holds the dot-separated pre-release identifiers; empty for a release.
+	// pre holds the dot-separated identifiers of an UPSTREAM pre-release
+	// ("dev.84", "pre.8"); empty for a release and for a rebuild of one.
 	pre   []string
 	major uint64
 	minor uint64
 	patch uint64
 }
 
-// String renders the version without build metadata.
+// String renders the version as it is ordered: without build metadata and
+// without a downstream rebuild suffix.
 func (v gatewayVersion) String() string {
 	core := fmt.Sprintf("%d.%d.%d", v.major, v.minor, v.patch)
 	if len(v.pre) == 0 {
@@ -154,9 +168,52 @@ func (v gatewayVersion) String() string {
 	return core + "-" + strings.Join(v.pre, ".")
 }
 
+// unstamped reports whether this is the version of a gateway that does not
+// know its own version. Such a build can be any age, so placing it in the
+// range would be a guess — and for a current gateway a wrong one, since both
+// forms sort below every real release:
+//
+//   - 0.0.0 is the placeholder in upstream's Cargo.toml. A release build
+//     overwrites it; a build that was given no version reports it as is.
+//   - 0.0.1-dev.N is what upstream's build derives from git when no release
+//     tag is reachable, for example in a shallow clone ("the commit after no
+//     release at all").
+//
+// A plain 0.0.1 is a real release number and is judged like any other.
+func (v gatewayVersion) unstamped() bool {
+	if v.major != 0 || v.minor != 0 {
+		return false
+	}
+	switch v.patch {
+	case 0:
+		return true
+	case 1:
+		return len(v.pre) > 0 && v.pre[0] == "dev"
+	}
+	return false
+}
+
+// isUpstreamPreRelease reports whether the first identifier of a version
+// suffix marks a build made BEFORE the release it names. Upstream produces
+// "dev" (the commits after a release, counted toward the next one) and "pre"
+// (a tagged pre-release); "rc" is accepted as the other conventional spelling
+// of the same thing. Matching is by prefix, so "rc1" and "preview" count too.
+//
+// Every other suffix is taken to be a downstream's own rebuild counter on top
+// of the release ("rhaiv.5"), which is a build made after it.
+func isUpstreamPreRelease(identifier string) bool {
+	for _, marker := range [...]string{"dev", "pre", "rc"} {
+		if strings.HasPrefix(identifier, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // parseGatewayRelease parses one end of the supported range: exactly x.y.z.
 // A pre-release is rejected outright; comparing the canonical rendering with
-// the input then rejects a "v" prefix, build metadata and leading zeros.
+// the input then rejects a "v" prefix, build metadata, a rebuild suffix and
+// leading zeros.
 func parseGatewayRelease(raw string) (gatewayVersion, error) {
 	version, err := parseGatewayVersion(raw)
 	if err != nil || len(version.pre) > 0 || version.String() != raw {
@@ -166,8 +223,9 @@ func parseGatewayRelease(raw string) (gatewayVersion, error) {
 }
 
 // parseGatewayVersion parses a version as a gateway reports it: "0.1.2",
-// "0.0.116", "0.1.3-dev.84+ge7fdd6bee". One leading "v" is accepted because
-// upstream's tags carry it even though the gateway does not report it.
+// "0.0.116", "0.1.3-dev.84+ge7fdd6bee", "0.1.2-rhaiv.5". One leading "v" is
+// accepted because upstream's tags carry it even though the gateway does not
+// report it.
 func parseGatewayVersion(raw string) (gatewayVersion, error) {
 	text := strings.TrimPrefix(strings.TrimSpace(raw), "v")
 	// Build metadata first: it may itself contain "-".
@@ -192,11 +250,17 @@ func parseGatewayVersion(raw string) (gatewayVersion, error) {
 
 	version := gatewayVersion{major: numbers[0], minor: numbers[1], patch: numbers[2]}
 	if hasPre {
-		version.pre = strings.Split(pre, ".")
-		for _, identifier := range version.pre {
+		identifiers := strings.Split(pre, ".")
+		for _, identifier := range identifiers {
 			if !isPreReleaseIdentifier(identifier) {
 				return gatewayVersion{}, fmt.Errorf("%q is not a semantic version", raw)
 			}
+		}
+		// A suffix only orders the version when it is one of upstream's
+		// pre-release markers. Anything else is a rebuild of x.y.z and is
+		// dropped, leaving the version equal to its core.
+		if isUpstreamPreRelease(identifiers[0]) {
+			version.pre = identifiers
 		}
 	}
 	return version, nil
