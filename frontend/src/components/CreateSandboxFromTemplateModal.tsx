@@ -19,11 +19,13 @@ import {
   TextInput,
 } from '@patternfly/react-core';
 
+import { isUnimplemented } from '../api/client';
 import { useProviders } from '../api/providers';
 import { useCreateSandboxFromTemplate } from '../api/templates';
 import { useAlerts } from '../app/AlertContext';
 import { useJsonValidation } from '../hooks/useJsonValidation';
 import { policyTemplates } from './policy/policyTemplates';
+import TemplatesUnsupported from './TemplatesUnsupported';
 import type { SandboxPolicy } from '../types';
 
 type CreateSandboxFromTemplateModalProps = {
@@ -106,6 +108,35 @@ const CreateSandboxFromTemplateModal: React.FC<
       },
     );
   };
+
+  // This modal is exported for hosts to open on their own, so it can be
+  // submitted against a gateway that has no template RPCs. The BFF answers 501
+  // and no edit to the form can change that: replace the form with the plain
+  // "not supported" state rather than showing "Create failed".
+  if (createFromTemplate.isError && isUnimplemented(createFromTemplate.error)) {
+    return (
+      <Modal
+        variant="medium"
+        isOpen={isOpen}
+        onClose={close}
+        aria-label="Create sandbox from template"
+      >
+        <ModalHeader title={`Create sandbox from "${templateName}"`} />
+        <ModalBody>
+          <TemplatesUnsupported />
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="primary"
+            onClick={close}
+            data-testid="create-from-template-close"
+          >
+            Close
+          </Button>
+        </ModalFooter>
+      </Modal>
+    );
+  }
 
   return (
     <Modal

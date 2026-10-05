@@ -109,6 +109,18 @@ func (h *TemplatesHandler) CreateSandboxFromTemplate(w http.ResponseWriter, r *h
 		return
 	}
 
+	// Resolve the template before creating anything. The SDK sends this
+	// request as an ordinary CreateSandbox that carries a template name, and a
+	// gateway that predates templates (0.0.116) does not reject it: it ignores
+	// the field it does not know and creates a sandbox from its default image
+	// — a 201 for something the caller did not ask for. Asking for the
+	// template first makes such a gateway answer UNIMPLEMENTED (HTTP 501)
+	// with nothing created.
+	if _, err = h.svc.Get(r.Context(), r.PathValue("workspace"), body.TemplateName); err != nil {
+		apiutils.WriteSDKError(w, err)
+		return
+	}
+
 	var createOpts []openshell.CreateOptions
 	if len(body.Annotations) > 0 {
 		createOpts = append(createOpts, openshell.CreateOptions{Annotations: body.Annotations})
