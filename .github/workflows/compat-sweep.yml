@@ -159,10 +159,13 @@ jobs:
       max-parallel: 2
       matrix:
         target: ${{ fromJSON(needs.discover.outputs.versions) }}
-    env:
-      COMPAT_SANDBOX_IMAGE: ghcr.io/nvidia/openshell-community/sandboxes/base:latest
     steps:
       - uses: actions/checkout@v4
+
+      # Same digest-pinned workload image the PR lanes use: the sweep varies
+      # the gateway, not the workload.
+      - name: Resolve the sandbox image
+        run: echo "COMPAT_SANDBOX_IMAGE=$(jq -er '.sandbox_image' deploy/ci/gateway-pins.json)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-go@v5
         with:
@@ -229,7 +232,8 @@ jobs:
         if: steps.build.outcome == 'success' && steps.stack.outcome == 'success'
         env:
           BFF_URL: http://localhost:9080
-        run: cd backend && go test -tags compat -timeout 20m ./test/compat/...
+        # -count=1: a cached pass must never stand in for talking to this gateway.
+        run: cd backend && go test -tags compat -count=1 -timeout 20m ./test/compat/...
 
       # Matrix job outputs overwrite each other in GitHub Actions, so each leg
       # records its own result as an artifact for the report job to collect.

@@ -108,8 +108,8 @@ jobs:
   # They must be upgraded together.
   #
   # The gateway's own TOML config is versioned too, and the schemas are
-  # mutually exclusive: `dev` requires v2, releases up to 0.0.116 require v1.
-  # Each lane therefore selects its config template.
+  # mutually exclusive: 0.1.0 and newer require v2, releases up to 0.0.116
+  # require v1. Each lane therefore selects its config template.
   # Reads deploy/ci/gateway-pins.json so the pins live in one place the compat
   # sweep's automated bump PR can edit structurally, rather than being buried
   # in this matrix.
@@ -117,23 +117,27 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       lanes: ${{ steps.read.outputs.lanes }}
+      sandbox_image: ${{ steps.read.outputs.sandbox_image }}
     steps:
       - uses: actions/checkout@v4
       - id: read
         run: |
           set -euo pipefail
           echo "lanes=$(jq -c '.lanes' deploy/ci/gateway-pins.json)" >> "$GITHUB_OUTPUT"
+          echo "sandbox_image=$(jq -er '.sandbox_image' deploy/ci/gateway-pins.json)" >> "$GITHUB_OUTPUT"
           jq -r '"floor=\(.floor)  floor_release=\(.floor_release)  sdk=\(.sdk)"' deploy/ci/gateway-pins.json
 
   # Gateway compatibility. Lanes come from deploy/ci/gateway-pins.json.
   #
-  # A PR tests the PIN — the gateway this dashboard claims to work with — and
-  # nothing else. Looking around at other releases is the scheduled sweep's
-  # job (compat-sweep.yml), not something every PR should pay for.
+  # A PR tests the PINS — the oldest and newest released gateway this
+  # dashboard claims to work with — and nothing else. Looking around at other
+  # releases is the scheduled sweep's job (compat-sweep.yml), not something
+  # every PR should pay for.
   #
-  # An advisory lane pinned to an OLDER release is a trap: the SDK only moves
-  # forward, so such a lane is red forever rather than being a canary. If you
-  # add an advisory lane, make it one that can actually change state.
+  # Pin RELEASES, by digest. A `dev` gateway resolves a moving
+  # ghcr.io/nvidia/openshell/sandbox:dev image at runtime, so even a
+  # digest-pinned dev lane drifts with upstream HEAD — that is what turned
+  # this job red on main on 2026-10-02 with no change on our side.
   #
   # `required: true` lanes block the build; advisory lanes may fail.
   #
@@ -145,8 +149,8 @@ jobs:
   # They must be upgraded together. See ADR 0005.
   #
   # The gateway's own TOML config is versioned too, and the schemas are
-  # mutually exclusive: `dev` requires v2, releases up to 0.0.116 require v1.
-  # Each lane therefore selects its config template.
+  # mutually exclusive: 0.1.0 and newer require v2, releases up to 0.0.116
+  # require v1. Each lane therefore selects its config template.
   compat:
     name: compat (gateway ${{ matrix.label }})
     needs: compat-pins
@@ -158,9 +162,9 @@ jobs:
         include: ${{ fromJSON(needs.compat-pins.outputs.lanes) }}
     env:
       # The community sandbox image publishes no semver tags, so it is pinned
-      # by digest and held constant across the matrix: we are varying the
-      # gateway, not the workload.
-      COMPAT_SANDBOX_IMAGE: ghcr.io/nvidia/openshell-community/sandboxes/base:latest
+      # by digest in gateway-pins.json and held constant across the matrix: we
+      # are varying the gateway, not the workload.
+      COMPAT_SANDBOX_IMAGE: ${{ needs.compat-pins.outputs.sandbox_image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -205,10 +209,14 @@ jobs:
           curl -sf http://localhost:9080/api/v1/healthz >/dev/null
           echo "BFF is healthy"
 
+      # -count=1 is load-bearing. The suite talks to a live gateway, which Go's
+      # test cache cannot see: with identical test inputs it replays a previous
+      # pass as "ok (cached)" without sending a single request — and setup-go
+      # restores GOCACHE between runs. Never let a cached result stand in.
       - name: Run compat suite
         env:
           BFF_URL: http://localhost:9080
-        run: cd backend && go test -tags compat -v -timeout 20m ./test/compat/...
+        run: cd backend && go test -tags compat -count=1 -v -timeout 20m ./test/compat/...
 
       - name: Gateway logs on failure
         if: failure()
