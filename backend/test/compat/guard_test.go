@@ -231,9 +231,9 @@ func TestGuardForeignSandboxes(t *testing.T) {
 func TestGuardReadyLatch(t *testing.T) {
 	// The real run's memory is put aside and handed back, so that this test
 	// neither sees what earlier tests recorded nor leaves its own behind.
-	savedFailure, savedFirst, savedReady := bootFailure, firstNotReady, everReady
-	bootFailure, firstNotReady, everReady = "", "", false
-	t.Cleanup(func() { bootFailure, firstNotReady, everReady = savedFailure, savedFirst, savedReady })
+	savedFailure, savedFirst, savedReady := bootFailure, firstBootError, everReady
+	bootFailure, firstBootError, everReady = "", "", false
+	t.Cleanup(func() { bootFailure, firstBootError, everReady = savedFailure, savedFirst, savedReady })
 
 	var phase atomic.Value
 	var requests atomic.Int32
@@ -251,23 +251,33 @@ func TestGuardReadyLatch(t *testing.T) {
 		t.Fatalf("a run that has not waited for a sandbox yet ends with %q, want nothing", got)
 	}
 
-	// The failures awaitPhase can explain do not set the latch: one sandbox
-	// in ERROR, or one that does not exist, says nothing about the next.
+	// A sandbox that does not exist is no boot failure at all. This is also
+	// what a run against an unreachable gateway looks like from here, and the
+	// summary must not send its reader to the supervisor for that.
+	phase.Store("")
+	if _, err := awaitReady("TestMissing", "ws", "sb", time.Minute); err == nil || !strings.Contains(err.Error(), "does not exist") {
+		t.Fatalf("a missing sandbox: err = %v, want it reported as not existing", err)
+	}
+	if got := bootSummary(); got != "" {
+		t.Errorf("summary after a sandbox that did not exist = %q, want nothing", got)
+	}
+
+	// A sandbox that enters ERROR is one, but it does not set the latch: it
+	// says too little about the next sandbox to stop trying.
 	phase.Store("ERROR")
 	if _, err := awaitReady("TestA", "ws", "sb", time.Minute); err == nil || !strings.Contains(err.Error(), "entered ERROR") {
 		t.Fatalf("a sandbox in ERROR: err = %v, want it reported as entering ERROR", err)
 	}
-	phase.Store("")
-	if _, err := awaitReady("TestB", "ws", "sb", time.Minute); err == nil || !strings.Contains(err.Error(), "does not exist") {
-		t.Fatalf("a missing sandbox: err = %v, want it reported as not existing", err)
+	if _, err := awaitReady("TestB", "ws", "sb2", time.Minute); err == nil || !strings.Contains(err.Error(), "ws/sb2 entered ERROR") {
+		t.Fatalf("a second sandbox in ERROR: err = %v, want it waited for and reported on its own", err)
 	}
 	if bootFailure != "" {
 		t.Fatalf("an ERROR or a 404 set the latch: %s", bootFailure)
 	}
-	// They are still summed up at the end while no sandbox has worked, with
-	// the first of them as the example.
+	// It is summed up at the end while no sandbox has worked, with the first
+	// one as the example.
 	if got := bootSummary(); !strings.Contains(got, "no sandbox became READY") ||
-		!strings.Contains(got, "entered ERROR") || !strings.Contains(got, "TestA") {
+		!strings.Contains(got, "ws/sb entered ERROR") || !strings.Contains(got, "TestA") {
 		t.Errorf("summary after only failed boots = %q, want it to say that no sandbox became READY and "+
 			"quote the first failure, from TestA", got)
 	}

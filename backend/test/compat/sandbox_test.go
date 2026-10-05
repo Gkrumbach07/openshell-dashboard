@@ -128,7 +128,7 @@ func awaitPhase(workspace, name, want string, limit time.Duration) (sandbox, err
 			if sb.Status.ExitCode != nil {
 				exit = strconv.Itoa(int(*sb.Status.ExitCode))
 			}
-			return sb, fmt.Errorf("sandbox %s/%s entered ERROR while waiting for %s, exitCode=%s", workspace, name, want, exit)
+			return sb, fmt.Errorf("sandbox %s/%s %w while waiting for %s, exitCode=%s", workspace, name, errEnteredError, want, exit)
 		default:
 			lastRead = time.Now()
 			last = "phase=" + sb.Status.Phase
@@ -139,10 +139,15 @@ func awaitPhase(workspace, name, want string, limit time.Duration) (sandbox, err
 		errPhaseTimeout, limit, workspace, name, want, last)
 }
 
-// errPhaseTimeout marks the one awaitPhase failure that says nothing went
-// wrong that it could see: the sandbox was readable and simply never got
-// there.
-var errPhaseTimeout = errors.New("timed out")
+// errEnteredError and errPhaseTimeout mark the two awaitPhase failures in
+// which the gateway kept answering and the sandbox still did not get there:
+// it gave up, or the limit ran out. The other two, a sandbox that does not
+// exist and one that cannot be read, are about the request or the gateway and
+// say nothing about whether sandboxes boot.
+var (
+	errEnteredError = errors.New("entered ERROR")
+	errPhaseTimeout = errors.New("timed out")
+)
 
 // readyLimit is how long a sandbox gets to become READY, and phaseLimit how
 // long it gets for any other transition. A boot takes a few seconds once the
@@ -170,11 +175,12 @@ const (
 // trying. bootSummary still says so at the end when none of them worked.
 var bootFailure string
 
-// firstNotReady is the first failure of any kind while waiting for READY, and
-// everReady whether any sandbox got there. bootSummary reads them.
+// firstBootError is the first sandbox that entered ERROR while a test waited
+// for it to become READY, and everReady whether any sandbox got there.
+// bootSummary reads them.
 var (
-	firstNotReady string
-	everReady     bool
+	firstBootError string
+	everReady      bool
 )
 
 const bootHint = "Check that the in-sandbox supervisor can reach the gateway (OPENSHELL_GRPC_ENDPOINT) and, " +
@@ -187,16 +193,15 @@ func awaitReady(who, workspace, name string, limit time.Duration) (sandbox, erro
 		return sandbox{}, errors.New(bootFailure)
 	}
 	sb, err := awaitPhase(workspace, name, "READY", limit)
-	if errors.Is(err, errPhaseTimeout) {
-		bootFailure = fmt.Sprintf("sandboxes do not become READY on this gateway: %v (first seen in %s; no test "+
-			"waits for another one). %s", err, who, bootHint)
-		err = errors.New(bootFailure)
-	}
 	switch {
 	case err == nil:
 		everReady = true
-	case firstNotReady == "":
-		firstNotReady = fmt.Sprintf("%v (in %s)", err, who)
+	case errors.Is(err, errPhaseTimeout):
+		bootFailure = fmt.Sprintf("sandboxes do not become READY on this gateway: %v (first seen in %s; no test "+
+			"waits for another one). %s", err, who, bootHint)
+		err = errors.New(bootFailure)
+	case errors.Is(err, errEnteredError) && firstBootError == "":
+		firstBootError = fmt.Sprintf("%v (in %s)", err, who)
 	}
 	return sb, err
 }
@@ -204,14 +209,16 @@ func awaitReady(who, workspace, name string, limit time.Duration) (sandbox, erro
 // bootSummary is the line TestMain ends the run with when the gateway could
 // not boot sandboxes, so that a log with a dozen failed tests in it names
 // their one cause in one place. It is empty when at least one sandbox became
-// READY: the failures are then about something else.
+// READY, because the failures are then about something else, and when none
+// was ever seen to fail to boot: with the gateway unreachable every sandbox
+// test fails too, and that is not a boot problem to point anyone at.
 func bootSummary() string {
 	switch {
 	case bootFailure != "":
 		return bootFailure
-	case firstNotReady != "" && !everReady:
+	case firstBootError != "" && !everReady:
 		return fmt.Sprintf("no sandbox became READY on this gateway, which is what failed every test that "+
-			"needs one. The first: %s. %s", firstNotReady, bootHint)
+			"needs one. The first: %s. %s", firstBootError, bootHint)
 	}
 	return ""
 }
