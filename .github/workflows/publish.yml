@@ -1,3 +1,18 @@
+# Cuts a release of main when the commits since the last one call for it.
+#
+# One version, three artifacts, each of which says which OpenShell gateways it
+# supports (#66, ADR 0005):
+#
+#   npm package      semantic-release publishes it; `openshell` in package.json
+#   GitHub release   semantic-release creates it; a section in the notes
+#   container image  the image CI already built for this commit gets the tags
+#                    X.Y.Z and X.Y; it carries the range as env vars and labels
+#
+# What cuts a release, and what it declares, is in release.config.cjs.
+# docs/releasing.md walks through the whole pipeline.
+#
+# This file must stay named publish.yml: npm trusted publishing is bound to the
+# workflow filename, and a renamed workflow can no longer publish.
 name: Publish to npm
 
 on:
@@ -14,22 +29,42 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Two ways in, and both must mean "main":
+    #
+    #   workflow_dispatch  a maintainer asked for it, on main.
+    #   workflow_run       CI passed for a PUSH to main in THIS repository.
+    #
+    # The event and repository checks are not redundant. `branches: [main]`
+    # above matches the head branch NAME of the run that finished, so a pull
+    # request opened from a fork's own `main` branch also arrives here with
+    # head_branch == 'main'. Without them this job — which can write to the
+    # repository and publish to npm — would check out and build that fork's
+    # code.
     if: >
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     permissions:
       contents: write
       id-token: write
       issues: write
       pull-requests: write
+    outputs:
+      version: ${{ steps.released.outputs.version }}
+      image_tags: ${{ steps.released.outputs.image_tags }}
+      source_tag: ${{ steps.released.outputs.source_tag }}
+      sha: ${{ steps.released.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           # For workflow_run, publish exactly the commit whose CI completed.
           # For manual runs, publish the selected main branch commit.
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          # Full history and every tag: semantic-release works out the next
+          # version from them, and the step after it reads them too.
           fetch-depth: 0
           persist-credentials: false
 
@@ -54,7 +89,63 @@ jobs:
       - name: Verify packed package imports in Node ESM
         run: cd frontend && npm run verify:consumer
 
+      # If the commits call for a release this tags vX.Y.Z, publishes the npm
+      # package and creates the GitHub release. If they do not — or if main has
+      # moved on since this commit, in which case the newer commit's run will
+      # release both — it does nothing and still succeeds.
+      #
+      # The version is pinned here and only here; ci.yml's release-tooling job
+      # reads it from this line to test release.config.cjs against the same one.
       - name: Publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release@25.0.9
+
+      # "Was a release cut" is answered by the repository, not by parsing what
+      # semantic-release printed: is there a vX.Y.Z tag on the commit we checked
+      # out? That holds for both triggers, it is empty when nothing was
+      # released, and it is still true on a re-run after a release whose image
+      # tagging failed. See scripts/release/released-version.mjs.
+      - name: Was a release cut at this commit?
+        id: released
+        run: |
+          # pipefail, or a failing script would hide behind tee's exit 0.
+          set -euo pipefail
+          node scripts/release/released-version.mjs | tee -a "$GITHUB_OUTPUT"
+
+  # Gives the release its container image tags.
+  #
+  # CI built the image for this commit and pushed it as sha-<commit> before any
+  # of this started; nothing is built here. The job resolves that tag to its
+  # digest and points X.Y.Z (and X.Y, when this is the newest patch of it) at the
+  # same digest, so the versioned image is the one CI built for the released
+  # commit, not a rebuild.
+  #
+  # A separate job so that the registry credentials are never in the job that
+  # holds the npm and repository permissions, and so that a registry hiccup can
+  # be retried on its own ("Re-run failed jobs") without touching the release.
+  tag-image:
+    needs: publish
+    if: needs.publish.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.publish.outputs.sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_ROBOT_TOKEN }}
+      - name: Tag the image built for this commit with the release version
+        env:
+          SOURCE_TAG: ${{ needs.publish.outputs.source_tag }}
+          IMAGE_TAGS: ${{ needs.publish.outputs.image_tags }}
+        run: |
+          set -euo pipefail
+          read -r -a tags <<< "$IMAGE_TAGS"
+          scripts/retag-image.sh quay.io/gkrumbach07/openshell-dashboard "$SOURCE_TAG" "${tags[@]}"
