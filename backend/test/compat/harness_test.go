@@ -71,6 +71,39 @@
 //     handler unit tests.
 //   - WatchSandbox, ForwardTcp and SSH sessions: not wired into the BFF.
 //
+// # What the suite does to the gateway
+//
+// The suite is written for a disposable gateway, which is what CI and
+// deploy/ci/e2e-stack.sh give it, but it must not damage one that is not.
+// Almost everything it creates is its own and has a random name: workspaces,
+// sandboxes (some of them in "default"), providers, templates, and one
+// platform-scoped provider profile per provider test, which every workspace
+// lists until that test ends.
+//
+// Two tests change state that belongs to the whole gateway, and both read
+// before they write:
+//
+//   - TestGlobalSettings sets and unsets a setting, and only one the gateway
+//     reports as unset. The value it writes is what the gateway does anyway
+//     while the setting is unset.
+//   - TestGlobalPolicy sets and removes a global policy, and only when none is
+//     in force. A global policy replaces the policy of every sandbox on the
+//     gateway and blocks their own policy updates while it is set.
+//
+// Both also stand down when the gateway runs a sandbox this run did not create
+// (see foreignSandboxes), because gateway scope wins over sandbox scope for
+// settings and policy alike. In each of those cases the writing subtests skip
+// and say exactly what they found, and the reads are still asserted. Neither
+// test removes anything it cannot show it wrote.
+//
+// What a run cannot take back: every global policy it sets stays in the
+// revision history as SUPERSEDED, and the settings revision counter moves on.
+// A run that is killed leaves behind whatever its cleanups would have removed:
+// workspaces, sandboxes, a platform profile and, if it dies in the instant
+// between a set and its delete, that setting or global policy.
+//
+// # Known bugs
+//
 // Tests that currently hit a product bug probe for it and call t.Skip with a
 // message starting "KNOWN BUG:" only when they see that exact failure, so they
 // start asserting again by themselves once the bug is fixed.
@@ -194,6 +227,7 @@ func do(method, path string, body any) (int, []byte, error) {
 		}
 		rdr = bytes.NewReader(b)
 		contentType = "application/json"
+		noteSandboxCreate(method, path, b)
 	}
 	status, _, raw, err := doRequest(method, path, contentType, rdr)
 	return status, raw, err
@@ -381,6 +415,98 @@ func requireSandboxes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping: needs a running sandbox, which -short excludes")
 	}
+}
+
+// ownSandboxes holds every sandbox this process has asked the gateway to
+// create, as "workspace/name". It is what lets the tests that change
+// gateway-global state tell a gateway they have to themselves from one that
+// other people are using. Tests run one after another, so it needs no lock.
+var ownSandboxes = map[string]bool{}
+
+// noteSandboxCreate records the sandbox a create request names as this run's
+// own. do calls it for every JSON request, so no test has to remember to: a
+// sandbox that went untracked would look like somebody else's, and the tests
+// that change gateway-global state would stand down in CI without anyone
+// noticing. It runs before the request is sent, because a sandbox that came
+// into being although the request failed is still ours.
+func noteSandboxCreate(method, path string, body []byte) {
+	if method != http.MethodPost {
+		return
+	}
+	rest, ok := strings.CutPrefix(path, "/api/v1/workspaces/")
+	if !ok {
+		return
+	}
+	workspace, tail, _ := strings.Cut(rest, "/")
+	if tail != "sandboxes" && tail != "sandboxes/from-template" {
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(body, &req) == nil && req.Name != "" {
+		ownSandboxes[workspace+"/"+req.Name] = true
+	}
+}
+
+// notOwn returns the entries of listed, each a "workspace/name", that this
+// process did not create.
+func notOwn(listed []string) []string {
+	var foreign []string
+	for _, id := range listed {
+		if !ownSandboxes[id] {
+			foreign = append(foreign, id)
+		}
+	}
+	return foreign
+}
+
+// foreignSandboxes lists the sandboxes on the gateway that this process did
+// not create: somebody's real workload, or another run of this suite.
+//
+// A global policy and a global setting both override what every sandbox on the
+// gateway has for itself, for as long as they are set. That is harmless on a
+// gateway where all the sandboxes are this run's own, and it is not something
+// a test may do to anybody else's.
+func foreignSandboxes(t *testing.T) []string {
+	t.Helper()
+	var workspaces []workspace
+	mustJSON(t, http.MethodGet, "/api/v1/workspaces", nil, &workspaces, http.StatusOK)
+	var listed []string
+	for _, ws := range workspaces {
+		path := sandboxesPath(ws.Metadata.Name)
+		status, raw, err := do(http.MethodGet, path, nil)
+		if err != nil {
+			t.Fatalf("GET %s [gateway %s]: %v", path, gatewayVersion, err)
+		}
+		if status == http.StatusNotFound {
+			// Deleted between the two calls, as this suite's own workspaces are.
+			continue
+		}
+		if status != http.StatusOK {
+			t.Fatalf("GET %s [gateway %s]: status = %d, want 200; body: %s", path, gatewayVersion, status, truncate(raw))
+		}
+		var sandboxes []sandbox
+		mustDecode(t, raw, &sandboxes)
+		for _, sb := range sandboxes {
+			listed = append(listed, ws.Metadata.Name+"/"+sb.Metadata.Name)
+		}
+	}
+	return notOwn(listed)
+}
+
+// sharedWithOthers returns why this run must leave gateway-global state alone,
+// or "" when every sandbox on the gateway is its own.
+func sharedWithOthers(t *testing.T) string {
+	t.Helper()
+	foreign := foreignSandboxes(t)
+	if len(foreign) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("gateway %s runs %d sandbox(es) this run did not create (%s), and a gateway-global "+
+		"setting or policy overrides what each of them has for itself — so this is not a gateway the suite "+
+		"has to itself, and it leaves the global state alone",
+		gatewayVersion, len(foreign), strings.Join(foreign, ", "))
 }
 
 // shared is one READY sandbox in its own workspace, booted on first use and

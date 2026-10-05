@@ -5,6 +5,7 @@ package compat
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -209,12 +210,34 @@ func TestSandboxPolicy(t *testing.T) {
 	})
 }
 
+// globalPolicyInForce returns the revision of the global policy that is in
+// force, or nil when the gateway has none.
+//
+// Removing a global policy does not remove its revisions: it marks them
+// SUPERSEDED, and the view's activeVersion goes on naming the last one. So the
+// only sign that a policy is in force is a revision that has not been
+// superseded. One that is still PENDING or that FAILED to load counts as well:
+// somebody set it, and it is not this suite's to replace.
+func globalPolicyInForce(v policyView) *policyRevision {
+	for i := range v.Revisions {
+		if v.Revisions[i].Status != "SUPERSEDED" {
+			return &v.Revisions[i]
+		}
+	}
+	return nil
+}
+
 // TestGlobalPolicy covers the Global policy page: reading the gateway-global
 // revisions, setting a global policy and removing it again.
 //
-// A global policy overrides every sandbox's own policy while it is set, so
-// this test sets exactly the base policy the suite's sandboxes already run and
-// removes it straight away.
+// A global policy replaces the policy of every sandbox on the gateway while it
+// is set, and makes the gateway refuse sandbox-scoped policy updates with
+// "policy is managed globally". So the test sets one only on a gateway that
+// has none and whose sandboxes are all this run's own, sets exactly the base
+// policy those sandboxes already run, and removes it straight away. Setting
+// one over an existing policy would supersede it, and the delete would then
+// leave the gateway with no global policy at all. See "What the suite does to
+// the gateway" in the package comment.
 func TestGlobalPolicy(t *testing.T) {
 	const path = "/api/v1/global-policy"
 
@@ -238,16 +261,55 @@ func TestGlobalPolicy(t *testing.T) {
 		return nil
 	}
 
+	before := read(t)
 	t.Run("read", func(t *testing.T) {
-		read(t)
+		for _, r := range before.Revisions {
+			if !knownLoadStatus[r.Status] {
+				t.Errorf("global revision %d has status %q, not a PolicyLoadStatus the UI knows "+
+					"(PENDING|LOADED|FAILED|SUPERSEDED) [gateway %s]", r.Version, r.Status, gatewayVersion)
+			}
+		}
 	})
 
-	t.Cleanup(func() {
-		_, _, _ = do(http.MethodDelete, path, nil)
-	})
+	standDown := ""
+	if rev := globalPolicyInForce(before); rev != nil {
+		standDown = fmt.Sprintf("gateway %s already has a global policy in force (revision v%d, %s) that this "+
+			"test did not set; setting another would supersede it and deleting would remove it",
+			gatewayVersion, rev.Version, rev.Status)
+	} else {
+		standDown = sharedWithOthers(t)
+	}
 
 	var set policyUpdateResult
+	attempted := false
+	// The cleanup for a test that stopped between set and delete. It removes
+	// the global policy only if the one in force is the one this test set, or,
+	// when the PUT never answered, one that appeared after the test had seen
+	// that there was none.
+	t.Cleanup(func() {
+		if !attempted {
+			return
+		}
+		status, raw, err := do(http.MethodGet, path, nil)
+		if err != nil || status != http.StatusOK {
+			return
+		}
+		var now policyView
+		if json.Unmarshal(raw, &now) != nil {
+			return
+		}
+		if rev := globalPolicyInForce(now); rev != nil && (set.Version == 0 || rev.Version == set.Version) {
+			_, _, _ = do(http.MethodDelete, path, nil)
+		}
+	})
+
 	t.Run("set", func(t *testing.T) {
+		if standDown != "" {
+			t.Skipf("not setting a global policy: %s", standDown)
+		}
+		// Before the request, not after: a PUT that fails on the way back may
+		// still have been applied.
+		attempted = true
 		mustJSON(t, http.MethodPut, path, map[string]any{"policy": basePolicy()}, &set, http.StatusOK)
 		if set.Version == 0 || set.PolicyHash == "" {
 			t.Fatalf("set result = %+v, want a version and a policyHash", set)
@@ -265,6 +327,9 @@ func TestGlobalPolicy(t *testing.T) {
 	})
 
 	t.Run("delete", func(t *testing.T) {
+		if set.Version == 0 {
+			t.Skip("not deleting the global policy: this test did not set one")
+		}
 		var res struct {
 			Deleted bool `json:"deleted"`
 		}
@@ -272,7 +337,12 @@ func TestGlobalPolicy(t *testing.T) {
 		if !res.Deleted {
 			t.Error("deleted = false, want true")
 		}
-		rev := find(read(t), set.Version)
+		after := read(t)
+		if left := globalPolicyInForce(after); left != nil {
+			t.Errorf("revision v%d is still %s after the global policy was removed, want none in force",
+				left.Version, left.Status)
+		}
+		rev := find(after, set.Version)
 		if rev == nil {
 			t.Fatalf("revision v%d vanished from the history when the global policy was removed", set.Version)
 		}
