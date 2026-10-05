@@ -1,0 +1,211 @@
+import React from 'react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
+
+import type { GatewayCompatibility } from '../../types';
+
+jest.mock('../../api/gateway', () => ({
+  useGatewayInfo: jest.fn(),
+  useGatewayCompatibility: jest.fn(),
+}));
+jest.mock('../../api/auth', () => ({
+  useCurrentUser: () => ({ data: { subject: 'user-1', roles: [] } }),
+  useFeatureFlags: () => ({ globalPolicy: true, settings: true }),
+}));
+jest.mock('../../api/rbac', () => ({
+  useUserRole: () => ({ isPlatformAdmin: false }),
+}));
+jest.mock('../theme', () => ({
+  useTheme: () => ({ theme: 'light', toggleTheme: jest.fn() }),
+}));
+// Jest resolves the "~/" alias before it reaches the "*.svg" stub, so the two
+// logos would otherwise be parsed as JavaScript.
+jest.mock('~/assets/openshell-logo.svg', () => ({
+  __esModule: true,
+  default: 'openshell-logo.svg',
+}));
+jest.mock('~/assets/openshell-logo-dark.svg', () => ({
+  __esModule: true,
+  default: 'openshell-logo-dark.svg',
+}));
+
+import AppLayout from '../AppLayout';
+import { useGatewayCompatibility, useGatewayInfo } from '../../api/gateway';
+
+const mockUseGatewayInfo = useGatewayInfo as jest.Mock;
+const mockUseGatewayCompatibility = useGatewayCompatibility as jest.Mock;
+
+// The user in these tests is not a platform admin (see the rbac mock), so the
+// shell's own gateway-info request is refused, as a gateway with roles
+// refuses it. The notice must not depend on it.
+const refuseGatewayInfo = () =>
+  mockUseGatewayInfo.mockReturnValue({
+    isLoading: false,
+    isError: true,
+    error: new Error("role 'openshell-admin' required"),
+    data: undefined,
+  });
+
+const mockVerdict = (
+  gatewayVersion: string,
+  compatibility: GatewayCompatibility,
+) =>
+  mockUseGatewayCompatibility.mockReturnValue({
+    isLoading: false,
+    isError: false,
+    data: { gatewayVersion, compatibility },
+  });
+
+const range = { supportedMin: '0.1.0', supportedMax: '0.1.2' };
+
+const renderShell = (route: string, page: React.ReactNode) =>
+  render(
+    <MemoryRouter
+      initialEntries={[route]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      <AppLayout>{page}</AppLayout>
+    </MemoryRouter>,
+  );
+
+// A page as every routed page starts: its own level 1 heading.
+const page = (
+  <div data-testid="routed-page">
+    <h1>Workspaces</h1>
+  </div>
+);
+
+describe('AppLayout gateway compatibility notice', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    refuseGatewayInfo();
+  });
+
+  // The route does not matter: the shell wraps every authenticated page.
+  it.each(['/workspaces', '/workspaces/default/sandboxes/agent', '/gateway'])(
+    'shows the notice above the page on %s when the gateway is unsupported',
+    (route) => {
+      mockVerdict('0.0.116', { status: 'unsupported', ...range });
+      renderShell(route, page);
+
+      const alert = screen.getByTestId('gateway-compatibility-alert');
+      const routed = screen.getByTestId('routed-page');
+      // Inside the page's main region, and ahead of the routed content.
+      expect(screen.getByRole('main')).toContainElement(alert);
+      expect(
+        alert.compareDocumentPosition(routed) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(alert.closest('.pf-v6-c-page__main-section')).not.toBeNull();
+    },
+  );
+
+  it('shows it to a user whose gateway-info request is refused', () => {
+    mockVerdict('0.0.116', { status: 'unsupported', ...range });
+    renderShell('/workspaces', page);
+
+    // The shell did ask for gateway info, and got nothing...
+    expect(mockUseGatewayInfo).toHaveBeenCalled();
+    // ...and the notice is there anyway, naming the version.
+    expect(screen.getByTestId('gateway-compatibility-alert')).toHaveTextContent(
+      'The gateway reports version 0.0.116.',
+    );
+  });
+
+  it('adds nothing visible to the page when the gateway is supported', () => {
+    mockVerdict('0.1.2', { status: 'supported', ...range });
+    renderShell('/workspaces', page);
+
+    expect(
+      screen.queryByTestId('gateway-compatibility-alert'),
+    ).not.toBeInTheDocument();
+    // Only the empty live region is ahead of the routed page: no section, no
+    // padding, nothing to read.
+    const main = screen.getByRole('main');
+    const region = screen.getByTestId('gateway-compatibility-region');
+    expect(region).toBeEmptyDOMElement();
+    expect(main.querySelector('.pf-v6-c-page__main-section')).toBeNull();
+    expect(main.firstElementChild).toBe(region);
+    expect(region.nextElementSibling).toBe(screen.getByTestId('routed-page'));
+  });
+
+  it.each([
+    ['unsupported', '0.0.116'],
+    ['untested', '0.1.3'],
+  ] as const)(
+    'does not put a heading above the page h1 for the %s notice',
+    (status, version) => {
+      mockVerdict(version, { status, ...range });
+      renderShell('/workspaces', page);
+
+      const main = screen.getByRole('main');
+      const alert = screen.getByTestId('gateway-compatibility-alert');
+      expect(within(alert).queryByRole('heading')).not.toBeInTheDocument();
+      // The first heading a screen reader user meets in main is the page's.
+      const headings = within(main).getAllByRole('heading');
+      expect(headings[0]).toBe(
+        screen.getByRole('heading', { level: 1, name: 'Workspaces' }),
+      );
+    },
+  );
+
+  it('has its live region in the page before the verdict arrives', () => {
+    mockUseGatewayCompatibility.mockReturnValue({
+      isLoading: true,
+      isError: false,
+      data: undefined,
+    });
+    renderShell('/workspaces', page);
+
+    const region = screen.getByTestId('gateway-compatibility-region');
+    expect(screen.getByRole('main')).toContainElement(region);
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toBeEmptyDOMElement();
+  });
+
+  // The shell stays mounted while the route changes, so the notice is the
+  // same element before and after, and nothing is added to or changed in the
+  // live region. That is what keeps a screen reader from reading it out again
+  // on every page.
+  it('is not announced again when the user navigates', () => {
+    mockVerdict('0.0.116', { status: 'unsupported', ...range });
+    renderShell(
+      '/workspaces',
+      <Routes>
+        <Route
+          path="/workspaces"
+          element={
+            <Link to="/workspaces/default" data-testid="open-workspace">
+              default
+            </Link>
+          }
+        />
+        <Route
+          path="/workspaces/:workspace"
+          element={<div data-testid="workspace-page" />}
+        />
+      </Routes>,
+    );
+
+    const region = screen.getByTestId('gateway-compatibility-region');
+    const alert = screen.getByTestId('gateway-compatibility-alert');
+    const changes: MutationRecord[] = [];
+    const observer = new MutationObserver((records) =>
+      changes.push(...records),
+    );
+    observer.observe(region, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+
+    fireEvent.click(screen.getByTestId('open-workspace'));
+    expect(screen.getByTestId('workspace-page')).toBeInTheDocument();
+    changes.push(...observer.takeRecords());
+    observer.disconnect();
+
+    expect(changes).toHaveLength(0);
+    expect(screen.getByTestId('gateway-compatibility-region')).toBe(region);
+    expect(screen.getByTestId('gateway-compatibility-alert')).toBe(alert);
+  });
+});

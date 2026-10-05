@@ -9,6 +9,7 @@ import (
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/clients"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
 )
 
 type gatewayClients struct {
@@ -100,6 +101,28 @@ func warnGatewayConfig(gatewayURL, gatewayCACert string, authDisabled bool) {
 	if authDisabled {
 		slog.Warn("AUTH_DISABLED=true — authentication is OFF; never use this outside local development")
 	}
+}
+
+// gatewaySupport reads the range of gateway releases this build supports.
+//
+// The range is handed to the BFF by whatever builds or launches it, from the
+// compat lanes that build was tested against (deploy/ci/gateway-pins.json); a
+// BFF started without one simply does not report compatibility. A range that
+// cannot be used is logged and dropped — never fatal, and never replaced by a
+// guess. The result only feeds a notice in the UI, so a bad value must not
+// stop the BFF serving, and an invented range would mislead more than a
+// missing one.
+func gatewaySupport(minVersion, maxVersion string) models.GatewaySupport {
+	support, err := models.ParseGatewaySupport(minVersion, maxVersion)
+	if err != nil {
+		slog.Warn(
+			"supported gateway range ignored — gateway compatibility will be reported as unknown; set GATEWAY_SUPPORTED_MIN and GATEWAY_SUPPORTED_MAX together, each a plain x.y.z version",
+			"error", err,
+			"min", minVersion,
+			"max", maxVersion,
+		)
+	}
+	return support
 }
 
 func exitOnError(msg string, err error) {

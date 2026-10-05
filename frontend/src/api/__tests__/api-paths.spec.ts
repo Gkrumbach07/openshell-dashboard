@@ -35,7 +35,7 @@ import {
   deleteTemplate,
   createSandboxFromTemplate,
 } from '../templates';
-import { getGatewayInfo } from '../gateway';
+import { getGatewayCompatibility, getGatewayInfo } from '../gateway';
 import { getAuthConfig, getCurrentUser } from '../auth';
 import {
   getSandboxPolicy,
@@ -304,6 +304,13 @@ describe('gateway API', () => {
   it('getGatewayInfo calls correct path', async () => {
     await getGatewayInfo();
     expect(mockGet).toHaveBeenCalledWith('/api/v1/gateway');
+  });
+
+  // Not the admin-only path above: the verdict has a route every signed-in
+  // user can read.
+  it('getGatewayCompatibility calls correct path', async () => {
+    await getGatewayCompatibility();
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/gateway/compatibility');
   });
 });
 

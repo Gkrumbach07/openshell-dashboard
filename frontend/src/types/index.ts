@@ -370,12 +370,45 @@ export type ComputeDriver = {
   driverVersion?: string;
 };
 
+// Where the gateway's version falls relative to the range of gateway releases
+// this dashboard supports:
+//   unsupported — older than the oldest supported release; calls may fail
+//   supported   — inside the range
+//   untested    — newer than the newest release it was tested against
+//   unknown     — no range configured, the version could not be read, or the
+//                 gateway does not know its own version (it reports 0.0.0)
+export type GatewayCompatibilityStatus =
+  'unsupported' | 'supported' | 'untested' | 'unknown';
+
+// The dashboard's own verdict on the gateway — computed by the BFF, not
+// reported by the gateway. supportedMin/supportedMax are absent when the BFF
+// was not given a range.
+export type GatewayCompatibility = {
+  status: GatewayCompatibilityStatus;
+  supportedMin?: string;
+  supportedMax?: string;
+};
+
 // openshell.v1.GetGatewayInfoResponse — status, version, and compute drivers
-// are everything the gateway exposes about itself.
+// are everything the gateway exposes about itself. compatibility is the one
+// field the BFF adds; it is optional because an older BFF, or a host that
+// replaces the /gateway route, does not send it.
+//
+// The gateway answers this for platform admins only. A user without that role
+// gets a 403 here; GatewayCompatibilityInfo is what they can read.
 export type GatewayInfo = {
   status: ServiceStatus;
   gatewayVersion: string;
   computeDrivers: ComputeDriver[];
+  compatibility?: GatewayCompatibility;
+};
+
+// GET /gateway/compatibility — the gateway's version and the verdict on it,
+// for every signed-in user. Both keys mean what they mean on GatewayInfo; the
+// version here comes from the gateway's health check, which needs no role.
+export type GatewayCompatibilityInfo = {
+  gatewayVersion: string;
+  compatibility: GatewayCompatibility;
 };
 
 // --- Auth / misc ---
