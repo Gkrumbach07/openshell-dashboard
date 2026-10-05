@@ -15,6 +15,7 @@ export { default as SandboxCard } from './sandbox/SandboxCard';
 export { default as SandboxEgressSummary } from './sandbox/SandboxEgressSummary';
 export { default as SandboxGalleryView } from './sandbox/SandboxGalleryView';
 export { default as StatusDot } from './StatusDot';
+export { default as GatewayCompatibilityAlert } from './GatewayCompatibilityAlert';
 export * from './policy/policyTemplates';
 export { formatAge, formatTimestamp, formatUptime } from '../utils/formatters';
 export { AlertProvider, useAlerts } from '../app/AlertContext';

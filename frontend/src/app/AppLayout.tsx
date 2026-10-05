@@ -23,6 +23,7 @@ import {
   NavItem,
   NavList,
   Page,
+  PageSection,
   PageSidebar,
   PageSidebarBody,
   PageToggleButton,
@@ -43,6 +44,7 @@ import openshellLogoDark from '~/assets/openshell-logo-dark.svg';
 import { useGatewayInfo } from '../api/gateway';
 import { useCurrentUser, useFeatureFlags } from '../api/auth';
 import { useUserRole } from '../api/rbac';
+import GatewayCompatibilityAlert from '../components/GatewayCompatibilityAlert';
 import { useI18n } from '../i18n';
 import { logout } from './logout';
 import { useTheme } from './theme';
@@ -243,6 +245,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   return (
     <Page masthead={masthead} sidebar={sidebar} isManagedSidebar>
+      {/* Above every route, so an unsupported gateway is explained on the
+          same screen as the errors it causes. Wrapped only when shown. */}
+      <GatewayCompatibilityAlert
+        wrapper={(alert) => <PageSection>{alert}</PageSection>}
+      />
       {children}
       <AboutModal
         isOpen={isAboutOpen}
