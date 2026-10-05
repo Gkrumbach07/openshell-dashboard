@@ -2,9 +2,10 @@
 // The supported OpenShell gateway range, derived from deploy/ci/gateway-pins.json.
 //
 // A dashboard build supports a window of gateway releases, not "latest"
-// (ADR 0005). Nobody gets to type that window: it is whatever the REQUIRED
-// compat lanes prove against real gateways on every pull request. The floor is
-// the lowest version among those lanes and the ceiling is the highest.
+// (ADR 0005, as amended by ADR 0006). Nobody gets to type that window: it is
+// whatever the REQUIRED compat lanes prove against real gateways on every pull
+// request. The floor is the lowest version among those lanes and the ceiling
+// is the highest.
 //
 // This file is the only place that turns the pins into a range. The container
 // image's build args (ci.yml), the release notes and the published
@@ -135,14 +136,21 @@ function main() {
   const range = readGatewayRange(pinsPath);
 
   if (values.check) {
-    // The pins file records the SDK by hand (or by the sweep's bump PR). What
-    // the BFF is compiled against is go.mod. If the two differ, every artifact
-    // would declare an SDK the build does not contain.
+    // The one invariant between the two files: the `sdk` field of the pins
+    // file equals the SDK version in backend/go.mod. The field is a record,
+    // written by hand or by the sweep's SDK pull request; go.mod is what the
+    // BFF is compiled against. If they differ, every artifact would declare an
+    // SDK the build does not contain.
+    //
+    // That is all that has to agree. The gateway lanes are a separate matter:
+    // the SDK can move while the lanes stay, and a lane can move while the SDK
+    // stays (ADR 0006), so the message must not send anyone to change both.
     const built = sdkInGoMod();
     if (built !== range.sdk) {
       throw new Error(
-        `${pinsPath} says sdk ${range.sdk}, but backend/go.mod builds against ${built}. ` +
-          'The SDK pin and the gateway pins move together in one change (ADR 0005).',
+        `${pinsPath} says "sdk": ${JSON.stringify(range.sdk)}, but backend/go.mod builds against ${built}. ` +
+          'The sdk field must equal the SDK version in backend/go.mod. Bring the stale one of the ' +
+          'two in line; the gateway lanes are not involved and do not need to change.',
       );
     }
   }
