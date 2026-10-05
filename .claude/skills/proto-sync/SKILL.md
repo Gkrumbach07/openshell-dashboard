@@ -19,9 +19,11 @@ Moving the SDK is not a routine dependency update (ADR 0006):
 - The pin is the commit of an upstream **release tag**. Never `@latest`, a
   branch, or a pre-release tag such as `v0.1.3-pre.4`.
 - It moves in a PR of its own. Do not change a gateway lane in
-  `deploy/ci/gateway-pins.json` in the same PR.
+  `deploy/ci/gateway-pins.json` in the same PR. (The one exception, a wire
+  break no build spans, is a person's decision and not something this skill
+  does: see hard fact 17 in `.claude/rules/openshell-api.md`.)
 - Check whether it is already done. The weekly compat sweep tries the newest
-  release's SDK against every supported gateway and opens a PR on the
+  release's SDK against every supported gateway and proposes a PR on the
   `compat-sweep/sdk` branch when it passes. Use this skill when the sweep's
   issue reports a **source migration** (the BFF does not build against the new
   SDK), or when you are asked for a specific release.
@@ -92,10 +94,20 @@ raise it: that is a decision about the supported range, not part of a bump.
 
 ### 6. Commit
 
+The pin and everything step 3 changed go into ONE commit. A commit that moves
+the SDK without the call-site and test-double fixes does not build, and this
+skill is used exactly when such fixes were needed.
+
 ```bash
-git add backend/go.mod backend/go.sum deploy/ci/gateway-pins.json
-git commit -s -m "build(sdk): move the OpenShell SDK to <release tag>"
+# Where the script exists, README.md restates the SDK pin in a generated
+# block, and CI fails when that block is stale.
+if [ -f scripts/readme-gateway-range.mjs ]; then node scripts/readme-gateway-range.mjs --write; fi
+
+git status --short                      # the pin files AND the files step 3 edited
+git add backend/ deploy/ci/gateway-pins.json README.md
+git commit -s -m "fix(sdk): move to the OpenShell SDK at <release tag>"
 ```
 
-Use `fix:` or `feat:` instead only when the move comes with a user-facing
-change; those types cut a release.
+`fix:`, not `build:` or `chore:`: the published BFF is built against the SDK,
+so the move has to cut a release. Use `feat:` when it comes with a new
+user-facing capability.

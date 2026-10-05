@@ -141,12 +141,19 @@ jobs:
   #
   # `required: true` lanes block the build; advisory lanes may fail.
   #
-  # Why the wire link cannot be assumed: the Sep 2026 SDK renumbered
-  # CreateSandboxRequest's protobuf fields, moving workspace_scope from field 8
-  # to field 7 — where gateways up to 0.0.116 expect a string. Such a gateway
-  # reads the serialized WorkspaceSelector as a workspace name and reports
+  # Why the wire link cannot be assumed: between 0.0.116 and 0.1.0 upstream
+  # replaced `string workspace` on every request with a WorkspaceSelector
+  # message, and 0.1.0 put it at the field numbers the string had
+  # (GetSandboxRequest 2, ListSandboxesRequest 4, ...). A 0.0.116 gateway
+  # therefore reads the serialized selector as a workspace NAME and reports
   # `workspace '\n\adefault' not found` on every workspace-scoped call. That
-  # gateway is served by the 0.x maintenance line, not by main.
+  # gateway is served by dashboard v0.2.0 and its 0.2.x maintenance line, not
+  # by main (ADR 0006).
+  #
+  # A wire break is not always that loud. Dashboard v0.3.0 sent the selector
+  # at field numbers 0.0.116 does not know; protobuf dropped them, every
+  # request landed in the `default` workspace, and nothing failed. These lanes
+  # prove what the compat suite varies, and only that.
   #
   # The gateway's own TOML config is versioned too, and the schemas are
   # mutually exclusive: 0.1.0 and newer require v2, releases up to 0.0.116
