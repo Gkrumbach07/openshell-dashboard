@@ -8,19 +8,90 @@
 // stack. CI runs it once per gateway version in a matrix; see
 // .github/workflows/ci.yml and deploy/ci/.
 //
-//	BFF_URL=http://localhost:9080 go test -tags compat ./test/compat/... -v
+//	BFF_URL=http://localhost:9080 go test -tags compat -count=1 ./test/compat/... -v
+//
+// This suite is the only proof of the gateway <-> SDK link: the compiler and
+// the unit tests prove that the BFF fits the SDK, but only a request that
+// crosses the wire proves that the SDK we pin still speaks the protocol of a
+// given gateway. So the map below is organized by what crosses the wire.
+//
+// # Coverage map
+//
+// Covered, one test per capability the UI depends on:
+//
+//	gateway        health, readiness, info, auth config        gateway_test.go
+//	settings       global settings read, set, delete           gateway_test.go
+//	workspaces     lifecycle, label selector, delete envelope  workspace_test.go, contract_test.go
+//	members        add, list, role change, remove              workspace_test.go
+//	sandboxes      lifecycle, resource limits and log level,
+//	               labels and the label selector, workspace
+//	               isolation, stop and start, logs with the
+//	               lines/level/source/since filters, exposed
+//	               services                                    sandbox_test.go
+//	exec           file upload and download (the raw proto
+//	               escape hatch in pkg/clients/rawexec.go and
+//	               the SDK's non-interactive Exec().Run), the
+//	               terminal websocket (interactive exec)       exec_test.go
+//	policy         revisions, network-policy updates with and
+//	               without a stale resource version, the
+//	               sections a live sandbox refuses to change,
+//	               the enum spelling, global policy, the draft
+//	               inbox                                       policy_test.go, contract_test.go
+//	providers      profiles (lint, import, get, update,
+//	               delete), provider create/get/list/update/
+//	               delete with write-only credentials, attach
+//	               and detach on a sandbox including the stale
+//	               resource version, credential refresh status provider_test.go
+//	templates      create/get/list/delete, create-from-template template_test.go
+//	list shapes    lists are JSON arrays, not pager envelopes  contract_test.go
+//
+// Most of these tests run in a workspace other than "default" on purpose.
+// Every workspace-scoped call carries a workspace selector, and only a second
+// workspace can show that the selector is honored rather than merely present:
+// a call that always said "default" would pass a suite that never used
+// anything else.
+//
+// Deliberately not covered, and why:
+//
+//   - Inference routes and a standalone exec endpoint: the BFF has no such
+//     routes. Non-interactive exec is reachable only through file transfer,
+//     which is where it is covered.
+//   - auth/whoami and draft-summary: the BFF answers both without calling
+//     the gateway — whoami because this stack runs with AUTH_DISABLED,
+//     draft-summary because it is a stub.
+//   - Deciding a real draft chunk (approve, reject, edit, undo): chunks are
+//     produced only by the in-sandbox supervisor's policy analysis, which a
+//     test cannot trigger on demand. The endpoints are driven against an
+//     empty inbox instead, which still proves each RPC reaches the gateway.
+//   - A successful credential-refresh configuration: it needs a profile that
+//     declares a token endpoint and a live OAuth server behind it.
+//   - GPU requests on create: the compat stack has no GPU to give.
+//   - Request validation the BFF does on its own (bad names, bad paths,
+//     malformed bodies): it never reaches the gateway, so it belongs in the
+//     handler unit tests.
+//   - WatchSandbox, ForwardTcp and SSH sessions: not wired into the BFF.
+//
+// Tests that currently hit a product bug probe for it and call t.Skip with a
+// message starting "KNOWN BUG:" only when they see that exact failure, so they
+// start asserting again by themselves once the bug is fixed.
 package compat
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 var (
@@ -38,23 +109,37 @@ func TestMain(m *testing.M) {
 		bffURL = "http://localhost:9080"
 	}
 
-	if err := waitForBFF(90 * time.Second); err != nil {
+	if err := waitFor("/api/v1/healthz", 90*time.Second); err != nil {
 		fmt.Fprintf(os.Stderr, "compat: BFF never became ready at %s: %v\n", bffURL, err)
 		os.Exit(1)
 	}
-	if v, err := resolveGatewayVersion(); err == nil {
+	// The gateway's gRPC port can open a moment after its health port, so a
+	// stack that was only just started would fail its first tests for no
+	// reason. Give it a short while to settle, but do not make this fatal: if
+	// the gateway really is unreachable, the tests are what should say so.
+	if err := waitFor("/api/v1/readyz", 30*time.Second); err != nil {
+		fmt.Fprintf(os.Stderr, "compat: gateway not reachable through the BFF yet (%v) — running anyway\n", err)
+	}
+	// An error body decodes into an empty version without an error, and
+	// "[gateway ]" in every failure message would say less than "unknown".
+	if v, err := resolveGatewayVersion(); err == nil && v != "" {
 		gatewayVersion = v
 	}
 	fmt.Printf("compat: BFF=%s gateway=%s\n", bffURL, gatewayVersion)
 
-	os.Exit(m.Run())
+	code := m.Run()
+	// os.Exit skips deferred calls, so the shared fixtures are released here.
+	teardownShared()
+	closeGatewayClient()
+	os.Exit(code)
 }
 
-func waitForBFF(limit time.Duration) error {
+// waitFor polls a BFF path until it answers 200 or the limit passes.
+func waitFor(path string, limit time.Duration) error {
 	deadline := time.Now().Add(limit)
 	var last error
 	for time.Now().Before(deadline) {
-		resp, err := httpClient.Get(bffURL + "/api/v1/healthz")
+		resp, err := httpClient.Get(bffURL + path)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -79,30 +164,39 @@ func resolveGatewayVersion() (string, error) {
 	return info.GatewayVersion, nil
 }
 
-// do issues a request and returns the status and raw body.
+// doRequest is the one place that talks HTTP. It returns the status, the
+// response headers and the raw body.
+func doRequest(method, path, contentType string, body io.Reader) (int, http.Header, []byte, error) {
+	req, err := http.NewRequest(method, bffURL+path, body)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, resp.Header, raw, err
+}
+
+// do issues a JSON request and returns the status and raw body.
 func do(method, path string, body any) (int, []byte, error) {
 	var rdr io.Reader
+	contentType := ""
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return 0, nil, err
 		}
 		rdr = bytes.NewReader(b)
+		contentType = "application/json"
 	}
-	req, err := http.NewRequest(method, bffURL+path, rdr)
-	if err != nil {
-		return 0, nil, err
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
-	return resp.StatusCode, raw, err
+	status, _, raw, err := doRequest(method, path, contentType, rdr)
+	return status, raw, err
 }
 
 // doJSON issues a request and decodes a successful body into out.
@@ -119,8 +213,10 @@ func doJSON(method, path string, body, out any) (int, error) {
 	return status, nil
 }
 
-// mustJSON fails the test unless the call returns wantStatus.
-func mustJSON(t *testing.T, method, path string, body, out any, wantStatus int) {
+// mustRaw fails the test unless the call returns wantStatus, and returns the
+// body as it was sent. It is for the checks that look at the JSON itself: that
+// a list is an array and not null, or that a secret is nowhere in the response.
+func mustRaw(t *testing.T, method, path string, body any, wantStatus int) []byte {
 	t.Helper()
 	status, raw, err := do(method, path, body)
 	if err != nil {
@@ -130,19 +226,67 @@ func mustJSON(t *testing.T, method, path string, body, out any, wantStatus int) 
 		t.Fatalf("%s %s [gateway %s]: status = %d, want %d; body: %s",
 			method, path, gatewayVersion, status, wantStatus, truncate(raw))
 	}
-	if out != nil && len(raw) > 0 {
-		if err := json.Unmarshal(raw, out); err != nil {
-			t.Fatalf("%s %s [gateway %s]: decode: %v; body: %s", method, path, gatewayVersion, err, truncate(raw))
-		}
+	return raw
+}
+
+// mustDecode fails the test unless raw decodes into out.
+func mustDecode(t *testing.T, raw []byte, out any) {
+	t.Helper()
+	if err := json.Unmarshal(raw, out); err != nil {
+		t.Fatalf("decode [gateway %s]: %v; body: %s", gatewayVersion, err, truncate(raw))
 	}
 }
 
+// mustJSON fails the test unless the call returns wantStatus, and decodes the
+// body into out when out is not nil.
+func mustJSON(t *testing.T, method, path string, body, out any, wantStatus int) {
+	t.Helper()
+	raw := mustRaw(t, method, path, body, wantStatus)
+	if out != nil && len(raw) > 0 {
+		mustDecode(t, raw, out)
+	}
+}
+
+// apiError mirrors apiutils.ErrorResponse, the envelope every BFF error uses.
+type apiError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// wantError reports a failure unless the call is refused with wantStatus and
+// an error envelope carrying wantCode. The frontend branches on both, so a
+// refusal that arrives as a 500 or under a different code is a contract change
+// even though the call still "fails".
+func wantError(t *testing.T, method, path string, body any, wantStatus int, wantCode string) {
+	t.Helper()
+	status, raw, err := do(method, path, body)
+	if err != nil {
+		t.Fatalf("%s %s [gateway %s]: %v", method, path, gatewayVersion, err)
+	}
+	checkError(t, method+" "+path, status, raw, wantStatus, wantCode)
+}
+
+// checkError is wantError for a response the caller already holds, which is
+// the case for the upload and download helpers.
+func checkError(t *testing.T, what string, status int, raw []byte, wantStatus int, wantCode string) {
+	t.Helper()
+	var env apiError
+	_ = json.Unmarshal(raw, &env)
+	if status != wantStatus || env.Code != wantCode {
+		t.Errorf("%s [gateway %s]: status = %d code = %q, want %d %q; body: %s",
+			what, gatewayVersion, status, env.Code, wantStatus, wantCode, truncate(raw))
+	}
+}
+
+// truncate renders a response body for a failure message. The BFF ends every
+// JSON body with a newline, which would otherwise break the message in two.
 func truncate(b []byte) string {
-	const max = 800
-	if len(b) <= max {
+	const limit = 800
+	b = bytes.TrimSpace(b)
+	if len(b) <= limit {
 		return string(b)
 	}
-	return string(b[:max]) + "...(truncated)"
+	return string(b[:limit]) + "...(truncated)"
 }
 
 // poll calls fn until it returns true or the deadline passes.
@@ -159,4 +303,252 @@ func poll(t *testing.T, limit, every time.Duration, what string, fn func() (bool
 		time.Sleep(every)
 	}
 	t.Fatalf("timed out after %s waiting for %s [gateway %s]; last state: %s", limit, what, gatewayVersion, last)
+}
+
+// uploadFile posts one file to a sandbox the way the browser does: a
+// multipart form with a "file" part, and the destination directory as a query
+// parameter (empty means the BFF's default, /sandbox).
+func uploadFile(workspace, sandboxName, destDir, filename string, content []byte) (int, []byte, error) {
+	var buf bytes.Buffer
+	form := multipart.NewWriter(&buf)
+	part, err := form.CreateFormFile("file", filename)
+	if err != nil {
+		return 0, nil, err
+	}
+	if _, err = part.Write(content); err != nil {
+		return 0, nil, err
+	}
+	if err = form.Close(); err != nil {
+		return 0, nil, err
+	}
+	path := sandboxPath(workspace, sandboxName) + "/files"
+	if destDir != "" {
+		path += "?dest=" + url.QueryEscape(destDir)
+	}
+	status, _, raw, err := doRequest(http.MethodPost, path, form.FormDataContentType(), &buf)
+	return status, raw, err
+}
+
+// downloadFile fetches one file from a sandbox by absolute path.
+func downloadFile(workspace, sandboxName, filePath string) (int, http.Header, []byte, error) {
+	return doRequest(http.MethodGet,
+		sandboxPath(workspace, sandboxName)+"/files?path="+url.QueryEscape(filePath), "", nil)
+}
+
+// uploadResult mirrors the JSON the upload endpoint answers with.
+type uploadResult struct {
+	Path     string `json:"path"`
+	Size     int    `json:"size"`
+	ExitCode int    `json:"exitCode"`
+	Success  bool   `json:"success"`
+}
+
+// mustUpload uploads one file and fails the test unless the BFF answers 200.
+func mustUpload(t *testing.T, workspace, sandboxName, destDir, filename string, content []byte) uploadResult {
+	t.Helper()
+	status, raw, err := uploadFile(workspace, sandboxName, destDir, filename, content)
+	if err != nil {
+		t.Fatalf("upload %s: %v", filename, err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("upload %s (%d bytes) [gateway %s]: status = %d, want 200; body: %s",
+			filename, len(content), gatewayVersion, status, truncate(raw))
+	}
+	var res uploadResult
+	mustDecode(t, raw, &res)
+	return res
+}
+
+// mustDownload downloads one file and fails the test unless the BFF answers
+// 200.
+func mustDownload(t *testing.T, workspace, sandboxName, filePath string) ([]byte, http.Header) {
+	t.Helper()
+	status, header, raw, err := downloadFile(workspace, sandboxName, filePath)
+	if err != nil {
+		t.Fatalf("download %s: %v", filePath, err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("download %s [gateway %s]: status = %d, want 200; body: %s",
+			filePath, gatewayVersion, status, truncate(raw))
+	}
+	return raw, header
+}
+
+// requireSandboxes skips tests that boot a sandbox when -short is set, the
+// same switch TestSandboxLifecycle has always honored.
+func requireSandboxes(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping: needs a running sandbox, which -short excludes")
+	}
+}
+
+// shared is one READY sandbox in its own workspace, booted on first use and
+// kept until the process exits. Booting and deleting a sandbox costs several
+// seconds, so the tests that only need "some running sandbox" (file transfer,
+// the terminal, logs, services, the draft inbox, provider attachment) share
+// this one. Tests that change a sandbox's lifecycle or assert exact policy
+// revision numbers create their own.
+//
+// It outlives a single test and, under -count=N, every repetition, so tests
+// that use it must leave it as they found it and must not assume it is new.
+var shared struct {
+	err       error
+	workspace string
+	sandbox   string
+	// runID labels the shared sandbox and is exported into its environment.
+	// It is random so a selector or an environment check cannot be satisfied
+	// by something another run left behind.
+	runID string
+	once  sync.Once
+}
+
+const (
+	sharedLabelKey = "compat-run"
+	sharedEnvKey   = "COMPAT_RUN"
+)
+
+// sharedSandbox returns the workspace and name of the shared sandbox, booting
+// it on first use.
+func sharedSandbox(t *testing.T) (workspace, name string) {
+	t.Helper()
+	requireSandboxes(t)
+	// Everything inside Do reports through shared.err rather than t: a
+	// t.Fatal in there would end only the first caller, and sync.Once would
+	// hand every later caller a half-built fixture with no error.
+	shared.once.Do(func() {
+		shared.runID = randName("run")
+		ws := randName("cx")
+		if status, raw, err := do(http.MethodPost, "/api/v1/workspaces", map[string]any{"name": ws}); err != nil || status != http.StatusCreated {
+			shared.err = fmt.Errorf("create workspace %s: status %d, err %v, body %s", ws, status, err, truncate(raw))
+			return
+		}
+		shared.workspace = ws
+
+		sb := randName("cx")
+		status, raw, err := do(http.MethodPost, sandboxesPath(ws), map[string]any{
+			"name":        sb,
+			"image":       sandboxImage(),
+			"policy":      basePolicy(),
+			"labels":      map[string]string{sharedLabelKey: shared.runID, "tier": "shared"},
+			"annotations": map[string]string{"compat/purpose": "shared fixture"},
+			"environment": map[string]string{sharedEnvKey: shared.runID},
+		})
+		if err != nil || status != http.StatusCreated {
+			shared.err = fmt.Errorf("create sandbox %s/%s: status %d, err %v, body %s", ws, sb, status, err, truncate(raw))
+			return
+		}
+		shared.sandbox = sb
+		if _, err := awaitPhase(ws, sb, "READY", 5*time.Minute); err != nil {
+			shared.err = err
+		}
+	})
+	if shared.err != nil {
+		t.Fatalf("shared sandbox is not available [gateway %s]: %v", gatewayVersion, shared.err)
+	}
+	return shared.workspace, shared.sandbox
+}
+
+func teardownShared() {
+	if shared.sandbox != "" {
+		_, _, _ = do(http.MethodDelete, sandboxPath(shared.workspace, shared.sandbox), nil)
+	}
+	if shared.workspace != "" {
+		removeWorkspace(shared.workspace)
+	}
+}
+
+// gateway is a direct SDK connection to the gateway, used for exactly one
+// thing: seeding a platform-scoped provider profile (see seedPlatformProfile).
+// Everything else in this suite goes through the BFF.
+var gateway struct {
+	client openshell.ClientInterface
+	err    error
+	addr   string
+	once   sync.Once
+}
+
+// gatewayClient dials the gateway the BFF is pointed at. COMPAT_GATEWAY_URL
+// overrides the address; the default is where deploy/ci/docker-compose.e2e.yml
+// publishes the gateway and where CI and e2e-stack.sh point the BFF. The
+// compat stack serves plaintext with unauthenticated users allowed, so no TLS
+// or token is involved.
+func gatewayClient() (openshell.ClientInterface, error) {
+	gateway.once.Do(func() {
+		addr := os.Getenv("COMPAT_GATEWAY_URL")
+		if addr == "" {
+			addr = "localhost:8080"
+		}
+		if !strings.Contains(addr, "://") {
+			addr = "http://" + addr
+		}
+		gateway.addr = addr
+		gateway.client, gateway.err = openshell.NewClient(openshell.Config{
+			Address: addr,
+			TLS:     &openshell.TLSConfig{Insecure: true},
+		})
+	})
+	return gateway.client, gateway.err
+}
+
+func closeGatewayClient() {
+	if gateway.client != nil {
+		_ = gateway.client.Close()
+	}
+}
+
+// profileCredentialKey is the one credential every profile in this suite
+// requires, seeded or imported. The gateway keys a provider's credentials by
+// environment variable name while the Add Provider form keys them by
+// credential name, so the credential is named after its variable and the two
+// agree.
+const profileCredentialKey = "COMPAT_API_KEY"
+
+// seedPlatformProfile registers a platform-scoped provider profile directly on
+// the gateway and returns its id, which is the provider "type" to create
+// against.
+//
+// It bypasses the BFF because the BFF cannot produce a usable profile on a
+// gateway that ships none (the compat stack logs `provider profile sources
+// configured sources=["user"]`): the BFF only imports into a workspace, and
+// its create-provider call never names the profile's workspace, which the
+// gateway reads as "look in the platform scope". TestProviderFromWorkspaceProfile
+// pins that bug. Seeding here keeps provider CRUD and attach/detach covered in
+// the meantime; once the bug is fixed this helper can import through the BFF.
+func seedPlatformProfile(t *testing.T) string {
+	t.Helper()
+	client, err := gatewayClient()
+	if err != nil {
+		t.Fatalf("connect to the gateway at %s to seed a provider profile: %v — set COMPAT_GATEWAY_URL "+
+			"to the gateway's gRPC address", gateway.addr, err)
+	}
+	id := randName("cpp")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := client.Providers().Profiles().Import(ctx, "", []openshell.ProfileImportItem{{
+		Profile: openshell.ProviderProfile{
+			ID:               id,
+			DisplayName:      "Compat platform profile",
+			Description:      "seeded by backend/test/compat",
+			Category:         openshell.ProfileCategoryInference,
+			InferenceCapable: true,
+			Credentials: []openshell.ProfileCredential{
+				{Name: profileCredentialKey, EnvVars: []string{profileCredentialKey}, Required: true},
+			},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("seed platform profile %s on the gateway at %s [gateway %s]: %v — set COMPAT_GATEWAY_URL "+
+			"to the gateway's gRPC address if it is not published there", id, gateway.addr, gatewayVersion, err)
+	}
+	if !res.Imported {
+		t.Fatalf("seed platform profile %s [gateway %s]: gateway did not import it; diagnostics: %+v",
+			id, gatewayVersion, res.Diagnostics)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = client.Providers().Profiles().Delete(ctx, "", id)
+	})
+	return id
 }
