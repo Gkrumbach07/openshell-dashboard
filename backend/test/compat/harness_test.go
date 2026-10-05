@@ -15,6 +15,17 @@
 // crosses the wire proves that the SDK we pin still speaks the protocol of a
 // given gateway. So the map below is organized by what crosses the wire.
 //
+// # Counts
+//
+// The suite has 33 test functions: 28 drive the gateway and 5 check the suite's
+// own guards against canned answers and send the gateway nothing
+// (guard_test.go). TestGuardDocCounts fails when that sentence stops being
+// true, so it cannot drift the way a hand count does.
+//
+// While the five known bugs listed at the end of this comment stand, a green
+// lane on gateways 0.1.0 to 0.1.2 prints 31 PASS and 2 SKIP at the top level,
+// and 3 more SKIP among the subtests.
+//
 // # Coverage map
 //
 // Covered, one test per capability the UI depends on:
@@ -107,7 +118,19 @@
 //
 // Tests that currently hit a product bug probe for it and call t.Skip with a
 // message starting "KNOWN BUG:" only when they see that exact failure, so they
-// start asserting again by themselves once the bug is fixed.
+// start asserting again by themselves once the bug is fixed. There are five,
+// and all of them reproduce on gateways 0.1.0 to 0.1.2:
+//
+//   - TestProviderFromWorkspaceProfile: a provider cannot be created from a
+//     profile imported through the dashboard.
+//   - TestProviderCredentialKeyedByName: credentials keyed by credential name,
+//     as the Add Provider form sends them, are refused when the profile
+//     declares environment variable names.
+//   - TestProviderLifecycle/credential_names_are_reported: credentialNames is
+//     always empty.
+//   - TestFileTransfer/upload_larger_than_one_gRPC_message: uploads of about
+//     1 MiB or more are refused.
+//   - TestGlobalSettings/bool_setting: a bool-typed setting cannot be set.
 package compat
 
 import (

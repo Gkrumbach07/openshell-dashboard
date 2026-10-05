@@ -3,9 +3,16 @@
 package compat
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -309,5 +316,56 @@ func TestGuardReadyLatch(t *testing.T) {
 	phase.Store("STOPPED")
 	if _, err := awaitPhase("ws", "sb", "STOPPED", time.Minute); err != nil {
 		t.Errorf("waiting for STOPPED with the latch set: %v", err)
+	}
+}
+
+// TestGuardDocCounts keeps the counts in the package comment true. The
+// reviewed version of that comment was off by one because it had been counted
+// by hand, TestMain included.
+func TestGuardDocCounts(t *testing.T) {
+	files, err := filepath.Glob("*_test.go")
+	if err != nil || len(files) == 0 {
+		t.Skipf("the test sources are not in the working directory (%v), so there is nothing to count", err)
+	}
+	fset := token.NewFileSet()
+	var doc string
+	gatewayTests, guardTests := 0, 0
+	for _, file := range files {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		parsed, err := parser.ParseFile(fset, file, src, parser.ParseComments)
+		if err != nil {
+			t.Fatalf("parse %s: %v", file, err)
+		}
+		if parsed.Doc != nil {
+			doc += parsed.Doc.Text()
+		}
+		for _, decl := range parsed.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			// TestMain is not a test, and is the one the hand count included.
+			if !ok || fn.Recv != nil || !strings.HasPrefix(fn.Name.Name, "Test") || fn.Name.Name == "TestMain" {
+				continue
+			}
+			if file == "guard_test.go" {
+				guardTests++
+			} else {
+				gatewayTests++
+			}
+		}
+	}
+
+	stated := regexp.MustCompile(`(\d+) test functions: (\d+) drive the gateway and (\d+) check`).FindStringSubmatch(
+		strings.Join(strings.Fields(doc), " "))
+	if stated == nil {
+		t.Fatal(`the package comment no longer states the counts as "N test functions: N drive the gateway and N check ..."`)
+	}
+	want := []int{gatewayTests + guardTests, gatewayTests, guardTests}
+	for i, label := range []string{"test functions", "that drive the gateway", "that check the suite's own guards"} {
+		if got, _ := strconv.Atoi(stated[i+1]); got != want[i] {
+			t.Errorf("the package comment says %d %s; there are %d — update the comment in harness_test.go",
+				got, label, want[i])
+		}
 	}
 }
