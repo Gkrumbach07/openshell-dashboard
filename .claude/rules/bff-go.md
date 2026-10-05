@@ -168,9 +168,38 @@ can return is declared there so the frontend has one authoritative list.
 
 ## SDK updates
 
+The SDK pin is the commit of an upstream **release tag** and it moves in a PR
+of its own. Never `go get ...@latest`, a branch or a pre-release tag: `@latest`
+is whatever upstream HEAD is that minute, and nothing was tested against it
+(ADR 0006; hard facts 17 and 20 in `openshell-api.md`).
+
+You normally do not do this by hand. The weekly compat sweep tries the newest
+release's SDK against every required gateway lane and opens the PR when it
+passes. When it reports a **source migration** instead — the BFF no longer
+builds against the new SDK — that is the one case for doing it yourself:
+
 ```bash
-go get github.com/NVIDIA/OpenShell/sdk/go@latest
+# The commit a release tag points at (take the ^{} line when the tag has one).
+git ls-remote --tags https://github.com/NVIDIA/OpenShell.git 'v0.1.*'
+
+cd backend
+go get github.com/NVIDIA/OpenShell/sdk/go@<release-tag-commit>
+go mod tidy
+go build ./... && go vet ./... && go test ./...   # the source link: SDK <-> BFF
 ```
+
+Then, in the same PR:
+
+- Write the new version into the `sdk` field of `deploy/ci/gateway-pins.json`.
+  It is the go.mod pin recorded a second time and CI fails when they differ
+  (`python3 deploy/ci/sweep/sweep.py validate-pins --go-mod backend/go.mod`).
+- Fix the call sites and the test doubles in `mock_sdk_test.go`.
+- Do **not** move a gateway lane. The required compat lanes prove the wire
+  link (gateway <-> SDK) against every gateway we support; a moved lane would
+  hide which link changed.
+
+If the new SDK fails the floor lane, moving to it drops a supported gateway.
+That is a decision about the supported range, not a dependency bump.
 
 There is no local proto regeneration flow anymore. If you need to inspect an
 RPC or type shape, read the vendored SDK package (`openshell/v1`, `types/*`) or
