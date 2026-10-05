@@ -11,5 +11,6 @@ recorded here — an ADR appears when the decision does.
 | [0003](0003-gateway-client-sdk-vs-stubs.md) | Gateway client: openshell-sdk-go over generated stubs | Accepted |
 | [0004](0004-downstream-consumption-i18n.md) | Amends 0001: i18n as sixth extension mechanism | Accepted |
 | [0005](0005-gateway-version-compatibility.md) | Gateway compatibility: pin a supported range, never track `latest` | Accepted |
+| [0006](0006-compat-links-and-sweep-axes.md) | Amends 0005: three links proven separately, two sweep axes, no `dev` pins | Accepted |
 
 From here forward, ADRs are append-only: supersede, don't rewrite.
