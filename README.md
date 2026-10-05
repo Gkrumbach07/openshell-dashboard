@@ -32,7 +32,7 @@ A gateway newer than the newest tested one is *untested by this build*, not know
 
 | Your gateway | Dashboard | npm | Container image |
 |---|---|---|---|
-| in the range above | **1.x**, the current line, released from `main` | `openshell-dashboard@1` | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>`; for `1.1.1` and earlier, the [commit tag](#container-image) |
+| in the range above | **1.x**, the current line, released from `main` | `openshell-dashboard@1` | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>`; for `1.1.0` and earlier, the [commit tag](#container-image) |
 | `0.0.116` | **0.2.x**: `v0.2.0` today; a 0.2.x maintenance line is being set up | `openshell-dashboard@0.2.0` | `quay.io/gkrumbach07/openshell-dashboard:sha-701454a` |
 
 **Do not use dashboard `0.3.0`.** It works correctly with none of these gateways. Against `0.1.0` and newer it fails. Against `0.0.116` it does something worse than fail: it silently ignores the workspace. A sandbox created in workspace `team-a` lands in `default`, every workspace page lists the contents of `default`, and nothing reports an error. Its SDK sends the workspace in a field that gateway `0.0.116` does not have, and a protobuf field the receiver does not know is ignored without complaint.
@@ -447,11 +447,11 @@ CI publishes `quay.io/gkrumbach07/openshell-dashboard` (linux/amd64 and linux/ar
 | `sha-<7>` | the image built for that commit, whether or not its checks passed | only when CI is re-run in full for that commit, which builds it again |
 | `pr-<n>` | the latest build of that pull request | the PR is updated |
 
-Version tags start with the first release cut after `1.1.1`. Releases up to and including `1.1.1` have no `X.Y.Z` or `X.Y` tag and never get one automatically. What exists for them is the commit tag, `sha-` plus the first seven characters of the released commit. The ones you are likely to need:
+Version tags are created automatically starting with the first release cut after `1.1.1`. `1.1.1` itself was tagged once by hand (`1.1.1` is the same image as `sha-9fbdc37`, and like every release before the automation it declares no gateway range). Releases before it have no `X.Y.Z` or `X.Y` tag and never get one automatically. What exists for them is the commit tag, `sha-` plus the first seven characters of the released commit. The ones you are likely to need:
 
-| Release | Commit tag |
+| Release | Image tag |
 |---|---|
-| `1.1.1` | `sha-9fbdc37` |
+| `1.1.1` | `1.1.1` (also `sha-9fbdc37`) |
 | `1.1.0` | `sha-71335e5` |
 | `0.3.0` | `sha-978bcb5` ([do not use](#which-dashboard-for-which-gateway)) |
 | `0.2.0` | `sha-701454a` |
