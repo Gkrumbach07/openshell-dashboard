@@ -395,6 +395,10 @@ def cmd_pr_close(args):
     close = verdict["action"] == "close"
     _write(os.path.join(args.out, "number.txt"), "%s\n" % verdict["number"] if close else "")
     _write(os.path.join(args.out, "comment.md"), verdict["comment"] + "\n" if close else "")
+    # For the run's summary. The decision line there says "close"; when the
+    # pull request is left open instead, the summary has to say so and why.
+    left = "**%s axis:** pull request #%s was LEFT OPEN: %s.\n" % (args.axis, verdict["number"], verdict["why"])
+    _write(os.path.join(args.out, "note.md"), left if verdict["action"] == "leave" else "")
     if verdict["action"] == "none":
         print("nothing to close: %s" % verdict["why"])
     else:

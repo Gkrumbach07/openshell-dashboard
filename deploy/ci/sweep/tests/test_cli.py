@@ -597,6 +597,10 @@ class WholeSweep(Workspace):
         self.assertEqual((number, comment), ("", ""))
         self.assertIn("LEAVING OPEN pull request #91", out)
         self.assertIn("v0.1.3 was not retested", out)
+        # The run's summary line said "SDK PR: close", so the summary gets the correction.
+        with open(self.path("close", "note.md"), encoding="utf-8") as fh:
+            note = fh.read()
+        self.assertTrue(note.startswith("**sdk axis:** pull request #91 was LEFT OPEN: it proposes the SDK at v0.1.3;"))
 
     def test_pr_close_closes_the_pr_it_retested_and_says_what_is_true(self):
         listed = [{"number": 92, "title": report.SDK_TITLE % "v0.1.4", "headRefName": "compat-sweep/sdk", "isCrossRepository": False}]
@@ -604,12 +608,16 @@ class WholeSweep(Workspace):
         self.assertEqual(number, "92\n")
         self.assertIn("retested the SDK at v0.1.4 and no longer proposes this change", comment)
         self.assertIn("https://example.invalid/run", comment)
+        with open(self.path("close", "note.md"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "")
 
     def test_pr_close_never_touches_a_fork_pr_with_the_same_branch_name(self):
         listed = [{"number": 97, "title": report.SDK_TITLE % "v0.1.4", "headRefName": "compat-sweep/sdk", "isCrossRepository": True}]
         number, comment, out = self.close("newer-sdk-fails-older-pr-open", listed)
         self.assertEqual((number, comment), ("", ""))
         self.assertIn("nothing to close", out)
+        with open(self.path("close", "note.md"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "")
 
     def test_an_untracked_file_is_caught_by_the_guard(self):
         scenario = self.plan("newer-release-passes")

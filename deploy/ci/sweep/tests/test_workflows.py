@@ -390,6 +390,13 @@ class PullRequests(unittest.TestCase):
         self.assertIn("num=$(cat /tmp/sweep/pr/number.txt)", self.push)
         self.assertIn("num=$(cat /tmp/sweep/close/number.txt)", self.steps["Close it"]["scripts"][0])
 
+    def test_a_pr_that_is_left_open_is_mentioned_in_the_run_summary(self):
+        # The decision line says "close". When prs.py leaves the PR open
+        # because this run did not retest it, the summary must not hide that.
+        decide = self.steps["Decide what happens to a PR this run does not propose"]["scripts"][0]
+        self.assertIn('cat /tmp/sweep/close/note.md >> "$GITHUB_STEP_SUMMARY"', decide)
+        self.assertLess(decide.index("pr-close --axis"), decide.index("note.md"))
+
     def test_a_refused_pull_request_leaves_no_branch_behind_and_names_both_remedies(self):
         refused = self.push[self.push.index("gh pr create") :]
         self.assertIn('push origin --delete "$BRANCH"', refused)

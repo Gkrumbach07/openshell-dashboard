@@ -668,6 +668,8 @@ jobs:
           set -euo pipefail
           $SWEEP pr-close --axis "$AXIS" --decision /tmp/sweep/decision.json \
             --prs /tmp/sweep/prs.json --branch "$BRANCH" --run-url "$RUN_URL" --out /tmp/sweep/close
+          # Empty unless the PR is left open; then it says which and why.
+          cat /tmp/sweep/close/note.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Close it
         if: env.ACTION == 'close'
