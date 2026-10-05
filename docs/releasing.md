@@ -71,6 +71,16 @@ In short: `fix` and `perf` are a patch, `feat` is a minor, `!` or a
 `BREAKING CHANGE:` footer is a major, and nothing whose type or scope is `ci`
 ever releases.
 
+The release notes follow the same rules. A `ci` commit is left out of them
+altogether, so a release never lists a change that could not have caused it,
+and never prints *BREAKING CHANGES* for a commit the rules silenced.
+`scripts/release/check-release-config.mjs` checks both halves against each
+other: a sample commit must be in the notes exactly when it cuts a release.
+
+One trap: a `git revert` is a patch whatever it reverts, because the title git
+writes has no type or scope. Reverting a CI change takes the title
+`ci: revert …` (see CONTRIBUTING.md).
+
 When no commit calls for a release, `publish.yml` succeeds and does nothing.
 
 ## What every release declares

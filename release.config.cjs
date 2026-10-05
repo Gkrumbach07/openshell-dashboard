@@ -37,16 +37,38 @@ const parserOpts = {
 // there for `ci!:` and for a `ci:` commit with a BREAKING CHANGE footer: the
 // default rules would turn either into a major release of a package that the
 // commit did not touch.
+//
+// One thing these rules cannot see is a plain `git revert` of a CI commit. Its
+// title is `Revert "ci: …"`, which has no type and no scope to match, so it
+// falls through to the default "a revert is a patch". CONTRIBUTING.md asks for
+// such a revert to be titled `ci: revert …`.
+const CI = 'ci';
 const releaseRules = [
-  { scope: 'ci', release: false },
-  { type: 'ci', release: false },
+  { scope: CI, release: false },
+  { type: CI, release: false },
 ];
+
+// The release notes have to agree with the rules above. A commit that is not
+// allowed to cut a release must not be in the notes of someone else's release
+// either: the notes generator knows nothing about release rules, so it listed
+// `fix(ci): …` under Bug Fixes, and it printed a BREAKING CHANGES section for
+// `ci!: …` in a release the rules had just made a patch. A patch release that
+// announces breaking changes tells people the opposite of what its version
+// says. So the same commits are skipped when the notes are written.
+//
+// `skip` is asked about each commit after the preset has formatted it. By then
+// `type` is a section title ("Bug Fixes"), and what the commit said is under
+// `raw`; a commit the preset dropped arrives as it was. Both are looked at.
+const isCiCommit = (commit) => Boolean(commit) && (commit.type === CI || commit.scope === CI);
+const writerOpts = {
+  skip: (commit) => isCiCommit(commit) || isCiCommit(commit.raw),
+};
 
 module.exports = {
   branches: ['main'],
   plugins: [
     ['@semantic-release/commit-analyzer', { releaseRules, parserOpts }],
-    ['@semantic-release/release-notes-generator', { parserOpts }],
+    ['@semantic-release/release-notes-generator', { parserOpts, writerOpts }],
     // Declares the supported gateway range: a section in the release notes and
     // an `openshell` field in the published package.json. Listed before the npm
     // plugin so the field is already there whenever that plugin packs.

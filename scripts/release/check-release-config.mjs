@@ -8,6 +8,12 @@
 // @semantic-release/commit-analyzer with the configured rules and prints which
 // release each one would cut. It fails if a decision is not the documented one.
 //
+// It then hands the same commits to @semantic-release/release-notes-generator
+// and checks that the notes agree with the decisions: a commit is listed
+// exactly when it cuts a release, and BREAKING CHANGES is printed exactly when
+// the release is a major one. The two plugins are configured separately and
+// know nothing of each other, so nothing else keeps them in step.
+//
 // It needs the semantic-release that publish.yml runs, installed somewhere:
 //
 //   npm install --no-package-lock --prefix /tmp/sr semantic-release@<version in publish.yml>
@@ -42,6 +48,11 @@ const EXPECTED = [
   ['chore(deps): x', 'none'],
   // A squash title that is not a Conventional Commit is ignored entirely.
   ['Add foo (#74)', 'none'],
+  // A revert is a patch, and git's own title for one has no type or scope, so
+  // the `ci` rules cannot see what was reverted. Reverting a CI change without
+  // cutting a release takes a `ci:` title, which is what CONTRIBUTING.md asks for.
+  ['Revert "ci: x"\n\nThis reverts commit 0123abc.', 'patch'],
+  ['ci: revert "x"', 'none'],
 ];
 
 const quiet = {
@@ -98,23 +109,94 @@ async function main() {
   }
   const { analyzeCommits } = await importFrom(requireFrom.resolve('@semantic-release/commit-analyzer'));
 
+  // Two digits repeated: distinct, and nothing a sample revert could name.
+  const commits = EXPECTED.map(([message], index) => ({
+    hash: String(index + 1).padStart(2, '0').repeat(20),
+    message,
+  }));
+  const shown = (message) => JSON.stringify(message).padEnd(SHOWN_WIDTH);
+
   console.log(`\n@semantic-release/commit-analyzer ${versionOf('@semantic-release/commit-analyzer')} decisions:`);
   let wrong = 0;
-  for (const [message, expected] of EXPECTED) {
+  for (const [index, [message, expected]] of EXPECTED.entries()) {
     const type = await analyzeCommits(analyzerConfig, {
       cwd: repoRoot,
-      commits: [{ hash: '0000000', message }],
+      commits: [commits[index]],
       logger: quiet,
     });
     const decision = type ?? 'none';
     const ok = decision === expected;
     wrong += ok ? 0 : 1;
-    const shown = JSON.stringify(message).padEnd(42);
-    console.log(`  ${shown} -> ${decision.padEnd(5)} ${ok ? '' : `WRONG, expected ${expected}`}`.trimEnd());
+    console.log(`  ${shown(message)} -> ${decision.padEnd(5)} ${ok ? '' : `WRONG, expected ${expected}`}`.trimEnd());
   }
   if (wrong > 0) {
     throw new Error(`${wrong} commit(s) would not release as documented`);
   }
+
+  // 3. The release notes agree with those decisions. A commit is in the notes
+  //    exactly when it cuts a release, and the notes announce breaking changes
+  //    exactly when the release is a major one. Without the `skip` in
+  //    release.config.cjs this fails for every `ci` commit that the rules
+  //    silence: `fix(ci): x` is listed as a bug fix, and `ci!: x` prints
+  //    BREAKING CHANGES in what the rules made a patch release.
+  const notesConfig =
+    options.plugins.find(
+      (plugin) => Array.isArray(plugin) && plugin[0] === '@semantic-release/release-notes-generator',
+    )?.[1] ?? {};
+  const { generateNotes } = await importFrom(requireFrom.resolve('@semantic-release/release-notes-generator'));
+  const notesFor = async (released) =>
+    describeNotes(
+      await generateNotes(notesConfig, {
+        cwd: repoRoot,
+        commits: released,
+        lastRelease: { gitTag: 'v0.0.0' },
+        nextRelease: { gitTag: 'v0.0.1', version: '0.0.1' },
+        options: { repositoryUrl: 'https://example.com/owner/repo.git' },
+      }),
+    );
+
+  console.log(
+    `\n@semantic-release/release-notes-generator ${versionOf('@semantic-release/release-notes-generator')}, ` +
+      'each commit in a release of its own:',
+  );
+  for (const [index, [message, expected]] of EXPECTED.entries()) {
+    const notes = await notesFor([commits[index]]);
+    const ok = notes.listed === (expected === 'none' ? 0 : 1) && notes.breaking === (expected === 'major' ? 1 : 0);
+    wrong += ok ? 0 : 1;
+    const said = `${notes.listed ? 'listed' : 'not listed'}${notes.breaking ? ', BREAKING CHANGES' : ''}`;
+    console.log(`  ${shown(message)} -> ${said}${ok ? '' : `   WRONG for a commit that cuts ${expected}`}`);
+  }
+
+  // And all of them in one release, which is how a silenced commit really
+  // reaches the notes: riding along with a commit that does cut a release.
+  const together = await notesFor(commits);
+  const releasing = EXPECTED.filter(([, expected]) => expected !== 'none').length;
+  const majors = EXPECTED.filter(([, expected]) => expected === 'major').length;
+  const togetherOk = together.listed === releasing && together.breaking === majors && !together.mentionsCi;
+  wrong += togetherOk ? 0 : 1;
+  console.log(
+    `  all ${EXPECTED.length} in one release: ${together.listed} listed (expected ${releasing}), ` +
+      `${together.breaking} under BREAKING CHANGES (expected ${majors}), ` +
+      `${together.mentionsCi ? 'a ci entry is present' : 'no ci entry'}${togetherOk ? '' : '   WRONG'}`,
+  );
+  if (wrong > 0) {
+    throw new Error(`the release notes disagree with the release rules for ${wrong} case(s)`);
+  }
+}
+
+const SHOWN_WIDTH = 52;
+const BREAKING_HEADING = '### BREAKING CHANGES';
+
+/** What a set of notes says, reduced to what the rules can be checked against. */
+function describeNotes(notes) {
+  const bullets = (text) => text.split('\n').filter((line) => line.startsWith('* ')).length;
+  const [changes, breaking = ''] = notes.split(BREAKING_HEADING);
+  return {
+    listed: bullets(changes),
+    breaking: bullets(breaking),
+    // How the Angular preset writes a `ci` scope and the `ci` type's section.
+    mentionsCi: notes.includes('**ci:**') || notes.includes('### Continuous Integration'),
+  };
 }
 
 main().catch((error) => {
