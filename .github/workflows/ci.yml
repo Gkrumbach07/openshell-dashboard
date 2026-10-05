@@ -1,10 +1,13 @@
 name: CI
 
+# The 0.x maintenance line's copy of this workflow. GitHub runs the copy that
+# is on the branch being pushed (for a pull request, on its merge into the
+# base), so this file only ever sees 0.x and main's copy only ever sees main.
 on:
   push:
-    branches: [main]
+    branches: ['0.x']
   pull_request:
-    branches: [main]
+    branches: ['0.x']
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -23,24 +26,24 @@ jobs:
               - 'frontend/**'
               - 'package*.json'
       - uses: actions/setup-node@v4
-        if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+        if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/0.x'
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/0.x'
         run: cd frontend && npm ci
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/0.x'
         run: cd frontend && npm run lint
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/0.x'
         run: cd frontend && npm run format:check
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/0.x'
         run: cd frontend && npm run typecheck
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/0.x'
         run: cd frontend && npm run build:lib
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/0.x'
         run: cd frontend && npm test -- --coverage --passWithNoTests
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/0.x'
         name: Verify packed package imports in Node ESM
         run: cd frontend && npm run verify:consumer
 
@@ -55,16 +58,16 @@ jobs:
             backend:
               - 'backend/**'
       - uses: actions/setup-go@v5
-        if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/main'
+        if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/0.x'
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/0.x'
         uses: golangci/golangci-lint-action@v9
         with:
           working-directory: backend
           version: v2.12.2
-      - if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/0.x'
         run: cd backend && go test -race -count=1 -coverprofile=coverage.out ./...
 
   e2e:
@@ -91,52 +94,29 @@ jobs:
           path: frontend/cypress/screenshots
           if-no-files-found: ignore
 
+  # The dashboard against a real gateway: the Cypress integration specs drive
+  # the BFF, which talks to the one gateway release this line supports.
+  #
+  # This job is REQUIRED: gateway 0.0.116 is the only gateway this line
+  # supports, so when it fails the line is broken. It used to load
+  # gateway:latest and supervisor:latest from an actions/cache entry under a
+  # constant key — a snapshot that was never refreshed and that nobody could
+  # name — and it ran with continue-on-error, so it tested an unknown gateway
+  # and could not fail.
+  #
+  # Now deploy/ci/e2e-stack.sh pulls the gateway, the supervisor and the
+  # sandbox image by the digests in deploy/ci/gateway-pins.json and nothing is
+  # cached, so every run tests exactly those three images. There is no
+  # continue-on-error: a failure here fails the run, and publish.yml will not
+  # release a commit whose CI run is not green.
   e2e-integration:
     runs-on: ubuntu-latest
-    continue-on-error: true
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache Docker images
-        uses: actions/cache@v4
-        with:
-          path: /tmp/e2e-images
-          key: e2e-images-v1
-
-      - name: Load or pull Docker images
-        run: |
-          mkdir -p /tmp/e2e-images
-          for img in ghcr.io/nvidia/openshell/gateway:latest ghcr.io/nvidia/openshell/supervisor:latest ghcr.io/nvidia/openshell-community/sandboxes/base:latest; do
-            slug=$(echo "$img" | tr '/:' '_')
-            if [ -f "/tmp/e2e-images/${slug}.tar" ]; then
-              echo "Loading cached $img"
-              docker load -i "/tmp/e2e-images/${slug}.tar"
-            else
-              echo "Pulling $img"
-              docker pull "$img"
-              docker save "$img" -o "/tmp/e2e-images/${slug}.tar"
-            fi
-          done
-
-      - name: Generate gateway JWT keys
-        run: |
-          sudo mkdir -p /var/lib/openshell/jwt
-          sudo openssl genpkey -algorithm Ed25519 -out /var/lib/openshell/jwt/signing.pem 2>/dev/null
-          sudo openssl pkey -in /var/lib/openshell/jwt/signing.pem -pubout -out /var/lib/openshell/jwt/public.pem 2>/dev/null
-          sudo openssl rand -hex 16 | sudo tee /var/lib/openshell/jwt/kid > /dev/null
-          sudo chmod -R 755 /var/lib/openshell/jwt
-
-      - name: Start OpenShell gateway
-        run: |
-          sudo mkdir -p /var/lib/openshell
-          docker compose -f deploy/ci/docker-compose.e2e.yml up -d
-          echo "Waiting for gateway to be healthy..."
-          timeout 300 bash -c 'until curl -sf http://localhost:50052/healthz; do sleep 3; done' || {
-            echo "Gateway failed to start — dumping logs:"
-            docker compose -f deploy/ci/docker-compose.e2e.yml logs --tail=100
-            exit 1
-          }
-          echo "Gateway is healthy"
+      - name: Start the pinned OpenShell gateway
+        run: deploy/ci/e2e-stack.sh up
 
       - uses: actions/setup-go@v5
         with:
@@ -175,11 +155,13 @@ jobs:
           path: frontend/cypress/screenshots
           if-no-files-found: ignore
 
+      - name: Gateway logs on failure
+        if: failure()
+        run: deploy/ci/e2e-stack.sh logs --tail=200
+
       - name: Clean up
         if: always()
-        run: |
-          docker compose -f deploy/ci/docker-compose.e2e.yml down -v
-          docker ps -aq --filter "name=openshell-e2e" | xargs -r docker rm -f
+        run: deploy/ci/e2e-stack.sh down
 
   build:
     runs-on: ${{ matrix.runner }}
