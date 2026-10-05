@@ -45,25 +45,27 @@ test: add sandbox create form tests
 
 Feature and behavior PRs should link an accepted issue.
 
-#### The commit type decides whether a merge cuts a release
+#### Merging does not release; the title still matters
 
-After CI passes on `main`, `semantic-release` looks at the commits since the last release and, if they call for one, publishes the npm package, a GitHub release and the container image tags `X.Y.Z` and `X.Y`, all with one version. Nobody runs it by hand, so the commit message is the only input. With a squash merge the pull request title becomes that commit, so the title is what has to follow the convention.
+Merging a pull request publishes nothing. A release is cut by a person, who starts the `Publish to npm` workflow on `main` and chooses patch, minor or major ([docs/releasing.md](docs/releasing.md)). The one exception is a pull request opened by the compat sweep, which is released as a patch once it is merged.
 
-| Commit | Release it cuts |
+The commit message still does two jobs, so write it as carefully as before. With a squash merge the pull request **title** is the commit message. It is what the release notes are written from, and it is what the person cutting the release is told the commits suggest:
+
+| Commit | Release it suggests |
 |--------|-----------------|
 | `fix: …`, `perf: …` | patch |
 | `feat: …` | minor |
 | a `!` after the type or scope (`feat!: …`, `fix(bff)!: …`), or a `BREAKING CHANGE:` footer | major |
 | `docs:`, `test:`, `chore:`, `build:`, `refactor:`, `style:` | none |
 | anything whose type or scope is `ci` (`ci: …`, `fix(ci): …`, `feat(ci): …`), even when marked breaking | none |
-| a `git revert` under the title git gives it, `Revert "…"`, **whatever it reverts** | patch (none when the commit it reverts is newer than the last release: the two cancel out) |
+| a `git revert` under the title git gives it, `Revert "…"`, **whatever it reverts** | patch |
 | any other title that is not a Conventional Commit, such as `Add foo (#74)` | none |
 
-**Workflow changes use the `ci:` type.** A change to `.github/workflows/`, or to the scripts CI and the release pipeline run, alters nothing in the package or the image, so it must not publish a new version of them. `fix(ci):` and `feat(ci):` used to do exactly that: releases 1.0.1, 1.0.2, 1.0.3 and 1.1.0 were each cut by a commit that changed nothing we ship. The `ci` scope is now ignored as a safety net, but write `ci: …` so the history says what the change was.
+**Workflow changes use the `ci:` type.** A change to `.github/workflows/`, or to the scripts CI and the release pipeline run, alters nothing in the package or the image, so it does not belong in the release notes and must not make the commits look like they call for a release. When releases were automatic, `fix(ci):` and `feat(ci):` did worse than that: releases 1.0.1, 1.0.2, 1.0.3 and 1.1.0 were each published by a commit that changed nothing we ship. A `ci` scope is treated the same as the `ci` type, but write `ci:` so the title says what the change is.
 
-A commit whose type or scope is `ci` is also left out of the release notes. It cuts no release, so it has no business in the notes of the next one, least of all under *BREAKING CHANGES*.
+A commit whose type or scope is `ci` is left out of the release notes and suggests no release, even when it is marked breaking.
 
-**Reverting a CI change: title it `ci: revert …`.** A revert counts as a patch, and the title `git revert` writes, `Revert "ci: pin the runners"`, has no type and no scope, so nothing can tell that the commit it undoes was about CI. Left as it is, that title publishes a patch release of a package the revert did not touch, as soon as any release has been cut since the commit it reverts. Retitle the commit, or the pull request if it will be squashed:
+**Reverting a CI change: title it `ci: revert …`.** The title `git revert` writes, `Revert "ci: pin the runners"`, has no type and no scope, so nothing can tell that the commit it undoes was about CI. Left as it is, the revert is listed in the next release's notes and counts as suggesting a patch. Retitle the commit, or the pull request if it is squash-merged:
 
 ```
 ci: revert "pin the runners"

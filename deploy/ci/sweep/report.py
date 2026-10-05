@@ -40,11 +40,16 @@ SOURCE_LINK = "source: SDK<->BFF"
 GATEWAY_BRANCH = "compat-sweep/gateway"
 SDK_BRANCH = "compat-sweep/sdk"
 
-# PR titles are commit subjects, and semantic-release reads them on main. Both
-# use `fix`, which cuts a release, on purpose: a moved ceiling changes the
-# range every released artifact declares, and a moved SDK changes what the
-# released BFF contains. A type that released nothing would leave what is
-# published and what is on main out of step until an unrelated change shipped.
+# PR titles are commit subjects, and the release notes are written from them.
+# Both use `fix`, so each is listed under Bug Fixes in the release it causes: a
+# moved ceiling changes the range every released artifact declares, and a
+# moved SDK changes what the released BFF contains.
+#
+# The title is NOT what releases them. Releases are cut by hand, except that
+# publish.yml cuts a patch by itself for a merged pull request from one of the
+# two branches above that stayed on its axis (scripts/release/sweep-bump.mjs,
+# ADR 0007). Without that, what is published and what is on main would stay
+# out of step until someone remembered to release.
 GATEWAY_TITLE = "fix(compat): support gateway %s"
 SDK_TITLE = "fix(sdk): move to the OpenShell SDK at %s"
 
@@ -649,8 +654,10 @@ def _both_axes_note(decision, axis):
 
 
 RELEASE_NOTE = (
-    "**Merging this cuts a release.** The title is a `fix:` on purpose: %s, so the next "
-    "published version has to say so."
+    "**Merging this cuts a release.** A patch, by itself, once CI has passed on `main`: %s, so "
+    "the next published version has to say so. This is the one release nobody has to ask for. "
+    "It is recognised by the branch it was merged from and by changing nothing outside its "
+    "axis, not by its title, so adding other changes to this pull request turns that off."
 )
 
 
