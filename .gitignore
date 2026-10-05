@@ -4,6 +4,8 @@ frontend/dist/
 
 # Go
 backend/bin/
+# BFF binary built by CI and by deploy/ci/e2e-stack.sh run
+/bin/
 backend/server
 
 # Editor / OS

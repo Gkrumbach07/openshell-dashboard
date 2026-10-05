@@ -7,8 +7,9 @@
 #
 # OPENSHELL_VERSION picks the gateway AND supervisor tag — they are released
 # together and must match. The community sandbox image publishes no semver
-# tags, so it is pinned separately via COMPAT_SANDBOX_IMAGE and deliberately
-# does NOT move with the gateway version.
+# tags, so it is pinned separately (COMPAT_SANDBOX_IMAGE, defaulting to
+# sandbox_image in gateway-pins.json) and deliberately does NOT move with the
+# gateway version.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -16,11 +17,16 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 VERSION="${OPENSHELL_VERSION:-latest}"
 export OPENSHELL_GATEWAY_IMAGE="${OPENSHELL_GATEWAY_IMAGE:-ghcr.io/nvidia/openshell/gateway:${VERSION}}"
 export OPENSHELL_SUPERVISOR_IMAGE="${OPENSHELL_SUPERVISOR_IMAGE:-ghcr.io/nvidia/openshell/supervisor:${VERSION}}"
+# The workload image is pinned by digest in gateway-pins.json. Fall back to the
+# moving tag only when jq is not installed, so a local run still works.
+if [ -z "${COMPAT_SANDBOX_IMAGE:-}" ] && command -v jq >/dev/null 2>&1; then
+  COMPAT_SANDBOX_IMAGE="$(jq -er '.sandbox_image' gateway-pins.json 2>/dev/null || true)"
+fi
 export COMPAT_SANDBOX_IMAGE="${COMPAT_SANDBOX_IMAGE:-ghcr.io/nvidia/openshell-community/sandboxes/base:latest}"
 
 # The gateway's own config file is versioned and the schemas are mutually
-# exclusive: `dev` (upstream HEAD) requires v2, releases up to 0.0.116 require
-# v1. Defaults to v2 because that is what the SDK we pin targets.
+# exclusive: 0.1.0 and newer require v2, releases up to 0.0.116 require v1.
+# Defaults to v2 because that is what the SDK we pin targets.
 #
 # `auto` tries v2 and falls back to v1 when the gateway rejects the config
 # version. The compat sweep needs this because it walks across the v1/v2
@@ -199,7 +205,10 @@ run() {
   fi
   echo "e2e-stack: BFF healthy — running compat suite"
 
-  (cd "$repo/backend" && BFF_URL=http://localhost:9080 go test -tags compat -v -timeout 20m ./test/compat/...) || status=$?
+  # -count=1: the suite talks to a live gateway, which Go's test cache cannot
+  # see. Without it a second run against a DIFFERENT gateway replays the first
+  # run's result as "ok (cached)".
+  (cd "$repo/backend" && BFF_URL=http://localhost:9080 go test -tags compat -count=1 -v -timeout 20m ./test/compat/...) || status=$?
   return $status
 }
 
