@@ -1,5 +1,14 @@
 # OpenShell Dashboard
 
+> [!IMPORTANT]
+> **This branch is the `0.x` maintenance line. It supports OpenShell gateway 0.0.116 only.**
+>
+> - **Gateway 0.1.0 and newer:** use [`main`](https://github.com/Gkrumbach07/openshell-dashboard/tree/main) (dashboard 1.x). The two lines are not interchangeable — gateway 0.1.0 changed the wire format, so a 1.x dashboard fails every workspace call against 0.0.116, and 0.1.x rejects this one.
+> - **Known limitation:** gateway 0.0.116 has no sandbox templates. The Templates tab says so, and the template API routes answer `501 unimplemented`.
+> - **What is tested:** CI runs this line against that one gateway release, pinned by digest in [`deploy/ci/gateway-pins.json`](deploy/ci/gateway-pins.json). The OpenShell SDK is frozen here; bumping it is what breaks 0.0.116.
+> - **Artifacts never use `latest`:** images are tagged `0.x`, `sha-<commit>` and, for a release, `X.Y.Z`; npm releases go to the `release-0.x` dist-tag and are cut by hand ([`publish.yml`](.github/workflows/publish.yml)).
+> - **Lifetime:** this line takes only the fixes that 0.0.116 deployments need, and is retired once they have moved to a newer gateway.
+
 Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell), the open-source agent sandboxing platform. Go BFF + React (PatternFly 6) frontend, talking to the OpenShell gateway through the official Go SDK.
 
 - **Workspaces**: create, browse, delete; manage members (OIDC subject + role)
