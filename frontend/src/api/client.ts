@@ -14,6 +14,18 @@ const buildError = (
   return error;
 };
 
+/**
+ * True when the BFF answered HTTP 501 (`code: "unimplemented"`): the gateway
+ * it fronts is reachable but has no such RPC — gateway 0.0.116, for example,
+ * has no sandbox templates.
+ *
+ * That is a property of the gateway's version, not a failure. Callers use this
+ * to render "not supported by this gateway" instead of an error, and to skip
+ * retries, since asking again cannot change the answer.
+ */
+export const isUnimplemented = (error: unknown): boolean =>
+  (error as Partial<ApiError> | null | undefined)?.status === 501;
+
 let apiBasePath = '';
 let onSessionExpired: (() => void) | null = null;
 let authTokenGetter: (() => string | null | Promise<string | null>) | null =

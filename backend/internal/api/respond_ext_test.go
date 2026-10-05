@@ -144,6 +144,32 @@ func TestWriteSDKError(t *testing.T) {
 			wantMessage: "version mismatch",
 		},
 		{
+			// The gateway sends UNIMPLEMENTED with an empty message, which is
+			// what the SDK hands over; the BFF supplies the text.
+			name:        "Unimplemented maps to 501 with a fixed message",
+			err:         &openshell.StatusError{Code: openshell.ErrorUnimplemented, Message: ""},
+			wantHTTP:    http.StatusNotImplemented,
+			wantCode:    "unimplemented",
+			wantMessage: "this OpenShell gateway does not support this operation",
+		},
+		{
+			name:        "wrapped Unimplemented maps to 501",
+			err:         fmt.Errorf("list templates: %w", &openshell.StatusError{Code: openshell.ErrorUnimplemented}),
+			wantHTTP:    http.StatusNotImplemented,
+			wantCode:    "unimplemented",
+			wantMessage: "this OpenShell gateway does not support this operation",
+		},
+		{
+			// The raw-exec escape hatch bypasses the SDK's error wrapping, so
+			// a bare gRPC status has to map the same way. The gateway's own
+			// text is not relayed.
+			name:        "fallback Unimplemented via raw gRPC",
+			err:         status.Error(codes.Unimplemented, "unknown method ExecSandbox"),
+			wantHTTP:    http.StatusNotImplemented,
+			wantCode:    "unimplemented",
+			wantMessage: "this OpenShell gateway does not support this operation",
+		},
+		{
 			name:        "fallback FailedPrecondition via raw gRPC",
 			err:         status.Error(codes.FailedPrecondition, "sandbox not ready"),
 			wantHTTP:    http.StatusBadRequest,
