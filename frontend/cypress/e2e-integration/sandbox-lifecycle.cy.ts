@@ -4,15 +4,19 @@ describe('Sandbox lifecycle (integration)', () => {
   // Gateway enforces a max sandbox name length — keep it short.
   const suffix = Math.random().toString(36).slice(2, 8);
   const sandboxName = `e2e-${suffix}`;
+  // Pinned by digest in deploy/ci/gateway-pins.json and handed in through
+  // cypress.config.integration.ts, so this never follows a moving tag.
+  const sandboxImage: string = Cypress.expose('sandboxImage');
 
   beforeEach(() => {
     cy.login();
   });
 
   it('creates a sandbox with the base image', () => {
+    expect(sandboxImage, 'pinned sandbox image').to.include('@sha256:');
     cy.request('POST', '/api/v1/workspaces/default/sandboxes', {
       name: sandboxName,
-      image: 'ghcr.io/nvidia/openshell-community/sandboxes/base:latest',
+      image: sandboxImage,
       policy: {
         version: 1,
         filesystem: {

@@ -1,0 +1,35 @@
+# Gateway config for the e2e-integration stack — Docker compute driver, no auth.
+#
+# Schema VERSION 1: gateway 0.0.116 and older. Gateways from 0.1.0 on need
+# version 2, which is a different, mutually exclusive schema; they are tested
+# on main, not on this line.
+#
+# A template because the two images are pinned in gateway-pins.json and nowhere
+# else. e2e-stack.sh substitutes the ${...} placeholders and writes the result
+# to .rendered/gateway.toml, which docker-compose.e2e.yml mounts.
+[openshell]
+version = 1
+
+[openshell.gateway]
+bind_address        = "0.0.0.0:8080"
+health_bind_address = "0.0.0.0:8081"
+log_level           = "info"
+compute_drivers     = ["docker"]
+disable_tls         = true
+
+[openshell.gateway.auth]
+allow_unauthenticated_users = true
+
+[openshell.gateway.gateway_jwt]
+signing_key_path = "/var/lib/openshell/jwt/signing.pem"
+public_key_path  = "/var/lib/openshell/jwt/public.pem"
+kid_path         = "/var/lib/openshell/jwt/kid"
+
+[openshell.drivers.docker]
+default_image     = "${OPENSHELL_SANDBOX_IMAGE}"
+supervisor_image  = "${OPENSHELL_SUPERVISOR_IMAGE}"
+image_pull_policy = "IfNotPresent"
+sandbox_namespace = "openshell-e2e"
+# The driver gives every sandbox container this host alias itself (it maps to
+# the Docker host), so sandboxes reach the gateway through its published port.
+grpc_endpoint     = "http://host.openshell.internal:8080"

@@ -1,0 +1,36 @@
+{
+  "_comment": [
+    "The gateway this maintenance line is tested against, and therefore the",
+    "only one it supports. Read by deploy/ci/e2e-stack.sh (the e2e-integration",
+    "job in ci.yml) and by frontend/cypress.config.integration.ts.",
+    "",
+    "It has the same shape as the file of this name on main, so the supported",
+    "range is derived the same way on both lines: the lowest and the highest",
+    "`version` among the lanes with required=true. Here that is 0.0.116 only.",
+    "",
+    "Images are pinned as tag@digest: the tag is for readers, the digest is",
+    "what gets pulled. sandbox_image is the workload image the specs create",
+    "sandboxes from; it publishes no version tags, so only the digest names it.",
+    "",
+    "Do not add a 0.1.x lane and do not move `sdk` (the pin in backend/go.mod).",
+    "This SDK is the last one that names the workspace the way gateway 0.0.116",
+    "reads it (a plain `workspace` string). The next SDK, 90dbe545, sends a",
+    "typed selector in a different field; 0.0.116 does not know that field and",
+    "ignores it WITHOUT AN ERROR, so every sandbox, provider and policy call",
+    "runs in `default` whatever workspace was asked for. Dashboard 0.3.0 has",
+    "that SDK and must not be used with 0.0.116. Gateways from 0.1.0 on reject",
+    "this SDK (`workspace_scope is required`); they are served by main (1.x)."
+  ],
+  "sdk": "v0.0.0-20260902135142-387aea069a8b",
+  "sandbox_image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest@sha256:aeef1c63f00e2913ea002ccb3aaf925f338b5c5d70e63576f0d95c16a138044e",
+  "lanes": [
+    {
+      "version": "0.0.116",
+      "label": "0.0.116, the only gateway this line supports",
+      "required": true,
+      "config_schema": "v1",
+      "gateway_image": "ghcr.io/nvidia/openshell/gateway:0.0.116@sha256:05cf77bbb022a739aed6f22daa0e7e164415f4ab273b5f84319e46d91eb8f645",
+      "supervisor_image": "ghcr.io/nvidia/openshell/supervisor:0.0.116@sha256:c8c42aef16c200063e32cbf72e553e4ead027085427b555efafd95063ecead42"
+    }
+  ]
+}
