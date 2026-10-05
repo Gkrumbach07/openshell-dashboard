@@ -251,6 +251,21 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # The image states which gateways it supports, as two env vars the BFF
+      # can read and as labels. The values come from the same script that
+      # writes the release notes and stamps the npm package, which derives them
+      # from the required compat lanes — nothing here is typed by hand, and a
+      # pins file that yields no range fails the build rather than shipping an
+      # image that claims nothing.
+      - name: Derive the supported gateway range
+        id: range
+        run: |
+          # pipefail, or a failing derivation would hide behind tee's exit 0.
+          set -euo pipefail
+          node scripts/gateway-range.mjs --format github | tee -a "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         if: env.PUBLISH_IMAGE == 'true'
@@ -269,6 +284,10 @@ jobs:
           file: deploy/Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GATEWAY_SUPPORTED_MIN=${{ steps.range.outputs.floor }}
+            GATEWAY_SUPPORTED_MAX=${{ steps.range.outputs.ceiling }}
+            OPENSHELL_SDK_VERSION=${{ steps.range.outputs.sdk }}
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,scope=${{ matrix.platform }},mode=max
           outputs: ${{ env.PUBLISH_IMAGE == 'true' && 'type=image,name=quay.io/gkrumbach07/openshell-dashboard,push-by-digest=true,name-canonical=true,push=true' || '' }}
@@ -286,6 +305,16 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Joins the two per-platform images into one multi-arch image and tags it with
+  # the commit (and the PR number, on a pull request). It needs only `build`,
+  # deliberately: these tags say "this is what that commit built", which is true
+  # whether or not the commit is any good, and they are how a pull request gets
+  # an image to try before its checks finish.
+  #
+  # It does NOT tag `latest`. That tag is a recommendation, and it used to move
+  # here — on every push to main, with only `build` to wait for — so it could
+  # and did point at a commit whose required compat lane had failed.
+  # `promote-latest` below moves it, once everything has passed.
   push-manifest:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -306,9 +335,11 @@ jobs:
         id: meta
         with:
           images: quay.io/gkrumbach07/openshell-dashboard
+          # sha-<first 7 characters of the commit> is how every later tag finds
+          # this image: promote-latest below, and the version tags publish.yml
+          # adds when a release is cut. Keep the format in step with both.
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=sha,prefix=sha-
+            type=sha,prefix=sha-,format=short
             type=ref,event=pr,prefix=pr-
       - name: Create and push multi-arch manifest
         working-directory: /tmp/digests
@@ -316,3 +347,108 @@ jobs:
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf 'quay.io/gkrumbach07/openshell-dashboard@sha256:%s ' *)
+
+  # Reads the image that push-manifest just pushed back from the registry and
+  # checks that it declares the supported gateway range on both platforms.
+  #
+  # Nothing else would notice if it did not. The Dockerfile's build args default
+  # to the empty string so that a plain `docker build` works, which also means a
+  # misspelt arg name in the build job above is not an error: the image is
+  # published claiming nothing. This inspects the image config; it does not pull
+  # or run the image.
+  image-range:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    needs: [push-manifest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: docker/setup-buildx-action@v3
+      - name: The pushed image declares the supported gateway range
+        run: node scripts/check-image-range.mjs "quay.io/gkrumbach07/openshell-dashboard:sha-${GITHUB_SHA::7}"
+
+  # `latest` only moves to a commit that passed everything, and only forward.
+  #
+  # This is a retag, not a build: it points `latest` at the digest that
+  # push-manifest already pushed as sha-<commit>, so `latest` is byte-for-byte
+  # the image built for the commit whose jobs passed, not a later rebuild of it.
+  # On a pull request, or if any job in `needs` fails or is cancelled, this job
+  # is skipped and `latest` stays where it was.
+  #
+  # "Passed everything" is not enough on its own. A run can be re-run for
+  # thirty days and keeps the commit it was started for, and this job depends on
+  # every other job, so re-running a failed job on an OLDER run of main runs
+  # this one too. Without the tip check below, "Re-run failed jobs" on last
+  # week's flaky run would finish green and pull `latest` back to last week. So
+  # the job first asks the remote whether its commit is still the tip of main,
+  # and when it is not it stands down: it succeeds, touches nothing and never
+  # logs in to the registry. The run for the tip is the one that promotes.
+  #
+  # publish.yml only runs after this workflow succeeds on main, so by the time
+  # a release is cut `latest` and the new X.Y.Z tag name the same digest.
+  promote-latest:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [push-manifest, image-range, check-frontend, check-backend, e2e, compat, release-tooling]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Is this commit still the tip of main?
+        id: tip
+        run: |
+          # pipefail, or a failing check would hide behind tee's exit 0.
+          set -euo pipefail
+          scripts/branch-tip.sh origin main "$GITHUB_SHA" | tee -a "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+        if: steps.tip.outputs.is_tip == 'true'
+      - uses: docker/login-action@v3
+        if: steps.tip.outputs.is_tip == 'true'
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_ROBOT_TOKEN }}
+      - name: Point latest at this commit's image
+        if: steps.tip.outputs.is_tip == 'true'
+        run: scripts/retag-image.sh quay.io/gkrumbach07/openshell-dashboard "sha-${GITHUB_SHA::7}" latest
+
+  # The release pipeline (publish.yml, release.config.cjs, scripts/release/)
+  # runs for real only on main, after a merge. This job is where a mistake in it
+  # is caught beforehand, and it is also where the supported gateway range is
+  # kept honest:
+  #
+  #   - the range can be derived from the pins, and the SDK the pins name is the
+  #     one backend/go.mod builds against
+  #   - the README's Compatibility section states that range (it is generated;
+  #     this fails when someone moved the pins and did not regenerate it)
+  #   - the scripts that write release notes, stamp package.json, detect a
+  #     release, decide whether `latest` may move and retag the image do what
+  #     they say, against a stand-in docker and a throwaway git remote
+  #   - release.config.cjs loads in the semantic-release that publish.yml runs,
+  #     its rules cut the releases CONTRIBUTING.md says they cut, and the
+  #     release notes list a commit exactly when it cuts one
+  release-tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Supported gateway range
+        run: node scripts/gateway-range.mjs --check
+      - name: README states the supported gateway range
+        run: node scripts/readme-gateway-range.mjs --check
+      - name: Release script tests
+        run: node --test "scripts/**/*.test.mjs"
+      - name: Release configuration and rules
+        run: |
+          set -euo pipefail
+          # Check against the semantic-release that will actually run. The
+          # version lives in publish.yml and nowhere else.
+          spec="$(grep -oE 'semantic-release@[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/publish.yml | sort -u || true)"
+          if [ "$(printf '%s' "$spec" | grep -c . || true)" -ne 1 ]; then
+            echo "::error::expected exactly one pinned semantic-release version in publish.yml, found: ${spec:-none}"
+            exit 1
+          fi
+          npm install --no-audit --no-fund --no-package-lock --prefix "$RUNNER_TEMP/semantic-release" "$spec"
+          node scripts/release/check-release-config.mjs --from "$RUNNER_TEMP/semantic-release"

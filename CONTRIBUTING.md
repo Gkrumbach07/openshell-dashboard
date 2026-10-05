@@ -45,6 +45,44 @@ test: add sandbox create form tests
 
 Feature and behavior PRs should link an accepted issue.
 
+#### The commit type decides whether a merge cuts a release
+
+After CI passes on `main`, `semantic-release` looks at the commits since the last release and, if they call for one, publishes the npm package, a GitHub release and the container image tags `X.Y.Z` and `X.Y`, all with one version. Nobody runs it by hand, so the commit message is the only input. With a squash merge the pull request title becomes that commit, so the title is what has to follow the convention.
+
+| Commit | Release it cuts |
+|--------|-----------------|
+| `fix: …`, `perf: …` | patch |
+| `feat: …` | minor |
+| a `!` after the type or scope (`feat!: …`, `fix(bff)!: …`), or a `BREAKING CHANGE:` footer | major |
+| `docs:`, `test:`, `chore:`, `build:`, `refactor:`, `style:` | none |
+| anything whose type or scope is `ci` (`ci: …`, `fix(ci): …`, `feat(ci): …`), even when marked breaking | none |
+| a `git revert` under the title git gives it, `Revert "…"`, **whatever it reverts** | patch (none when the commit it reverts is newer than the last release: the two cancel out) |
+| any other title that is not a Conventional Commit, such as `Add foo (#74)` | none |
+
+**Workflow changes use the `ci:` type.** A change to `.github/workflows/`, or to the scripts CI and the release pipeline run, alters nothing in the package or the image, so it must not publish a new version of them. `fix(ci):` and `feat(ci):` used to do exactly that: releases 1.0.1, 1.0.2, 1.0.3 and 1.1.0 were each cut by a commit that changed nothing we ship. The `ci` scope is now ignored as a safety net, but write `ci: …` so the history says what the change was.
+
+A commit whose type or scope is `ci` is also left out of the release notes. It cuts no release, so it has no business in the notes of the next one, least of all under *BREAKING CHANGES*.
+
+**Reverting a CI change: title it `ci: revert …`.** A revert counts as a patch, and the title `git revert` writes, `Revert "ci: pin the runners"`, has no type and no scope, so nothing can tell that the commit it undoes was about CI. Left as it is, that title publishes a patch release of a package the revert did not touch, as soon as any release has been cut since the commit it reverts. Retitle the commit, or the pull request if it will be squashed:
+
+```
+ci: revert "pin the runners"
+```
+
+Use `fix:` or `feat:` only for something a user of the dashboard or a consumer of the npm package would notice. The rules live in [`release.config.cjs`](release.config.cjs); CI runs sample commits through them on every pull request (`scripts/release/check-release-config.mjs`), and [docs/releasing.md](docs/releasing.md) describes the rest of the pipeline.
+
+#### If you move the supported gateway range
+
+The range of OpenShell gateways a release supports is derived from the required lanes in `deploy/ci/gateway-pins.json`, never written by hand. The README restates it in one generated table, which has to be regenerated in the same change that moves the pins:
+
+```bash
+node scripts/readme-gateway-range.mjs --write
+```
+
+The compat sweep's automated pull requests run this themselves, so their table is already up to date when they are opened. Run it yourself when you change the pins file by hand, and commit the result with the pins.
+
+One thing has to agree between the pins file and the code: its `sdk` field must equal the OpenShell SDK version in `backend/go.mod`. `node scripts/gateway-range.mjs --check` fails when it does not. Nothing else is tied together. The SDK and the gateway lanes are separate changes with separate evidence: one pull request moves the SDK (`go.mod`, `go.sum` and the `sdk` field), another moves a gateway lane, and neither needs the other ([ADR 0006](docs/adrs/0006-compat-links-and-sweep-axes.md)).
+
 ### Developer Certificate of Origin (DCO)
 
 All commits must include a `Signed-off-by` line certifying you have the right to submit the code under the project's license. Use `git commit -s` to add it automatically:
