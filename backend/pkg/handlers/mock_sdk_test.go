@@ -173,7 +173,14 @@ func (m *mockSDKSandboxes) DetachProvider(ctx context.Context, workspace, sandbo
 	return &openshell.DetachProviderResult{Detached: true, Sandbox: &openshell.Sandbox{Name: sandboxName}}, nil
 }
 
-func (m *mockSDKSandboxes) ListProviders(ctx context.Context, workspace, sandboxName string) ([]*openshell.Provider, error) {
+func (m *mockSDKSandboxes) ListProviders(workspace, sandboxName string, opts ...openshell.ListOptions) (*openshell.Pager[*openshell.Provider], error) {
+	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[*openshell.Provider], error) {
+		items, err := m.ListAllProviders(ctx, workspace, sandboxName, opts...)
+		return &openshell.Page[*openshell.Provider]{Items: items}, err
+	}), nil
+}
+
+func (m *mockSDKSandboxes) ListAllProviders(ctx context.Context, workspace, sandboxName string, _ ...openshell.ListOptions) ([]*openshell.Provider, error) {
 	if m.listProvidersFn != nil {
 		return m.listProvidersFn(ctx, workspace, sandboxName)
 	}

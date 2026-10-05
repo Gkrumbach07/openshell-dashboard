@@ -62,7 +62,7 @@ func (h *LogsHandler) GetSandboxLogs(w http.ResponseWriter, r *http.Request) {
 
 // ListSandboxProviders lists provider records attached to a sandbox.
 func (h *LogsHandler) ListSandboxProviders(w http.ResponseWriter, r *http.Request) {
-	providers, err := h.sandboxSvc.ListProviders(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
+	providers, err := h.sandboxSvc.ListAllProviders(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
