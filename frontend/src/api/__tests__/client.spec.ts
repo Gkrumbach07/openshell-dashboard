@@ -4,6 +4,7 @@ import {
   post,
   put,
   del,
+  isUnimplemented,
   setSessionExpiredHandler,
 } from '../client';
 import type { ApiError } from '../client';
@@ -135,6 +136,43 @@ describe('apiFetch', () => {
       status: 401,
     });
     expect(onExpired).not.toHaveBeenCalled();
+  });
+});
+
+describe('isUnimplemented', () => {
+  it('recognises the BFF 501 for an RPC the gateway does not have', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 501,
+      json: () =>
+        Promise.resolve({
+          code: 'unimplemented',
+          message: 'this OpenShell gateway does not support this operation',
+        }),
+    });
+
+    const error = await apiFetch('/api/v1/workspaces/default/templates').catch(
+      (e: unknown) => e,
+    );
+    expect(error).toMatchObject({ status: 501, code: 'unimplemented' });
+    expect(isUnimplemented(error)).toBe(true);
+  });
+
+  it('is false for every other failure', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () =>
+        Promise.resolve({ code: 'internal', message: 'internal error' }),
+    });
+
+    const error = await apiFetch('/api/v1/workspaces/default/templates').catch(
+      (e: unknown) => e,
+    );
+    expect(isUnimplemented(error)).toBe(false);
+    expect(isUnimplemented(new Error('network down'))).toBe(false);
+    expect(isUnimplemented(null)).toBe(false);
+    expect(isUnimplemented(undefined)).toBe(false);
   });
 });
 

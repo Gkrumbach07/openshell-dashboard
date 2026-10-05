@@ -16,9 +16,11 @@ import {
   TextInput,
 } from '@patternfly/react-core';
 
+import { isUnimplemented } from '../api/client';
 import { useCreateTemplate } from '../api/templates';
 import { useAlerts } from '../app/AlertContext';
 import { parseLabels, resolveImage } from '../hooks/useCreateSandboxForm';
+import TemplatesUnsupported from './TemplatesUnsupported';
 import type { CreateSandboxTemplateRequest } from '../types';
 
 type CreateTemplateModalProps = {
@@ -102,6 +104,34 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
       },
     });
   };
+
+  // Exported for hosts to open on their own, so it can be submitted against a
+  // gateway that has no template RPCs (the BFF answers 501). No edit to the
+  // form can change that, so replace it with the plain "not supported" state.
+  if (createTemplate.isError && isUnimplemented(createTemplate.error)) {
+    return (
+      <Modal
+        variant="medium"
+        isOpen={isOpen}
+        onClose={close}
+        aria-label="Create template"
+      >
+        <ModalHeader title="Create template" />
+        <ModalBody>
+          <TemplatesUnsupported />
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="primary"
+            onClick={close}
+            data-testid="create-template-close"
+          >
+            Close
+          </Button>
+        </ModalFooter>
+      </Modal>
+    );
+  }
 
   return (
     <Modal

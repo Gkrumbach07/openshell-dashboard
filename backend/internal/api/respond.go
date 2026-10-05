@@ -30,6 +30,34 @@ func writeError(w http.ResponseWriter, statusCode int, code, message string) {
 	writeJSON(w, statusCode, ErrorResponse{Code: code, Message: message})
 }
 
+// unimplementedMessage is what the browser is told when the gateway answers an
+// RPC with gRPC UNIMPLEMENTED. The gateway sends that status with an empty
+// message, so the BFF supplies one; it names no RPC because the same mapping
+// serves every route.
+const unimplementedMessage = "this OpenShell gateway does not support this operation"
+
+// writeUnimplemented answers HTTP 501 with the "unimplemented" code for an RPC
+// the gateway does not have.
+//
+// The gateway is reachable and healthy; it just lacks an RPC that the SDK this
+// BFF is built against knows about. Gateway 0.0.116, for one, has no
+// sandbox-template RPCs. That is a property of the gateway's version rather
+// than a failure, so it gets its own code instead of falling through to 500
+// "internal error", which reads as a broken dashboard. The frontend can then
+// say "not supported by this gateway".
+//
+// original is the message that came with the status, and it is what gets
+// logged; the browser gets the fixed text. They differ when it matters most:
+// grpc-go also reports an HTTP 404 from the far end as UNIMPLEMENTED, so a
+// gateway URL that points at the wrong service or port answers 501 on every
+// route, and "unexpected HTTP status code received from server: 404" in the
+// log is then the only record of the real cause. A gateway that simply lacks
+// the RPC sends an empty message.
+func writeUnimplemented(w http.ResponseWriter, original string) {
+	slog.Warn("gateway error", "code", "Unimplemented", "message", original)
+	writeError(w, http.StatusNotImplemented, "unimplemented", unimplementedMessage)
+}
+
 // writeSDKError maps an SDK StatusError onto a safe HTTP error response.
 // Uses the SDK's typed error helpers for classification and extracts the
 // clean message from StatusError.Message (no error chain prefix).
@@ -64,12 +92,19 @@ func writeSDKError(w http.ResponseWriter, err error) {
 	case openshell.IsUnavailable(err) || openshell.IsDeadlineExceeded(err):
 		slog.Warn("gateway error", "code", "Unavailable", "message", msg)
 		writeError(w, http.StatusBadGateway, "gateway_unavailable", "OpenShell gateway is unreachable")
+	case openshell.IsUnimplemented(err):
+		writeUnimplemented(w, msg)
 	default:
 		// Fallback: check for raw gRPC status codes not covered by SDK helpers
-		// (FailedPrecondition, OutOfRange, ResourceExhausted).
+		// (FailedPrecondition, OutOfRange, ResourceExhausted), and for
+		// Unimplemented arriving unwrapped from the generated client that
+		// internal/sdkclient/rawexec.go uses.
 		st, ok := status.FromError(err)
 		if ok {
 			switch st.Code() {
+			case codes.Unimplemented:
+				writeUnimplemented(w, st.Message())
+				return
 			case codes.FailedPrecondition, codes.OutOfRange:
 				slog.Warn("gateway error", "code", st.Code().String(), "message", st.Message())
 				writeError(w, http.StatusBadRequest, "invalid_argument", st.Message())

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { del, get, post } from './client';
+import { del, get, isUnimplemented, post } from './client';
 import { sandboxKeys } from './queryKeys';
 import { templateKeys } from './queryKeys';
 import type {
@@ -58,6 +58,10 @@ export const useTemplates = (workspace: string, labelSelector?: string) =>
   useQuery({
     queryKey: templateKeys.list(workspace, labelSelector),
     queryFn: () => listTemplates(workspace, labelSelector),
+    // A 501 means this gateway has no sandbox templates at all. Asking again
+    // cannot change that and would only hold the Templates tab on its spinner,
+    // so fail straight away; anything else keeps the app's single retry.
+    retry: (failureCount, error) => !isUnimplemented(error) && failureCount < 1,
   });
 
 export const useTemplate = (workspace: string, name: string) =>

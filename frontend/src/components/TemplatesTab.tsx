@@ -25,6 +25,7 @@ import {
   Tr,
 } from '@patternfly/react-table';
 
+import { isUnimplemented } from '../api/client';
 import { useDeleteTemplate, useTemplates } from '../api/templates';
 import { useWorkspaceRole } from '../api/rbac';
 import { useAlerts } from '../app/AlertContext';
@@ -32,6 +33,7 @@ import { formatAge } from '../utils/formatters';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import CreateSandboxFromTemplateModal from './CreateSandboxFromTemplateModal';
 import CreateTemplateModal from './CreateTemplateModal';
+import TemplatesUnsupported from './TemplatesUnsupported';
 import type { SandboxTemplate } from '../types';
 
 type TemplatesTabProps = {
@@ -75,6 +77,12 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ workspace }) => {
         <Spinner aria-label="Loading templates" />
       </Bullseye>
     );
+  }
+
+  // A gateway without template RPCs is not a failed load: there is nothing to
+  // retry, list, create or delete, so say so plainly instead of alarming.
+  if (templates.isError && isUnimplemented(templates.error)) {
+    return <TemplatesUnsupported />;
   }
 
   if (templates.isError) {

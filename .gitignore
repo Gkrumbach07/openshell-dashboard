@@ -1,6 +1,7 @@
 # Node
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
 
 # Go
 backend/bin/
@@ -20,6 +21,9 @@ scripts/.env.dev
 # Cypress
 frontend/cypress/videos/
 frontend/cypress/screenshots/
+
+# Gateway config rendered by deploy/ci/e2e-stack.sh
+deploy/ci/.rendered/
 
 # Env files are never committed
 .env

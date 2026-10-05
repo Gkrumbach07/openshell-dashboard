@@ -1,5 +1,21 @@
 # OpenShell Dashboard
 
+> [!IMPORTANT]
+> **This branch is the `0.2.x` maintenance line. It supports OpenShell gateway 0.0.116 only.**
+>
+> - **Gateway 0.1.0 and newer:** use [`main`](https://github.com/Gkrumbach07/openshell-dashboard/tree/main) (dashboard 1.x). The two lines are not interchangeable. Gateway 0.1.0 changed the wire format: a 1.x dashboard fails every workspace-scoped call against 0.0.116, and gateway 0.1.x rejects this line's requests (`workspace_scope is required`).
+> - **Do not use dashboard 0.3.0 with gateway 0.0.116.** It starts and nothing returns an error, but it ignores workspaces there. It names the workspace in a request field that gateway 0.0.116 does not know; the gateway ignores the field and runs the call in `default`. A sandbox created under another workspace lands in `default`, every workspace page lists `default`'s sandboxes, and deleting a sandbox on one workspace's page deletes `default`'s. 0.3.0 does not work with gateway 0.1.x either. For 0.0.116 use this line; until 0.2.1 is released that is 0.2.0 (npm `openshell-dashboard@0.2.0`, image tag `sha-701454a`).
+> - **Known limitations on gateway 0.0.116:**
+>   - **No sandbox templates.** The gateway has no template RPCs. The Templates tab says "This gateway does not support sandbox templates", and the template API routes answer `501 unimplemented`.
+>   - **Three request fields the gateway ignores.** This line's OpenShell SDK knows three request fields that gateway 0.0.116 does not have. The gateway does not reject them; it drops them without an error. What you would notice:
+>     - `CreateSandboxRequest.workload_template_name` is sent only by "create sandbox from template". The gateway would ignore the template and create a sandbox from its default image. The dashboard refuses first: the request answers `501` and nothing is created.
+>     - `CreateSandboxRequest.await_main_process_attachment` is never sent by this dashboard. Nothing to notice.
+>     - `ExecSandboxRequest.no_login_shell` is never sent by this dashboard (file download and upload are its only non-interactive commands, and neither sets it). Nothing to notice.
+>   - **Gateways that enforce OIDC scopes.** If the gateway has `scopes_claim` set, it checks the caller before it finds that it has no template RPC, and for an RPC it does not know it asks for the `openshell:all` scope. A user without that scope sees a permission error on the Templates tab (`scope 'openshell:all' required`) instead of "not supported". Creating a sandbox from a template is refused there too, and creates nothing.
+> - **What is tested:** CI runs this line against that one gateway release, pinned by digest in [`deploy/ci/gateway-pins.json`](deploy/ci/gateway-pins.json). That includes creating a sandbox in a second workspace and checking it is listed there and not in `default`. The OpenShell SDK is frozen here; moving it is what breaks 0.0.116.
+> - **Artifacts never use `latest`:** images are tagged `sha-<commit>`, `0.2.x` (moved only after CI has passed) and, for a release, `X.Y.Z`. npm releases are 0.2.1 and up, go to the `release-0.2.x` dist-tag and are cut by hand ([`publish.yml`](.github/workflows/publish.yml)).
+> - **Lifetime:** this line takes only the fixes that 0.0.116 deployments need, and is retired once they have moved to a newer gateway.
+
 Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell), the open-source agent sandboxing platform. Go BFF + React (PatternFly 6) frontend, talking to the OpenShell gateway through the official Go SDK.
 
 - **Workspaces**: create, browse, delete; manage members (OIDC subject + role)

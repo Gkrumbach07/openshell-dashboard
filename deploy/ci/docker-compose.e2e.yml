@@ -1,11 +1,18 @@
-# Integration e2e stack: OpenShell gateway (Docker driver) + dashboard BFF.
-# Used by CI to run real e2e tests — actual sandbox creation, not mocked.
+# Integration e2e stack: one real OpenShell gateway (Docker driver) for the
+# Cypress integration specs — actual sandbox creation, nothing mocked.
+#
+# Brought up by e2e-stack.sh, which pins the image from gateway-pins.json,
+# renders .rendered/gateway.toml and creates the JWT keys. Do not run compose
+# directly: the image is deliberately not defaulted, so that this stack can
+# never fall back to a moving tag.
 #
 # The gateway creates real Docker containers as sandboxes via DooD
 # (Docker-outside-of-Docker) through the mounted Docker socket.
+name: openshell-e2e
+
 services:
   gateway:
-    image: ghcr.io/nvidia/openshell/gateway:latest
+    image: ${OPENSHELL_GATEWAY_IMAGE:?set by deploy/ci/e2e-stack.sh from gateway-pins.json}
     command: []
     user: "0"
     ports:
@@ -13,13 +20,16 @@ services:
       - "127.0.0.1:50052:8081"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # Same path on both sides on purpose: the gateway bind-mounts files from
+      # here into the sandbox containers it creates, and it names them by the
+      # path it sees, which the Docker daemon then resolves on the host.
       - type: bind
         source: /var/lib/openshell
         target: /var/lib/openshell
         bind:
           create_host_path: true
       - type: bind
-        source: ./gateway.e2e.toml
+        source: ./.rendered/gateway.toml
         target: /etc/openshell/gateway.toml
         read_only: true
       - type: bind
@@ -34,9 +44,6 @@ services:
       OPENSHELL_DB_URL: "sqlite:/var/lib/openshell/gateway.db?mode=rwc"
       XDG_DATA_HOME: /var/lib/openshell
       HOME: /var/lib/openshell
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/healthz"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 30s
+    # No container healthcheck: the 0.0.116 image has no shell, wget or curl,
+    # so the wget probe that used to be here could only ever report
+    # "unhealthy". e2e-stack.sh waits on the published health port instead.
