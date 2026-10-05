@@ -224,8 +224,8 @@ func TestWriteSDKError(t *testing.T) {
 func TestWriteSDKErrorLogsTheOriginalUnimplementedMessage(t *testing.T) {
 	const transportMessage = "unexpected HTTP status code received from server: 404 (Not Found)"
 	tests := []struct {
-		name string
 		err  error
+		name string
 	}{
 		{
 			name: "SDK StatusError",
