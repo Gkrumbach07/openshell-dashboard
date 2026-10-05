@@ -164,6 +164,12 @@ func TestMain(m *testing.M) {
 	// os.Exit skips deferred calls, so the shared fixtures are released here.
 	teardownShared()
 	closeGatewayClient()
+	// When the gateway could not boot sandboxes, most of the failures above
+	// have that one cause, so it is said once where a reader of the log looks
+	// first: at the end.
+	if summary := bootSummary(); summary != "" {
+		fmt.Fprintf(os.Stderr, "compat: [gateway %s] %s\n", gatewayVersion, summary)
+	}
 	os.Exit(code)
 }
 
@@ -409,11 +415,16 @@ func mustDownload(t *testing.T, workspace, sandboxName, filePath string) ([]byte
 }
 
 // requireSandboxes skips tests that boot a sandbox when -short is set, the
-// same switch TestSandboxLifecycle has always honored.
+// same switch TestSandboxLifecycle has always honored, and fails them at once
+// when an earlier test has already shown that sandboxes do not boot on this
+// gateway (see bootFailure).
 func requireSandboxes(t *testing.T) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping: needs a running sandbox, which -short excludes")
+	}
+	if bootFailure != "" {
+		t.Fatalf("[gateway %s] %s", gatewayVersion, bootFailure)
 	}
 }
 
@@ -565,7 +576,7 @@ func sharedSandbox(t *testing.T) (workspace, name string) {
 			return
 		}
 		shared.sandbox = sb
-		if _, err := awaitPhase(ws, sb, "READY", 5*time.Minute); err != nil {
+		if _, err := awaitReady(t.Name(), ws, sb, readyLimit); err != nil {
 			shared.err = err
 		}
 	})

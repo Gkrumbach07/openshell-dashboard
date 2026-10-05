@@ -5,6 +5,7 @@ package compat
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -134,13 +135,98 @@ func awaitPhase(workspace, name, want string, limit time.Duration) (sandbox, err
 		}
 		time.Sleep(time.Second)
 	}
-	return sandbox{}, fmt.Errorf("timed out after %s waiting for sandbox %s/%s to reach %s; last state: %s",
-		limit, workspace, name, want, last)
+	return sandbox{}, fmt.Errorf("%w after %s waiting for sandbox %s/%s to reach %s; last state: %s",
+		errPhaseTimeout, limit, workspace, name, want, last)
+}
+
+// errPhaseTimeout marks the one awaitPhase failure that says nothing went
+// wrong that it could see: the sandbox was readable and simply never got
+// there.
+var errPhaseTimeout = errors.New("timed out")
+
+// readyLimit is how long a sandbox gets to become READY, and phaseLimit how
+// long it gets for any other transition. A boot takes a few seconds once the
+// images are on the host. The rest is for a first local run, where the gateway
+// still has to pull the multi-gigabyte workload image; CI pulls it beforehand.
+const (
+	readyLimit = 5 * time.Minute
+	phaseLimit = 5 * time.Minute
+)
+
+// bootFailure is set the first time a sandbox is still not READY when
+// readyLimit runs out, and from then on no test waits for another one.
+//
+// A sandbox the gateway keeps in PROVISIONING for good (a supervisor that
+// hangs instead of exiting, a workload image that never finishes pulling)
+// costs the whole of readyLimit. Six places in this suite boot a sandbox and
+// wait for it, so without this the suite would spend readyLimit on each, run
+// into `go test -timeout` and end in a goroutine dump instead of a result.
+// With it the first wait is the only long one: that test and every sandbox
+// test after it fail with this same sentence, and TestMain repeats it as the
+// last line of the run.
+//
+// A sandbox that enters ERROR does not set it. That answer comes within
+// seconds, and one failed boot says too little about the next one to stop
+// trying. bootSummary still says so at the end when none of them worked.
+var bootFailure string
+
+// firstNotReady is the first failure of any kind while waiting for READY, and
+// everReady whether any sandbox got there. bootSummary reads them.
+var (
+	firstNotReady string
+	everReady     bool
+)
+
+const bootHint = "Check that the in-sandbox supervisor can reach the gateway (OPENSHELL_GRPC_ENDPOINT) and, " +
+	"on a first run, that the workload image has been pulled"
+
+// awaitReady is awaitPhase for READY, with bootFailure as its memory. who
+// names the test that is waiting, for the message.
+func awaitReady(who, workspace, name string, limit time.Duration) (sandbox, error) {
+	if bootFailure != "" {
+		return sandbox{}, errors.New(bootFailure)
+	}
+	sb, err := awaitPhase(workspace, name, "READY", limit)
+	if errors.Is(err, errPhaseTimeout) {
+		bootFailure = fmt.Sprintf("sandboxes do not become READY on this gateway: %v (first seen in %s; no test "+
+			"waits for another one). %s", err, who, bootHint)
+		err = errors.New(bootFailure)
+	}
+	switch {
+	case err == nil:
+		everReady = true
+	case firstNotReady == "":
+		firstNotReady = fmt.Sprintf("%v (in %s)", err, who)
+	}
+	return sb, err
+}
+
+// bootSummary is the line TestMain ends the run with when the gateway could
+// not boot sandboxes, so that a log with a dozen failed tests in it names
+// their one cause in one place. It is empty when at least one sandbox became
+// READY: the failures are then about something else.
+func bootSummary() string {
+	switch {
+	case bootFailure != "":
+		return bootFailure
+	case firstNotReady != "" && !everReady:
+		return fmt.Sprintf("no sandbox became READY on this gateway, which is what failed every test that "+
+			"needs one. The first: %s. %s", firstNotReady, bootHint)
+	}
+	return ""
 }
 
 func waitForPhase(t *testing.T, workspace, name, want string) sandbox {
 	t.Helper()
-	sb, err := awaitPhase(workspace, name, want, 5*time.Minute)
+	var (
+		sb  sandbox
+		err error
+	)
+	if want == "READY" {
+		sb, err = awaitReady(t.Name(), workspace, name, readyLimit)
+	} else {
+		sb, err = awaitPhase(workspace, name, want, phaseLimit)
+	}
 	if err != nil {
 		t.Fatalf("[gateway %s] %v", gatewayVersion, err)
 	}
@@ -183,9 +269,7 @@ func withCurrentVersion(t *testing.T, workspace, name string, send func(version 
 // that exercises the whole stack: gateway, compute driver, supervisor image
 // and the sandbox workload.
 func TestSandboxLifecycle(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping full sandbox lifecycle in -short mode")
-	}
+	requireSandboxes(t)
 	name := randName("cs")
 	base := "/api/v1/workspaces/default/sandboxes"
 

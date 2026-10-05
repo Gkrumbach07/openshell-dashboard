@@ -7,15 +7,18 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // The tests in this file check the suite's own guards: the decisions that keep
-// it from damaging a gateway it does not have to itself and from skipping
-// where it should fail. They are the only tests here that do not drive the
-// gateway. Each decision is exercised against canned answers, because the
-// situations they exist for (somebody else's global policy, a settings list
-// that no longer decodes) are the ones a healthy compat stack never produces.
+// it from damaging a gateway it does not have to itself, from skipping where
+// it should fail, and from waiting where waiting cannot help. They are the
+// only tests here that do not drive the gateway. Each decision is exercised
+// against canned answers, because the situations they exist for (somebody
+// else's global policy, a settings list that no longer decodes, a gateway that
+// cannot boot a sandbox) are the ones a healthy compat stack never produces.
 
 // withFakeBFF points the suite at a stand-in BFF for the rest of the test.
 // Tests run one after another, so swapping the package's address is safe.
@@ -212,5 +215,99 @@ func TestGuardForeignSandboxes(t *testing.T) {
 	sandboxesIn["default"] = named(mine)
 	if reason := sharedWithOthers(t); reason != "" {
 		t.Errorf("a gateway holding only this run's sandboxes is reported as shared: %s", reason)
+	}
+}
+
+// TestGuardReadyLatch pins the behavior that keeps a gateway which cannot
+// boot sandboxes from running the suite into `go test -timeout`: the first
+// sandbox that never becomes READY is waited for, and no later one is.
+func TestGuardReadyLatch(t *testing.T) {
+	// The real run's memory is put aside and handed back, so that this test
+	// neither sees what earlier tests recorded nor leaves its own behind.
+	savedFailure, savedFirst, savedReady := bootFailure, firstNotReady, everReady
+	bootFailure, firstNotReady, everReady = "", "", false
+	t.Cleanup(func() { bootFailure, firstNotReady, everReady = savedFailure, savedFirst, savedReady })
+
+	var phase atomic.Value
+	var requests atomic.Int32
+	withFakeBFF(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		p, _ := phase.Load().(string)
+		if p == "" {
+			http.Error(w, `{"code":"not_found","message":"sandbox not found"}`, http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":{"phase":"` + p + `"}}`))
+	})
+
+	if got := bootSummary(); got != "" {
+		t.Fatalf("a run that has not waited for a sandbox yet ends with %q, want nothing", got)
+	}
+
+	// The failures awaitPhase can explain do not set the latch: one sandbox
+	// in ERROR, or one that does not exist, says nothing about the next.
+	phase.Store("ERROR")
+	if _, err := awaitReady("TestA", "ws", "sb", time.Minute); err == nil || !strings.Contains(err.Error(), "entered ERROR") {
+		t.Fatalf("a sandbox in ERROR: err = %v, want it reported as entering ERROR", err)
+	}
+	phase.Store("")
+	if _, err := awaitReady("TestB", "ws", "sb", time.Minute); err == nil || !strings.Contains(err.Error(), "does not exist") {
+		t.Fatalf("a missing sandbox: err = %v, want it reported as not existing", err)
+	}
+	if bootFailure != "" {
+		t.Fatalf("an ERROR or a 404 set the latch: %s", bootFailure)
+	}
+	// They are still summed up at the end while no sandbox has worked, with
+	// the first of them as the example.
+	if got := bootSummary(); !strings.Contains(got, "no sandbox became READY") ||
+		!strings.Contains(got, "entered ERROR") || !strings.Contains(got, "TestA") {
+		t.Errorf("summary after only failed boots = %q, want it to say that no sandbox became READY and "+
+			"quote the first failure, from TestA", got)
+	}
+
+	// One sandbox that boots, and the earlier failures are no longer about
+	// the gateway as a whole.
+	phase.Store("READY")
+	if _, err := awaitReady("TestC", "ws", "sb", time.Minute); err != nil {
+		t.Fatalf("a sandbox that is READY: %v", err)
+	}
+	if got := bootSummary(); got != "" {
+		t.Errorf("summary once a sandbox has become READY = %q, want nothing", got)
+	}
+
+	// A sandbox that stays in PROVISIONING until the limit sets the latch.
+	phase.Store("PROVISIONING")
+	_, err := awaitReady("TestFirst", "ws", "stuck", 300*time.Millisecond)
+	if err == nil || bootFailure == "" {
+		t.Fatalf("a sandbox stuck in PROVISIONING: err = %v, latch = %q; want an error and the latch set", err, bootFailure)
+	}
+	for _, want := range []string{"sandboxes do not become READY", "ws/stuck", "phase=PROVISIONING", "TestFirst"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("first failure = %q, want it to mention %q", err, want)
+		}
+	}
+	if got := bootSummary(); got != err.Error() {
+		t.Errorf("summary with the latch set = %q, want the sentence the tests fail with, %q", got, err)
+	}
+
+	// From here on nobody waits: no request is sent, and the answer is the
+	// sentence the first failure produced, so every test says the same thing.
+	before := requests.Load()
+	start := time.Now()
+	_, again := awaitReady("TestLater", "ws", "other", time.Minute)
+	if again == nil || again.Error() != err.Error() {
+		t.Errorf("a later wait: err = %v, want the first failure's message, %q", again, err)
+	}
+	if spent := time.Since(start); spent > time.Second {
+		t.Errorf("a later wait took %s, want it to return at once", spent)
+	}
+	if sent := requests.Load() - before; sent != 0 {
+		t.Errorf("a later wait sent %d request(s), want none", sent)
+	}
+
+	// Waiting for any other phase is not affected.
+	phase.Store("STOPPED")
+	if _, err := awaitPhase("ws", "sb", "STOPPED", time.Minute); err != nil {
+		t.Errorf("waiting for STOPPED with the latch set: %v", err)
 	}
 }
