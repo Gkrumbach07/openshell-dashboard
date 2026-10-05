@@ -84,6 +84,18 @@ func NewApp(
 	return app
 }
 
+// SetGatewaySupport declares the range of gateway releases this build
+// supports. GET /gateway then reports where the connected gateway falls
+// relative to it; without a range it reports "unknown". Nothing is ever
+// blocked on the result.
+//
+// It is a method rather than a NewApp parameter because NewApp's trailing
+// parameter is already the variadic extension list, and downstream callers of
+// NewApp must keep compiling. Call it before Routes.
+func (app *App) SetGatewaySupport(support models.GatewaySupport) {
+	app.gateway.SetGatewaySupport(support)
+}
+
 // Routes builds the chi router.
 func (app *App) Routes() http.Handler {
 	r := chi.NewRouter()

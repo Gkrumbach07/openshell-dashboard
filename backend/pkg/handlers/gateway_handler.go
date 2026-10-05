@@ -13,20 +13,46 @@ type GatewayHandler struct {
 	svc        services.GatewayServiceInterface
 	auth       auth.MiddlewareInterface
 	authConfig models.AuthConfigResponse
+	// support is the gateway range this build supports. The zero value means
+	// none was configured, and every gateway is then reported as "unknown".
+	support models.GatewaySupport
 }
 
 func NewGatewayHandler(svc services.GatewayServiceInterface, authMiddleware auth.MiddlewareInterface, authConfig models.AuthConfigResponse) *GatewayHandler {
 	return &GatewayHandler{svc: svc, auth: authMiddleware, authConfig: authConfig}
 }
 
-// GetGateway returns gateway status, version, and compute drivers.
+// SetGatewaySupport declares the gateway range this build supports, which
+// GetGateway compares the gateway's reported version against. It is a setter
+// rather than a NewGatewayHandler parameter so that existing callers of the
+// constructor keep compiling. Call it before the handler serves requests.
+func (h *GatewayHandler) SetGatewaySupport(support models.GatewaySupport) {
+	h.support = support
+}
+
+// GetGateway returns gateway status, version, and compute drivers, plus the
+// dashboard's own verdict on whether that version is one it supports.
+//
+// The verdict only informs. A gateway outside the range is still served in
+// full — the BFF relays and never blocks (ADR 0002) — so the UI can explain
+// the errors a mismatched gateway produces instead of leaving them unexplained.
 func (h *GatewayHandler) GetGateway(w http.ResponseWriter, r *http.Request) {
 	info, err := h.svc.GetGatewayInfo(r.Context())
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
 	}
-	apiutils.WriteJSON(w, http.StatusOK, info)
+	if info == nil {
+		apiutils.WriteJSON(w, http.StatusOK, info)
+		return
+	}
+	// Judged here rather than in the service so the verdict survives a
+	// downstream replacing GatewayServiceInterface. Copy first: the service
+	// owns the value it returned.
+	out := *info
+	compatibility := h.support.Check(info.GatewayVersion)
+	out.Compatibility = &compatibility
+	apiutils.WriteJSON(w, http.StatusOK, out)
 }
 
 // GetReadyz checks gateway reachability for readiness probes.

@@ -86,6 +86,8 @@ All flags have env var fallbacks:
 | `-auth-user-header` | `AUTH_USER_HEADER` | `x-auth-request-user` | Header the auth proxy injects the username into |
 | `-admin-role` | `ADMIN_ROLE` | `admin` | Role name the frontend treats as platform admin (display gating only) |
 | `-logout-url` | `LOGOUT_URL` | `/oauth2/sign_out` | Auth proxy sign-out URL the frontend redirects to on logout |
+| `-gateway-supported-min` | `GATEWAY_SUPPORTED_MIN` | | Oldest gateway release this build supports (`x.y.z`). Set together with `GATEWAY_SUPPORTED_MAX`; when either is unset or unparsable the dashboard shows no compatibility notice |
+| `-gateway-supported-max` | `GATEWAY_SUPPORTED_MAX` | | Newest gateway release this build was tested against (`x.y.z`). `make dev` sets both from `deploy/ci/gateway-pins.json` when `jq` is installed; the BFF only informs and never refuses a gateway |
 | `-gateway-ca-cert` | `GATEWAY_CA_CERT` |: | Path to CA cert for self-signed gateway TLS |
 | `-gateway-client-cert` | `GATEWAY_CLIENT_CERT` | | Path to client certificate for gateway mTLS |
 | `-gateway-client-key` | `GATEWAY_CLIENT_KEY` | | Path to client private key for gateway mTLS |

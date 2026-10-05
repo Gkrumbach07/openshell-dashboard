@@ -216,10 +216,15 @@ type ComputeDriver struct {
 
 // GatewayInfo mirrors openshell.v1.GetGatewayInfoResponse — status, version,
 // and compute drivers are all the gateway exposes about itself.
-type GatewayInfo struct {
-	Status         string          `json:"status"`
-	GatewayVersion string          `json:"gatewayVersion"`
-	ComputeDrivers []ComputeDriver `json:"computeDrivers"`
+//
+// Compatibility is the one field that does not come from the gateway: it is
+// the dashboard's own verdict on the version above, added by the handler. It
+// is nil — and omitted — until something has actually judged the gateway.
+type GatewayInfo struct { //nolint:govet // fieldalignment: gateway fields first, the verdict last
+	Status         string                `json:"status"`
+	GatewayVersion string                `json:"gatewayVersion"`
+	ComputeDrivers []ComputeDriver       `json:"computeDrivers"`
+	Compatibility  *GatewayCompatibility `json:"compatibility,omitempty"`
 }
 
 // FeatureFlags controls which optional features the frontend should render.

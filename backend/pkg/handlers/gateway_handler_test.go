@@ -45,12 +45,115 @@ func TestGetGateway(t *testing.T) {
 	}
 }
 
+// GET /gateway carries the dashboard's verdict on the gateway's version. The
+// three gateways here are the ones that matter today: the release the 0.x
+// line serves, the newest release this line is tested against, and upstream
+// HEAD. Each body is logged, so `go test -v -run TestGetGatewayCompatibility`
+// shows exactly what the frontend receives.
+func TestGetGatewayCompatibility(t *testing.T) {
+	tests := []struct { //nolint:govet // fieldalignment: test readability
+		name       string
+		minVersion string
+		maxVersion string
+		reported   string
+		want       map[string]any
+	}{
+		{
+			name:       "gateway older than the range",
+			minVersion: "0.1.0", maxVersion: "0.1.2",
+			reported: "0.0.116",
+			want:     map[string]any{"status": "unsupported", "supportedMin": "0.1.0", "supportedMax": "0.1.2"},
+		},
+		{
+			name:       "gateway inside the range",
+			minVersion: "0.1.0", maxVersion: "0.1.2",
+			reported: "0.1.2",
+			want:     map[string]any{"status": "supported", "supportedMin": "0.1.0", "supportedMax": "0.1.2"},
+		},
+		{
+			name:       "gateway newer than the range",
+			minVersion: "0.1.0", maxVersion: "0.1.2",
+			reported: "0.1.3-dev.84+ge7fdd6bee",
+			want:     map[string]any{"status": "untested", "supportedMin": "0.1.0", "supportedMax": "0.1.2"},
+		},
+		{
+			name:       "gateway version unreadable",
+			minVersion: "0.1.0", maxVersion: "0.1.2",
+			reported: "",
+			want:     map[string]any{"status": "unknown", "supportedMin": "0.1.0", "supportedMax": "0.1.2"},
+		},
+		{
+			// No range configured: the BFF does not guess one, even for a
+			// gateway it would otherwise call unsupported.
+			name:     "no range configured",
+			reported: "0.0.116",
+			want:     map[string]any{"status": "unknown"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sdk := &mockSDK{}
+			sdk.health.getGatewayInfoFn = func(_ context.Context) (*openshell.GatewayInfo, error) {
+				return &openshell.GatewayInfo{
+					Status:         openshell.ServiceStatusHealthy,
+					Version:        tc.reported,
+					ComputeDrivers: []openshell.ComputeDriverInfo{{Name: "podman"}},
+				}, nil
+			}
+			support, err := models.ParseGatewaySupport(tc.minVersion, tc.maxVersion)
+			if err != nil {
+				t.Fatalf("ParseGatewaySupport: %v", err)
+			}
+			handler := NewGatewayHandler(services.NewGatewayService(sdk), auth.New(auth.Config{}), models.AuthConfigResponse{})
+			handler.SetGatewaySupport(support)
+
+			w := httptest.NewRecorder()
+			handler.GetGateway(w, httptest.NewRequest(http.MethodGet, "/gateway", nil))
+
+			// Informational only: an out-of-range gateway is still a 200.
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+			}
+			t.Logf("gateway %q, range %q -> %s", tc.reported, support.String(), w.Body.String())
+
+			var body map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			// The gateway's own fields are passed through untouched.
+			if body["status"] != "HEALTHY" || body["gatewayVersion"] != tc.reported {
+				t.Errorf("gateway fields changed: %v", body)
+			}
+			got, ok := body["compatibility"].(map[string]any)
+			if !ok {
+				t.Fatalf("compatibility is missing or not an object: %v", body)
+			}
+			if len(got) != len(tc.want) {
+				t.Errorf("compatibility = %v, want %v", got, tc.want)
+			}
+			for key, want := range tc.want {
+				if got[key] != want {
+					t.Errorf("compatibility.%s = %v, want %v", key, got[key], want)
+				}
+			}
+		})
+	}
+}
+
+// A gateway that cannot be reached has no version to judge, so the error is
+// relayed as before rather than dressed up as a compatibility result.
 func TestGetGatewayUnavailable(t *testing.T) {
 	sdk := &mockSDK{}
 	sdk.health.getGatewayInfoFn = func(_ context.Context) (*openshell.GatewayInfo, error) {
 		return nil, &openshell.StatusError{Code: openshell.ErrorUnavailable, Message: "down"}
 	}
 	handler := NewGatewayHandler(services.NewGatewayService(sdk), auth.New(auth.Config{}), models.AuthConfigResponse{})
+	support, err := models.ParseGatewaySupport("0.1.0", "0.1.2")
+	if err != nil {
+		t.Fatalf("ParseGatewaySupport: %v", err)
+	}
+	handler.SetGatewaySupport(support)
 	req := httptest.NewRequest(http.MethodGet, "/gateway", nil)
 	w := httptest.NewRecorder()
 	handler.GetGateway(w, req)
