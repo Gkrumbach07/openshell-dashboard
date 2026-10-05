@@ -39,9 +39,10 @@ func (h *GatewayHandler) SetGatewaySupport(support models.GatewaySupport) {
 // full — the BFF relays and never blocks (ADR 0002) — so the UI can explain
 // the errors a mismatched gateway produces instead of leaving them unexplained.
 //
-// The gateway answers GetGatewayInfo only for platform admins, so this route
-// is a 403 for everyone else. GetGatewayCompatibility is where a caller
-// without that role gets the verdict.
+// A gateway that enforces roles answers GetGatewayInfo only for platform
+// admins, so there this route is a 403 for everyone else.
+// GetGatewayCompatibility is where a caller without that role gets the
+// verdict.
 func (h *GatewayHandler) GetGateway(w http.ResponseWriter, r *http.Request) {
 	info, err := h.svc.GetGatewayInfo(r.Context())
 	if err != nil {

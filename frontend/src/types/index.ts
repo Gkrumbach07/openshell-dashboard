@@ -375,7 +375,8 @@ export type ComputeDriver = {
 //   unsupported — older than the oldest supported release; calls may fail
 //   supported   — inside the range
 //   untested    — newer than the newest release it was tested against
-//   unknown     — no range configured, or the version could not be read
+//   unknown     — no range configured, the version could not be read, or the
+//                 gateway does not know its own version (it reports 0.0.0)
 export type GatewayCompatibilityStatus =
   'unsupported' | 'supported' | 'untested' | 'unknown';
 
