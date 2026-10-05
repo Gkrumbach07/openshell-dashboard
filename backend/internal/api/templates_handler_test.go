@@ -183,24 +183,53 @@ func TestCreateSandboxFromTemplate(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
-			var gotTemplate string
-			sdk.templates.createFromTemplateFn = func(_ context.Context, _, name, templateName string, _ *openshell.SandboxSpec, _ map[string]string, _ ...openshell.CreateOptions) (*openshell.Sandbox, error) {
+			var gotTemplate, gotWorkspace string
+			sdk.templates.createFromTemplateFn = func(_ context.Context, workspace, name, templateName string, _ *openshell.SandboxSpec, _ map[string]string, _ ...openshell.CreateOptions) (*openshell.Sandbox, error) {
+				gotWorkspace = workspace
 				gotTemplate = templateName
 				return &openshell.Sandbox{Name: name}, nil
+			}
+			// The handler looks the template up before it creates anything.
+			// Record what it asks for: a lookup of the wrong workspace or the
+			// wrong name would turn every from-template create into a 404, or
+			// wave one through against a different template.
+			lookups := 0
+			var lookedUpWorkspace, lookedUpTemplate string
+			sdk.templates.getFn = func(_ context.Context, workspace, name string) (*openshell.SandboxWorkloadTemplate, error) {
+				lookups++
+				lookedUpWorkspace, lookedUpTemplate = workspace, name
+				return &openshell.SandboxWorkloadTemplate{Name: name, Workspace: workspace}, nil
 			}
 			app := newTestAppWithSDK(sdk)
 			r := chi.NewRouter()
 			r.Post("/workspaces/{workspace}/sandboxes/from-template", app.CreateSandboxFromTemplate)
 
-			req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/from-template", strings.NewReader(tc.body))
+			// Not `default`, so a handler that fell back to the default
+			// workspace would be caught too.
+			req := httptest.NewRequest(http.MethodPost, "/workspaces/team-a/sandboxes/from-template", strings.NewReader(tc.body))
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, req)
 
 			if w.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
 			}
-			if tc.wantStatus == http.StatusCreated && gotTemplate != "claude-harness" {
+			if tc.wantStatus != http.StatusCreated {
+				if lookups != 0 {
+					t.Errorf("looked a template up %d time(s) for a request that fails validation, want 0", lookups)
+				}
+				return
+			}
+			if gotTemplate != "claude-harness" {
 				t.Errorf("templateName = %q, want claude-harness", gotTemplate)
+			}
+			if gotWorkspace != "team-a" {
+				t.Errorf("created in workspace %q, want team-a", gotWorkspace)
+			}
+			if lookups != 1 {
+				t.Errorf("looked the template up %d time(s), want 1", lookups)
+			}
+			if lookedUpWorkspace != "team-a" || lookedUpTemplate != "claude-harness" {
+				t.Errorf("looked up template %q in workspace %q, want claude-harness in team-a", lookedUpTemplate, lookedUpWorkspace)
 			}
 		})
 	}
