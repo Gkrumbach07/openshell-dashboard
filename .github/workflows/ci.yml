@@ -70,6 +70,15 @@ jobs:
       - if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/0.2.x'
         run: cd backend && go test -race -count=1 -coverprofile=coverage.out ./...
 
+  # Tests for the shell helpers the workflows call. released-version.sh decides
+  # in publish.yml whether an image gets a version tag; a manual release is the
+  # only time it runs for real, which is too late to find out it is wrong.
+  check-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: deploy/ci/released-version.test.sh
+
   e2e:
     runs-on: ubuntu-latest
     steps:

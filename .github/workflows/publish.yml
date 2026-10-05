@@ -48,15 +48,27 @@ name: Publish to npm
 # at that step; the note is already pushed by then, so a second run skips the
 # step and releases normally.
 #
-# The semantic-release half of this (the range, the channel, the note) was
-# rehearsed against a local copy of the repository. The npm and GitHub half
-# was read from their documentation and source and has not been run: the
-# first real release is its test.
+# If a run fails AFTER semantic-release has pushed the tag (the log says
+# "Created tag vX.Y.Z"), the release is half done, and running the workflow
+# again does not finish it: semantic-release sees the tag and releases
+# nothing. The "Find the release cut from this commit" step notices, fails,
+# and prints which half is missing and the one command that repairs it. Until
+# that is done the image is not given the version.
+#
+# The semantic-release half of this (the range, the channel, the note, the
+# half-done release and its repair) was rehearsed against a local copy of the
+# repository. The npm and GitHub half was read from their documentation and
+# source and has not been run: the first real release is its test.
 on:
   workflow_dispatch:
 
+# Not main's `publish` group. GitHub keeps one pending run per group and
+# cancels the one before it, so in a shared group a release dispatched here
+# while main is publishing could be dropped by main's next run, or drop it.
+# The two lines write different tags and different npm versions, so they have
+# no reason to wait for each other.
 concurrency:
-  group: publish
+  group: publish-0.2.x
   cancel-in-progress: false
 
 jobs:
@@ -125,17 +137,22 @@ jobs:
       # semantic-release tags the commit it released as vX.Y.Z. Looking for
       # that tag, rather than parsing the tool's output, also makes a re-run
       # after a failed image step pick the release up again.
+      #
+      # The tag alone is not proof of a release, though: semantic-release
+      # pushes it BEFORE it publishes. If `npm publish` or the GitHub release
+      # then fails, the run is red but the tag stays, and the next run finds
+      # the tag, releases nothing and exits 0. The helper therefore only
+      # reports a version that npm has and GitHub has a release for; with a
+      # tag and anything less it fails this step and prints how to finish the
+      # release by hand. Tested by deploy/ci/released-version.test.sh in CI.
       - name: Find the release cut from this commit
         id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag=$(git tag --points-at "$GITHUB_SHA" --list 'v[0-9]*' --sort=-v:refname | head -n 1)
-          if [ -z "$tag" ]; then
-            echo "No release was cut from $GITHUB_SHA."
-          else
-            echo "Released $tag from $GITHUB_SHA."
-          fi
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          version=$(deploy/ci/released-version.sh "$GITHUB_SHA")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   # Gives the image of the released commit its version: X.Y.Z, alongside the
   # sha-<7> tag CI pushed. It is a retag BY DIGEST — the manifest is copied as
