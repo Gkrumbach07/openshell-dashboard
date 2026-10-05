@@ -1,0 +1,35 @@
+{
+  "description": "The SDK pin was moved by hand to the commit of v0.1.0-pre.8, a pre-release (main really was there until 2026-10-05). ADR 0006 pins the SDK to a release tag, so the report says the pin is not on a release, names the tag it is on without calling it one, and puts it in the issue. The SDK axis independently proposes the SDK of the newest release.",
+  "pins": "pins-sdk-on-pre-release.json",
+  "upstream": {
+    "sdk": {
+      "6648bd0c290efbc41ba131ee9831ee45cd431f94": "v0.0.0-20260928030816-6648bd0c290e",
+      "latest": "v0.0.0-20260928030816-6648bd0c290e"
+    }
+  },
+  "legs": {},
+  "expect": {
+    "issue_action": "upsert",
+    "gateway_pr": "close",
+    "sdk_pr": "open",
+    "incomplete": false,
+    "gateway_statuses": {
+      "0.1.2": "ok",
+      "0.1.1": "ok",
+      "0.1.0": "ok",
+      "dev": "ok"
+    },
+    "sdk_statuses": {
+      "v0.1.2": "bump"
+    },
+    "title_is": "Compat sweep: the SDK pin is not on a release tag",
+    "issue_contains": [
+      "- **SDK pin:** `v0.0.0-20260923091534-d3480d2a7efa` (at upstream `v0.1.0-pre.8`, which is not a release).",
+      "The SDK pin is not the commit of an upstream release tag.",
+      "### Needs a person"
+    ],
+    "issue_lacks": [
+      "(upstream v0.1.0-pre.8)"
+    ]
+  }
+}

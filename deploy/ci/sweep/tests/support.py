@@ -21,7 +21,29 @@ FIXTURES = os.path.join(HERE, "fixtures")
 REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 
 # What a leg reports unless the scenario says otherwise: everything worked.
-DEFAULT_LEG = {"source": "success", "stack": "success", "compat": "success", "config_schema": "v2"}
+# A scenario names only the step that failed; like the workflow's `if:`
+# conditions, every step after a failed one is then "skipped".
+DEFAULT_LEG = {
+    "source": "success",
+    "pull": "success",
+    "stack": "success",
+    "bff": "success",
+    "compat": "success",
+    "config_schema": "v2",
+}
+STEP_ORDER = ("source", "pull", "stack", "bff", "compat")
+
+
+def observed(overrides=None):
+    """One leg's step outcomes, with the steps after a failure skipped."""
+    overrides = overrides or {}
+    leg = dict(DEFAULT_LEG, **overrides)
+    failed = False
+    for step in STEP_ORDER:
+        if failed and step not in overrides:
+            leg[step] = "skipped"
+        failed = failed or leg[step] != "success"
+    return leg
 
 
 def fixture(name):
@@ -74,22 +96,24 @@ def leg_results(plan, legs=None):
     for candidate in plan["gateway"]["candidates"]:
         if candidate["id"] in legs and legs[candidate["id"]] is None:
             continue  # this leg never reported
-        leg = dict(DEFAULT_LEG, **legs.get(candidate["id"], {}))
-        outcome = outcomes.gateway_leg_outcome(leg["stack"], leg["compat"])
+        leg = observed(legs.get(candidate["id"]))
+        outcome = outcomes.gateway_leg_outcome(leg["pull"], leg["stack"], leg["bff"], leg["compat"])
         results.append(
             {"id": candidate["id"], "axis": "gateway", "outcome": outcome, "config_schema": leg["config_schema"] or None}
         )
     for sdk_leg in plan["sdk"]["legs"]:
         if sdk_leg["id"] in legs and legs[sdk_leg["id"]] is None:
             continue
-        leg = dict(DEFAULT_LEG, **legs.get(sdk_leg["id"], {}))
-        result = {
-            "id": sdk_leg["id"],
-            "axis": "sdk",
-            "outcome": outcomes.sdk_leg_outcome(leg["source"], leg["stack"], leg["compat"]),
-        }
-        if result["outcome"] == outcomes.SOURCE_INCOMPATIBLE:
-            result["source_step"] = leg.get("source_step", "build")
+        leg = observed(legs.get(sdk_leg["id"]))
+        # A fixture that fails the source check without saying where means the
+        # compiler: that is the case the sweep was rebuilt around.
+        step = leg.get("source_step", "build")
+        outcome = outcomes.sdk_leg_outcome(leg["source"], step, leg["pull"], leg["stack"], leg["bff"], leg["compat"])
+        if outcome == outcomes.NO_RESULT:
+            continue  # `sweep.py record-sdk` refuses to record it, so nothing is uploaded
+        result = {"id": sdk_leg["id"], "axis": "sdk", "outcome": outcome}
+        if outcome in (outcomes.SOURCE_INCOMPATIBLE, outcomes.SDK_UNRESOLVED):
+            result["source_step"] = step
             result["source_log"] = leg.get("source_log", "")
         results.append(result)
     return results
@@ -103,7 +127,7 @@ def run_scenario(name):
     plan = candidates.build_plan(
         doc,
         FakeUpstream(upstream_data(scenario.get("upstream"))),
-        max_versions=inputs.get("max_versions", 5),
+        max_versions=inputs.get("max_versions"),
         include_head=inputs.get("include_head", True),
         since=inputs.get("since"),
     )

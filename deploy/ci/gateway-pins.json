@@ -23,7 +23,9 @@
     "",
     "Two automated PRs edit this file and each touches one thing: the gateway",
     "axis moves the ceiling lane, the SDK axis moves `sdk` (with go.mod).",
-    "`python3 deploy/ci/sweep/sweep.py validate-pins` checks the file."
+    "`python3 deploy/ci/sweep/sweep.py validate-pins` checks the file, layout",
+    "included: those PRs rewrite all of it, so CI requires the exact form they",
+    "write. After a hand edit, `... sweep.py format-pins` puts it back."
   ],
   "sdk": "v0.0.0-20260928030816-6648bd0c290e",
   "sandbox_image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest@sha256:aeef1c63f00e2913ea002ccb3aaf925f338b5c5d70e63576f0d95c16a138044e",

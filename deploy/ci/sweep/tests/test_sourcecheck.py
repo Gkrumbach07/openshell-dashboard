@@ -1,5 +1,6 @@
 """The source link check, with the Go toolchain replaced by a script."""
 
+import sys
 import unittest
 
 import sourcecheck
@@ -64,6 +65,20 @@ class SourceCheck(unittest.TestCase):
         sourcecheck.check(SDK, "backend", run=FakeGo(fail_at="vet", output="vet: bad\n"), echo=lines.append)
         self.assertIn("$ go vet ./...", lines)
         self.assertIn("vet: bad", lines)
+
+    def test_output_that_is_not_utf_8_is_kept_not_fatal(self):
+        # A failing test may print anything. A decoding error here used to
+        # end the check without naming a step, and the report then said the
+        # BFF "does not compile".
+        script = "import sys; sys.stdout.buffer.write(b'\\xff\\xfe FAIL: TestX'); sys.exit(3)"
+        code, output = sourcecheck.run_command([sys.executable, "-c", script], ".")
+        self.assertEqual(code, 3)
+        self.assertIn("FAIL: TestX", output)
+        self.assertIn("\ufffd", output)
+
+    def test_stderr_is_part_of_the_output(self):
+        script = "import sys; sys.stderr.write('vet: bad'); sys.exit(1)"
+        self.assertEqual(sourcecheck.run_command([sys.executable, "-c", script], "."), (1, "vet: bad"))
 
     def test_a_missing_toolchain_is_a_failure_not_a_crash(self):
         code, output = sourcecheck.run_command(["definitely-not-a-real-binary-xyz"], ".")

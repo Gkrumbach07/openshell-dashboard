@@ -252,12 +252,28 @@ def load(path):
 
 
 def dump(doc):
-    """Serialise exactly as the checked-in file is written.
+    """Serialise exactly as the checked-in file is written: the canonical form.
 
     Round-tripping an untouched document must reproduce it byte for byte, so
-    an automated PR shows only the lines it meant to change.
+    an automated PR shows only the lines it meant to change. Non-ASCII text is
+    written as itself, so a comment with a dash in it does not turn into an
+    escape sequence the first time a PR rewrites the file.
     """
-    return json.dumps(doc, indent=2) + "\n"
+    return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
+
+
+def is_canonical(text):
+    """Is this file text exactly what dump() would write for its content?
+
+    The automated PRs rewrite the whole file. Only a file that is already in
+    canonical form comes back with nothing but the intended lines changed, so
+    CI requires it on every PR rather than discovering the difference inside
+    a bump (`sweep.py format-pins` rewrites a file into this form).
+    """
+    try:
+        return dump(json.loads(text)) == text
+    except ValueError:
+        return False
 
 
 def required_lanes(doc):
@@ -281,6 +297,12 @@ def move_ceiling(doc, version, gateway_image, supervisor_image, config_schema):
     left exactly as they were. When a single required lane is both floor and
     ceiling, moving it would silently raise the floor, so a new ceiling lane
     is added instead and the existing one stays as the floor.
+
+    An advisory lane may already exist for the release (someone trying it out
+    ahead of the sweep). It is promoted: the new required lane takes its
+    place, with the images that were just tested. Leaving it beside the new
+    lane would give the file two lanes for one version, which validate()
+    refuses - and the bump would then fail every week.
     """
     new_release = parse_release(version)
     if new_release is None:
@@ -306,6 +328,8 @@ def move_ceiling(doc, version, gateway_image, supervisor_image, config_schema):
         "gateway_image": gateway_image,
         "supervisor_image": supervisor_image,
     }
+    # Not required, or the range check above would have refused the move.
+    out["lanes"] = [existing for existing in out["lanes"] if existing.get("version") != version]
     for index, existing in enumerate(out["lanes"]):
         if existing.get("required") is True and existing["version"] == ceiling:
             if floor == ceiling:

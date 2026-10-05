@@ -143,16 +143,16 @@ up() {
   as_root mkdir -p "$STATE_DIR"
   ensure_jwt_keys
 
+  # try_schema prints the gateway's log itself when an attempt fails. By the
+  # time it returns, the stack is down again and there is nothing left to ask.
   if [ "$OPENSHELL_CONFIG_SCHEMA" = "auto" ]; then
     try_schema v2 || try_schema v1 || {
-      echo "e2e-stack: gateway did not start under either config schema" >&2
-      $COMPOSE logs --tail=120 >&2
+      echo "e2e-stack: gateway did not start under either config schema (logs of both attempts above)" >&2
       exit 1
     }
   else
     try_schema "$OPENSHELL_CONFIG_SCHEMA" || {
-      echo "e2e-stack: gateway did not become healthy — logs follow:" >&2
-      $COMPOSE logs --tail=120 >&2
+      echo "e2e-stack: gateway did not become healthy (logs above)" >&2
       exit 1
     }
   fi
@@ -164,9 +164,12 @@ up() {
 
 # try_schema renders the given schema, starts the stack, and returns non-zero
 # if the gateway never reports healthy. Leaves the stack down on failure so the
-# next attempt starts clean.
+# next attempt starts clean - and prints the gateway's log BEFORE doing so,
+# because `docker compose logs` has nothing to show once the containers are
+# gone. A sweep leg whose gateway never started used to end with two status
+# lines and a report telling the reader to "read the stack log".
 try_schema() {
-  local schema="$1"
+  local schema="$1" logs
   render_config "$schema"
   $COMPOSE up -d
 
@@ -176,15 +179,20 @@ try_schema() {
     return 0
   fi
 
+  # Read once, into a variable: it is searched and then printed.
+  logs="$($COMPOSE logs 2>&1 || true)"
+
   # The two directions fail differently, so match both shapes:
   #   v1 config on a v2 build -> "unsupported gateway config version 1"
   #   v2 config on a v1 build -> "unknown field `compute_driver`" (TOML parse)
   # This only picks the log message; the fallback happens either way.
-  if $COMPOSE logs 2>&1 | grep -qE "unsupported gateway config version|unknown field|failed to parse gateway config"; then
+  if grep -qE "unsupported gateway config version|unknown field|failed to parse gateway config" <<<"$logs"; then
     echo "e2e-stack: gateway rejected config schema ${schema}" >&2
   else
-    echo "e2e-stack: gateway unhealthy under schema ${schema} (not a config rejection — see logs)" >&2
+    echo "e2e-stack: gateway unhealthy under schema ${schema} (not a config rejection)" >&2
   fi
+  echo "e2e-stack: gateway logs under schema ${schema} (last 120 lines):" >&2
+  tail -n 120 <<<"$logs" >&2
   $COMPOSE down -v >/dev/null 2>&1 || true
   return 1
 }

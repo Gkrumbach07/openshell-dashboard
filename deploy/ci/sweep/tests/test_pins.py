@@ -1,6 +1,7 @@
 """The pins file: validation, the derived range, and the two edits."""
 
 import copy
+import json
 import os
 import unittest
 
@@ -34,6 +35,10 @@ class CheckedInPinsFile(unittest.TestCase):
             text,
             "gateway-pins.json is not in canonical form; run `python3 deploy/ci/sweep/sweep.py format-pins`",
         )
+
+    def test_is_in_canonical_form(self):
+        with open(REAL_PINS, encoding="utf-8") as fh:
+            self.assertTrue(pins.is_canonical(fh.read()))
 
     def test_does_not_restate_the_range(self):
         doc = pins.load(REAL_PINS)
@@ -114,6 +119,43 @@ class Validate(unittest.TestCase):
         self.assertIsNone(pins.go_mod_sdk("module x\n"))
 
 
+class CanonicalForm(unittest.TestCase):
+    """The automated PRs rewrite the whole file, so only a canonical file diffs cleanly."""
+
+    def setUp(self):
+        self.doc = support.fixture("pins.json")
+        self.text = pins.dump(self.doc)
+
+    def test_what_dump_writes_is_canonical(self):
+        self.assertTrue(pins.is_canonical(self.text))
+
+    def test_every_non_canonical_fixture_is_valid_json_with_the_same_content_but_not_canonical(self):
+        directory = os.path.join(support.FIXTURES, "noncanonical")
+        names = sorted(os.listdir(directory))
+        self.assertGreaterEqual(len(names), 4)
+        for name in names:
+            with open(os.path.join(directory, name), encoding="utf-8") as fh:
+                text = fh.read()
+            with self.subTest(fixture=name):
+                # Well formed, so only the canonical check can catch it.
+                self.assertEqual(pins.validate(json.loads(text), schemas=["v1", "v2"]), [])
+                self.assertFalse(pins.is_canonical(text))
+                self.assertTrue(pins.is_canonical(pins.dump(json.loads(text))))
+
+    def test_text_that_is_not_json_is_not_canonical(self):
+        self.assertFalse(pins.is_canonical("{"))
+
+    def test_non_ascii_text_is_written_as_itself(self):
+        # The comments in this repository use dashes freely. Escaping them
+        # would turn one edited comment into a line no reviewer can read.
+        self.doc["_comment"] = ["a range \u2014 never a single version"]
+        text = pins.dump(self.doc)
+        self.assertIn("a range \u2014 never a single version", text)
+        self.assertNotIn("\\u2014", text)
+        self.assertTrue(pins.is_canonical(text))
+        self.assertEqual(json.loads(text), self.doc)
+
+
 class DerivedRange(unittest.TestCase):
     def test_floor_and_ceiling_come_from_the_required_lanes(self):
         self.assertEqual(pins.supported_range(support.fixture("pins.json")), ("0.1.0", "0.1.2"))
@@ -184,6 +226,32 @@ class MoveCeiling(unittest.TestCase):
         self.assertEqual(after["lanes"][1]["label"], "0.1.2, oldest supported")
         self.assertEqual(after["lanes"][1]["gateway_image"], before["lanes"][0]["gateway_image"])
         self.assertEqual(pins.validate(after), [])
+
+    def test_an_advisory_lane_for_the_new_ceiling_is_promoted_not_duplicated(self):
+        # Someone was trying 0.1.3 out as an advisory lane. Moving the ceiling
+        # to 0.1.3 beside it gave the file two lanes for one version, which
+        # validate() refuses - so the bump failed every week.
+        before = support.fixture("pins-advisory-above-ceiling.json")
+        self.assertEqual(pins.validate(before, schemas=["v1", "v2"]), [])
+        self.assertEqual(pins.supported_range(before), ("0.1.0", "0.1.2"))
+        after = pins.move_ceiling(before, "0.1.3", NEW_GATEWAY, NEW_SUPERVISOR, "v2")
+        self.assertEqual(pins.validate(after, schemas=["v1", "v2"]), [])
+        self.assertEqual(pins.supported_range(after), ("0.1.0", "0.1.3"))
+        self.assertEqual([(lane["version"], lane["required"]) for lane in after["lanes"]], [("0.1.3", True), ("0.1.0", True)])
+        # The images are the ones the sweep tested, not the ones the trial lane had.
+        self.assertEqual(after["lanes"][0]["gateway_image"], NEW_GATEWAY)
+        self.assertEqual(after["lanes"][0]["label"], "0.1.3, newest tested")
+
+    def test_an_advisory_lane_between_the_old_and_the_new_ceiling_is_left_alone(self):
+        before = support.fixture("pins-advisory-above-ceiling.json")
+        gateway = "ghcr.io/nvidia/openshell/gateway:0.1.4@sha256:" + "14" * 32
+        supervisor = "ghcr.io/nvidia/openshell/supervisor:0.1.4@sha256:" + "41" * 32
+        after = pins.move_ceiling(before, "0.1.4", gateway, supervisor, "v2")
+        self.assertEqual(pins.validate(after, schemas=["v1", "v2"]), [])
+        self.assertEqual(
+            [(lane["version"], lane["required"]) for lane in after["lanes"]],
+            [("0.1.3", False), ("0.1.4", True), ("0.1.0", True)],
+        )
 
     def test_dev_is_never_pinned(self):
         doc = support.fixture("pins.json")

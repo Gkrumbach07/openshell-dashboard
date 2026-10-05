@@ -16,6 +16,9 @@
 #                 then the compat suite proves the wire link on every lane.
 #                 PR: backend/go.mod, backend/go.sum and the `sdk` field only.
 #
+# (Either PR also regenerates the block of README.md that restates the range,
+# when the repository has scripts/readme-gateway-range.mjs. Nothing else.)
+#
 # The previous version moved the SDK and the gateway together and reported the
 # outcome as gateway compatibility. One SDK compile error then read as "3
 # releases need migration" (#75) for three gateways that worked.
@@ -28,13 +31,32 @@
 #   5. No ${{ }} inside a run: script; values        tests/test_workflows.py
 #      reach scripts through env:.
 #   6. Least-privilege permissions per job.          tests/test_workflows.py
+#   7. The job that can write (bump) executes        tests/test_workflows.py
+#      nothing from upstream or from the candidate
+#      SDK, and only its push / gh steps see a
+#      token.
+#   8. The ceiling never moves past a release that   outcomes.py, candidates.py
+#      failed or that the run has no result for.
+#   9. Only a pull request whose head is in THIS     prs.py
+#      repository is ever rewritten or closed.
 #
 # All decision logic lives in deploy/ci/sweep/ with unit tests. This file only
 # checks out, sets up toolchains, starts containers and calls `gh`.
 #
-# A red run means the sweep itself broke. Findings never turn it red: they go
-# to one issue (rewritten in place, closed when nothing is outstanding) and to
-# at most one PR per axis. Nothing is ever merged automatically.
+# BEFORE THIS WORKFLOW CAN OPEN A PULL REQUEST, one of these must be true. As
+# of 2026-10-05 neither is, so a run that has something to propose fails in
+# the bump job with a message that says so:
+#   a. Settings > Actions > General > Workflow permissions > "Allow GitHub
+#      Actions to create and approve pull requests" is enabled; or
+#   b. the repository has a secret SWEEP_TOKEN: a fine-grained or GitHub App
+#      token with Contents and Pull requests read/write on this repository.
+# With (b) CI also starts on the PR by itself; with (a) alone a person has to
+# start it (the PR body says how).
+#
+# A red run means the sweep itself broke, or could not open a PR. Findings
+# never turn it red: they go to one issue (rewritten in place, closed when
+# nothing is outstanding) and to at most one PR per axis. Nothing is ever
+# merged automatically.
 name: Compat sweep
 
 on:
@@ -44,11 +66,11 @@ on:
   workflow_dispatch:
     inputs:
       max_versions:
-        description: "Gateway axis: how many releases to sweep, newest first"
+        description: "Gateway axis: narrow to the newest N releases at or below the ceiling (empty = all of them). Releases above the ceiling are always swept. A narrowed run never closes the issue."
         required: false
-        default: "5"
+        default: ""
       include_head:
-        description: "Also probe upstream HEAD (gateway dev, sdk@latest) as early warning"
+        description: "Also probe upstream HEAD (gateway dev, sdk@latest) as early warning. A run without it never closes the issue."
         type: choice
         options: ["1", "0"]
         default: "1"
@@ -60,10 +82,13 @@ on:
 # Nothing by default. Every job asks for exactly what it uses.
 permissions: {}
 
-# The issue and the two PR branches are singletons; two sweeps at once would
-# fight over them.
+# The issue and the two PR branches are singletons; two sweeps that can write
+# them would fight over them, so runs on main queue behind each other. A run
+# from any other ref is a dry run that touches none of them. It gets a group
+# of its own: GitHub keeps only ONE pending run per group, so two dry runs in
+# the shared group could cancel the scheduled sweep that was waiting its turn.
 concurrency:
-  group: compat-sweep
+  group: compat-sweep-${{ github.ref == 'refs/heads/main' && 'main' || github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -97,7 +122,8 @@ jobs:
       - name: Discover candidates
         id: plan
         env:
-          MAX_VERSIONS: ${{ inputs.max_versions || '5' }}
+          # Empty on a scheduled run: every release from the floor up.
+          MAX_VERSIONS: ${{ inputs.max_versions }}
           INCLUDE_HEAD: ${{ inputs.include_head || '1' }}
           SINCE: ${{ inputs.since }}
         run: |
@@ -176,7 +202,17 @@ jobs:
           name: sweep-bff
           path: bin
 
+      # From here on a failing step is a RESULT, not an error, so it must not
+      # fail the leg. Each of the next four needs the one before it, and the
+      # first that does not succeed names what happened: an image that cannot
+      # be pulled, a gateway that never starts and a BFF that never becomes
+      # healthy are all recorded as "could not be tested" - no request reached
+      # the gateway, so they say nothing about either link. If they failed the
+      # leg instead, a failure that repeats every week would be reported
+      # forever as "the leg did not report; re-run the sweep".
       - name: Pull images
+        id: pull
+        continue-on-error: true
         run: |
           set -euo pipefail
           # Same digest-pinned workload image as the PR lanes: this axis varies
@@ -187,11 +223,12 @@ jobs:
           docker pull "$OPENSHELL_SUPERVISOR_IMAGE"
           docker pull "$COMPAT_SANDBOX_IMAGE"
 
-      # From here on a failing step is a RESULT, not an error, so it must not
-      # fail the leg. A gateway that never starts is recorded as stack_failed:
-      # no request reached it, so it says nothing about either link.
+      # When the gateway does not become healthy, e2e-stack.sh prints its log
+      # itself, before it tears the stack down: afterwards there is no
+      # container left to ask.
       - name: Start gateway stack
         id: stack
+        if: steps.pull.outcome == 'success'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -200,7 +237,9 @@ jobs:
           deploy/ci/e2e-stack.sh up
 
       - name: Start the BFF
+        id: bff
         if: steps.stack.outcome == 'success'
+        continue-on-error: true
         run: |
           set -euo pipefail
           chmod +x bin/server
@@ -215,24 +254,26 @@ jobs:
       # cannot see. A cached pass must never stand in for this gateway.
       - name: Run compat suite
         id: compat
-        if: steps.stack.outcome == 'success'
+        if: steps.bff.outcome == 'success'
         continue-on-error: true
         env:
           BFF_URL: http://localhost:9080
         run: cd backend && go test -tags compat -count=1 -timeout 20m ./test/compat/...
 
-      # Runs only when every step above that is NOT allowed to fail succeeded.
-      # A leg that broke for its own reasons uploads nothing, and the report
-      # reads a missing result as unknown - never as a pass or a failure.
+      # A leg that broke for its own reasons before this point uploads
+      # nothing, and the report reads a missing result as unknown - never as a
+      # pass or a failure.
       - name: Record result
         env:
+          PULL: ${{ steps.pull.outcome }}
           STACK: ${{ steps.stack.outcome }}
+          BFF: ${{ steps.bff.outcome }}
           COMPAT: ${{ steps.compat.outcome }}
           CONFIG_SCHEMA: ${{ steps.stack.outputs.config_schema }}
         run: |
           set -euo pipefail
-          $SWEEP record-gateway --leg "$LEG" --stack "$STACK" --compat "$COMPAT" \
-            --config-schema "$CONFIG_SCHEMA" --out /tmp/sweep/results
+          $SWEEP record-gateway --leg "$LEG" --pull "$PULL" --stack "$STACK" --bff "$BFF" \
+            --compat "$COMPAT" --config-schema "$CONFIG_SCHEMA" --out /tmp/sweep/results
 
       - uses: actions/upload-artifact@v4
         with:
@@ -241,8 +282,10 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Only while the stack is still up. A gateway that never started has
+      # already printed its log from inside e2e-stack.sh.
       - name: Gateway logs
-        if: always() && (steps.stack.outcome == 'failure' || steps.compat.outcome == 'failure')
+        if: always() && (steps.bff.outcome == 'failure' || steps.compat.outcome == 'failure')
         run: docker compose -f deploy/ci/docker-compose.e2e.yml logs --tail=200 || true
 
       - name: Clean up
@@ -251,6 +294,9 @@ jobs:
 
   # SDK axis: one leg per candidate SDK x required lane. The gateway images are
   # the lanes exactly as pinned; they are never modified on this axis.
+  #
+  # This is the job that runs the candidate SDK's code (`go test` links and
+  # executes it), which is why it can read the repository and nothing else.
   sdk:
     name: sdk ${{ matrix.sdk_label }} x gateway ${{ matrix.lane }}
     needs: plan
@@ -277,9 +323,11 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       # The SOURCE link, before any gateway is involved: go get, go mod tidy,
-      # go build, go vet, go test. When this fails the outcome is
+      # go build, go vet, go test. When build, vet or test fails the outcome is
       # source_incompatible and the compiler's output goes into the report as
-      # a source migration - explicitly not as a gateway problem.
+      # a source migration - explicitly not as a gateway problem. When get or
+      # tidy fails the SDK could not be fetched or resolved, which is the
+      # network as often as the SDK, and the report says that instead.
       - name: Source link (move the SDK; build, vet and unit-test the BFF)
         id: source
         continue-on-error: true
@@ -292,7 +340,9 @@ jobs:
         run: cd backend && go build -o ../bin/server ./cmd/server
 
       - name: Pull images
+        id: pull
         if: steps.source.outcome == 'success'
+        continue-on-error: true
         run: |
           set -euo pipefail
           COMPAT_SANDBOX_IMAGE=$(jq -er '.sandbox_image' deploy/ci/gateway-pins.json)
@@ -305,7 +355,7 @@ jobs:
       # gateway we already support.
       - name: Start gateway stack
         id: stack
-        if: steps.source.outcome == 'success'
+        if: steps.pull.outcome == 'success'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -314,7 +364,9 @@ jobs:
           deploy/ci/e2e-stack.sh up
 
       - name: Start the BFF
+        id: bff
         if: steps.stack.outcome == 'success'
+        continue-on-error: true
         run: |
           set -euo pipefail
           AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:8080 PORT=9080 ./bin/server &
@@ -327,7 +379,7 @@ jobs:
       # -count=1: see the gateway axis. Four legs share a restored GOCACHE.
       - name: Run compat suite
         id: compat
-        if: steps.stack.outcome == 'success'
+        if: steps.bff.outcome == 'success'
         continue-on-error: true
         env:
           BFF_URL: http://localhost:9080
@@ -337,13 +389,15 @@ jobs:
         env:
           SOURCE: ${{ steps.source.outcome }}
           SOURCE_STEP: ${{ steps.source.outputs.step }}
+          PULL: ${{ steps.pull.outcome }}
           STACK: ${{ steps.stack.outcome }}
+          BFF: ${{ steps.bff.outcome }}
           COMPAT: ${{ steps.compat.outcome }}
         run: |
           set -euo pipefail
           $SWEEP record-sdk --leg "$LEG" --source "$SOURCE" --source-step "$SOURCE_STEP" \
-            --source-log /tmp/sweep/source.log --stack "$STACK" --compat "$COMPAT" \
-            --out /tmp/sweep/results
+            --source-log /tmp/sweep/source.log --pull "$PULL" --stack "$STACK" --bff "$BFF" \
+            --compat "$COMPAT" --out /tmp/sweep/results
 
       - uses: actions/upload-artifact@v4
         with:
@@ -352,8 +406,23 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # The go.mod and go.sum this leg built and tested, for the SDK PR. The
+      # bump job copies them in instead of running `go` again: it holds a
+      # write token, and `go test` would run the candidate SDK's code beside
+      # it. Only the release SDK can become a PR; @latest never does.
+      - name: Keep the go.mod and go.sum this leg proved
+        if: steps.compat.outcome == 'success' && matrix.sdk_id == 'sdk-release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-sdk-gomod-${{ matrix.id }}
+          path: |
+            backend/go.mod
+            backend/go.sum
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Gateway logs
-        if: always() && (steps.stack.outcome == 'failure' || steps.compat.outcome == 'failure')
+        if: always() && (steps.bff.outcome == 'failure' || steps.compat.outcome == 'failure')
         run: docker compose -f deploy/ci/docker-compose.e2e.yml logs --tail=200 || true
 
       - name: Clean up
@@ -363,10 +432,13 @@ jobs:
   # Classifies what came back and maintains the one issue. Runs even when legs
   # failed or nothing was swept: an open issue must not go stale, and a run
   # with nothing outstanding must leave nothing open.
+  #
+  # !cancelled(), not always(): always() is true for a cancelled run too, so
+  # pressing Cancel would not have stopped this job from rewriting the issue.
   report:
     name: Report
     needs: [plan, gateway, sdk]
-    if: always() && needs.plan.result == 'success'
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -376,7 +448,10 @@ jobs:
       sdk_pr: ${{ steps.report.outputs.sdk_pr }}
       incomplete: ${{ steps.report.outputs.incomplete }}
     env:
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      # Anything but main writes nothing: no issue, no branch, no PR.
+      DRY_RUN: ${{ github.ref != 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -397,7 +472,7 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/sweep/results
           $SWEEP report --plan /tmp/sweep/plan.json --results /tmp/sweep/results \
-            --run-url "$RUN_URL" --out /tmp/sweep/report
+            --run-url "$RUN_URL" --repo-url "$REPO_URL" --dry-run "$DRY_RUN" --out /tmp/sweep/report
           cat /tmp/sweep/report/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
@@ -436,28 +511,38 @@ jobs:
               ;;
             close)
               if [ -n "$num" ]; then
-                gh issue close "$num" --comment "Nothing is outstanding on either axis in $RUN_URL. Closing; the next sweep that finds something opens a fresh issue."
+                gh issue close "$num" --comment "Nothing is outstanding on either axis in $RUN_URL, which swept the whole supported range and upstream HEAD. Closing; the next sweep that finds something opens a fresh issue."
               else
                 echo "nothing outstanding and no issue open"
               fi
               ;;
             *)
-              echo "::warning::The sweep is incomplete, so the issue was left exactly as it is."
+              # keep: a leg did not report, a release above the ceiling has no
+              # result, or the run was narrowed by hand. The summary says which.
+              echo "::notice::This run did not look at everything, so the issue was left exactly as it is (see the summary)."
               ;;
           esac
 
   # At most one PR per axis, each on a fixed branch that is force-pushed, so a
   # later sweep rewrites the PR in place instead of piling up new ones.
   #
-  # Known limitation: a PR opened with the default GITHUB_TOKEN does not get CI
-  # by itself (GitHub holds or skips workflow runs triggered by that token).
-  # Set the optional repository secret SWEEP_TOKEN (a fine-grained or GitHub
-  # App token with Contents and Pull requests read/write) to make CI run on
-  # its own; without it the PR body says how to start CI by hand.
+  # This is the only job that can write to the repository, so it is the one
+  # that must not run anything it did not get from this repository's own
+  # checkout. It does not set up Go, does not fetch a module and does not
+  # start a container. The SDK change arrives as two files a read-only leg
+  # produced and tested; this job copies them in and checks them as data.
+  # The token is not in the job's environment and is not left in the checkout
+  # (persist-credentials: false): only the three steps that call `gh` or
+  # `git push` are handed it, and those steps run nothing else.
+  #
+  # Whether a PR can be opened at all depends on the repository (see the top
+  # of this file). When GitHub refuses, the branch that was just pushed is
+  # deleted again, so no PR-less branch is left behind, and the step fails
+  # with the two ways to fix it.
   bump:
     name: ${{ matrix.axis }} axis PR
     needs: report
-    if: always() && needs.report.result == 'success' && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && needs.report.result == 'success' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write        # push the PR branch
@@ -475,27 +560,41 @@ jobs:
       BRANCH: ${{ matrix.branch }}
       # open | close | skip, decided by the report for this axis alone.
       ACTION: ${{ matrix.axis == 'gateway' && needs.report.outputs.gateway_pr || needs.report.outputs.sdk_pr }}
-      GH_TOKEN: ${{ secrets.SWEEP_TOKEN || github.token }}
       GH_REPO: ${{ github.repository }}
+      # 'true' or 'false', never the secret: the PR body says whether CI will
+      # start by itself.
       HAS_SWEEP_TOKEN: ${{ secrets.SWEEP_TOKEN != '' }}
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.SWEEP_TOKEN || github.token }}
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: sweep-decision
           path: /tmp/sweep
-      - uses: actions/setup-go@v5
+      # One directory per passing leg of the release SDK, each holding the
+      # go.mod and go.sum that leg tested.
+      - uses: actions/download-artifact@v4
         if: env.ACTION == 'open' && env.AXIS == 'sdk'
         with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
+          pattern: sweep-sdk-gomod-sdk-release-*
+          path: /tmp/sweep/tested
 
-      # The SDK change is produced by the same command the legs ran, so the
-      # tree committed here is the tree that was tested. check-diff then
-      # refuses anything outside this axis before a commit exists.
+      # `--head` matches the branch NAME, in this repository and in every
+      # fork, so what comes back is only a list of candidates. Which of them
+      # is the sweep's own is decided by prs.py from isCrossRepository.
+      - name: List open pull requests on this axis's branch
+        if: env.ACTION != 'skip'
+        env:
+          GH_TOKEN: ${{ secrets.SWEEP_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          gh pr list --head "$BRANCH" --state open --limit 100 \
+            --json number,title,headRefName,isCrossRepository > /tmp/sweep/prs.json
+
+      # No token here. The edit, the guard and the commit need none.
       - name: Apply the change for this axis and nothing else
         if: env.ACTION == 'open'
         run: |
@@ -503,46 +602,85 @@ jobs:
           if [ "$AXIS" = "gateway" ]; then
             $SWEEP bump-gateway --decision /tmp/sweep/decision.json
           else
-            sdk=$(jq -er '.sdk.bump.version' /tmp/sweep/decision.json)
-            $SWEEP sdk-source-check --sdk-version "$sdk" --log /tmp/sweep/source.log
-            $SWEEP bump-sdk --decision /tmp/sweep/decision.json
+            $SWEEP bump-sdk --decision /tmp/sweep/decision.json --tested /tmp/sweep/tested
           fi
-          $SWEEP check-diff --axis "$AXIS"
+          # README.md restates the range and the SDK pin in a generated block,
+          # and CI fails when that block is stale. The script is this
+          # repository's own and needs only Node. Where it does not exist yet
+          # there is no block, and this is a no-op.
+          if [ -f scripts/readme-gateway-range.mjs ]; then
+            node scripts/readme-gateway-range.mjs --write
+          fi
+          # Refuses anything outside this axis before a commit exists.
+          $SWEEP check-diff --axis "$AXIS" --changed-out /tmp/sweep/changed.txt
           $SWEEP pr-text --axis "$AXIS" --decision /tmp/sweep/decision.json \
-            --run-url "$RUN_URL" --has-sweep-token "$HAS_SWEEP_TOKEN" --out /tmp/sweep/pr
-
-      - name: Push the branch and open or rewrite the PR
-        if: env.ACTION == 'open'
-        run: |
-          set -euo pipefail
+            --changed /tmp/sweep/changed.txt --prs /tmp/sweep/prs.json --branch "$BRANCH" \
+            --run-url "$RUN_URL" --repo-url "$REPO_URL" --has-sweep-token "$HAS_SWEEP_TOKEN" \
+            --out /tmp/sweep/pr
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
           git add -A
           # -s: this repository requires a DCO sign-off on every commit.
           git commit -s -F /tmp/sweep/pr/commit.txt
-          git push --force origin "$BRANCH"
+
+      - name: Push the branch and open or rewrite the PR
+        if: env.ACTION == 'open'
+        env:
+          GH_TOKEN: ${{ secrets.SWEEP_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          # The checkout kept no credentials, so the token is handed to git for
+          # this one command, from the environment: it is never written to the
+          # git config and never appears on a command line.
+          push() {
+            git -c credential.helper= \
+              -c 'credential.helper=!f() { echo "username=x-access-token"; echo "password=${GH_TOKEN}"; }; f' \
+              push "$@"
+          }
+          push --force origin "HEAD:refs/heads/$BRANCH"
           title=$(cat /tmp/sweep/pr/title.txt)
-          num=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          num=$(cat /tmp/sweep/pr/number.txt)
           if [ -n "$num" ]; then
             gh api --method PATCH "repos/$GH_REPO/pulls/$num" --silent \
               -f title="$title" -F body=@/tmp/sweep/pr/body.md
             echo "rewrote PR #$num"
+            echo "**$AXIS axis:** rewrote pull request #$num ($title)." >> "$GITHUB_STEP_SUMMARY"
+          elif url=$(gh pr create --head "$BRANCH" --base main --title "$title" --body-file /tmp/sweep/pr/body.md 2>/tmp/sweep/pr/create.err); then
+            echo "opened $url"
+            echo "**$AXIS axis:** opened $url ($title)." >> "$GITHUB_STEP_SUMMARY"
           else
-            gh pr create --head "$BRANCH" --base main --title "$title" --body-file /tmp/sweep/pr/body.md
+            cat /tmp/sweep/pr/create.err >&2
+            # No pull request, so the branch just pushed would be an orphan
+            # that looks like a pending change. Take it away again.
+            push origin --delete "$BRANCH" || echo "::warning::could not delete $BRANCH; delete it by hand"
+            echo "**$AXIS axis: NO pull request was opened.** GitHub refused to create it (see the \`$AXIS axis PR\` job). The branch was deleted again. There is nothing to merge until the repository setting or the SWEEP_TOKEN secret named in that job's error is in place." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=The sweep could not open its pull request::GitHub refused to create the pull request for $BRANCH (its answer is above). With the default token that is what happens while the repository setting 'Allow GitHub Actions to create and approve pull requests' is off. Do ONE of these, then re-run the sweep: (1) enable that setting under Settings > Actions > General > Workflow permissions; or (2) add a repository secret SWEEP_TOKEN, a fine-grained or GitHub App token with Contents and Pull requests read/write on this repository. The branch was deleted again, so nothing is left behind."
+            exit 1
           fi
 
-      # The evidence for an open PR is the last sweep. When this run could not
-      # reproduce it, the PR is closed rather than left looking mergeable.
-      - name: Close a PR this run no longer stands behind
+      # The evidence for an open PR is the sweep that opened it. A run closes
+      # it only when it retested that same change and no longer proposes it.
+      # prs.py decides; a PR for a release this run did not retest is left open.
+      - name: Decide what happens to a PR this run does not propose
         if: env.ACTION == 'close'
         run: |
           set -euo pipefail
-          num=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          $SWEEP pr-close --axis "$AXIS" --decision /tmp/sweep/decision.json \
+            --prs /tmp/sweep/prs.json --branch "$BRANCH" --run-url "$RUN_URL" --out /tmp/sweep/close
+
+      - name: Close it
+        if: env.ACTION == 'close'
+        env:
+          GH_TOKEN: ${{ secrets.SWEEP_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          num=$(cat /tmp/sweep/close/number.txt)
           if [ -n "$num" ]; then
-            gh pr close "$num" --comment "The sweep in $RUN_URL no longer supports this change (see its summary). Closing; a later sweep reopens the branch if the result returns."
+            gh pr close "$num" --comment "$(cat /tmp/sweep/close/comment.md)"
+            echo "**$AXIS axis:** closed pull request #$num." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "no open PR on $BRANCH"
+            echo "nothing to close on $BRANCH"
           fi
 
   # Makes "the sweep could not finish" a red run even when every job that ran
@@ -565,6 +703,6 @@ jobs:
             exit 1
           fi
           if [ "$INCOMPLETE" != "0" ]; then
-            echo "::error::At least one leg did not report. Its rows are unknown; the issue and that axis's PR were left alone."
+            echo "::error::At least one leg did not report, or legs disagreed. Those rows are unknown; nothing that depends on them was proposed or closed (see the summary)."
             exit 1
           fi

@@ -12,6 +12,28 @@ NEW_SUPERVISOR = "ghcr.io/nvidia/openshell/supervisor:0.1.3@sha256:" + "31" * 32
 NEW_SDK = "v0.0.0-20261012090000-a0130000a013"
 SDK_FILES = [guard.GO_MOD, guard.GO_SUM, guard.PINS_FILE]
 
+# backend/go.mod with the SDK version, one indirect requirement and room for a directive.
+GO_MOD_TEXT = (
+    "module github.com/Gkrumbach07/openshell-dashboard/backend\n\ngo 1.25.13\n\n"
+    "require (\n\tgithub.com/NVIDIA/OpenShell/sdk/go %s\n)\n\n"
+    "require (\n\tgolang.org/x/net %s // indirect\n)\n%s"
+)
+
+# A README shaped like the one scripts/readme-gateway-range.mjs maintains: the
+# markers are its BEGIN and END constants, the rows are what renderBlock writes.
+README = (
+    "# Dashboard\n\nProse a person wrote.\n\n### What this branch supports\n\n"
+    "<!-- gateway-range:begin (generated from deploy/ci/gateway-pins.json by "
+    "scripts/readme-gateway-range.mjs; do not edit) -->\n"
+    "| | |\n|---|---|\n"
+    "| Oldest supported gateway | `0.1.0` |\n"
+    "| Newest tested gateway | `%s` |\n"
+    "| Declared as | `%s` |\n"
+    "| OpenShell Go SDK | `%s` |\n"
+    "<!-- gateway-range:end -->\n\n"
+    "A gateway newer than the newest tested one is untested by this build.\n"
+)
+
 
 def problems_mention(problems, text):
     return any(text in problem for problem in problems)
@@ -33,8 +55,20 @@ class GatewayAxis(unittest.TestCase):
         self.assertTrue(problems_mention(problems, "backend/go.mod, backend/go.sum"))
 
     def test_no_other_file_may_change(self):
-        for stray in ("README.md", ".github/workflows/ci.yml", "bin/server", "backend/pkg/handlers/x.go"):
+        for stray in ("docs/x.md", ".github/workflows/ci.yml", "bin/server", "backend/pkg/handlers/x.go"):
             self.assertTrue(problems_mention(self.check(changed=[guard.PINS_FILE, stray]), stray))
+
+    def test_an_advisory_lane_may_be_promoted_to_the_ceiling(self):
+        before = support.fixture("pins-advisory-above-ceiling.json")
+        after = pins.move_ceiling(before, "0.1.3", NEW_GATEWAY, NEW_SUPERVISOR, "v2")
+        self.assertEqual(guard.check_changes("gateway", [guard.PINS_FILE], before, after), [])
+
+    def test_promoting_a_lane_does_not_excuse_an_edit_to_another(self):
+        before = support.fixture("pins-advisory-above-ceiling.json")
+        after = pins.move_ceiling(before, "0.1.3", NEW_GATEWAY, NEW_SUPERVISOR, "v2")
+        after["lanes"][1]["gateway_image"] = "ghcr.io/nvidia/openshell/gateway:0.1.0@sha256:" + "00" * 32
+        problems = guard.check_changes("gateway", [guard.PINS_FILE], before, after)
+        self.assertTrue(problems_mention(problems, "lane 0.1.0 was edited"))
 
     def test_the_sdk_pin_may_not_move(self):
         after = pins.set_sdk(self.after, NEW_SDK)
@@ -127,6 +161,128 @@ class SdkAxis(unittest.TestCase):
     def test_the_recorded_pin_must_match_go_mod(self):
         problems = self.check(go_mod_version="v0.0.0-20261019090000-a0140000a014")
         self.assertTrue(problems_mention(problems, "backend/go.mod requires v0.0.0-20261019090000-a0140000a014"))
+
+    def test_go_mod_may_move_requirements(self):
+        before = GO_MOD_TEXT % ("v0.0.0-20260928030816-6648bd0c290e", "v0.58.0", "")
+        after = GO_MOD_TEXT % (NEW_SDK, "v0.59.0", "")
+        problems = guard.check_changes("sdk", SDK_FILES, self.before, self.after, NEW_SDK, go_mod=(before, after))
+        self.assertEqual(problems, [])
+
+    def test_go_mod_may_not_gain_a_directive_that_swaps_a_module(self):
+        # The file comes from a job that ran third-party code. It is data, and
+        # this is the one edit that would turn it into something else.
+        before = GO_MOD_TEXT % ("v0.0.0-20260928030816-6648bd0c290e", "v0.58.0", "")
+        for sneaked in (
+            "replace golang.org/x/net => example.invalid/net v0.0.1\n",
+            "replace (\n\tgolang.org/x/net => example.invalid/net v0.0.1\n)\n",
+            "exclude golang.org/x/net v0.58.0\n",
+        ):
+            after = GO_MOD_TEXT % (NEW_SDK, "v0.58.0", sneaked)
+            problems = guard.check_changes("sdk", SDK_FILES, self.before, self.after, NEW_SDK, go_mod=(before, after))
+            with self.subTest(directive=sneaked.split()[0]):
+                self.assertTrue(problems_mention(problems, "gained or lost a replace/exclude directive"), problems)
+
+    def test_a_directive_that_was_already_there_is_not_a_change(self):
+        kept = "replace golang.org/x/net => golang.org/x/net v0.57.0\n"
+        before = GO_MOD_TEXT % ("v0.0.0-20260928030816-6648bd0c290e", "v0.58.0", kept)
+        after = GO_MOD_TEXT % (NEW_SDK, "v0.58.0", kept)
+        self.assertEqual(guard.go_mod_problems(before, after), [])
+        # A module whose path merely starts with the word is a requirement.
+        self.assertEqual(guard.go_mod_redirects("require (\n\treplaceme.example/x v1.0.0\n)\n"), [])
+
+
+class ReadmeBlock(unittest.TestCase):
+    """README.md may change on either axis, and only inside its generated block.
+
+    scripts/readme-gateway-range.mjs regenerates the block that restates the
+    range and the SDK pin, and CI fails when it is stale, so both automated
+    PRs have to carry it. Everything else in the README is a person's.
+    """
+
+    def setUp(self):
+        self.before = support.fixture("pins.json")
+        self.readme = README % ("0.1.2", ">=0.1.0 <=0.1.2", "v0.0.0-20260928030816-6648bd0c290e")
+
+    def gateway(self, readme_after, changed=None):
+        after = pins.move_ceiling(self.before, "0.1.3", NEW_GATEWAY, NEW_SUPERVISOR, "v2")
+        return guard.check_changes(
+            "gateway", changed or [guard.PINS_FILE, guard.README], self.before, after, readme=(self.readme, readme_after)
+        )
+
+    def sdk(self, readme_after):
+        after = pins.set_sdk(self.before, NEW_SDK)
+        return guard.check_changes(
+            "sdk", SDK_FILES + [guard.README], self.before, after, NEW_SDK, readme=(self.readme, readme_after)
+        )
+
+    def test_the_markers_are_the_ones_the_generator_writes(self):
+        # Copied from scripts/readme-gateway-range.mjs (BEGIN and END).
+        begin = "<!-- gateway-range:begin (generated from deploy/ci/gateway-pins.json by scripts/readme-gateway-range.mjs; do not edit) -->"
+        self.assertIn(begin, self.readme)
+        self.assertIsNotNone(guard.README_BEGIN_RE.fullmatch(begin))
+        self.assertEqual(guard.README_END, "<!-- gateway-range:end -->")
+        before, block, after = guard.split_readme(self.readme)
+        self.assertTrue(before.endswith(begin))
+        self.assertTrue(after.startswith(guard.README_END))
+        self.assertIn("| Newest tested gateway | `0.1.2` |", block)
+
+    def test_a_change_confined_to_the_block_is_accepted_on_the_gateway_axis(self):
+        regenerated = README % ("0.1.3", ">=0.1.0 <=0.1.3", "v0.0.0-20260928030816-6648bd0c290e")
+        self.assertEqual(self.gateway(regenerated), [])
+
+    def test_a_change_confined_to_the_block_is_accepted_on_the_sdk_axis(self):
+        regenerated = README % ("0.1.2", ">=0.1.0 <=0.1.2", NEW_SDK)
+        self.assertEqual(self.sdk(regenerated), [])
+
+    def test_any_other_readme_change_is_refused_on_both_axes(self):
+        regenerated = README % ("0.1.3", ">=0.1.0 <=0.1.3", "v0.0.0-20260928030816-6648bd0c290e")
+        edits = {
+            "a word before the block": regenerated.replace("# Dashboard", "# Dashboard!"),
+            "a word after the block": regenerated.replace("A gateway newer", "A gateway much newer"),
+            "a line added at the end": regenerated + "extra\n",
+            "the begin marker reworded": regenerated.replace("do not edit) -->", "edit freely) -->"),
+            "whitespace before the block": regenerated.replace("### What this branch supports\n", "### What this branch supports \n"),
+        }
+        for what, text in edits.items():
+            with self.subTest(change=what):
+                self.assertNotEqual(text, regenerated)
+                self.assertTrue(problems_mention(self.gateway(text), "changed outside its generated gateway-range block"))
+                self.assertTrue(problems_mention(self.sdk(text), "changed outside its generated gateway-range block"))
+
+    def test_a_readme_without_the_block_may_not_change_at_all(self):
+        # This branch's README: the generator and its markers arrive later.
+        plain = "# Dashboard\n\nSome prose.\n"
+        problems = guard.check_changes(
+            "gateway",
+            [guard.PINS_FILE, guard.README],
+            self.before,
+            pins.move_ceiling(self.before, "0.1.3", NEW_GATEWAY, NEW_SUPERVISOR, "v2"),
+            readme=(plain, plain + "more\n"),
+        )
+        self.assertTrue(problems_mention(problems, "has no generated gateway-range block"))
+
+    def test_removing_or_duplicating_the_markers_is_refused(self):
+        without_end = self.readme.replace(guard.README_END, "")
+        doubled = self.readme + self.readme
+        for text in (without_end, doubled):
+            self.assertTrue(problems_mention(self.gateway(text), "has no generated gateway-range block"))
+
+    def test_a_readme_listed_as_changed_but_not_shown_is_refused(self):
+        after = pins.move_ceiling(self.before, "0.1.3", NEW_GATEWAY, NEW_SUPERVISOR, "v2")
+        problems = guard.check_changes("gateway", [guard.PINS_FILE, guard.README], self.before, after)
+        self.assertTrue(problems_mention(problems, "has no generated gateway-range block"))
+
+    def test_the_readme_alone_is_not_a_change_on_either_axis(self):
+        regenerated = README % ("0.1.3", ">=0.1.0 <=0.1.3", "v0.0.0-20260928030816-6648bd0c290e")
+        problems = guard.check_changes(
+            "gateway", [guard.README], self.before, self.before, readme=(self.readme, regenerated)
+        )
+        self.assertTrue(problems_mention(problems, "the gateway axis changes deploy/ci/gateway-pins.json and nothing else"))
+
+    def test_the_block_does_not_let_another_file_through(self):
+        regenerated = README % ("0.1.3", ">=0.1.0 <=0.1.3", "v0.0.0-20260928030816-6648bd0c290e")
+        problems = self.gateway(regenerated, changed=[guard.PINS_FILE, guard.README, "CONTRIBUTING.md"])
+        self.assertTrue(problems_mention(problems, "CONTRIBUTING.md"))
 
 
 class Axes(unittest.TestCase):

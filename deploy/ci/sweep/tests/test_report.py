@@ -8,6 +8,7 @@ import report
 from tests import support
 
 RUN_URL = "https://example.invalid/actions/runs/1"
+REPO_URL = "https://example.invalid/owner/repo"
 
 
 def decision_for(name):
@@ -16,10 +17,20 @@ def decision_for(name):
 
 class Issue(unittest.TestCase):
     def test_carries_the_marker_the_adr_and_the_run(self):
-        _, body = report.render_issue(decision_for("newer-release-fails"), RUN_URL)
+        _, body = report.render_issue(decision_for("newer-release-fails"), RUN_URL, REPO_URL)
         self.assertTrue(body.startswith(report.ISSUE_MARKER))
-        self.assertIn("docs/adrs/0006-compat-links-and-sweep-axes.md", body)
+        self.assertIn(
+            "[ADR 0006](https://example.invalid/owner/repo/blob/main/docs/adrs/0006-compat-links-and-sweep-axes.md)", body
+        )
         self.assertIn("[Sweep run](%s)" % RUN_URL, body)
+
+    def test_the_adr_link_is_absolute_wherever_github_does_not_rewrite_it(self):
+        self.assertEqual(
+            report.adr_link("https://github.com/o/r/"),
+            "[ADR 0006](https://github.com/o/r/blob/main/docs/adrs/0006-compat-links-and-sweep-axes.md)",
+        )
+        # Without a repository (a local render) it falls back to the path.
+        self.assertEqual(report.adr_link(), "[ADR 0006](docs/adrs/0006-compat-links-and-sweep-axes.md)")
 
     def test_states_the_derived_range_and_the_pin(self):
         _, body = report.render_issue(decision_for("newer-release-fails"), RUN_URL)
@@ -53,6 +64,11 @@ class Issue(unittest.TestCase):
         decision["sdk_pin_tag"] = None
         _, body = report.render_issue(decision, RUN_URL)
         self.assertIn("The SDK pin is not the commit of an upstream release tag.", body)
+        self.assertIn("(not on any upstream tag)", body)
+
+    def test_a_pin_on_a_release_tag_gets_no_notice(self):
+        _, body = report.render_issue(decision_for("newer-release-fails"), RUN_URL)
+        self.assertNotIn("not the commit of an upstream release tag", body)
 
     def test_table_cells_cannot_break_the_table(self):
         rows = report._table(["a", "b"], [["x | y", "z"]])
@@ -67,10 +83,22 @@ class Summary(unittest.TestCase):
     def test_mentions_what_the_cap_left_out(self):
         scenario = support.fixture("scenarios/newer-release-passes.json")
         plan = candidates.build_plan(
-            support.fixture("pins.json"), support.FakeUpstream(support.upstream_data(scenario["upstream"])), max_versions=2
+            support.fixture("pins.json"), support.FakeUpstream(support.upstream_data(scenario["upstream"])), max_versions=1
         )
         decision = outcomes.decide(plan, support.leg_results(plan))
-        self.assertIn("Not swept because of the max_versions cap: `0.1.1` and `0.1.0`.", report.render_summary(decision))
+        summary = report.render_summary(decision)
+        self.assertIn("Inside the supported range but NOT swept in this run: `0.1.1` and `0.1.0`.", summary)
+        self.assertIn("this one cannot close the issue", summary)
+
+    def test_a_dry_run_says_that_nothing_is_written(self):
+        decision = decision_for("newer-release-passes")
+        self.assertIn("**Dry run.** This run is not on `main`, so it writes nothing", report.render_summary(decision, dry_run=True))
+        self.assertNotIn("Dry run", report.render_summary(decision))
+
+    def test_says_why_the_issue_is_left_alone(self):
+        summary = report.render_summary(decision_for("leg-did-not-report"))
+        self.assertIn("The issue is left exactly as it is, open or not, because at least one leg did not report", summary)
+        self.assertNotIn("left exactly as it is", report.render_summary(decision_for("newer-release-passes")))
 
     def test_says_when_head_was_not_probed(self):
         plan = candidates.build_plan(
@@ -85,8 +113,24 @@ class GatewayPr(unittest.TestCase):
     def setUp(self):
         self.text = report.render_pr("gateway", decision_for("sdk-source-incompatible"), RUN_URL)
 
-    def test_title_is_a_commit_type_that_does_not_cut_a_release(self):
-        self.assertEqual(self.text["title"], "ci(compat): move the gateway ceiling to 0.1.3")
+    def test_title_is_a_commit_type_that_cuts_a_release(self):
+        # A moved ceiling changes the range every released artifact declares.
+        # `ci` (type or scope) releases nothing, so the title is a fix.
+        self.assertEqual(self.text["title"], "fix(compat): support gateway 0.1.3")
+        self.assertEqual(self.text["commit"].splitlines()[0], "fix(compat): support gateway 0.1.3")
+        self.assertIn("**Merging this cuts a release.**", self.text["body"])
+
+    def test_the_readme_block_is_mentioned_exactly_when_it_changed(self):
+        decision = decision_for("sdk-source-incompatible")
+        with_block = report.render_pr("gateway", decision, RUN_URL, readme_block=True)
+        self.assertIn(
+            "`deploy/ci/gateway-pins.json`, and the generated range block of `README.md`, which restates the range "
+            "and the SDK pin from that file. Nothing else.",
+            with_block["body"],
+        )
+        self.assertIn("regenerates the range block of README.md", " ".join(with_block["commit"].split()))
+        self.assertNotIn("README", self.text["body"])
+        self.assertNotIn("README", self.text["commit"])
 
     def test_body_says_what_was_proven_and_exactly_what_changes(self):
         body = self.text["body"]
@@ -118,8 +162,19 @@ class SdkPr(unittest.TestCase):
     def setUp(self):
         self.text = report.render_pr("sdk", decision_for("sdk-passes-everywhere"), RUN_URL)
 
-    def test_title_is_a_commit_type_that_does_not_cut_a_release(self):
-        self.assertEqual(self.text["title"], "build(sdk): move the OpenShell SDK to v0.1.3")
+    def test_title_is_a_commit_type_that_cuts_a_release(self):
+        # The published BFF is built against the SDK, so moving it is released.
+        self.assertEqual(self.text["title"], "fix(sdk): move to the OpenShell SDK at v0.1.3")
+        self.assertIn("**Merging this cuts a release.**", self.text["body"])
+
+    def test_no_title_uses_a_type_or_scope_that_releases_nothing(self):
+        for title in (report.GATEWAY_TITLE % "0.1.3", report.SDK_TITLE % "v0.1.3"):
+            self.assertRegex(title, r"^fix\((compat|sdk)\): ")
+            self.assertNotRegex(title, r"^(ci|build|chore|docs|test|refactor)\b")
+            self.assertNotIn("(ci)", title)
+
+    def test_body_says_the_files_were_copied_not_rebuilt(self):
+        self.assertIn("copied in unchanged. Nothing was built or run by the job that opened this PR.", self.text["body"])
 
     def test_body_names_both_links_and_exactly_what_changes(self):
         body = self.text["body"]

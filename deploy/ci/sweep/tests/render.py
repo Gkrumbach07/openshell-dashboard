@@ -15,7 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import report  # noqa: E402
 from tests import support  # noqa: E402
 
-RUN_URL = "https://github.com/Gkrumbach07/openshell-dashboard/actions/runs/0"
+REPO_URL = "https://github.com/Gkrumbach07/openshell-dashboard"
+RUN_URL = REPO_URL + "/actions/runs/0"
 
 
 def main(argv):
@@ -24,7 +25,11 @@ def main(argv):
         return 0
     scenario, _, _, decision = support.run_scenario(argv[0])
     if "--pr" in argv:
-        text = report.render_pr(argv[argv.index("--pr") + 1], decision, RUN_URL, has_sweep_token=False)
+        axis = argv[argv.index("--pr") + 1]
+        if not decision[axis]["bump"]:
+            print("This scenario proposes nothing on the %s axis, so there is no PR text." % axis)
+            return 1
+        text = report.render_pr(axis, decision, RUN_URL, has_sweep_token=False, repo_url=REPO_URL)
         print("TITLE: %s\n\n%s\n--- commit message ---\n%s" % (text["title"], text["body"], text["commit"]))
         return 0
     print("SCENARIO: %s\n" % scenario["description"])
@@ -32,11 +37,11 @@ def main(argv):
         "issue: %s | gateway PR: %s | SDK PR: %s\n"
         % (decision["issue"]["action"], decision["gateway"]["pr"], decision["sdk"]["pr"])
     )
-    title, body = report.render_issue(decision, RUN_URL)
+    title, body = report.render_issue(decision, RUN_URL, REPO_URL)
     if decision["issue"]["action"] == "upsert":
         print("ISSUE TITLE: %s\n\n%s" % (title, body))
     else:
-        print("No issue is written for this run. Step summary:\n\n%s" % report.render_summary(decision, RUN_URL))
+        print("No issue is written for this run. Step summary:\n\n%s" % report.render_summary(decision, RUN_URL, REPO_URL))
     return 0
 
 

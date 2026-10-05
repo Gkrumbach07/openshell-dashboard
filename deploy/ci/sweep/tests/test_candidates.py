@@ -79,9 +79,20 @@ class SdkVersions(unittest.TestCase):
 
     def test_the_pin_is_named_after_its_release_tag(self):
         tags = candidates.parse_tags("\n".join(support.fixture("upstream.json")["tags"]))
-        self.assertEqual(candidates.sdk_tag(PIN, tags), "v0.1.2")
-        self.assertEqual(candidates.sdk_tag("v0.0.0-20260923091534-d3480d2a7efa", tags), "v0.1.0-pre.8")
-        self.assertIsNone(candidates.sdk_tag(HEAD, tags))
+        self.assertEqual(candidates.sdk_tags(PIN, tags), ("v0.1.2", None))
+        self.assertEqual(candidates.sdk_tags(HEAD, tags), (None, None))
+
+    def test_a_pre_release_tag_is_never_reported_as_the_release_the_pin_is_on(self):
+        # main sat on v0.1.0-pre.8 for a week. That must read as "not on a
+        # release", with the tag kept only to say where the pin actually is.
+        tags = candidates.parse_tags("\n".join(support.fixture("upstream.json")["tags"]))
+        self.assertEqual(
+            candidates.sdk_tags("v0.0.0-20260923091534-d3480d2a7efa", tags), (None, "v0.1.0-pre.8")
+        )
+        # v0.1.3-pre.4 and `dev` name the same commit; neither is a release.
+        release, other = candidates.sdk_tags("v0.0.0-20261001000000-e7fdd6beef98", tags)
+        self.assertIsNone(release)
+        self.assertIn(other, ("dev", "v0.1.3-pre.4"))
 
 
 class GatewayAxis(unittest.TestCase):
@@ -150,10 +161,58 @@ class GatewayAxis(unittest.TestCase):
         with self.assertRaises(upstream.UpstreamError):
             plan(patch)
 
-    def test_the_cap_keeps_the_newest_and_says_what_it_dropped(self):
+    def test_without_a_cap_every_release_from_the_floor_up_is_swept(self):
+        # However many there are: a scheduled run passes no cap.
+        many = {"tags": [], "images": {}, "sdk": {}}
+        for patch_number in range(3, 12):
+            commit = ("b%03d0000" % patch_number) * 5
+            many["tags"].append("%s\trefs/tags/v0.1.%d" % (commit, patch_number))
+            many["images"]["gateway:0.1.%d" % patch_number] = "sha256:" + "%02d" % patch_number * 32
+            many["images"]["supervisor:0.1.%d" % patch_number] = "sha256:" + "%02d" % (patch_number + 50) * 32
+            many["sdk"][commit] = "v0.0.0-202611%02d090000-%s" % (patch_number, commit[:12])
+        many["sdk"]["latest"] = many["sdk"][("b0110000") * 5]
+        the_plan, _ = plan(many)
+        self.assertEqual(versions(the_plan), ["0.1.%d" % n for n in range(11, -1, -1)] + ["dev"])
+        self.assertEqual(the_plan["gateway"]["not_swept"], [])
+        self.assertIsNone(the_plan["inputs"]["max_versions"])
+
+    def test_the_cap_narrows_only_what_is_at_or_below_the_ceiling(self):
         the_plan, _ = plan(RELEASE_0_1_3, max_versions=2)
-        self.assertEqual(versions(the_plan), ["0.1.3", "0.1.2", "dev"])
-        self.assertEqual(the_plan["gateway"]["not_swept"], ["0.1.1", "0.1.0"])
+        self.assertEqual(versions(the_plan), ["0.1.3", "0.1.2", "0.1.1", "dev"])
+        self.assertEqual(the_plan["gateway"]["not_swept"], ["0.1.0"])
+
+    def test_the_cap_never_removes_a_release_above_the_ceiling(self):
+        # 0.1.3 to 0.1.8 exist. With the old "newest five" rule 0.1.3 fell out
+        # of the window, and with it the one result that held the ceiling.
+        patch = {"tags": [], "images": {}, "sdk": {}}
+        for n in range(3, 9):
+            commit = ("c%03d0000" % n) * 5
+            patch["tags"].append("%s\trefs/tags/v0.1.%d" % (commit, n))
+            patch["images"]["gateway:0.1.%d" % n] = "sha256:" + "%02d" % n * 32
+            patch["images"]["supervisor:0.1.%d" % n] = "sha256:" + "%02d" % (n + 50) * 32
+            patch["sdk"][commit] = "v0.0.0-202611%02d090000-%s" % (n, commit[:12])
+        patch["sdk"]["latest"] = patch["sdk"][("c0080000") * 5]
+        for cap in (1, 2, 5):
+            the_plan, _ = plan(patch, max_versions=cap)
+            swept = versions(the_plan)
+            with self.subTest(max_versions=cap):
+                for n in range(3, 9):
+                    self.assertIn("0.1.%d" % n, swept)
+                for version in the_plan["gateway"]["not_swept"]:
+                    self.assertLessEqual(pins.parse_release(version), (0, 1, 2))
+
+    def test_a_release_without_an_image_does_not_use_up_the_cap(self):
+        patch = {"tags": RELEASE_0_1_3["tags"], "sdk": RELEASE_0_1_3["sdk"]}
+        the_plan, _ = plan(patch, max_versions=3)
+        self.assertEqual(versions(the_plan), ["0.1.2", "0.1.1", "0.1.0", "dev"])
+
+    def test_a_cap_below_one_is_refused(self):
+        # max_versions=0 used to sweep nothing but dev and then report that
+        # nothing was wrong.
+        for cap in (0, -1):
+            with self.assertRaises(candidates.PlanError) as caught:
+                plan(RELEASE_0_1_3, max_versions=cap)
+            self.assertIn("at least 1", str(caught.exception))
 
     def test_head_can_be_left_out(self):
         the_plan, fake = plan(include_head=False)
@@ -230,6 +289,7 @@ class SdkAxis(unittest.TestCase):
         the_plan = candidates.build_plan(doc, support.FakeUpstream(data))
         self.assertEqual(the_plan["sdk"]["candidates"], [])
         self.assertIsNone(the_plan["sdk_pin_tag"])
+        self.assertIsNone(the_plan["sdk_pin_other_tag"])
 
     def test_every_candidate_is_tested_against_every_required_lane(self):
         patch = dict(RELEASE_0_1_3, sdk={C13: SDK13, "latest": HEAD})

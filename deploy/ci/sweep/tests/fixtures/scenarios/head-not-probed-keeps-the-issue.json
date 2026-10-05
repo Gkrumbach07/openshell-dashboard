@@ -1,0 +1,28 @@
+{
+  "description": "A manual run on main with include_head=0. Every release passes, but upstream HEAD was not looked at, and the open issue may be an early warning about exactly that: the issue is kept, not closed.",
+  "inputs": {
+    "include_head": false
+  },
+  "upstream": {
+    "sdk": {
+      "latest": "v0.0.0-20261020153840-8b3cc3fdc067"
+    }
+  },
+  "legs": {},
+  "expect": {
+    "issue_action": "keep",
+    "gateway_pr": "close",
+    "sdk_pr": "close",
+    "incomplete": false,
+    "gateway_statuses": {
+      "0.1.2": "ok",
+      "0.1.1": "ok",
+      "0.1.0": "ok"
+    },
+    "sdk_statuses": {},
+    "summary_contains": [
+      "The issue is left exactly as it is, open or not, because upstream HEAD was not probed.",
+      "include_head was off"
+    ]
+  }
+}

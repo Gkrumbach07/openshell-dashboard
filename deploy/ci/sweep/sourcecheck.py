@@ -14,8 +14,14 @@ the report can show the compiler's own words. That is the difference between
 "the BFF does not compile against this SDK" and "a gateway is incompatible":
 a compile error must never be reported as the second.
 
-The SDK axis legs and the SDK bump job both go through here, so the tree a PR
-commits is produced by exactly the commands the sweep tested.
+Which step failed matters as much as that one did. `go get` and `go mod tidy`
+fail when the module cannot be fetched or resolved, which is as often the
+network as the SDK; only build, vet and test show that the BFF's source no
+longer fits. The report words the two differently (outcomes.py).
+
+Only the SDK-axis legs run this, with a read-only token: `go test` executes
+the candidate SDK's code. The job that opens the PR never does. It copies in
+the go.mod and go.sum a passing leg uploaded.
 """
 
 import subprocess
@@ -37,12 +43,12 @@ def steps(sdk_version):
 def run_command(command, cwd):
     """Run one command; (exit code, combined output). Tests replace this."""
     try:
-        done = subprocess.run(
-            command, cwd=cwd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-        )
+        done = subprocess.run(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     except OSError as err:
         return 127, "%s: %s" % (command[0], err)
-    return done.returncode, done.stdout
+    # Bytes, decoded leniently: a failing test may print anything, and a
+    # decoding error here would lose the step name along with the output.
+    return done.returncode, done.stdout.decode("utf-8", errors="replace")
 
 
 def check(sdk_version, backend_dir, run=run_command, echo=None):

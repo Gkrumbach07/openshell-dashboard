@@ -25,7 +25,7 @@
     "sdk_statuses": {},
     "summary_contains": [
       "below the range",
-      "Gateways up to 0.0.116 are served by the 0.x maintenance line, not by main."
+      "Gateways this old are not served by main: 0.0.116 is served by dashboard v0.2.0 and the 0.2.x maintenance line."
     ]
   }
 }
