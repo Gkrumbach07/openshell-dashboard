@@ -19,7 +19,11 @@
     "ignores it WITHOUT AN ERROR, so every sandbox, provider and policy call",
     "runs in `default` whatever workspace was asked for. Dashboard 0.3.0 has",
     "that SDK and must not be used with 0.0.116. Gateways from 0.1.0 on reject",
-    "this SDK (`workspace_scope is required`); they are served by main (1.x)."
+    "this SDK (`workspace_scope is required`); they are served by main (1.x).",
+    "",
+    "frontend/cypress/e2e-integration/workspace-scoping.cy.ts is the spec that",
+    "catches a wrong SDK here: it creates a sandbox in a second workspace and",
+    "asserts it is listed there and not in `default`."
   ],
   "sdk": "v0.0.0-20260902135142-387aea069a8b",
   "sandbox_image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest@sha256:aeef1c63f00e2913ea002ccb3aaf925f338b5c5d70e63576f0d95c16a138044e",

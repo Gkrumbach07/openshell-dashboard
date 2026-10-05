@@ -10,6 +10,8 @@ Run: `npx cypress run` (uses `cypress.config.ts`)
 ### `e2e-integration/` — Integration tests
 Hits the real BFF and gateway — no mocks. Verifies the full request path (UI → BFF → gRPC → gateway) returns correct data.
 
+`workspace-scoping.cy.ts` is the one spec that leaves the `default` workspace: it creates a sandbox in a second workspace and asserts it is listed there and not in `default`. Keep it. A dashboard whose SDK gateway 0.0.116 cannot scope passes every other spec here, because that gateway ignores the workspace without an error and runs everything in `default`.
+
 Run: `npx cypress run --config-file cypress.config.integration.ts`
 
 Requires a running gateway, a BFF pointed at it, and the dev server pointed at that BFF. This line supports gateway 0.0.116 only, and the specs assert its behaviour (for example that the template routes answer `501`), so run them against that gateway — the one CI uses, pinned by digest in `deploy/ci/gateway-pins.json`:
