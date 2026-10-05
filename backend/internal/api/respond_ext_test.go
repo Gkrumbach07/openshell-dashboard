@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -208,6 +210,54 @@ func TestWriteSDKError(t *testing.T) {
 			}
 			if body.Message != tc.wantMessage {
 				t.Errorf("message = %q, want %q", body.Message, tc.wantMessage)
+			}
+		})
+	}
+}
+
+// The browser always gets the same fixed sentence for UNIMPLEMENTED, but the
+// BFF log has to keep what the gateway, or the transport, actually said.
+// grpc-go reports an HTTP 404 from the far end as codes.Unimplemented, so a
+// gateway URL that points at the wrong service shows up as "this gateway does
+// not support this operation" on every route; the log line is then the only
+// place the real cause ("unexpected HTTP status code ... 404") is recorded.
+func TestWriteSDKErrorLogsTheOriginalUnimplementedMessage(t *testing.T) {
+	const transportMessage = "unexpected HTTP status code received from server: 404 (Not Found)"
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "SDK StatusError",
+			err:  &openshell.StatusError{Code: openshell.ErrorUnimplemented, Message: transportMessage},
+		},
+		{
+			name: "raw gRPC status",
+			err:  status.Error(codes.Unimplemented, transportMessage),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var logged bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+
+			w := httptest.NewRecorder()
+			writeSDKError(w, tc.err)
+
+			if w.Code != http.StatusNotImplemented {
+				t.Fatalf("HTTP status = %d, want 501", w.Code)
+			}
+			var body ErrorResponse
+			if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if body.Message != unimplementedMessage {
+				t.Errorf("browser message = %q, want the fixed text %q", body.Message, unimplementedMessage)
+			}
+			if !strings.Contains(logged.String(), transportMessage) {
+				t.Errorf("log does not carry the original message %q; logged: %s", transportMessage, logged.String())
 			}
 		})
 	}
