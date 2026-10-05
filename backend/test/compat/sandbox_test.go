@@ -353,21 +353,72 @@ func TestSandboxLifecycle(t *testing.T) {
 // TestSandboxCreateOptions covers the optional fields of the create form that
 // no other test sends: the CPU and memory limits and the log level. The limits
 // travel as a free-form struct under the sandbox's template, which is the kind
-// of field that breaks without a compile error. Nothing the BFF returns
-// reports them back, so what this proves is that the gateway accepts them and
-// the sandbox still boots.
+// of field that breaks without a compile error.
+//
+// Nothing the BFF returns reports the limits back, so a sandbox that booted
+// would prove only that the gateway did not choke on them. They are read where
+// they take effect instead: in the cgroup the workload runs in. The sandbox's
+// policy lets it read /sys/fs/cgroup for that, which the base policy does not.
 func TestSandboxCreateOptions(t *testing.T) {
 	requireSandboxes(t)
 	name := randName("co")
+	policy := basePolicy()
+	policy["filesystem"] = map[string]any{
+		"includeWorkdir": true,
+		"readOnly":       []string{"/usr", "/sys/fs/cgroup"},
+		"readWrite":      []string{"/sandbox"},
+	}
 	created := createSandbox(t, "default", name, map[string]any{
 		"cpu":      "500m",
 		"memory":   "512Mi",
 		"logLevel": "debug",
+		"policy":   policy,
 	})
 	if created.Spec.LogLevel != "debug" {
 		t.Errorf("spec.logLevel = %q, want %q", created.Spec.LogLevel, "debug")
 	}
 	waitForPhase(t, "default", name, "READY")
+
+	// These are the cgroup v2 files; a cgroup v1 host keeps the same numbers
+	// under other names and would need those added here. A sandbox without
+	// limits reads "max" in both, so neither value can be there by accident.
+	cgroup := func(t *testing.T, file string) string {
+		t.Helper()
+		path := "/sys/fs/cgroup/" + file
+		status, _, raw, err := downloadFile("default", name, path)
+		if err != nil {
+			t.Fatalf("download %s: %v", path, err)
+		}
+		if status != http.StatusOK {
+			t.Fatalf("reading %s inside the sandbox [gateway %s]: status = %d, want 200; body: %s — either the "+
+				"gateway no longer honors the readOnly path this sandbox's policy grants, or this host does "+
+				"not use cgroup v2", path, gatewayVersion, status, truncate(raw))
+		}
+		return strings.TrimSpace(string(raw))
+	}
+
+	t.Run("memory limit is applied", func(t *testing.T) {
+		const want = 512 << 20
+		if got := cgroup(t, "memory.max"); got != strconv.Itoa(want) {
+			t.Errorf("memory.max inside a sandbox created with memory 512Mi = %q, want %d — the limit did not "+
+				"reach the workload on gateway %s", got, want, gatewayVersion)
+		}
+	})
+
+	t.Run("cpu limit is applied", func(t *testing.T) {
+		// "<quota> <period>" in microseconds: 500m is half a period.
+		got := cgroup(t, "cpu.max")
+		fields := strings.Fields(got)
+		var quota, period int
+		if len(fields) == 2 {
+			quota, _ = strconv.Atoi(fields[0])
+			period, _ = strconv.Atoi(fields[1])
+		}
+		if quota <= 0 || period != 2*quota {
+			t.Errorf("cpu.max inside a sandbox created with cpu 500m = %q, want a quota of half the period "+
+				"(such as \"50000 100000\") — the limit did not reach the workload on gateway %s", got, gatewayVersion)
+		}
+	})
 }
 
 // TestSandboxStopStart covers StopSandbox and StartSandbox, which arrived in

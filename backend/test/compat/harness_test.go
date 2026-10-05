@@ -23,11 +23,12 @@
 //	settings       global settings read, set, delete           gateway_test.go
 //	workspaces     lifecycle, label selector, delete envelope  workspace_test.go, contract_test.go
 //	members        add, list, role change, remove              workspace_test.go
-//	sandboxes      lifecycle, resource limits and log level,
-//	               labels and the label selector, workspace
-//	               isolation, stop and start, logs with the
-//	               lines/level/source/since filters, exposed
-//	               services                                    sandbox_test.go
+//	sandboxes      lifecycle, CPU and memory limits (read back
+//	               from the sandbox's own cgroup) and log
+//	               level, labels and the label selector,
+//	               workspace isolation, stop and start, logs
+//	               with the lines/level/source/since filters,
+//	               exposed services                            sandbox_test.go
 //	exec           file upload and download (the raw proto
 //	               escape hatch in pkg/clients/rawexec.go and
 //	               the SDK's non-interactive Exec().Run), the
