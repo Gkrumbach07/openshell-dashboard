@@ -118,6 +118,34 @@ describe('TemplatesTab', () => {
     ).not.toBeInTheDocument();
   });
 
+  // A known limitation, written down in the README: a gateway 0.0.116 that
+  // enforces OIDC scopes checks the caller before it finds out that it has no
+  // such RPC, and asks for `openshell:all`. A user without that scope gets a
+  // 403, so this tab shows the gateway's permission error, not "not
+  // supported". If this case starts failing because the tab handles a 403
+  // better, change the README notice with it.
+  it('shows the permission error, not "not supported", when the gateway denies the call', () => {
+    templatesQuery = {
+      ...loaded,
+      isError: true,
+      data: undefined,
+      error: apiError(
+        403,
+        'permission_denied',
+        "scope 'openshell:all' required",
+      ),
+    };
+    render(<TemplatesTab workspace="default" />);
+
+    expect(screen.getByText('Failed to load templates')).toBeInTheDocument();
+    expect(
+      screen.getByText("scope 'openshell:all' required"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('templates-unsupported'),
+    ).not.toBeInTheDocument();
+  });
+
   it('keeps the ordinary empty state for a gateway that has templates but none yet', () => {
     render(<TemplatesTab workspace="default" />);
 

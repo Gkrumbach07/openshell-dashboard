@@ -354,3 +354,40 @@ func TestCreateSandboxFromMissingTemplate(t *testing.T) {
 		t.Error("sandbox was created although the template lookup failed")
 	}
 }
+
+// A gateway 0.0.116 that enforces OIDC scopes does not answer the template
+// RPCs with UNIMPLEMENTED for everyone: its authorization check runs first,
+// and for an RPC it does not know it demands the `openshell:all` scope. A
+// caller without it gets PERMISSION_DENIED. The README documents that the UI
+// then shows a permission error rather than "not supported"; what must hold
+// regardless is that the from-template create still stops at the lookup, so
+// no default-image sandbox is created on that gateway either.
+func TestCreateSandboxFromTemplateStopsWhenLookupIsDenied(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.templates.getFn = func(context.Context, string, string) (*openshell.SandboxWorkloadTemplate, error) {
+		return nil, &openshell.StatusError{Code: openshell.ErrorPermissionDenied, Message: "scope 'openshell:all' required"}
+	}
+	created := false
+	sdk.templates.createFromTemplateFn = func(_ context.Context, _, name, _ string, _ *openshell.SandboxSpec, _ map[string]string, _ ...openshell.CreateOptions) (*openshell.Sandbox, error) {
+		created = true
+		return &openshell.Sandbox{Name: name}, nil
+	}
+	app := newTestAppWithSDK(sdk)
+	r := chi.NewRouter()
+	r.Post("/workspaces/{workspace}/sandboxes/from-template", app.CreateSandboxFromTemplate)
+
+	body := `{"name":"agent-1","templateName":"claude-harness","policy":{"version":1,"filesystem":{"includeWorkdir":true}}}`
+	req := httptest.NewRequest(http.MethodPost, "/workspaces/default/sandboxes/from-template", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "permission_denied") {
+		t.Errorf("body = %s, want code permission_denied", w.Body.String())
+	}
+	if created {
+		t.Error("sandbox was created although the template lookup was denied")
+	}
+}
