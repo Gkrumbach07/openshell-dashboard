@@ -623,16 +623,26 @@ func closeGatewayClient() {
 	}
 }
 
-// profileCredentialKey is the one credential every profile in this suite
-// requires, seeded or imported. The gateway keys a provider's credentials by
+// profileCredentialKey is the one credential the profiles of this suite
+// require, seeded or imported. The gateway keys a provider's credentials by
 // environment variable name while the Add Provider form keys them by
-// credential name, so the credential is named after its variable and the two
-// agree.
+// credential name, so here the credential is named after its variable and the
+// two agree. That keeps provider CRUD testable; the disagreement itself is
+// pinned by TestProviderCredentialKeyedByName, which seeds a profile where the
+// two names differ, as they do in the profiles upstream publishes.
 const profileCredentialKey = "COMPAT_API_KEY"
 
-// seedPlatformProfile registers a platform-scoped provider profile directly on
-// the gateway and returns its id, which is the provider "type" to create
-// against.
+// agreeingCredential is the credential schema described at
+// profileCredentialKey.
+func agreeingCredential() openshell.ProfileCredential {
+	return openshell.ProfileCredential{
+		Name: profileCredentialKey, EnvVars: []string{profileCredentialKey}, Required: true,
+	}
+}
+
+// seedPlatformProfile registers a platform-scoped provider profile with one
+// credential directly on the gateway and returns its id, which is the provider
+// "type" to create against.
 //
 // It bypasses the BFF because the BFF cannot produce a usable profile on a
 // gateway that ships none (the compat stack logs `provider profile sources
@@ -641,7 +651,7 @@ const profileCredentialKey = "COMPAT_API_KEY"
 // gateway reads as "look in the platform scope". TestProviderFromWorkspaceProfile
 // pins that bug. Seeding here keeps provider CRUD and attach/detach covered in
 // the meantime; once the bug is fixed this helper can import through the BFF.
-func seedPlatformProfile(t *testing.T) string {
+func seedPlatformProfile(t *testing.T, credential openshell.ProfileCredential) string {
 	t.Helper()
 	client, err := gatewayClient()
 	if err != nil {
@@ -658,9 +668,7 @@ func seedPlatformProfile(t *testing.T) string {
 			Description:      "seeded by backend/test/compat",
 			Category:         openshell.ProfileCategoryInference,
 			InferenceCapable: true,
-			Credentials: []openshell.ProfileCredential{
-				{Name: profileCredentialKey, EnvVars: []string{profileCredentialKey}, Required: true},
-			},
+			Credentials:      []openshell.ProfileCredential{credential},
 		},
 	}})
 	if err != nil {

@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"net/http"
 	"testing"
+
+	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 // providerProfile mirrors models.ProviderProfile.
@@ -253,11 +255,85 @@ func TestProviderFromWorkspaceProfile(t *testing.T) {
 	}
 }
 
+// TestProviderCredentialKeyedByName is the Add Provider form's request for a
+// profile whose credential has a name of its own and is injected under an
+// environment variable with another name. That is how the profiles upstream
+// publishes for import are written (providers/openai.yaml in NVIDIA/OpenShell
+// at v0.1.0 and v0.1.2: `name: api_key`, `env_vars: [OPENAI_API_KEY]`), so it
+// is the request the form sends for the common providers.
+//
+// The form labels each field with the credential's name and submits the value
+// under that name (ProviderFormModal.tsx stores it at [credential.name]), and
+// the BFF passes the map on unchanged.
+func TestProviderCredentialKeyedByName(t *testing.T) {
+	ws := newWorkspace(t)
+	const credential, envVar = "api_key", "COMPAT_NAMED_API_KEY"
+	const secret = "s3cr3t-keyed-by-name"
+	profile := seedPlatformProfile(t, openshell.ProfileCredential{
+		Name: credential, EnvVars: []string{envVar}, Required: true,
+	})
+	base := providersPath(ws)
+	name, control := randName("pv"), randName("pv")
+	t.Cleanup(func() {
+		_, _, _ = do(http.MethodDelete, base+"/"+name, nil)
+		_, _, _ = do(http.MethodDelete, base+"/"+control, nil)
+	})
+
+	// What the form is built from: the name it will key the value by, and the
+	// variable the gateway wants instead.
+	var offered providerProfile
+	mustJSON(t, http.MethodGet, profilesPath(ws)+"/"+profile, nil, &offered, http.StatusOK)
+	if len(offered.Credentials) != 1 || offered.Credentials[0].Name != credential ||
+		len(offered.Credentials[0].EnvVars) != 1 || offered.Credentials[0].EnvVars[0] != envVar {
+		t.Fatalf("profile %q offers credentials %+v, want one named %q with envVars [%s]",
+			profile, offered.Credentials, credential, envVar)
+	}
+
+	status, raw, err := do(http.MethodPost, base, map[string]any{
+		"name":        name,
+		"type":        profile,
+		"credentials": map[string]string{credential: secret},
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+	if bytes.Contains(raw, []byte(secret)) {
+		t.Errorf("create returned a credential value to the browser: %s", truncate(raw))
+	}
+	if status == http.StatusBadRequest && bytes.Contains(raw, []byte("are not declared by profile")) {
+		// The same request keyed by the variable is accepted, so the refusal
+		// is about the key and nothing else in the request or the profile.
+		mustJSON(t, http.MethodPost, base, map[string]any{
+			"name":        control,
+			"type":        profile,
+			"credentials": map[string]string{envVar: secret},
+		}, nil, http.StatusCreated)
+		t.Skipf("KNOWN BUG: POST %s with credentials keyed by the credential's name, {%q: ...}, as the Add "+
+			"Provider form sends them, fails with %d %s on gateway %s, while the same request keyed by the "+
+			"environment variable, {%q: ...}, is accepted. The profile declares the credential as name %q "+
+			"with envVars [%s], and the gateway takes the variable as the key whenever a credential declares "+
+			"one. The form (frontend/src/components/provider/ProviderFormModal.tsx) keys by name and "+
+			"CreateProvider (pkg/handlers/providers_handler.go) passes the map on unchanged — so a provider "+
+			"cannot be created in the dashboard from any profile whose credential name differs from its "+
+			"variable, as in the profiles upstream publishes (openai: api_key / OPENAI_API_KEY)",
+			base, credential, status, truncate(raw), gatewayVersion, envVar, credential, envVar)
+	}
+	if status != http.StatusCreated {
+		t.Fatalf("create provider with credentials keyed by name [gateway %s]: status = %d, want 201; body: %s",
+			gatewayVersion, status, truncate(raw))
+	}
+	var created provider
+	mustDecode(t, raw, &created)
+	if created.Type != profile || created.Metadata.Name != name {
+		t.Errorf("created provider = %q of type %q, want %q of type %q", created.Metadata.Name, created.Type, name, profile)
+	}
+}
+
 // TestProviderLifecycle covers the Providers page: create, read, list, update
 // and delete, and that a credential value never comes back out.
 func TestProviderLifecycle(t *testing.T) {
 	ws := newWorkspace(t)
-	profile := seedPlatformProfile(t)
+	profile := seedPlatformProfile(t, agreeingCredential())
 	name := randName("pv")
 	base := providersPath(ws)
 	const secret, rotated = "s3cr3t-compat-value", "r0tated-compat-value"
@@ -430,7 +506,7 @@ func TestProviderLifecycle(t *testing.T) {
 // which are guarded by the sandbox's resource version.
 func TestSandboxProviderAttachDetach(t *testing.T) {
 	ws, sb := sharedSandbox(t)
-	profile := seedPlatformProfile(t)
+	profile := seedPlatformProfile(t, agreeingCredential())
 	name := randName("pv")
 	const secret = "s3cr3t-attach-value"
 	attachPath := sandboxPath(ws, sb) + "/providers/" + name
