@@ -227,12 +227,22 @@ jobs:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_ROBOT_TOKEN }}
+      # An image built from this line must never be tagged `latest`. That tag
+      # is main's (1.x); a 0.2.x image under it would hand everyone who pulls
+      # the default a dashboard that only works with gateway 0.0.116. So
+      # there is no `latest` rule below, and `flavor: latest=false` stops the
+      # action from adding one of its own accord. A push to 0.2.x moves the
+      # `0.2.x` tag instead. Every build also gets its commit (sha-<7>), a
+      # pull request gets pr-<n>, and publish.yml adds X.Y.Z to the sha-<7>
+      # image when a release is cut.
       - uses: docker/metadata-action@v5
         id: meta
         with:
           images: quay.io/gkrumbach07/openshell-dashboard
+          flavor: |
+            latest=false
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+            type=raw,value=0.2.x,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/0.2.x' }}
             type=sha,prefix=sha-
             type=ref,event=pr,prefix=pr-
       - name: Create and push multi-arch manifest
