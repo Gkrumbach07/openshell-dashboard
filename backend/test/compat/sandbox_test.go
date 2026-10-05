@@ -161,11 +161,13 @@ const (
 // bootFailure is set the first time a sandbox is still not READY when
 // readyLimit runs out, and from then on no test waits for another one.
 //
-// A sandbox the gateway keeps in PROVISIONING for good (a supervisor that
-// hangs instead of exiting, a workload image that never finishes pulling)
-// costs the whole of readyLimit. Six places in this suite boot a sandbox and
-// wait for it, so without this the suite would spend readyLimit on each, run
-// into `go test -timeout` and end in a goroutine dump instead of a result.
+// A sandbox whose containers hang instead of exiting stays in PROVISIONING
+// for as long as anyone waits: gateway 0.1.2 has no timeout of its own for
+// that (with the containers frozen it was still PROVISIONING after five
+// minutes), so it costs the whole of readyLimit. Six places in this suite
+// boot a sandbox and wait for it, so without this the suite would spend
+// readyLimit on each, run into `go test -timeout` and end in a goroutine dump
+// instead of a result.
 // With it the first wait is the only long one: that test and every sandbox
 // test after it fail with this same sentence, and TestMain repeats it as the
 // last line of the run.

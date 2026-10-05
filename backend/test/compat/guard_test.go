@@ -251,9 +251,10 @@ func TestGuardReadyLatch(t *testing.T) {
 		t.Fatalf("a run that has not waited for a sandbox yet ends with %q, want nothing", got)
 	}
 
-	// A sandbox that does not exist is no boot failure at all. This is also
-	// what a run against an unreachable gateway looks like from here, and the
-	// summary must not send its reader to the supervisor for that.
+	// A sandbox that does not exist is no boot failure at all, and neither is
+	// one that cannot be read, which is what an unreachable gateway produces
+	// (not exercised here: that wait takes half a minute to give up). The
+	// summary must not send its reader to the supervisor for either.
 	phase.Store("")
 	if _, err := awaitReady("TestMissing", "ws", "sb", time.Minute); err == nil || !strings.Contains(err.Error(), "does not exist") {
 		t.Fatalf("a missing sandbox: err = %v, want it reported as not existing", err)
@@ -262,8 +263,8 @@ func TestGuardReadyLatch(t *testing.T) {
 		t.Errorf("summary after a sandbox that did not exist = %q, want nothing", got)
 	}
 
-	// A sandbox that enters ERROR is one, but it does not set the latch: it
-	// says too little about the next sandbox to stop trying.
+	// A sandbox that enters ERROR is a boot failure, but it does not set the
+	// latch: it says too little about the next sandbox to stop trying.
 	phase.Store("ERROR")
 	if _, err := awaitReady("TestA", "ws", "sb", time.Minute); err == nil || !strings.Contains(err.Error(), "entered ERROR") {
 		t.Fatalf("a sandbox in ERROR: err = %v, want it reported as entering ERROR", err)
