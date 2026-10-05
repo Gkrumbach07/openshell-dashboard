@@ -2,7 +2,7 @@
 # Brings the OpenShell gateway stack up or down for the compat suite
 # (backend/test/compat). Used by CI's version matrix and usable locally.
 #
-#   OPENSHELL_VERSION=0.0.116 deploy/ci/e2e-stack.sh up
+#   OPENSHELL_VERSION=0.1.2 deploy/ci/e2e-stack.sh up
 #   deploy/ci/e2e-stack.sh down
 #
 # OPENSHELL_VERSION picks the gateway AND supervisor tag — they are released
@@ -10,10 +10,18 @@
 # tags, so it is pinned separately (COMPAT_SANDBOX_IMAGE, defaulting to
 # sandbox_image in gateway-pins.json) and deliberately does NOT move with the
 # gateway version.
+#
+# This script only ever changes the GATEWAY side. Which SDK the BFF is built
+# against is whatever backend/go.mod says; the two are separate links and are
+# tested separately (ADR 0006).
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# CI never relies on this default: every lane and every sweep leg passes
+# OPENSHELL_GATEWAY_IMAGE / OPENSHELL_SUPERVISOR_IMAGE as tag@digest. `latest`
+# is the newest upstream RELEASE (`dev` is upstream HEAD), which is a sensible
+# thing to try locally but a moving tag, so not something to pin.
 VERSION="${OPENSHELL_VERSION:-latest}"
 export OPENSHELL_GATEWAY_IMAGE="${OPENSHELL_GATEWAY_IMAGE:-ghcr.io/nvidia/openshell/gateway:${VERSION}}"
 export OPENSHELL_SUPERVISOR_IMAGE="${OPENSHELL_SUPERVISOR_IMAGE:-ghcr.io/nvidia/openshell/supervisor:${VERSION}}"
@@ -26,11 +34,13 @@ export COMPAT_SANDBOX_IMAGE="${COMPAT_SANDBOX_IMAGE:-ghcr.io/nvidia/openshell-co
 
 # The gateway's own config file is versioned and the schemas are mutually
 # exclusive: 0.1.0 and newer require v2, releases up to 0.0.116 require v1.
-# Defaults to v2 because that is what the SDK we pin targets.
+# Defaults to v2 because every gateway main supports (0.1.0 and newer) needs it.
 #
 # `auto` tries v2 and falls back to v1 when the gateway rejects the config
-# version. The compat sweep needs this because it walks across the v1/v2
-# boundary and cannot know in advance which side a given release sits on.
+# version. The compat sweep's gateway axis needs this because it can cross a
+# schema boundary and cannot know in advance which side a release sits on.
+# Under GitHub Actions the schema the gateway accepted is written to the step
+# output `config_schema`, so the sweep can record it in the lane it proposes.
 OPENSHELL_CONFIG_SCHEMA="${OPENSHELL_CONFIG_SCHEMA:-v2}"
 
 # Callback address the in-sandbox supervisor uses to reach the gateway.
@@ -147,6 +157,9 @@ up() {
     }
   fi
   echo "e2e-stack: gateway healthy (config schema ${RESOLVED_SCHEMA})"
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    echo "config_schema=${RESOLVED_SCHEMA}" >> "$GITHUB_OUTPUT"
+  fi
 }
 
 # try_schema renders the given schema, starts the stack, and returns non-zero

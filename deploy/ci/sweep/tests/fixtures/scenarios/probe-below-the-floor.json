@@ -1,0 +1,31 @@
+{
+  "description": "A manual run with since=0.0.116 asks whether main works with the gateway the 0.x line serves. It does not, and that is informational: nothing is opened for a gateway outside the range.",
+  "inputs": {
+    "since": "0.0.116"
+  },
+  "upstream": {},
+  "legs": {
+    "gateway-0.0.116": {
+      "compat": "failure",
+      "config_schema": "v1"
+    }
+  },
+  "expect": {
+    "issue_action": "close",
+    "gateway_pr": "close",
+    "sdk_pr": "close",
+    "incomplete": false,
+    "gateway_statuses": {
+      "0.1.2": "ok",
+      "0.1.1": "ok",
+      "0.1.0": "ok",
+      "0.0.116": "info",
+      "dev": "ok"
+    },
+    "sdk_statuses": {},
+    "summary_contains": [
+      "below the range",
+      "Gateways up to 0.0.116 are served by the 0.x maintenance line, not by main."
+    ]
+  }
+}

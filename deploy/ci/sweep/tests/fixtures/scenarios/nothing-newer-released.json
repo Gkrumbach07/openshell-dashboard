@@ -1,0 +1,22 @@
+{
+  "description": "Upstream has nothing newer than the ceiling and HEAD has not moved past the SDK pin. Everything in the range passes, so the run must leave nothing open.",
+  "upstream": {},
+  "legs": {},
+  "expect": {
+    "issue_action": "close",
+    "gateway_pr": "close",
+    "sdk_pr": "close",
+    "incomplete": false,
+    "gateway_statuses": {
+      "0.1.2": "ok",
+      "0.1.1": "ok",
+      "0.1.0": "ok",
+      "dev": "ok"
+    },
+    "sdk_statuses": {},
+    "summary_contains": [
+      "Nothing is outstanding on either axis.",
+      "Nothing to try: the pin is not older than the SDK of the newest upstream release (0.1.2), and upstream HEAD has not moved past it."
+    ]
+  }
+}

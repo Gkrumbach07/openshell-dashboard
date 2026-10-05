@@ -1,0 +1,46 @@
+{
+  "description": "The SDK-axis output here is real, captured 2026-10-05 by running the source check against the SDK at upstream HEAD (3592a482): the BFF compiles, but `go vet ./...` fails because a test double no longer satisfies an SDK interface. Early warning on the SOURCE link: the next release will need a small migration. Nothing to pin, no PR, and no gateway is involved. (The gateway rows are the fixture default, not a recorded run.)",
+  "upstream": {
+    "sdk": {
+      "latest": "v0.0.0-20261005163447-3592a482c5a3"
+    }
+  },
+  "legs": {
+    "sdk-latest-0.1.0": {
+      "source": "failure",
+      "source_step": "vet",
+      "source_log": "$ go vet ./...\n# github.com/Gkrumbach07/openshell-dashboard/backend/pkg/handlers\n# [github.com/Gkrumbach07/openshell-dashboard/backend/pkg/handlers]\nvet: pkg/handlers/mock_sdk_test.go:27:70: cannot use &m.services (value of type *mockSDKServices) as v1.ServiceInterface value in return statement: *mockSDKServices does not implement v1.ServiceInterface (wrong type for method Expose)\n\t\thave Expose(context.Context, string, string, string, uint32, bool) (*v1.ServiceEndpoint, error)\n\t\twant Expose(context.Context, string, string, string, uint32, bool, ...v1.ExposeServiceOptions) (*v1.ServiceEndpoint, error)\n"
+    },
+    "sdk-latest-0.1.2": {
+      "source": "failure",
+      "source_step": "vet",
+      "source_log": "$ go vet ./...\n# github.com/Gkrumbach07/openshell-dashboard/backend/pkg/handlers\n# [github.com/Gkrumbach07/openshell-dashboard/backend/pkg/handlers]\nvet: pkg/handlers/mock_sdk_test.go:27:70: cannot use &m.services (value of type *mockSDKServices) as v1.ServiceInterface value in return statement: *mockSDKServices does not implement v1.ServiceInterface (wrong type for method Expose)\n\t\thave Expose(context.Context, string, string, string, uint32, bool) (*v1.ServiceEndpoint, error)\n\t\twant Expose(context.Context, string, string, string, uint32, bool, ...v1.ExposeServiceOptions) (*v1.ServiceEndpoint, error)\n"
+    }
+  },
+  "expect": {
+    "issue_action": "upsert",
+    "gateway_pr": "close",
+    "sdk_pr": "close",
+    "incomplete": false,
+    "gateway_statuses": {
+      "0.1.2": "ok",
+      "0.1.1": "ok",
+      "0.1.0": "ok",
+      "dev": "ok"
+    },
+    "sdk_statuses": {
+      "latest": "source"
+    },
+    "title_is": "Compat sweep: early warning from upstream HEAD",
+    "issue_contains": [
+      "SDK `@latest`: source check failed: `go vet ./...` failed (it also compiles the tests) (source: SDK<->BFF)",
+      "Early warning only: nothing to merge.",
+      "This is not a gateway problem.",
+      "*mockSDKServices does not implement v1.ServiceInterface (wrong type for method Expose)",
+      "...v1.ExposeServiceOptions"
+    ],
+    "issue_lacks": [
+      "### Needs a person"
+    ]
+  }
+}
