@@ -8,6 +8,9 @@ import {
   Content,
   Form,
   FormGroup,
+  FormHelperText,
+  HelperText,
+  HelperTextItem,
   Modal,
   ModalBody,
   ModalFooter,
@@ -24,12 +27,21 @@ import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import SettingValueField from '../components/SettingValueField';
 import { useAlerts } from '../app/AlertContext';
 import {
   useDeleteGlobalSetting,
   useGlobalSettings,
   useSetGlobalSetting,
 } from '../api/settings';
+import type { SettingEntry } from '../types';
+import {
+  emptySettingText,
+  formatSettingValue,
+  parseSettingValue,
+  settingTypeOf,
+  type SettingType,
+} from '../utils/settings';
 
 const SettingsPage: React.FC = () => {
   const settings = useGlobalSettings();
@@ -39,22 +51,47 @@ const SettingsPage: React.FC = () => {
 
   const [isAddOpen, setAddOpen] = useState(false);
   const [addKey, setAddKey] = useState('');
-  const [addValue, setAddValue] = useState('');
+  const [addType, setAddType] = useState<SettingType>('string');
+  const [addText, setAddText] = useState('');
 
+  // The gateway type-checks every setting, so a value is edited and sent as
+  // the type the setting takes. That type is the type of its current value;
+  // a setting that was never set has none to go by and the type is chosen.
   const [editKey, setEditKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
+  const [editType, setEditType] = useState<SettingType>('string');
+  const [isEditTypeKnown, setEditTypeKnown] = useState(false);
+  const [editText, setEditText] = useState('');
 
   const [deleteKey, setDeleteKey] = useState<string | null>(null);
 
   const openAdd = () => {
+    // Adding and editing share one mutation, so only one of them is open at a
+    // time: a refusal of the add must not show under a row being edited.
+    setEditKey(null);
     setAddKey('');
-    setAddValue('');
+    setAddType('string');
+    setAddText('');
     setSetting.reset();
     setAddOpen(true);
   };
 
+  const addValue = parseSettingValue(addType, addText);
+  const editValue = parseSettingValue(editType, editText);
+
+  const startEdit = (entry: SettingEntry) => {
+    const known = settingTypeOf(entry.value);
+    const type = known ?? 'string';
+    setEditKey(entry.key);
+    setEditType(type);
+    setEditTypeKnown(known !== undefined);
+    setEditText(
+      entry.value === undefined ? emptySettingText(type) : String(entry.value),
+    );
+    setSetting.reset();
+  };
+
   const submitAdd = () => {
-    if (!addKey.trim()) return;
+    if (!addKey.trim() || addValue === undefined) return;
     setSetting.mutate(
       { key: addKey.trim(), value: addValue },
       {
@@ -67,7 +104,7 @@ const SettingsPage: React.FC = () => {
   };
 
   const submitEdit = () => {
-    if (!editKey) return;
+    if (!editKey || editValue === undefined) return;
     setSetting.mutate(
       { key: editKey, value: editValue },
       {
@@ -170,17 +207,39 @@ const SettingsPage: React.FC = () => {
                           submitEdit();
                         }}
                       >
-                        <TextInput
-                          aria-label="Edit value"
-                          data-testid={`edit-value-${entry.key}`}
-                          value={editValue}
-                          onChange={(_e, val) => setEditValue(val)}
-                          // eslint-disable-next-line jsx-a11y/no-autofocus
-                          autoFocus
+                        <SettingValueField
+                          id={`edit-value-${entry.key}`}
+                          valueTestId={`edit-value-${entry.key}`}
+                          type={editType}
+                          canChooseType={!isEditTypeKnown}
+                          text={editText}
+                          onChange={(type, text) => {
+                            setEditType(type);
+                            setEditText(text);
+                          }}
+                          focusOnMount
                         />
+                        {(!isEditTypeKnown || setSetting.isError) && (
+                          <HelperText isLiveRegion>
+                            {!isEditTypeKnown && (
+                              <HelperTextItem>
+                                This setting has no value, so the gateway does
+                                not report its type. Choose the type it takes.
+                              </HelperTextItem>
+                            )}
+                            {setSetting.isError && (
+                              <HelperTextItem
+                                variant="error"
+                                data-testid={`edit-error-${entry.key}`}
+                              >
+                                {(setSetting.error as Error).message}
+                              </HelperTextItem>
+                            )}
+                          </HelperText>
+                        )}
                       </Form>
                     ) : (
-                      entry.value || '—'
+                      formatSettingValue(entry.value)
                     )}
                   </Td>
                   <Td dataLabel="Actions" isActionCell>
@@ -191,7 +250,9 @@ const SettingsPage: React.FC = () => {
                             variant="primary"
                             size="sm"
                             onClick={submitEdit}
-                            isDisabled={setSetting.isPending}
+                            isDisabled={
+                              editValue === undefined || setSetting.isPending
+                            }
                             isLoading={setSetting.isPending}
                             data-testid={`save-${entry.key}`}
                           >
@@ -215,11 +276,7 @@ const SettingsPage: React.FC = () => {
                           <Button
                             variant="plain"
                             aria-label={`Edit ${entry.key}`}
-                            onClick={() => {
-                              setEditKey(entry.key);
-                              setEditValue(entry.value);
-                              setSetting.reset();
-                            }}
+                            onClick={() => startEdit(entry)}
                             data-testid={`edit-${entry.key}`}
                           >
                             <PencilAltIcon />
@@ -284,12 +341,25 @@ const SettingsPage: React.FC = () => {
               />
             </FormGroup>
             <FormGroup label="Value" fieldId="setting-value">
-              <TextInput
+              <SettingValueField
                 id="setting-value"
-                data-testid="new-setting-value"
-                value={addValue}
-                onChange={(_e, val) => setAddValue(val)}
+                valueTestId="new-setting-value"
+                type={addType}
+                canChooseType
+                text={addText}
+                onChange={(type, text) => {
+                  setAddType(type);
+                  setAddText(text);
+                }}
               />
+              <FormHelperText>
+                <HelperText>
+                  <HelperTextItem>
+                    The gateway takes each setting in one type and rejects a
+                    value of any other.
+                  </HelperTextItem>
+                </HelperText>
+              </FormHelperText>
             </FormGroup>
           </Form>
           {setSetting.isError && (
@@ -306,7 +376,9 @@ const SettingsPage: React.FC = () => {
         <ModalFooter>
           <Button
             onClick={submitAdd}
-            isDisabled={!addKey.trim() || setSetting.isPending}
+            isDisabled={
+              !addKey.trim() || addValue === undefined || setSetting.isPending
+            }
             isLoading={setSetting.isPending}
             data-testid="confirm-add-setting"
           >

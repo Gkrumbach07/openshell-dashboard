@@ -41,12 +41,24 @@ type CreateSandboxFromTemplateRequest struct {
 	Policy       json.RawMessage   `json:"policy"`
 }
 
-// CreateProviderRequest is the create-provider body. Credentials are
-// write-only: accepted here, forwarded to the gateway, never returned.
+// CreateProviderRequest is the create-provider body. It mirrors the gateway's
+// Provider message and is forwarded as it is: the BFF translates nothing.
+//
+// Credentials are write-only: accepted here, forwarded to the gateway, never
+// returned. Their keys are the gateway's stored keys — a profile credential's
+// env var names when it declares any, its name only when it declares none.
+//
+// ProfileWorkspace is Provider.profile_workspace, the scope the gateway looks
+// Type up in. Empty is the platform scope, which holds the built-in and the
+// platform profiles and where a profile imported into a workspace does not
+// exist; the provider's own workspace resolves the profile that workspace
+// sees. The gateway rejects any other value. The Add Provider form names the
+// scope of the profile that was chosen.
 type CreateProviderRequest struct {
-	Credentials map[string]string `json:"credentials,omitempty"`
-	Config      map[string]string `json:"config,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Name        string            `json:"name"`
-	Type        string            `json:"type"`
+	Credentials      map[string]string `json:"credentials,omitempty"`
+	Config           map[string]string `json:"config,omitempty"`
+	Labels           map[string]string `json:"labels,omitempty"`
+	Name             string            `json:"name"`
+	Type             string            `json:"type"`
+	ProfileWorkspace string            `json:"profileWorkspace,omitempty"`
 }

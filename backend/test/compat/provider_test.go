@@ -38,6 +38,7 @@ type provider struct {
 	Config                map[string]string `json:"config"`
 	CredentialExpiresAtMs map[string]int64  `json:"credentialExpiresAtMs"`
 	Type                  string            `json:"type"`
+	ProfileWorkspace      string            `json:"profileWorkspace"`
 	CredentialNames       []string          `json:"credentialNames"`
 	Metadata              objectMeta        `json:"metadata"`
 }
@@ -48,6 +49,22 @@ func profilesPath(workspace string) string {
 
 func providersPath(workspace string) string {
 	return "/api/v1/workspaces/" + workspace + "/providers"
+}
+
+// providerBody is the create request the Add Provider form sends. It names the
+// scope the chosen profile lives in — profileWorkspace is the workspace for a
+// profile imported into it and empty for a platform profile — and carries each
+// credential under the key the gateway stores it at.
+func providerBody(profileWorkspace, name, profile string, credentials map[string]string) map[string]any {
+	body := map[string]any{
+		"name":        name,
+		"type":        profile,
+		"credentials": credentials,
+	}
+	if profileWorkspace != "" {
+		body["profileWorkspace"] = profileWorkspace
+	}
+	return body
 }
 
 // profileBody is a profile the BFF's import endpoint can express and the
@@ -204,10 +221,16 @@ func TestProviderProfiles(t *testing.T) {
 	})
 }
 
-// TestProviderFromWorkspaceProfile is the Add Provider flow the way the UI
-// drives it for a custom profile: import the profile into the workspace, then
-// create a provider of that type. It needs no direct gateway access, so it is
-// what tells us when the bug below is fixed.
+// TestProviderFromWorkspaceProfile is the Add Provider flow for a custom
+// profile: import the profile into the workspace, then create a provider of
+// that type. It needs no direct gateway access.
+//
+// The gateway looks a provider's type up in the scope the provider names, and
+// a provider that names none is looked up in the platform scope, where a
+// profile imported into a workspace does not exist ("provider profile ... was
+// not found in the requested scope"). So the request names the workspace, and
+// the scope reading back is what shows the gateway took it rather than dropped
+// it. TestProviderProfileScope covers an id that both scopes hold.
 func TestProviderFromWorkspaceProfile(t *testing.T) {
 	ws := newWorkspace(t)
 	id := randName("cpf")
@@ -224,26 +247,22 @@ func TestProviderFromWorkspaceProfile(t *testing.T) {
 	if !imported.Imported {
 		t.Fatalf("profile %q was not imported", id)
 	}
+	// The premise of the test: the profile lives in the workspace, not in the
+	// platform scope. The import answer carries no scope; a read does.
+	var offered providerProfile
+	mustJSON(t, http.MethodGet, profilesPath(ws)+"/"+id, nil, &offered, http.StatusOK)
+	if offered.Scope != "workspace" {
+		t.Fatalf("imported profile %q has scope %q, want \"workspace\"", id, offered.Scope)
+	}
 
-	status, raw, err := do(http.MethodPost, providersPath(ws), map[string]any{
-		"name":        name,
-		"type":        id,
-		"credentials": map[string]string{profileCredentialKey: "s3cr3t-" + name},
-	})
+	status, raw, err := do(http.MethodPost, providersPath(ws),
+		providerBody(ws, name, id, map[string]string{profileCredentialKey: "s3cr3t-" + name}))
 	if err != nil {
 		t.Fatalf("create provider: %v", err)
 	}
 	t.Cleanup(func() {
 		_, _, _ = do(http.MethodDelete, providersPath(ws)+"/"+name, nil)
 	})
-	if status == http.StatusBadRequest && bytes.Contains(raw, []byte("was not found in the requested scope")) {
-		t.Skipf("KNOWN BUG: POST %s with type %q — a profile imported into this same workspace through "+
-			"POST %s — fails with %d %s on gateway %s. CreateProvider (pkg/handlers/providers_handler.go) "+
-			"never sets Provider.Spec.ProfileWorkspace and CreateProviderRequest has no field for it, so the "+
-			"gateway looks the type up in the platform scope. The BFF can only import profiles into a "+
-			"workspace, so no profile created through the dashboard can ever back a provider",
-			providersPath(ws), id, profilesPath(ws), status, truncate(raw), gatewayVersion)
-	}
 	if status != http.StatusCreated {
 		t.Fatalf("create provider of workspace profile %q [gateway %s]: status = %d, want 201; body: %s",
 			id, gatewayVersion, status, truncate(raw))
@@ -253,34 +272,51 @@ func TestProviderFromWorkspaceProfile(t *testing.T) {
 	if created.Type != id || created.Metadata.Name != name {
 		t.Errorf("created provider = %q of type %q, want %q of type %q", created.Metadata.Name, created.Type, name, id)
 	}
+	if created.ProfileWorkspace != ws {
+		t.Errorf("created provider has profileWorkspace %q, want %q", created.ProfileWorkspace, ws)
+	}
+
+	var read provider
+	mustJSON(t, http.MethodGet, providersPath(ws)+"/"+name, nil, &read, http.StatusOK)
+	if read.ProfileWorkspace != ws {
+		t.Errorf("provider reads back with profileWorkspace %q, want %q", read.ProfileWorkspace, ws)
+	}
 }
 
-// TestProviderCredentialKeyedByName is the Add Provider form's request for a
-// profile whose credential has a name of its own and is injected under an
-// environment variable with another name. That is how the profiles upstream
-// publishes for import are written (providers/openai.yaml in NVIDIA/OpenShell
-// at v0.1.0 and v0.1.2: `name: api_key`, `env_vars: [OPENAI_API_KEY]`), so it
-// is the request the form sends for the common providers.
+// TestProviderCredentialKeyedByEnvVar is the Add Provider and Edit Provider
+// forms' requests for a profile whose credential has a name of its own and is
+// injected under an environment variable with another name. That is how the
+// profiles upstream publishes are written (providers/openai.yaml in
+// NVIDIA/OpenShell at v0.1.0 and v0.1.2: `name: api_key`,
+// `env_vars: [OPENAI_API_KEY]`).
 //
-// The form labels each field with the credential's name and submits the value
-// under that name (ProviderFormModal.tsx stores it at [credential.name]), and
-// the BFF passes the map on unchanged.
-func TestProviderCredentialKeyedByName(t *testing.T) {
+// The gateway takes the variable as the key whenever a credential declares
+// one and refuses the name ("provider credentials are not declared by
+// profile"), on create and on update alike. The forms label each field with
+// the credential's name and send its value under the variable.
+func TestProviderCredentialKeyedByEnvVar(t *testing.T) {
 	ws := newWorkspace(t)
 	const credential, envVar = "api_key", "COMPAT_NAMED_API_KEY"
-	const secret = "s3cr3t-keyed-by-name"
+	const secret, rotated = "s3cr3t-keyed-by-env-var", "r0tated-keyed-by-env-var"
 	profile := seedPlatformProfile(t, openshell.ProfileCredential{
 		Name: credential, EnvVars: []string{envVar}, Required: true,
 	})
 	base := providersPath(ws)
-	name, control := randName("pv"), randName("pv")
+	name := randName("pv")
 	t.Cleanup(func() {
 		_, _, _ = do(http.MethodDelete, base+"/"+name, nil)
-		_, _, _ = do(http.MethodDelete, base+"/"+control, nil)
 	})
+	noSecret := func(t *testing.T, what string, raw []byte) {
+		t.Helper()
+		for _, s := range []string{secret, rotated} {
+			if bytes.Contains(raw, []byte(s)) {
+				t.Errorf("%s returned a credential value to the browser: %s", what, truncate(raw))
+			}
+		}
+	}
 
-	// What the form is built from: the name it will key the value by, and the
-	// variable the gateway wants instead.
+	// What the form is built from: the name it labels the field with, and the
+	// variable it sends the value under.
 	var offered providerProfile
 	mustJSON(t, http.MethodGet, profilesPath(ws)+"/"+profile, nil, &offered, http.StatusOK)
 	if len(offered.Credentials) != 1 || offered.Credentials[0].Name != credential ||
@@ -289,44 +325,123 @@ func TestProviderCredentialKeyedByName(t *testing.T) {
 			profile, offered.Credentials, credential, envVar)
 	}
 
-	status, raw, err := do(http.MethodPost, base, map[string]any{
-		"name":        name,
-		"type":        profile,
-		"credentials": map[string]string{credential: secret},
+	t.Run("create", func(t *testing.T) {
+		raw := mustRaw(t, http.MethodPost, base,
+			providerBody("", name, profile, map[string]string{envVar: secret}), http.StatusCreated)
+		noSecret(t, "create", raw)
+		var created provider
+		mustDecode(t, raw, &created)
+		if created.Type != profile || created.Metadata.Name != name {
+			t.Errorf("created provider = %q of type %q, want %q of type %q", created.Metadata.Name, created.Type, name, profile)
+		}
+		// The key the form sends is the key the provider is then listed with.
+		if len(created.CredentialNames) != 1 || created.CredentialNames[0] != envVar {
+			t.Errorf("credentialNames = %v, want [%s]", created.CredentialNames, envVar)
+		}
 	})
-	if err != nil {
-		t.Fatalf("create provider: %v", err)
+
+	t.Run("rotate and set expiry", func(t *testing.T) {
+		const expiresAtMs = int64(1893456000000) // 2030-01-01T00:00:00Z
+		noSecret(t, "update", mustRaw(t, http.MethodPut, base+"/"+name, map[string]any{
+			"credentials":           map[string]string{envVar: rotated},
+			"credentialExpiresAtMs": map[string]int64{envVar: expiresAtMs},
+		}, http.StatusOK))
+		var read provider
+		raw := mustRaw(t, http.MethodGet, base+"/"+name, nil, http.StatusOK)
+		noSecret(t, "get after update", raw)
+		mustDecode(t, raw, &read)
+		if got := read.CredentialExpiresAtMs[envVar]; got != expiresAtMs {
+			t.Errorf("credentialExpiresAtMs[%s] = %d, want %d", envVar, got, expiresAtMs)
+		}
+		if len(read.CredentialNames) != 1 || read.CredentialNames[0] != envVar {
+			t.Errorf("credentialNames after rotating = %v, want [%s]: the credential is replaced, not added", read.CredentialNames, envVar)
+		}
+	})
+}
+
+// TestProviderProfileScope is a workspace whose own profile shadows a platform
+// profile of the same id. The gateway lists both, and the two take their
+// credential under different keys, so which one a provider resolves to is
+// decided by the profile scope its create request names and by nothing else.
+// The Add Provider form offers such an id once per scope and names the scope
+// of the one that was chosen.
+//
+// Each create below carries a key only one of the two profiles declares. The
+// gateway refuses a key the resolved profile does not declare, so both
+// succeeding is what shows the scope is honoured rather than dropped.
+func TestProviderProfileScope(t *testing.T) {
+	ws := newWorkspace(t)
+	const platformKey, workspaceKey = "COMPAT_PLATFORM_KEY", "COMPAT_WORKSPACE_KEY"
+	id := seedPlatformProfile(t, openshell.ProfileCredential{
+		Name: platformKey, EnvVars: []string{platformKey}, Required: true,
+	})
+	base := providersPath(ws)
+	fromWorkspace, fromPlatform := randName("pv"), randName("pv")
+	t.Cleanup(func() {
+		// Last-in first-out: the providers go before the workspace profile,
+		// and the platform profile seeded above goes last.
+		_, _, _ = do(http.MethodDelete, profilesPath(ws)+"/"+id, nil)
+	})
+
+	shadow := profileBody(id, "Compat workspace profile")
+	shadow["credentials"] = []map[string]any{{
+		"name": workspaceKey, "envVars": []string{workspaceKey}, "required": true,
+	}}
+	var imported struct {
+		Diagnostics []profileDiagnostic `json:"diagnostics"`
+		Imported    bool                `json:"imported"`
 	}
-	if bytes.Contains(raw, []byte(secret)) {
-		t.Errorf("create returned a credential value to the browser: %s", truncate(raw))
+	mustJSON(t, http.MethodPost, profilesPath(ws),
+		map[string]any{"profiles": []any{shadow}}, &imported, http.StatusCreated)
+	if !imported.Imported {
+		t.Fatalf("workspace profile %q, shadowing the platform one, was not imported [gateway %s]: %+v",
+			id, gatewayVersion, imported.Diagnostics)
 	}
-	if status == http.StatusBadRequest && bytes.Contains(raw, []byte("are not declared by profile")) {
-		// The same request keyed by the variable is accepted, so the refusal
-		// is about the key and nothing else in the request or the profile.
-		mustJSON(t, http.MethodPost, base, map[string]any{
-			"name":        control,
-			"type":        profile,
-			"credentials": map[string]string{envVar: secret},
-		}, nil, http.StatusCreated)
-		t.Skipf("KNOWN BUG: POST %s with credentials keyed by the credential's name, {%q: ...}, as the Add "+
-			"Provider form sends them, fails with %d %s on gateway %s, while the same request keyed by the "+
-			"environment variable, {%q: ...}, is accepted. The profile declares the credential as name %q "+
-			"with envVars [%s], and the gateway takes the variable as the key whenever a credential declares "+
-			"one. The form (frontend/src/components/provider/ProviderFormModal.tsx) keys by name and "+
-			"CreateProvider (pkg/handlers/providers_handler.go) passes the map on unchanged — so a provider "+
-			"cannot be created in the dashboard from any profile whose credential name differs from its "+
-			"variable, as in the profiles upstream publishes (openai: api_key / OPENAI_API_KEY)",
-			base, credential, status, truncate(raw), gatewayVersion, envVar, credential, envVar)
-	}
-	if status != http.StatusCreated {
-		t.Fatalf("create provider with credentials keyed by name [gateway %s]: status = %d, want 201; body: %s",
-			gatewayVersion, status, truncate(raw))
-	}
-	var created provider
-	mustDecode(t, raw, &created)
-	if created.Type != profile || created.Metadata.Name != name {
-		t.Errorf("created provider = %q of type %q, want %q of type %q", created.Metadata.Name, created.Type, name, profile)
-	}
+
+	t.Run("both profiles are listed, each with its scope", func(t *testing.T) {
+		var list []providerProfile
+		mustJSON(t, http.MethodGet, profilesPath(ws), nil, &list, http.StatusOK)
+		keyByScope := map[string]string{}
+		for _, p := range list {
+			if p.ID == id && len(p.Credentials) == 1 && len(p.Credentials[0].EnvVars) == 1 {
+				keyByScope[p.Scope] = p.Credentials[0].EnvVars[0]
+			}
+		}
+		if keyByScope["platform"] != platformKey || keyByScope["workspace"] != workspaceKey || len(keyByScope) != 2 {
+			t.Errorf("profile %q is listed as %v by scope, want platform: %s and workspace: %s",
+				id, keyByScope, platformKey, workspaceKey)
+		}
+	})
+
+	t.Run("the workspace scope resolves the workspace profile", func(t *testing.T) {
+		t.Cleanup(func() {
+			_, _, _ = do(http.MethodDelete, base+"/"+fromWorkspace, nil)
+		})
+		var p provider
+		mustJSON(t, http.MethodPost, base,
+			providerBody(ws, fromWorkspace, id, map[string]string{workspaceKey: "s3cr3t-workspace"}), &p, http.StatusCreated)
+		if p.ProfileWorkspace != ws {
+			t.Errorf("created provider has profileWorkspace %q, want %q", p.ProfileWorkspace, ws)
+		}
+		if len(p.CredentialNames) != 1 || p.CredentialNames[0] != workspaceKey {
+			t.Errorf("credentialNames = %v, want [%s]", p.CredentialNames, workspaceKey)
+		}
+	})
+
+	t.Run("no scope resolves the platform profile it shadows", func(t *testing.T) {
+		t.Cleanup(func() {
+			_, _, _ = do(http.MethodDelete, base+"/"+fromPlatform, nil)
+		})
+		var p provider
+		mustJSON(t, http.MethodPost, base,
+			providerBody("", fromPlatform, id, map[string]string{platformKey: "s3cr3t-platform"}), &p, http.StatusCreated)
+		if p.ProfileWorkspace != "" {
+			t.Errorf("created provider has profileWorkspace %q, want none", p.ProfileWorkspace)
+		}
+		if len(p.CredentialNames) != 1 || p.CredentialNames[0] != platformKey {
+			t.Errorf("credentialNames = %v, want [%s]", p.CredentialNames, platformKey)
+		}
+	})
 }
 
 // TestProviderLifecycle covers the Providers page: create, read, list, update
@@ -343,13 +458,23 @@ func TestProviderLifecycle(t *testing.T) {
 
 	// noSecret is the check that matters most here. Credentials are
 	// write-only: whatever the gateway returns, the BFF must not pass a value
-	// on to the browser.
+	// on to the browser. The gateway returns each one as the literal
+	// "REDACTED", and that placeholder is not passed on either: only the keys
+	// are.
 	noSecret := func(t *testing.T, what string, raw []byte) {
 		t.Helper()
-		for _, s := range []string{secret, rotated} {
+		for _, s := range []string{secret, rotated, "REDACTED"} {
 			if bytes.Contains(raw, []byte(s)) {
 				t.Errorf("%s returned a credential value to the browser: %s", what, truncate(raw))
 			}
+		}
+	}
+	// holdsOnlyTheCredential checks that a provider names exactly the one
+	// credential it was created with.
+	holdsOnlyTheCredential := func(t *testing.T, what string, names []string) {
+		t.Helper()
+		if len(names) != 1 || names[0] != profileCredentialKey {
+			t.Errorf("%s: credentialNames = %v, want [%s]", what, names, profileCredentialKey)
 		}
 	}
 	get := func(t *testing.T) (provider, []byte) {
@@ -382,13 +507,10 @@ func TestProviderLifecycle(t *testing.T) {
 	})
 
 	t.Run("create", func(t *testing.T) {
-		raw := mustRaw(t, http.MethodPost, base, map[string]any{
-			"name":        name,
-			"type":        profile,
-			"credentials": map[string]string{profileCredentialKey: secret},
-			"config":      map[string]string{"region": "us"},
-			"labels":      map[string]string{"team": "compat"},
-		}, http.StatusCreated)
+		body := providerBody("", name, profile, map[string]string{profileCredentialKey: secret})
+		body["config"] = map[string]string{"region": "us"}
+		body["labels"] = map[string]string{"team": "compat"}
+		raw := mustRaw(t, http.MethodPost, base, body, http.StatusCreated)
 		noSecret(t, "create", raw)
 		var p provider
 		mustDecode(t, raw, &p)
@@ -399,6 +521,13 @@ func TestProviderLifecycle(t *testing.T) {
 		if p.Config["region"] != "us" || p.Metadata.Labels["team"] != "compat" {
 			t.Errorf("config = %v, labels = %v; want region=us and team=compat", p.Config, p.Metadata.Labels)
 		}
+		// The create body mirrors the gateway's Provider message, so a request
+		// that names no profile scope gets none: the BFF does not fill one in.
+		// For a platform profile that is the platform scope, where it lives.
+		if p.ProfileWorkspace != "" {
+			t.Errorf("created provider has profileWorkspace %q, want none: the request named none", p.ProfileWorkspace)
+		}
+		holdsOnlyTheCredential(t, "create", p.CredentialNames)
 	})
 
 	t.Run("creating twice is a conflict", func(t *testing.T) {
@@ -415,19 +544,15 @@ func TestProviderLifecycle(t *testing.T) {
 		}
 	})
 
+	// The gateway reports which credentials a provider holds as the keys of
+	// its redacted credentials map. The SDK drops that map, so the BFF reads
+	// the keys from the gateway's answer itself (pkg/clients/rawprovider.go).
+	// The provider list, the detail page, the sandbox's Providers tab and the
+	// credential refresh form all show a provider's credentials from them.
 	t.Run("credential names are reported", func(t *testing.T) {
 		p, raw := get(t)
-		if len(p.CredentialNames) == 0 {
-			t.Skipf("KNOWN BUG: GET %s/%s returns no credentialNames on gateway %s although the provider was "+
-				"created with credential %s; body: %s. The gateway returns the names as its `credentials` map "+
-				"with redacted values, but the SDK's ProviderFromProto drops that map and only copies "+
-				"credential_handles, which this gateway does not send — so the provider list, the detail page "+
-				"and the refresh modal show a provider as having no credentials",
-				base, name, gatewayVersion, profileCredentialKey, truncate(raw))
-		}
-		if len(p.CredentialNames) != 1 || p.CredentialNames[0] != profileCredentialKey {
-			t.Errorf("credentialNames = %v, want [%s]", p.CredentialNames, profileCredentialKey)
-		}
+		noSecret(t, "get", raw)
+		holdsOnlyTheCredential(t, "get", p.CredentialNames)
 	})
 
 	t.Run("appears in list", func(t *testing.T) {
@@ -436,8 +561,9 @@ func TestProviderLifecycle(t *testing.T) {
 		var list []provider
 		mustDecode(t, raw, &list)
 		if len(list) != 1 || list[0].Metadata.Name != name {
-			t.Errorf("providers in workspace %s = %d entries, want exactly %q", ws, len(list), name)
+			t.Fatalf("providers in workspace %s = %d entries, want exactly %q", ws, len(list), name)
 		}
+		holdsOnlyTheCredential(t, "list", list[0].CredentialNames)
 	})
 
 	t.Run("update config", func(t *testing.T) {
@@ -450,6 +576,10 @@ func TestProviderLifecycle(t *testing.T) {
 		if p.Metadata.ResourceVersion <= before.Metadata.ResourceVersion {
 			t.Errorf("resourceVersion = %d after an update, want more than %d", p.Metadata.ResourceVersion, before.Metadata.ResourceVersion)
 		}
+		// An update that names no credential leaves the stored one alone: the
+		// BFF sends only what the request names. This can only see the key,
+		// not the value; the handler's unit test pins what is sent.
+		holdsOnlyTheCredential(t, "update", p.CredentialNames)
 	})
 
 	t.Run("rotate credential and set its expiry", func(t *testing.T) {
@@ -467,6 +597,8 @@ func TestProviderLifecycle(t *testing.T) {
 		if p.Config["region"] != "eu" {
 			t.Errorf("config after a credentials-only update = %v, want region=eu kept", p.Config)
 		}
+		// Rotating replaces the credential under its key; it adds none.
+		holdsOnlyTheCredential(t, "get after rotating", p.CredentialNames)
 	})
 
 	// Configuring a refresh for real needs a profile that declares a token
@@ -499,6 +631,23 @@ func TestProviderLifecycle(t *testing.T) {
 		}
 		wantError(t, http.MethodGet, base+"/"+name, nil, http.StatusNotFound, "not_found")
 	})
+
+	// What the OpenShell CLI and TUI send by default: the provider's own
+	// workspace as the profile scope, whatever scope the profile is in. The
+	// gateway resolves the profile the workspace sees, which for an id only
+	// the platform has is the platform's.
+	t.Run("the workspace as profile scope also resolves a platform profile", func(t *testing.T) {
+		other := randName("pv")
+		t.Cleanup(func() {
+			_, _, _ = do(http.MethodDelete, base+"/"+other, nil)
+		})
+		var p provider
+		mustJSON(t, http.MethodPost, base,
+			providerBody(ws, other, profile, map[string]string{profileCredentialKey: secret}), &p, http.StatusCreated)
+		if p.ProfileWorkspace != ws {
+			t.Errorf("created provider has profileWorkspace %q, want %q", p.ProfileWorkspace, ws)
+		}
+	})
 }
 
 // TestSandboxProviderAttachDetach covers the Providers tab of a sandbox:
@@ -511,9 +660,8 @@ func TestSandboxProviderAttachDetach(t *testing.T) {
 	const secret = "s3cr3t-attach-value"
 	attachPath := sandboxPath(ws, sb) + "/providers/" + name
 
-	mustJSON(t, http.MethodPost, providersPath(ws), map[string]any{
-		"name": name, "type": profile, "credentials": map[string]string{profileCredentialKey: secret},
-	}, nil, http.StatusCreated)
+	mustJSON(t, http.MethodPost, providersPath(ws),
+		providerBody("", name, profile, map[string]string{profileCredentialKey: secret}), nil, http.StatusCreated)
 	t.Cleanup(func() {
 		// The shared sandbox outlives this test, so it must be left with
 		// nothing attached; a provider cannot be deleted while it is.
@@ -532,6 +680,11 @@ func TestSandboxProviderAttachDetach(t *testing.T) {
 		names := make([]string, 0, len(list))
 		for _, p := range list {
 			names = append(names, p.Metadata.Name)
+			// The Providers tab shows each attached provider's credentials.
+			if len(p.CredentialNames) != 1 || p.CredentialNames[0] != profileCredentialKey {
+				t.Errorf("attached provider %s: credentialNames = %v, want [%s]",
+					p.Metadata.Name, p.CredentialNames, profileCredentialKey)
+			}
 		}
 		return names
 	}

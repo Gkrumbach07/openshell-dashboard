@@ -28,20 +28,21 @@ func binaryPayload(n int) []byte {
 	return b
 }
 
-// TestFileTransfer covers the file upload and download endpoints, which are
+// TestFileTransfer covers the file upload and download endpoints. Download is
 // also the only way the BFF reaches the gateway's non-interactive exec.
 //
 // Upload is the likeliest path to break on a wire change: the SDK has no
-// non-TTY exec with stdin, so pkg/clients/rawexec.go builds the
-// ExecSandboxRequest by hand from the generated proto types, workspace scope
-// included, and pipes the bytes into `dd`. Download goes through the SDK's
-// Exec().Run with `cat`. Both run against a workspace other than "default".
+// non-TTY exec with stdin, so pkg/clients/rawexec.go builds the exec request
+// by hand from the generated proto types, workspace scope included, and
+// streams the bytes into `dd` over the gateway's interactive exec RPC, asked
+// for without a TTY. Download goes through the SDK's Exec().Run with `cat`.
+// Both run against a workspace other than "default".
 func TestFileTransfer(t *testing.T) {
 	ws, name := sharedSandbox(t)
 
 	t.Run("binary round trip", func(t *testing.T) {
-		// 256 KiB: many dd blocks and several stream chunks, and well under
-		// the gateway's 1 MiB message limit (see the last subtest).
+		// 256 KiB: many dd blocks, sent to the gateway as a single stdin
+		// message. The last subtest sends a file that takes several.
 		content := binaryPayload(256 << 10)
 		filename := randName("bin") + ".dat"
 		wantPath := "/sandbox/" + filename
@@ -110,6 +111,10 @@ func TestFileTransfer(t *testing.T) {
 		checkError(t, "download from an unknown sandbox", status, raw, http.StatusNotFound, "not_found")
 	})
 
+	// The gateway refuses any gRPC message over 1 MiB ("decoded message length
+	// too large"), so a file that does not fit in one has to be streamed to it
+	// in pieces. Two MiB crosses that limit and arrives in several messages;
+	// it has to come back byte for byte.
 	t.Run("upload larger than one gRPC message", func(t *testing.T) {
 		content := binaryPayload(2 << 20)
 		filename := randName("big") + ".dat"
@@ -117,16 +122,17 @@ func TestFileTransfer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("upload: %v", err)
 		}
-		if status == http.StatusBadRequest && bytes.Contains(raw, []byte("message length too large")) {
-			t.Skipf("KNOWN BUG: uploading a %d-byte file fails with %d %s on gateway %s. The BFF accepts uploads "+
-				"up to 64 MiB (maxUploadSize in pkg/server/app.go) but pkg/clients/rawexec.go sends the whole "+
-				"file as the Stdin field of one ExecSandboxRequest, and the gateway refuses any gRPC message "+
-				"over 1 MiB — so every upload of about 1 MiB or more is rejected",
-				len(content), status, truncate(raw), gatewayVersion)
-		}
 		if status != http.StatusOK {
 			t.Fatalf("upload %d bytes [gateway %s]: status = %d, want 200; body: %s",
 				len(content), gatewayVersion, status, truncate(raw))
+		}
+		var res struct {
+			Path string `json:"path"`
+			Size int    `json:"size"`
+		}
+		mustDecode(t, raw, &res)
+		if res.Size != len(content) {
+			t.Errorf("upload reports %d bytes written to %s, want %d", res.Size, res.Path, len(content))
 		}
 		if got, _ := mustDownload(t, ws, name, "/sandbox/"+filename); !bytes.Equal(got, content) {
 			t.Errorf("downloaded %d bytes that differ from the %d uploaded", len(got), len(content))

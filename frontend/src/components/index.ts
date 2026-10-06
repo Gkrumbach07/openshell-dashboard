@@ -18,4 +18,5 @@ export { default as StatusDot } from './StatusDot';
 export { default as GatewayCompatibilityAlert } from './GatewayCompatibilityAlert';
 export * from './policy/policyTemplates';
 export { formatAge, formatTimestamp, formatUptime } from '../utils/formatters';
+export { credentialStorageKey } from '../utils/providerCredentials';
 export { AlertProvider, useAlerts } from '../app/AlertContext';

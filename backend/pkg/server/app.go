@@ -97,6 +97,19 @@ func (app *App) SetGatewaySupport(support models.GatewaySupport) {
 	app.gateway.SetGatewaySupport(support)
 }
 
+// SetProviderCredentialKeys gives the app the way to read which credentials
+// each provider holds, so that provider lists and details can name them. The
+// gateway reports those keys and the SDK drops them; clients.RawExecClient
+// reads them from the gateway's own answer. Without it providers are returned
+// with no credential names against gateways 0.1.x.
+//
+// Like SetGatewaySupport it is a method rather than a NewApp parameter so that
+// downstream callers of NewApp keep compiling. Call it before Routes.
+func (app *App) SetProviderCredentialKeys(keys services.ProviderCredentialKeyReader) {
+	app.providers.SetCredentialKeyReader(keys)
+	app.logs.SetCredentialKeyReader(keys)
+}
+
 // Routes builds the chi router.
 func (app *App) Routes() http.Handler {
 	r := chi.NewRouter()

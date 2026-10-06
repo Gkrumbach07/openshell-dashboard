@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
@@ -29,9 +30,11 @@ func (h *SettingsHandler) GetGlobalSettings(w http.ResponseWriter, r *http.Reque
 	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKGatewaySettings(config))
 }
 
+// SetSettingRequest is the set-setting body. Value mirrors the gateway's typed
+// SettingValue: a JSON string, boolean or integer, sent as the kind it is.
 type SetSettingRequest struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key   string          `json:"key"`
+	Value json.RawMessage `json:"value"`
 }
 
 func (h *SettingsHandler) SetGlobalSetting(w http.ResponseWriter, r *http.Request) {
@@ -43,9 +46,14 @@ func (h *SettingsHandler) SetGlobalSetting(w http.ResponseWriter, r *http.Reques
 		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidSetting, "key is required")
 		return
 	}
-	if _, err := h.svc.Update(r.Context(), "", &openshell.ConfigUpdate{
+	value, err := models.ParseSDKSettingValue(body.Value)
+	if err != nil {
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidSetting, err.Error())
+		return
+	}
+	if _, err = h.svc.Update(r.Context(), "", &openshell.ConfigUpdate{
 		SettingKey:   body.Key,
-		SettingValue: &openshell.SettingValue{Type: openshell.SettingValueString, StringVal: body.Value},
+		SettingValue: value,
 		Global:       true,
 	}); err != nil {
 		apiutils.WriteSDKError(w, err)

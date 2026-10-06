@@ -144,6 +144,42 @@ func TestFromSDKProviderStripsCredentials(t *testing.T) {
 	}
 }
 
+// A provider read from a gateway reaches the BFF without its credential keys:
+// the SDK drops them. They are added from the gateway's own answer, and the
+// list stays sorted with each key once however it was learned.
+func TestProviderAddCredentialNames(t *testing.T) {
+	got := FromSDKProvider(&openshell.Provider{Name: "claude-prov", Type: "claude"})
+	if len(got.CredentialNames) != 0 {
+		t.Fatalf("credentialNames = %v before any were added, want none", got.CredentialNames)
+	}
+
+	got.AddCredentialNames(nil)
+	if got.CredentialNames != nil {
+		t.Errorf("credentialNames = %v after adding none, want it left absent", got.CredentialNames)
+	}
+
+	got.AddCredentialNames([]string{"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"})
+	got.AddCredentialNames([]string{"ANTHROPIC_API_KEY", "AWS_ROLE"})
+	want := []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "AWS_ROLE"}
+	if strings.Join(got.CredentialNames, ",") != strings.Join(want, ",") {
+		t.Errorf("credentialNames = %v, want %v", got.CredentialNames, want)
+	}
+
+	// Names the SDK does carry and names read beside it are one list.
+	carried := FromSDKProvider(&openshell.Provider{
+		Name: "claude-prov",
+		Spec: openshell.ProviderSpec{Credentials: map[string]string{"ANTHROPIC_API_KEY": "REDACTED"}},
+	})
+	carried.AddCredentialNames([]string{"ANTHROPIC_API_KEY"})
+	if len(carried.CredentialNames) != 1 || carried.CredentialNames[0] != "ANTHROPIC_API_KEY" {
+		t.Errorf("credentialNames = %v, want [ANTHROPIC_API_KEY] once", carried.CredentialNames)
+	}
+	raw, _ := json.Marshal(carried)
+	if strings.Contains(string(raw), "REDACTED") {
+		t.Errorf("the redaction placeholder was serialized: %s", raw)
+	}
+}
+
 func TestFromSDKProviderCredentialNamesFromHandles(t *testing.T) {
 	got := FromSDKProvider(&openshell.Provider{
 		Name: "claude-prov",
