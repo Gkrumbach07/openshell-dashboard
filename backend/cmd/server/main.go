@@ -96,8 +96,9 @@ func main() {
 
 	support := gatewaySupport(*supportedMin, *supportedMax)
 
-	app := server.NewApp(clients.sdk, clients.uploadExec, authMiddleware, *staticDir, authCfg)
+	app := server.NewApp(clients.sdk, clients.raw, authMiddleware, *staticDir, authCfg)
 	app.SetGatewaySupport(support)
+	app.SetProviderCredentialKeys(clients.raw)
 
 	addr := net.JoinHostPort(*listenAddress, *port)
 	slog.Info("openshell-dashboard BFF listening",

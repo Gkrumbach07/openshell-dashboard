@@ -14,10 +14,19 @@ import (
 
 type LogsHandler struct {
 	sandboxSvc services.SandboxServiceInterface
+	keys       services.ProviderCredentialKeyReader
 }
 
 func NewLogsHandler(svc services.SandboxServiceInterface) *LogsHandler {
 	return &LogsHandler{sandboxSvc: svc}
+}
+
+// SetCredentialKeyReader gives the handler the way to read which credentials
+// the providers attached to a sandbox hold; see
+// ProvidersHandler.SetCredentialKeyReader. Call it before the handler serves
+// requests.
+func (h *LogsHandler) SetCredentialKeyReader(keys services.ProviderCredentialKeyReader) {
+	h.keys = keys
 }
 
 // GetSandboxLogs serves the polled logs view. The SDK resolves sandbox name
@@ -62,14 +71,24 @@ func (h *LogsHandler) GetSandboxLogs(w http.ResponseWriter, r *http.Request) {
 
 // ListSandboxProviders lists provider records attached to a sandbox.
 func (h *LogsHandler) ListSandboxProviders(w http.ResponseWriter, r *http.Request) {
-	providers, err := h.sandboxSvc.ListAllProviders(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
+	workspace, name := r.PathValue("workspace"), r.PathValue("name")
+	providers, err := h.sandboxSvc.ListAllProviders(r.Context(), workspace, name)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
 	}
+	var keys map[string][]string
+	if h.keys != nil {
+		if keys, err = h.keys.ListSandboxProviderCredentialKeys(r.Context(), workspace, name); err != nil {
+			apiutils.WriteSDKError(w, err)
+			return
+		}
+	}
 	out := make([]models.Provider, 0, len(providers))
 	for _, provider := range providers {
-		out = append(out, models.FromSDKProvider(provider))
+		dto := models.FromSDKProvider(provider)
+		dto.AddCredentialNames(keys[dto.Metadata.Name])
+		out = append(out, dto)
 	}
 	apiutils.WriteJSON(w, http.StatusOK, out)
 }

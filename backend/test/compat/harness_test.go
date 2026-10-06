@@ -21,12 +21,15 @@
 // in guard_test.go do not: they check the suite's own guards against canned
 // answers and send the gateway nothing.
 //
-// While the five known bugs listed at the end of this comment stand, a green
-// lane on gateways 0.1.0 to 0.1.2 has two tests that SKIP at the top level
-// (TestProviderFromWorkspaceProfile and TestProviderCredentialKeyedByName) and
-// three subtests that SKIP, each with a message starting "KNOWN BUG:". Any
-// other skip, or any failure, is news. The comment does not state how many
-// tests there are: a count is wrong as soon as another change adds a test.
+// A green lane on gateways 0.1.0 to 0.1.2 has no test that SKIPs. The skips
+// the suite can produce all say why: a known bug (see the end of this comment,
+// none at present), a gateway that is not this run's own (the writing subtests
+// of TestGlobalSettings and TestGlobalPolicy), a delete the gateway only
+// accepted, or a BFF started without a supported gateway range
+// (TestGatewayCompatibility, which CI always gives one). On the disposable
+// gateway CI uses, any skip, or any failure, is news. The comment does not
+// state how many tests there are: a count is wrong as soon as another change
+// adds a test.
 //
 // # Coverage map
 //
@@ -42,10 +45,12 @@
 //	               workspace isolation, stop and start, logs
 //	               with the lines/level/source/since filters,
 //	               exposed services                            sandbox_test.go
-//	exec           file upload and download (the raw proto
-//	               escape hatch in pkg/clients/rawexec.go and
-//	               the SDK's non-interactive Exec().Run), the
-//	               terminal websocket (interactive exec)       exec_test.go
+//	exec           file upload, including one larger than a
+//	               gRPC message the gateway accepts, and
+//	               download (the raw proto escape hatch in
+//	               pkg/clients/rawexec.go and the SDK's
+//	               non-interactive Exec().Run), the terminal
+//	               websocket (interactive exec)                exec_test.go
 //	policy         revisions, network-policy updates with and
 //	               without a stale resource version, the
 //	               sections a live sandbox refuses to change,
@@ -53,7 +58,9 @@
 //	               inbox                                       policy_test.go, contract_test.go
 //	providers      profiles (lint, import, get, update,
 //	               delete), provider create/get/list/update/
-//	               delete with write-only credentials, attach
+//	               delete with write-only credentials whose
+//	               keys are reported, from a workspace profile,
+//	               a platform one and an id both hold, attach
 //	               and detach on a sandbox including the stale
 //	               resource version, credential refresh status provider_test.go
 //	templates      create/get/list/delete, create-from-template template_test.go
@@ -118,21 +125,15 @@
 //
 // # Known bugs
 //
-// Tests that currently hit a product bug probe for it and call t.Skip with a
-// message starting "KNOWN BUG:" only when they see that exact failure, so they
-// start asserting again by themselves once the bug is fixed. There are five,
-// and all of them reproduce on gateways 0.1.0 to 0.1.2:
+// A test that hits a product bug probes for it and calls t.Skip with a message
+// starting "KNOWN BUG:" only when it sees that exact failure, so it starts
+// asserting again by itself once the bug is fixed, and the probe is removed
+// with the fix so that the bug coming back is a failure. There are none at
+// present.
 //
-//   - TestProviderFromWorkspaceProfile: a provider cannot be created from a
-//     profile imported through the dashboard.
-//   - TestProviderCredentialKeyedByName: credentials keyed by credential name,
-//     as the Add Provider form sends them, are refused when the profile
-//     declares environment variable names.
-//   - TestProviderLifecycle/credential_names_are_reported: credentialNames is
-//     always empty.
-//   - TestFileTransfer/upload_larger_than_one_gRPC_message: uploads of about
-//     1 MiB or more are refused.
-//   - TestGlobalSettings/bool_setting: a bool-typed setting cannot be set.
+// A probe is only as good as the request it sends. Send what the UI sends: a
+// test that keeps sending a request the UI no longer makes goes on reporting a
+// bug that is gone.
 package compat
 
 import (
@@ -662,11 +663,10 @@ func closeGatewayClient() {
 
 // profileCredentialKey is the one credential the profiles of this suite
 // require, seeded or imported. The gateway keys a provider's credentials by
-// environment variable name while the Add Provider form keys them by
-// credential name, so here the credential is named after its variable and the
-// two agree. That keeps provider CRUD testable; the disagreement itself is
-// pinned by TestProviderCredentialKeyedByName, which seeds a profile where the
-// two names differ, as they do in the profiles upstream publishes.
+// environment variable name, not by the credential's own name, so here the
+// credential is named after its variable and the two agree.
+// TestProviderCredentialKeyedByEnvVar seeds a profile where they differ, as
+// they do in the profiles upstream publishes.
 const profileCredentialKey = "COMPAT_API_KEY"
 
 // agreeingCredential is the credential schema described at
@@ -681,13 +681,13 @@ func agreeingCredential() openshell.ProfileCredential {
 // credential directly on the gateway and returns its id, which is the provider
 // "type" to create against.
 //
-// It bypasses the BFF because the BFF cannot produce a usable profile on a
-// gateway that ships none (the compat stack logs `provider profile sources
-// configured sources=["user"]`): the BFF only imports into a workspace, and
-// its create-provider call never names the profile's workspace, which the
-// gateway reads as "look in the platform scope". TestProviderFromWorkspaceProfile
-// pins that bug. Seeding here keeps provider CRUD and attach/detach covered in
-// the meantime; once the bug is fixed this helper can import through the BFF.
+// It bypasses the BFF because the BFF only imports profiles into a workspace,
+// and the dashboard also has to work with the profiles it did not import: the
+// ones a gateway ships and the ones an admin imports for every workspace. The
+// compat stack's gateway ships none (it logs `provider profile sources
+// configured sources=["user"]`), so a platform profile is seeded to stand in
+// for them. TestProviderFromWorkspaceProfile covers the other kind, imported
+// through the BFF.
 func seedPlatformProfile(t *testing.T, credential openshell.ProfileCredential) string {
 	t.Helper()
 	client, err := gatewayClient()

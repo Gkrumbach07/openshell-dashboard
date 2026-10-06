@@ -3,7 +3,6 @@
 package compat
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"testing"
@@ -65,22 +64,30 @@ func TestAuthConfig(t *testing.T) {
 	}
 }
 
-// gatewaySettings mirrors models.GatewaySettings.
-type gatewaySettings struct {
-	Settings []struct {
-		Key   string `json:"key"`
-		Value string `json:"value"`
-	} `json:"settings"`
-	SettingsRevision uint64 `json:"settingsRevision"`
+// settingEntry mirrors models.SettingEntry. Value is the setting's value in the
+// JSON type the gateway has it in — a string, a bool, or a float64, which is
+// how encoding/json reads a number — and nil for a setting that is listed
+// without one, which is how the gateway lists a setting that was never set.
+type settingEntry struct {
+	Value any    `json:"value"`
+	Key   string `json:"key"`
 }
 
-func (s gatewaySettings) lookup(key string) (string, bool) {
+// gatewaySettings mirrors models.GatewaySettings.
+type gatewaySettings struct {
+	Settings         []settingEntry `json:"settings"`
+	SettingsRevision uint64         `json:"settingsRevision"`
+}
+
+// lookup returns the value of key, nil when key is listed without a value, and
+// false when it is not listed at all.
+func (s gatewaySettings) lookup(key string) (any, bool) {
 	for _, e := range s.Settings {
 		if e.Key == key {
 			return e.Value, true
 		}
 	}
-	return "", false
+	return nil, false
 }
 
 // verdict is what a test that wants to change gateway-global state concludes
@@ -118,8 +125,8 @@ func settingWriteVerdict(listed gatewaySettings, key string) (verdict, string) {
 		}
 		return standDown, fmt.Sprintf("this gateway does not offer the %q setting; it lists %v", key, keys)
 	}
-	if current != "" {
-		return standDown, fmt.Sprintf("%q is already set to %q on this gateway and this test did not set it, "+
+	if current != nil {
+		return standDown, fmt.Sprintf("%q is already set to %#v on this gateway and this test did not set it, "+
 			"so it is neither overwritten nor unset", key, current)
 	}
 	return proceed, ""
@@ -145,7 +152,7 @@ func TestGlobalSettings(t *testing.T) {
 	// unsetIfStill removes key only while it still holds what this test wrote.
 	// It is the cleanup for a test that stopped halfway, and it must not take
 	// away a value somebody else has put there since.
-	unsetIfStill := func(key, wrote string) {
+	unsetIfStill := func(key string, wrote any) {
 		var now gatewaySettings
 		if status, err := doJSON(http.MethodGet, path, nil, &now); err != nil || status != http.StatusOK {
 			return
@@ -199,7 +206,7 @@ func TestGlobalSettings(t *testing.T) {
 		}
 		after := read(t)
 		if got, _ := after.lookup(key); got != value {
-			t.Errorf("%s reads back as %q, want %q", key, got, value)
+			t.Errorf("%s reads back as %#v, want %q", key, got, value)
 		}
 		if after.SettingsRevision <= before.SettingsRevision {
 			t.Errorf("settingsRevision = %d after a write, want more than %d", after.SettingsRevision, before.SettingsRevision)
@@ -217,8 +224,8 @@ func TestGlobalSettings(t *testing.T) {
 		if !res.Deleted {
 			t.Error("deleted = false, want true")
 		}
-		if got, _ := read(t).lookup(key); got != "" {
-			t.Errorf("%s reads back as %q after being deleted, want it unset", key, got)
+		if got, _ := read(t).lookup(key); got != nil {
+			t.Errorf("%s reads back as %#v after being deleted, want it listed without a value", key, got)
 		}
 	})
 
@@ -228,9 +235,13 @@ func TestGlobalSettings(t *testing.T) {
 			http.StatusBadRequest, "invalid_argument")
 	})
 
+	// The gateway's settings are typed and it refuses a value of another type
+	// ("setting 'ocsf_json_enabled' expects bool value"), so a bool is sent as
+	// a JSON boolean and comes back as one. Two of the four settings gateways
+	// 0.1.0 to 0.1.2 register are bools.
 	t.Run("bool setting", func(t *testing.T) {
-		// "false" is what the gateway does while this key is unset, too.
-		const boolKey, boolValue = "ocsf_json_enabled", "false"
+		// false is what the gateway does while this key is unset, too.
+		const boolKey, boolValue = "ocsf_json_enabled", false
 		if v, why := settingWriteVerdict(before, boolKey); v != proceed {
 			t.Skipf("not writing %s [gateway %s]: %s", boolKey, gatewayVersion, why)
 		}
@@ -242,19 +253,12 @@ func TestGlobalSettings(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PUT %s: %v", path, err)
 		}
-		if status == http.StatusBadRequest && bytes.Contains(raw, []byte("expects bool value")) {
-			t.Skipf("KNOWN BUG: PUT %s {key: %q, value: %q} fails with %d %s on gateway %s. "+
-				"SetGlobalSetting (pkg/handlers/settings_handler.go) sends every value as a string-typed "+
-				"SettingValue and the gateway type-checks its settings — so the Settings page cannot set "+
-				"a bool-typed setting at all",
-				path, boolKey, boolValue, status, truncate(raw), gatewayVersion)
-		}
 		if status != http.StatusOK {
-			t.Fatalf("PUT %s {key: %q} [gateway %s]: status = %d, want 200; body: %s",
-				path, boolKey, gatewayVersion, status, truncate(raw))
+			t.Fatalf("PUT %s {key: %q, value: %v} [gateway %s]: status = %d, want 200; body: %s",
+				path, boolKey, boolValue, gatewayVersion, status, truncate(raw))
 		}
 		if got, _ := read(t).lookup(boolKey); got != boolValue {
-			t.Errorf("%s reads back as %q, want %q", boolKey, got, boolValue)
+			t.Errorf("%s reads back as %#v, want the bool %v", boolKey, got, boolValue)
 		}
 	})
 }

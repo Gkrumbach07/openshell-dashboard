@@ -107,10 +107,14 @@ type ServiceEndpoint struct {
 	Domain      bool   `json:"domain"`
 }
 
-// SettingEntry is one key/value pair from the gateway config map.
+// SettingEntry is one entry of the gateway's settings map. Value mirrors the
+// gateway's typed SettingValue as the matching JSON type: a string, a boolean
+// or an integer. It is absent for a setting that has no value, which is how
+// the gateway lists a key it knows but that was never set — and for those it
+// does not say which type the key takes.
 type SettingEntry struct {
+	Value any    `json:"value,omitempty"`
 	Key   string `json:"key"`
-	Value string `json:"value"`
 }
 
 // GatewaySettings mirrors GetGatewayConfigResponse as a flat list.

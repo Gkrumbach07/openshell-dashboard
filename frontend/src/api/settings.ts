@@ -2,14 +2,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch, del, get } from './client';
 import { settingsKeys } from './queryKeys';
-import type { GatewaySettings } from '../types';
+import type { GatewaySettings, SettingValue } from '../types';
 
 export const getGlobalSettings = (): Promise<GatewaySettings> =>
   get<GatewaySettings>('/api/v1/settings/global');
 
+// The JSON type of `value` is the type the gateway is sent: a string, a
+// boolean or an integer. The BFF coerces nothing.
 export const setGlobalSetting = (
   key: string,
-  value: string,
+  value: SettingValue,
 ): Promise<{ updated: boolean }> =>
   apiFetch<{ updated: boolean }>('/api/v1/settings/global', {
     method: 'PUT',
@@ -32,7 +34,7 @@ export const useGlobalSettings = () =>
 export const useSetGlobalSetting = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ key, value }: { key: string; value: string }) =>
+    mutationFn: ({ key, value }: { key: string; value: SettingValue }) =>
       setGlobalSetting(key, value),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: settingsKeys.global }),

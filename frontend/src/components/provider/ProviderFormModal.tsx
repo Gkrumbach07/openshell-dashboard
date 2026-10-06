@@ -26,6 +26,16 @@ import { useAlerts } from '../../app/AlertContext';
 import { useSlots } from '../../slots';
 import KeyValueEditor from '../KeyValueEditor';
 import type { CredentialInputSlot, Provider } from '../../types';
+import {
+  credentialStorageKey,
+  parseCredentialExpiry,
+} from '../../utils/providerCredentials';
+import {
+  isAmbiguousProfile,
+  profileForProvider,
+  profileKey,
+  profileWorkspaceFor,
+} from '../../utils/providerProfiles';
 
 type ProviderFormModalProps = {
   workspace: string;
@@ -53,7 +63,8 @@ const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
   const resolvedCredentialInput =
     renderCredentialInput ?? slots.credentialInput;
   const [name, setName] = useState('');
-  const [profileId, setProfileId] = useState('');
+  // The chosen profile, by profileKey: one id can be listed in two scopes.
+  const [selectedKey, setSelectedKey] = useState('');
   const [credentialValues, setCredentialValues] = useState<
     Record<string, string>
   >({});
@@ -75,14 +86,14 @@ const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
 
   const mutation = isEdit ? updateProvider : createProvider;
 
-  const selectedProfile = useMemo(
-    () =>
-      (profiles.data ?? []).find(
-        (profile) =>
-          profile.id === (isEdit ? existingProvider?.type : profileId),
-      ),
-    [profiles.data, isEdit, existingProvider?.type, profileId],
-  );
+  // Editing, it is the profile the gateway resolves the provider's type to;
+  // creating, the one picked from the list.
+  const selectedProfile = useMemo(() => {
+    const listed = profiles.data ?? [];
+    return existingProvider
+      ? profileForProvider(listed, existingProvider)
+      : listed.find((profile) => profileKey(profile) === selectedKey);
+  }, [profiles.data, existingProvider, selectedKey]);
 
   const requiredMissing =
     !isEdit &&
@@ -90,9 +101,17 @@ const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
       .filter((credential) => credential.required)
       .some((credential) => !credentialValues[credential.name]);
 
+  // An expiry that is not a time still to come is never sent: the gateway
+  // would take the credential as expired and switch it off.
+  const expiryInvalid = (credentialName: string): boolean =>
+    Number.isNaN(parseCredentialExpiry(expiryValues[credentialName] ?? ''));
+  const anyExpiryInvalid = (selectedProfile?.credentials ?? []).some(
+    (credential) => expiryInvalid(credential.name),
+  );
+
   const close = () => {
     setName('');
-    setProfileId('');
+    setSelectedKey('');
     setCredentialValues({});
     setExpiryValues({});
     setConfigRows(
@@ -108,10 +127,18 @@ const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
   };
 
   const submit = () => {
+    if (anyExpiryInvalid || (!isEdit && !selectedProfile)) {
+      return;
+    }
+    // The fields and the credential-input slot hold values by credential
+    // name; the gateway wants each one under the key it stores it at.
+    const profileCredentials = selectedProfile?.credentials ?? [];
+    const storedKeys = existingProvider?.credentialNames ?? [];
     const credentials: Record<string, string> = {};
-    for (const [key, value] of Object.entries(credentialValues)) {
+    for (const credential of profileCredentials) {
+      const value = credentialValues[credential.name];
       if (value) {
-        credentials[key] = value;
+        credentials[credentialStorageKey(credential, storedKeys)] = value;
       }
     }
     const config: Record<string, string> = {};
@@ -128,9 +155,13 @@ const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
 
     if (isEdit && existingProvider) {
       const credentialExpiresAtMs: Record<string, number> = {};
-      for (const [key, value] of Object.entries(expiryValues)) {
-        if (value.trim()) {
-          credentialExpiresAtMs[key] = Number(value.trim());
+      for (const credential of profileCredentials) {
+        const expiresAtMs = parseCredentialExpiry(
+          expiryValues[credential.name] ?? '',
+        );
+        if (expiresAtMs !== undefined) {
+          credentialExpiresAtMs[credentialStorageKey(credential, storedKeys)] =
+            expiresAtMs;
         }
       }
       updateProvider.mutate(
@@ -156,7 +187,12 @@ const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
       createProvider.mutate(
         {
           name,
-          type: profileId,
+          type: selectedProfile?.id ?? '',
+          // The gateway looks the type up in the scope the provider names,
+          // so the request names the scope the chosen profile lives in.
+          profileWorkspace: selectedProfile
+            ? profileWorkspaceFor(selectedProfile, workspace)
+            : undefined,
           credentials:
             Object.keys(credentials).length > 0 ? credentials : undefined,
           config: Object.keys(config).length > 0 ? config : undefined,
@@ -207,9 +243,9 @@ const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
                   <FormSelect
                     id="provider-type"
                     data-testid="provider-type-select"
-                    value={profileId}
+                    value={selectedKey}
                     onChange={(_event, value) => {
-                      setProfileId(value);
+                      setSelectedKey(value);
                       setCredentialValues({});
                     }}
                   >
@@ -220,9 +256,13 @@ const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
                     />
                     {(profiles.data ?? []).map((profile) => (
                       <FormSelectOption
-                        key={profile.id}
-                        value={profile.id}
-                        label={`${profile.displayName} (${profile.category})`}
+                        key={profileKey(profile)}
+                        value={profileKey(profile)}
+                        label={
+                          isAmbiguousProfile(profiles.data ?? [], profile)
+                            ? `${profile.displayName} (${profile.category}, ${profile.scope} profile)`
+                            : `${profile.displayName} (${profile.category})`
+                        }
                       />
                     ))}
                   </FormSelect>
@@ -294,20 +334,30 @@ const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
                     <TextInput
                       id={`credential-expires-${credential.name}`}
                       value={expiryValues[credential.name] ?? ''}
+                      validated={
+                        expiryInvalid(credential.name) ? 'error' : 'default'
+                      }
                       onChange={(_event, value) =>
                         setExpiryValues((c) => ({
                           ...c,
                           [credential.name]: value,
                         }))
                       }
-                      placeholder="RFC3339 or epoch ms (optional, 0 to clear)"
+                      placeholder="2030-01-01T00:00:00Z or epoch ms (optional)"
                     />
                     <FormHelperText>
                       <HelperText>
-                        <HelperTextItem>
-                          When this credential expires. Leave empty to keep
-                          current value.
-                        </HelperTextItem>
+                        {expiryInvalid(credential.name) ? (
+                          <HelperTextItem variant="error">
+                            Enter a future date such as 2030-01-01T00:00:00Z, or
+                            a future time in epoch milliseconds.
+                          </HelperTextItem>
+                        ) : (
+                          <HelperTextItem>
+                            When this credential expires. Leave empty to keep
+                            the current value.
+                          </HelperTextItem>
+                        )}
                       </HelperText>
                     </FormHelperText>
                   </FormGroup>
@@ -354,7 +404,8 @@ const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
           variant="primary"
           onClick={submit}
           isDisabled={
-            (!isEdit && (!name || !profileId || requiredMissing)) ||
+            (!isEdit && (!name || !selectedProfile || requiredMissing)) ||
+            anyExpiryInvalid ||
             mutation.isPending
           }
           isLoading={mutation.isPending}

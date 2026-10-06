@@ -33,13 +33,13 @@ func withFakeBFF(t *testing.T, handler http.HandlerFunc) {
 	})
 }
 
-func settingsOf(pairs ...string) gatewaySettings {
+// settingsOf builds a settings list from key, value pairs. A nil value is a
+// setting that is listed without one.
+func settingsOf(pairs ...any) gatewaySettings {
 	var s gatewaySettings
 	for i := 0; i+1 < len(pairs); i += 2 {
-		s.Settings = append(s.Settings, struct {
-			Key   string `json:"key"`
-			Value string `json:"value"`
-		}{pairs[i], pairs[i+1]})
+		key, _ := pairs[i].(string)
+		s.Settings = append(s.Settings, settingEntry{Key: key, Value: pairs[i+1]})
 	}
 	return s
 }
@@ -56,7 +56,7 @@ func TestGuardSettingWrite(t *testing.T) {
 	}{
 		{
 			name:   "listed and unset may be written",
-			listed: settingsOf("ocsf_json_enabled", "", key, ""),
+			listed: settingsOf("ocsf_json_enabled", nil, key, nil),
 			want:   proceed,
 		},
 		{
@@ -70,9 +70,16 @@ func TestGuardSettingWrite(t *testing.T) {
 		{
 			// The reviewed version overwrote the value and then unset it.
 			name:   "a value somebody else set is left alone",
-			listed: settingsOf("ocsf_json_enabled", "", key, "auto"),
+			listed: settingsOf("ocsf_json_enabled", nil, key, "auto"),
 			want:   standDown,
 			reason: `already set to "auto"`,
+		},
+		{
+			// An empty string is a value the gateway holds, not an unset key.
+			name:   "a value set to the empty string is set",
+			listed: settingsOf(key, ""),
+			want:   standDown,
+			reason: `already set to ""`,
 		},
 		{
 			name:   "even when it equals what the test would write",
@@ -82,7 +89,7 @@ func TestGuardSettingWrite(t *testing.T) {
 		},
 		{
 			name:   "a key this gateway does not offer",
-			listed: settingsOf("ocsf_json_enabled", ""),
+			listed: settingsOf("ocsf_json_enabled", nil),
 			want:   standDown,
 			reason: "does not offer",
 		},

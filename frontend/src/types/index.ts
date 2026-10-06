@@ -241,9 +241,17 @@ export type Provider = {
   profileWorkspace?: string;
 };
 
+// Mirrors the gateway's Provider message; the BFF forwards it as it is.
 export type CreateProviderRequest = {
   name: string;
   type: string;
+  // Provider.profile_workspace: the scope `type` is looked up in. Empty is
+  // the platform scope, which holds the built-in and the platform profiles;
+  // the provider's own workspace resolves the profile that workspace sees.
+  // The gateway accepts no other value (see profileWorkspaceFor).
+  profileWorkspace?: string;
+  // Keyed by the gateway's stored key: the credential's env var name when the
+  // profile declares one, its name otherwise (see credentialStorageKey).
   credentials?: Record<string, string>;
   config?: Record<string, string>;
   labels?: Record<string, string>;
@@ -571,7 +579,13 @@ export type ExposeServiceRequest = {
 
 // --- Gateway settings ---
 
-export type SettingEntry = { key: string; value: string };
+// A gateway setting's value in the type the gateway has it in. Settings are
+// typed (string, bool or int) and the gateway refuses a value of another type.
+export type SettingValue = string | boolean | number;
+
+// `value` is absent for a setting the gateway knows but that was never set.
+// For those the gateway does not say which type the key takes.
+export type SettingEntry = { key: string; value?: SettingValue };
 
 export type GatewaySettings = {
   settings: SettingEntry[];

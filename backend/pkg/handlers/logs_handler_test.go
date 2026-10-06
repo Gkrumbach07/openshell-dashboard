@@ -14,6 +14,8 @@ import (
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestGetSandboxLogs(t *testing.T) {
@@ -135,6 +137,48 @@ func TestListSandboxProviders(t *testing.T) {
 	names, _ := got[0]["credentialNames"].([]any)
 	if len(names) != 1 || names[0] != "api_key" {
 		t.Errorf("credentialNames = %v, want [api_key]", got[0]["credentialNames"])
+	}
+}
+
+// The providers attached to a sandbox name their credentials the same way the
+// workspace's providers do: from the key reader, by provider name.
+func TestListSandboxProvidersNamesCredentialsFromTheKeyReader(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.sandboxes.listProvidersFn = func(_ context.Context, _, _ string) ([]*openshell.Provider, error) {
+		return []*openshell.Provider{gatewayProvider("attached")}, nil
+	}
+	reader := &fakeCredentialKeys{bySandbox: map[string][]string{"attached": {"GITHUB_TOKEN"}}}
+	handler := NewLogsHandler(services.NewSandboxService(sdk.Sandboxes()))
+	handler.SetCredentialKeyReader(reader)
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/providers", handler.ListSandboxProviders)
+
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/team-a/sandboxes/my-sandbox/providers", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	var got []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d providers, want 1", len(got))
+	}
+	if names := credentialNamesOf(t, got[0]); len(names) != 1 || names[0] != "GITHUB_TOKEN" {
+		t.Errorf("credentialNames = %v, want [GITHUB_TOKEN]", names)
+	}
+	if len(reader.calls) != 1 || reader.calls[0] != "sandbox team-a/my-sandbox" {
+		t.Errorf("key reader calls = %v, want one read for team-a/my-sandbox", reader.calls)
+	}
+
+	// The reader is a raw gRPC client; its errors never passed through the SDK.
+	reader.err = status.Error(codes.Unavailable, "connection refused")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/workspaces/team-a/sandboxes/my-sandbox/providers", nil))
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("status = %d when the keys cannot be read, want 502", w.Code)
 	}
 }
 

@@ -21,6 +21,7 @@ alwaysApply: false
 - Provider credentials are write-only from the dashboard perspective
 - The gateway marks secret fields with `[(openshell.options.v1.secret) = true]` — the BFF's `models.FromSDK*()` functions must strip these before returning to the browser
 - `models.FromSDKProvider()` returns only credential key names, never values
+- The gateway answers every provider read with each credential's value replaced by the literal `REDACTED`. That placeholder is not passed on either: `pkg/clients/rawprovider.go` returns the keys and nothing else. An update is never built from a provider that was read first, so the placeholder cannot travel back to the gateway as a credential's value
 
 ## Input validation
 

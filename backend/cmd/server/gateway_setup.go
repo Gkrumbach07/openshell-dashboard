@@ -13,8 +13,10 @@ import (
 )
 
 type gatewayClients struct {
-	sdk        openshell.ClientInterface
-	uploadExec *clients.RawExecClient
+	sdk openshell.ClientInterface
+	// raw is the direct gRPC client for what the SDK's own client does not
+	// offer: binary-safe uploads and the keys of a provider's credentials.
+	raw *clients.RawExecClient
 }
 
 func (c *gatewayClients) Close() {
@@ -23,9 +25,9 @@ func (c *gatewayClients) Close() {
 			slog.Warn("SDK client close failed", "error", err)
 		}
 	}
-	if c.uploadExec != nil {
-		if err := c.uploadExec.Close(); err != nil {
-			slog.Warn("upload exec client close failed", "error", err)
+	if c.raw != nil {
+		if err := c.raw.Close(); err != nil {
+			slog.Warn("raw gateway client close failed", "error", err)
 		}
 	}
 }
@@ -59,15 +61,15 @@ func newGatewayClients(gatewayURL, gatewayCACert, gatewayClientCert, gatewayClie
 	}
 
 	rawHost := strings.TrimPrefix(strings.TrimPrefix(sdkAddress, "https://"), "http://")
-	uploadExec, err := clients.NewRawExecClient(rawHost, gatewayCACert, gatewayClientCert, gatewayClientKey, useTLS)
+	raw, err := clients.NewRawExecClient(rawHost, gatewayCACert, gatewayClientCert, gatewayClientKey, useTLS)
 	if err != nil {
 		if closeErr := sdkClient.Close(); closeErr != nil {
 			slog.Warn("SDK client close failed during setup rollback", "error", closeErr)
 		}
-		return nil, fmt.Errorf("upload exec client setup failed: %w", err)
+		return nil, fmt.Errorf("raw gateway client setup failed: %w", err)
 	}
 
-	return &gatewayClients{sdk: sdkClient, uploadExec: uploadExec}, nil
+	return &gatewayClients{sdk: sdkClient, raw: raw}, nil
 }
 
 func normalizeGatewayAddress(gatewayURL string, useTLS bool) string {

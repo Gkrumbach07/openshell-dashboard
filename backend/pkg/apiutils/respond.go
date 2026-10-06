@@ -111,24 +111,62 @@ func WriteSDKError(w http.ResponseWriter, err error) {
 		slog.Warn("gateway error", "code", "Unavailable", "message", msg)
 		WriteError(w, http.StatusBadGateway, GatewayUnavailable, "OpenShell gateway is unreachable")
 	default:
-		// Fallback: check for raw gRPC status codes not covered by SDK helpers
-		// (FailedPrecondition, OutOfRange, ResourceExhausted).
-		st, ok := status.FromError(err)
-		if ok {
-			switch st.Code() {
-			case codes.FailedPrecondition, codes.OutOfRange:
-				slog.Warn("gateway error", "code", st.Code().String(), "message", st.Message())
-				WriteError(w, http.StatusBadRequest, InvalidArgument, st.Message())
-				return
-			case codes.ResourceExhausted:
-				slog.Warn("gateway error", "code", "ResourceExhausted", "message", st.Message())
-				WriteError(w, http.StatusTooManyRequests, ResourceExhausted, st.Message())
-				return
-			}
+		if writeRawStatusError(w, err) {
+			return
 		}
 		slog.Error("gateway call failed", "error", err)
 		WriteError(w, http.StatusInternalServerError, Internal, "internal error")
 	}
+}
+
+// rawStatusResponse is the response for one gRPC status code.
+type rawStatusResponse struct {
+	code ResponseCode
+	// message replaces the gateway's own message when set.
+	message string
+	status  int
+}
+
+// rawStatusResponses maps the gRPC status of an error that did not come
+// through the SDK to an HTTP response. The raw clients in pkg/clients return
+// such errors, and so do the statuses the SDK's typed helpers do not cover.
+// A status gets the response the SDK's typed error for it gets above, so a
+// call answers the same whichever client made it, with two exceptions that
+// predate the table and are kept as they were: the SDK reads
+// FailedPrecondition as a conflict and ResourceExhausted as an unavailable
+// gateway, and here they stay a bad request and a rate limit.
+var rawStatusResponses = map[codes.Code]rawStatusResponse{
+	codes.NotFound:           {status: http.StatusNotFound, code: NotFound},
+	codes.AlreadyExists:      {status: http.StatusConflict, code: AlreadyExists},
+	codes.InvalidArgument:    {status: http.StatusBadRequest, code: InvalidArgument},
+	codes.FailedPrecondition: {status: http.StatusBadRequest, code: InvalidArgument},
+	codes.OutOfRange:         {status: http.StatusBadRequest, code: InvalidArgument},
+	codes.PermissionDenied:   {status: http.StatusForbidden, code: PermissionDenied},
+	codes.Unauthenticated:    {status: http.StatusUnauthorized, code: Unauthenticated},
+	codes.Aborted:            {status: http.StatusConflict, code: Conflict},
+	codes.ResourceExhausted:  {status: http.StatusTooManyRequests, code: ResourceExhausted},
+	codes.Unavailable:        {status: http.StatusBadGateway, code: GatewayUnavailable, message: "OpenShell gateway is unreachable"},
+	codes.DeadlineExceeded:   {status: http.StatusBadGateway, code: GatewayUnavailable, message: "OpenShell gateway is unreachable"},
+}
+
+// writeRawStatusError answers for an error that carries a gRPC status the
+// table knows, and reports whether it did.
+func writeRawStatusError(w http.ResponseWriter, err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	response, known := rawStatusResponses[st.Code()]
+	if !known {
+		return false
+	}
+	slog.Warn("gateway error", "code", st.Code().String(), "message", st.Message())
+	message := response.message
+	if message == "" {
+		message = st.Message()
+	}
+	WriteError(w, response.status, response.code, message)
+	return true
 }
 
 const maxJSONBodyBytes int64 = 1 << 20 // 1 MB

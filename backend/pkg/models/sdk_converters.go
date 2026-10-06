@@ -1,7 +1,9 @@
 package models
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -269,23 +271,32 @@ func FromSDKProvider(provider *openshell.Provider) Provider {
 			out.CredentialExpiresAtMs[k] = timeToMs(t)
 		}
 	}
-	// Gateway responses omit Spec.Credentials (write-only). Names live on
-	// CredentialHandles after create. Union both so mocks and live reads work.
-	names := make(map[string]struct{}, len(provider.Spec.Credentials)+len(provider.Spec.CredentialHandles))
+	// The SDK does not carry the keys of the credentials a provider holds:
+	// the gateway returns them as its redacted credentials map, which the
+	// SDK's converter drops, and it clears the handles before answering. So
+	// for a provider read from a gateway both maps are empty here and the
+	// names come from AddCredentialNames. Whatever the SDK does carry is still
+	// counted, for the day it stops dropping them.
+	names := make([]string, 0, len(provider.Spec.Credentials)+len(provider.Spec.CredentialHandles))
 	for name := range provider.Spec.Credentials {
-		names[name] = struct{}{}
+		names = append(names, name)
 	}
 	for name := range provider.Spec.CredentialHandles {
-		names[name] = struct{}{}
+		names = append(names, name)
 	}
-	if len(names) > 0 {
-		out.CredentialNames = make([]string, 0, len(names))
-		for name := range names {
-			out.CredentialNames = append(out.CredentialNames, name)
-		}
-		slices.Sort(out.CredentialNames)
-	}
+	out.AddCredentialNames(names)
 	return out
+}
+
+// AddCredentialNames adds the keys of credentials the provider holds to
+// CredentialNames, which stays sorted and free of duplicates.
+func (p *Provider) AddCredentialNames(names []string) {
+	if len(names) == 0 {
+		return
+	}
+	merged := append(slices.Clone(p.CredentialNames), names...)
+	slices.Sort(merged)
+	p.CredentialNames = slices.Compact(merged)
 }
 
 // FromSDKRefreshStatus converts an SDK RefreshStatus to the JSON DTO.
@@ -622,18 +633,52 @@ func FromSDKServiceEndpoint(svc *openshell.ServiceEndpoint) ServiceEndpoint {
 	}
 }
 
-func sdkSettingValueString(sv openshell.SettingValue) string {
+// sdkSettingValueJSON renders a typed SDK setting value as the matching JSON
+// type, and nil for a setting that has no value. No setting the gateway
+// registers takes bytes; should one ever come back it is shown as hex.
+func sdkSettingValueJSON(sv openshell.SettingValue) any {
 	switch sv.Type {
 	case openshell.SettingValueString:
 		return sv.StringVal
 	case openshell.SettingValueBool:
-		return fmt.Sprintf("%t", sv.BoolVal)
+		return sv.BoolVal
 	case openshell.SettingValueInt:
-		return fmt.Sprintf("%d", sv.IntVal)
+		return sv.IntVal
 	case openshell.SettingValueBytes:
 		return fmt.Sprintf("%x", sv.BytesVal)
 	}
-	return ""
+	return nil
+}
+
+// ErrSettingValue is what ParseSDKSettingValue returns for a value that is not
+// one of the JSON types a setting can take.
+var ErrSettingValue = errors.New("value must be a JSON string, boolean or integer")
+
+// ParseSDKSettingValue reads a setting value from JSON into the gateway's
+// typed SettingValue: a JSON string is a string value, a boolean a bool value
+// and a whole number an int value. The gateway type-checks every setting and
+// refuses a value of another kind, so the JSON type selects the kind and
+// nothing is coerced: "true" stays a string.
+func ParseSDKSettingValue(raw json.RawMessage) (*openshell.SettingValue, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, ErrSettingValue
+	}
+	switch v := value.(type) {
+	case string:
+		return &openshell.SettingValue{Type: openshell.SettingValueString, StringVal: v}, nil
+	case bool:
+		return &openshell.SettingValue{Type: openshell.SettingValueBool, BoolVal: v}, nil
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil {
+			return nil, ErrSettingValue
+		}
+		return &openshell.SettingValue{Type: openshell.SettingValueInt, IntVal: n}, nil
+	}
+	return nil, ErrSettingValue
 }
 
 // FromSDKGatewaySettings converts an SDK GatewayConfig to the JSON DTO.
@@ -648,7 +693,7 @@ func FromSDKGatewaySettings(config *openshell.GatewayConfig) GatewaySettings {
 	for key, val := range config.Settings {
 		out.Settings = append(out.Settings, SettingEntry{
 			Key:   key,
-			Value: sdkSettingValueString(val),
+			Value: sdkSettingValueJSON(val),
 		})
 	}
 	sort.Slice(out.Settings, func(i, j int) bool {

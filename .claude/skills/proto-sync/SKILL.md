@@ -65,6 +65,7 @@ python3 deploy/ci/sweep/sweep.py validate-pins --go-mod backend/go.mod
 - DTO shaping belongs in `backend/pkg/models/sdk_converters.go`
 - Policy JSON compatibility belongs in `backend/pkg/models/policyproto.go`
 - Only keep `backend/pkg/clients/rawexec.go` if the public SDK still lacks non-TTY stdin exec
+- Only keep `backend/pkg/clients/rawprovider.go` if the SDK's provider type still drops the keys of the gateway's redacted `credentials` map
 
 ### 4. Check for new user-facing capabilities
 

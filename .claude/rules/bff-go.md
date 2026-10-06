@@ -31,7 +31,8 @@ backend/
 │   │   └── proxy.go           # Token extraction from headers
 │   ├── clients/               # Narrow SDK escape hatches
 │   │   ├── auth.go            # Per-request bearer forwarding
-│   │   └── rawexec.go         # Non-TTY stdin exec for binary uploads
+│   │   ├── rawexec.go         # Non-TTY stdin exec for binary uploads
+│   │   └── rawprovider.go     # Keys of the credentials a provider holds
 │   └── models/                # Response DTOs and request builders
 │       ├── models.go          # DTOs shared with the frontend
 │       ├── auth.go            # AuthConfigResponse, FeatureFlags
@@ -72,11 +73,31 @@ SDK sub-clients once (`Sandboxes()`, `Workspaces()`, `Providers()`, `Exec()`,
 that interface into the handler as `h.svc`. Downstream can substitute its own
 implementation of any `services.*Interface` without forking the handler.
 
-The one intentional exception is `pkg/clients/rawexec.go`: it uses the
-SDK's generated proto client for binary-safe uploads because the public exec API
-still lacks a non-TTY stdin path. Do not add new local wrappers, copied protos,
-or generated stub trees unless there is a concrete upstream SDK gap you can
-point to.
+The two intentional exceptions are in `pkg/clients`, and both use the SDK's
+generated proto client because of a gap in the public SDK:
+
+- `rawexec.go` streams a file into a sandbox for binary-safe uploads, because
+  the public exec API lacks a non-TTY stdin path.
+- `rawprovider.go` reads the keys of the credentials a provider holds, because
+  the SDK's converter drops the redacted `credentials` map the gateway returns
+  them in. `app.SetProviderCredentialKeys` wires it in; handlers reach it
+  through `services.ProviderCredentialKeyReader`, beside the SDK call that
+  returns the provider itself.
+
+Do not add new local wrappers, copied protos, or generated stub trees unless
+there is a concrete upstream SDK gap you can point to, and delete an exception
+when its gap closes.
+
+## Mirror the gateway
+
+The BFF translates nothing (see "Stay in parity with the gateway" in
+`CLAUDE.md`). A request body carries what the gateway's message carries and is
+forwarded as it is; a response carries what the gateway returned, minus
+secrets. When a request fails because the gateway wants it another way, change
+what the UI sends, not what the BFF forwards. In particular the BFF does not
+rename provider credential keys, work out a provider's profile scope, or guess
+the type of a setting, and it sends an update only what the request names
+rather than a resource it read first.
 
 ## Handlers
 
@@ -165,7 +186,7 @@ can return is declared there so the frontend has one authoritative list.
 - Table-driven tests with `*_test.go` adjacent to implementation
 - `httptest.NewRecorder()` + `http.NewRequest()` for handler tests
 - `mock_sdk_test.go` provides `openshell.ClientInterface` test doubles for handler coverage
-- `rawexec_test.go` covers the one low-level gRPC escape hatch separately
+- `rawexec_test.go` and `rawprovider_test.go` cover the two low-level gRPC escape hatches against a fake gateway that enforces the real one's 1 MiB message limit
 - `slog` for structured logging
 
 ## SDK updates

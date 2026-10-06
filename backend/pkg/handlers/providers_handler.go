@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -65,24 +66,65 @@ type UpdateProviderBody struct {
 }
 
 type ProvidersHandler struct {
-	svc services.ProviderServiceInterface
+	svc  services.ProviderServiceInterface
+	keys services.ProviderCredentialKeyReader
 }
 
 func NewProvidersHandler(svc services.ProviderServiceInterface) *ProvidersHandler {
 	return &ProvidersHandler{svc: svc}
 }
 
+// SetCredentialKeyReader gives the handler the way to read which credentials
+// each provider holds. The gateway reports those keys and the SDK drops them,
+// so without a reader every provider is returned with whatever the SDK
+// carries, which against gateways 0.1.x is none. It is a setter rather than a
+// NewProvidersHandler parameter so that existing callers of the constructor
+// keep compiling. Call it before the handler serves requests.
+func (h *ProvidersHandler) SetCredentialKeyReader(keys services.ProviderCredentialKeyReader) {
+	h.keys = keys
+}
+
 func (h *ProvidersHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
-	providers, err := h.svc.ListAll(r.Context(), r.PathValue("workspace"))
+	workspace := r.PathValue("workspace")
+	providers, err := h.svc.ListAll(r.Context(), workspace)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
 	}
+	var keys map[string][]string
+	if h.keys != nil {
+		if keys, err = h.keys.ListProviderCredentialKeys(r.Context(), workspace); err != nil {
+			apiutils.WriteSDKError(w, err)
+			return
+		}
+	}
 	out := make([]models.Provider, 0, len(providers))
 	for _, provider := range providers {
-		out = append(out, models.FromSDKProvider(provider))
+		dto := models.FromSDKProvider(provider)
+		dto.AddCredentialNames(keys[dto.Metadata.Name])
+		out = append(out, dto)
 	}
 	apiutils.WriteJSON(w, http.StatusOK, out)
+}
+
+// written converts the provider a create or update returned and adds the keys
+// of the credentials it now holds. The write has already happened, so a failed
+// read of the keys is logged and the provider is returned without them: the
+// answer must not read as a failed write.
+func (h *ProvidersHandler) written(r *http.Request, provider *openshell.Provider) models.Provider {
+	dto := models.FromSDKProvider(provider)
+	if h.keys == nil {
+		return dto
+	}
+	workspace, name := r.PathValue("workspace"), dto.Metadata.Name
+	names, err := h.keys.ProviderCredentialKeys(r.Context(), workspace, name)
+	if err != nil {
+		slog.Warn("provider written, but its credential keys could not be read back",
+			"workspace", workspace, "provider", name, "error", err)
+		return dto
+	}
+	dto.AddCredentialNames(names)
+	return dto
 }
 
 func (h *ProvidersHandler) CreateProvider(w http.ResponseWriter, r *http.Request) {
@@ -99,8 +141,9 @@ func (h *ProvidersHandler) CreateProvider(w http.ResponseWriter, r *http.Request
 		Type:   body.Type,
 		Labels: body.Labels,
 		Spec: openshell.ProviderSpec{
-			Credentials: body.Credentials,
-			Config:      body.Config,
+			Credentials:      body.Credentials,
+			Config:           body.Config,
+			ProfileWorkspace: body.ProfileWorkspace,
 		},
 	}
 	created, err := h.svc.Create(r.Context(), r.PathValue("workspace"), provider)
@@ -108,16 +151,26 @@ func (h *ProvidersHandler) CreateProvider(w http.ResponseWriter, r *http.Request
 		apiutils.WriteSDKError(w, err)
 		return
 	}
-	apiutils.WriteJSON(w, http.StatusCreated, models.FromSDKProvider(created))
+	apiutils.WriteJSON(w, http.StatusCreated, h.written(r, created))
 }
 
 func (h *ProvidersHandler) GetProvider(w http.ResponseWriter, r *http.Request) {
-	provider, err := h.svc.Get(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
+	workspace, name := r.PathValue("workspace"), r.PathValue("name")
+	provider, err := h.svc.Get(r.Context(), workspace, name)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
 	}
-	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKProvider(provider))
+	dto := models.FromSDKProvider(provider)
+	if h.keys != nil {
+		names, keysErr := h.keys.ProviderCredentialKeys(r.Context(), workspace, name)
+		if keysErr != nil {
+			apiutils.WriteSDKError(w, keysErr)
+			return
+		}
+		dto.AddCredentialNames(names)
+	}
+	apiutils.WriteJSON(w, http.StatusOK, dto)
 }
 
 func (h *ProvidersHandler) DeleteProvider(w http.ResponseWriter, r *http.Request) {
@@ -135,35 +188,42 @@ func (h *ProvidersHandler) UpdateProvider(w http.ResponseWriter, r *http.Request
 	if !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
-	workspace := r.PathValue("workspace")
-	name := r.PathValue("name")
-
-	provider, err := h.svc.Get(r.Context(), workspace, name)
-	if err != nil {
-		apiutils.WriteSDKError(w, err)
-		return
-	}
-
-	if body.Credentials != nil {
-		provider.Spec.Credentials = body.Credentials
-	}
-	if body.Config != nil {
-		provider.Spec.Config = body.Config
+	// The gateway merges an update into the provider it has stored: a map
+	// that is absent changes nothing, and a key with an empty value is
+	// removed. So the update carries only what the request names, the way the
+	// OpenShell TUI sends it, and is not built from a provider that was read
+	// first. The gateway returns every credential as the literal "REDACTED"
+	// and would store that literal if it were sent back; reading through the
+	// SDK hides this only because the SDK drops the credentials it is given.
+	provider := &openshell.Provider{
+		Name: r.PathValue("name"),
+		Spec: openshell.ProviderSpec{
+			Credentials: body.Credentials,
+			Config:      body.Config,
+		},
 	}
 	if body.CredentialExpiresAtMs != nil {
 		expires := make(map[string]time.Time, len(body.CredentialExpiresAtMs))
 		for k, ms := range body.CredentialExpiresAtMs {
+			// A JSON null decodes to 0 here, and the gateway reads an expiry
+			// of 0 as one that passed in 1970: it then withholds the
+			// credential from every sandbox. No request means that.
+			if ms <= 0 {
+				apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidRequest,
+					"credentialExpiresAtMs for "+k+" must be a time after 1970 in epoch milliseconds")
+				return
+			}
 			expires[k] = time.UnixMilli(ms)
 		}
 		provider.Spec.CredentialExpiresAt = expires
 	}
 
-	updated, err := h.svc.Update(r.Context(), workspace, provider)
+	updated, err := h.svc.Update(r.Context(), r.PathValue("workspace"), provider)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
 	}
-	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKProvider(updated))
+	apiutils.WriteJSON(w, http.StatusOK, h.written(r, updated))
 }
 
 func (h *ProvidersHandler) GetProviderRefreshStatus(w http.ResponseWriter, r *http.Request) {
