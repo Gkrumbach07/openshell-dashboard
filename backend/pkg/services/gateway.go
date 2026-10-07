@@ -36,6 +36,17 @@ type GatewayVersionReader interface {
 	GetGatewayVersion(ctx context.Context) (string, error)
 }
 
+// GatewayHealthReader reads the whole answer of the gateway's health check:
+// the version GatewayVersionReader returns, and whether the gateway called
+// itself healthy. It is one call, so a handler that wants both asks here.
+//
+// Like GatewayVersionReader it is an interface of its own so that a downstream
+// service written before it existed keeps compiling. GatewayHandler prefers it
+// and falls back to GatewayVersionReader, which reports no health.
+type GatewayHealthReader interface {
+	GetGatewayHealth(ctx context.Context) (*models.GatewayHealth, error)
+}
+
 type GatewayService struct {
 	// clients openshell.Factory
 	sdk openshell.ClientInterface
@@ -73,6 +84,21 @@ func (s *GatewayService) GetGatewayVersion(ctx context.Context) (string, error) 
 		return "", nil
 	}
 	return result.Version, nil
+}
+
+// GetGatewayHealth returns what the gateway's health check reports: the same
+// call again, this time keeping both halves of the answer. A nil result means
+// the SDK answered with nothing, so there is neither a version nor a health
+// to pass on.
+func (s *GatewayService) GetGatewayHealth(ctx context.Context) (*models.GatewayHealth, error) {
+	result, err := s.sdk.Health().Check(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, nil
+	}
+	return &models.GatewayHealth{Version: result.Version, Healthy: result.Healthy}, nil
 }
 
 func (s *GatewayService) GetCurrentUser(ctx context.Context) (*models.CurrentUser, error) {

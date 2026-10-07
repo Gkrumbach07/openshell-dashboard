@@ -99,6 +99,7 @@ func main() {
 	app := server.NewApp(clients.sdk, clients.raw, authMiddleware, *staticDir, authCfg)
 	app.SetGatewaySupport(support)
 	app.SetProviderCredentialKeys(clients.raw)
+	app.SetProviderProfiles(clients.raw)
 
 	addr := net.JoinHostPort(*listenAddress, *port)
 	slog.Info("openshell-dashboard BFF listening",

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -47,12 +48,13 @@ func (h *SandboxHandler) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidName, "sandbox name must be a valid DNS-1123 label")
 		return
 	}
-	if body.Image == "" {
-		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidImage, "image is required")
+	// No image is not an error: the gateway then runs its own default image,
+	// which is what `openshell sandbox create` without --from asks for.
+	if len(body.Policy) == 0 {
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPolicy, "policy is required: the gateway accepts a sandbox without one, but unless it has a default policy to apply the sandbox never becomes ready")
 		return
 	}
-	if len(body.Policy) == 0 {
-		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPolicy, "policy is required — SandboxSpec.policy is a required field")
+	if !validServiceExposures(w, body.ServiceExposures) {
 		return
 	}
 	spec, err := models.BuildSDKSandboxSpec(body)
@@ -62,10 +64,7 @@ func (h *SandboxHandler) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var createOpts []openshell.CreateOptions
-	if len(body.Annotations) > 0 {
-		createOpts = append(createOpts, openshell.CreateOptions{Annotations: body.Annotations})
-	}
+	createOpts := models.BuildSDKCreateOptions(body.Annotations, body.ServiceExposures)
 
 	sandbox, err := h.svc.Create(r.Context(), r.PathValue("workspace"), body.Name, spec, body.Labels, createOpts...)
 	if err != nil {
@@ -73,6 +72,25 @@ func (h *SandboxHandler) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiutils.WriteJSON(w, http.StatusCreated, models.FromSDKSandbox(sandbox))
+}
+
+// maxServicePort is the highest port a service can be exposed on.
+const maxServicePort = 65535
+
+// validServiceExposures refuses a service to expose at create whose port is
+// not a port, the one check `openshell sandbox create --expose` makes before
+// it calls the gateway, and reports whether there was none. Everything else
+// about an exposure (its name, a name used twice, how many there are) is the
+// gateway's to judge, and its answer is passed on.
+func validServiceExposures(w http.ResponseWriter, exposures []models.ServiceExposure) bool {
+	for i, exposure := range exposures {
+		if exposure.TargetPort == 0 || exposure.TargetPort > maxServicePort {
+			apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPort,
+				fmt.Sprintf("serviceExposures[%d].targetPort must be in 1..=%d", i, maxServicePort))
+			return false
+		}
+	}
+	return true
 }
 
 func (h *SandboxHandler) GetSandbox(w http.ResponseWriter, r *http.Request) {

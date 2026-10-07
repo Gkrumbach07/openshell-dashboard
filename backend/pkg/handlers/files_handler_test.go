@@ -143,11 +143,15 @@ func TestUploadFileSandboxNotFound(t *testing.T) {
 
 func TestDownloadFile(t *testing.T) {
 	sdk := &mockSDK{}
-	sdk.exec.runFn = func(_ context.Context, _, _ string, command []string, _ ...openshell.ExecOptions) (*openshell.ExecResult, error) {
+	// The handler asks the sandbox what the path is, then streams it.
+	sdk.exec.runFn = func(_ context.Context, _, _ string, _ []string, _ ...openshell.ExecOptions) (*openshell.ExecResult, error) {
+		return &openshell.ExecResult{ExitCode: 0, Stdout: []byte("regular file\n")}, nil
+	}
+	sdk.exec.streamFn = func(_ context.Context, _, _ string, command []string, _ ...openshell.ExecOptions) (openshell.ExecStream, error) {
 		if len(command) != 2 || command[0] != "cat" || command[1] != "/sandbox/hello.txt" {
 			t.Errorf("command = %v", command)
 		}
-		return &openshell.ExecResult{ExitCode: 0, Stdout: []byte("hello")}, nil
+		return &fakeExecStream{chunks: []openshell.ExecChunk{stdoutChunk("hello")}}, nil
 	}
 	handler := NewFilesHandler(services.NewFileService(&mockUploader{}), services.NewExecService(sdk.Exec()), services.NewSandboxService(sdk.Sandboxes()), FilesHandlerConfig{})
 	r := chi.NewRouter()
@@ -166,7 +170,7 @@ func TestDownloadFile(t *testing.T) {
 func TestDownloadFileNotFound(t *testing.T) {
 	sdk := &mockSDK{}
 	sdk.exec.runFn = func(_ context.Context, _, _ string, _ []string, _ ...openshell.ExecOptions) (*openshell.ExecResult, error) {
-		return &openshell.ExecResult{ExitCode: 1, Stderr: []byte("cat: no such file")}, nil
+		return &openshell.ExecResult{ExitCode: 1, Stderr: []byte("stat: cannot statx '/sandbox/missing.txt': No such file or directory\n")}, nil
 	}
 	handler := NewFilesHandler(services.NewFileService(&mockUploader{}), services.NewExecService(sdk.Exec()), services.NewSandboxService(sdk.Sandboxes()), FilesHandlerConfig{})
 	r := chi.NewRouter()

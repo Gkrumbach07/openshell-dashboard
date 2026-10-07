@@ -26,9 +26,15 @@ export const getGatewayCompatibility = (): Promise<GatewayCompatibilityInfo> =>
 
 // Polled at the gateway's own pace, so a gateway that was unreachable when the
 // page loaded, or that is replaced while the page is open, still gets judged.
+//
+// The answer also says whether the gateway is healthy, which the masthead
+// shows. Polling stops while the page is hidden, so the answer is read again
+// as soon as the page is shown: a gateway that went away in the meantime is
+// not shown as healthy until the next poll comes round.
 export const useGatewayCompatibility = () =>
   useQuery({
     queryKey: gatewayKeys.compatibility,
     queryFn: getGatewayCompatibility,
     refetchInterval: GATEWAY_POLL_MS,
+    refetchOnWindowFocus: true,
   });

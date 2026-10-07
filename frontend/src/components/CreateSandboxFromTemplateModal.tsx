@@ -7,6 +7,7 @@ import {
   Form,
   FormGroup,
   FormHelperText,
+  FormSection,
   FormSelect,
   FormSelectOption,
   HelperText,
@@ -15,16 +16,22 @@ import {
   ModalBody,
   ModalFooter,
   ModalHeader,
-  TextArea,
   TextInput,
 } from '@patternfly/react-core';
 
 import { useProviders } from '../api/providers';
+import { useApplyApprovalMode } from '../api/sandboxSettings';
 import { useCreateSandboxFromTemplate } from '../api/templates';
 import { useAlerts } from '../app/AlertContext';
-import { useJsonValidation } from '../hooks/useJsonValidation';
+import { POLICY_REQUIRED, parseLabels } from '../hooks/useCreateSandboxForm';
+import { usePolicyText } from '../hooks/usePolicyText';
+import { useSandboxLaunchOptions } from '../hooks/useSandboxLaunchOptions';
+import KeyValueEditor from './KeyValueEditor';
 import { policyTemplates } from './policy/policyTemplates';
-import type { SandboxPolicy } from '../types';
+import PolicyTextField from './policy/PolicyTextField';
+import ApprovalModeFailureAlert from './sandbox/ApprovalModeFailureAlert';
+import SandboxLaunchFields from './sandbox/SandboxLaunchFields';
+import { rowsToRecord, type KeyValueRow } from '../utils/sandboxOptions';
 
 type CreateSandboxFromTemplateModalProps = {
   workspace: string;
@@ -48,15 +55,34 @@ const CreateSandboxFromTemplateModal: React.FC<
     JSON.stringify(policyTemplates[0].policy, null, 2),
   );
   const [isPolicyExpanded, setPolicyExpanded] = useState(false);
+  // What a template does not hold and the sandbox can still be given: its own
+  // labels and annotations, its main command, the services to expose and the
+  // approval mode. The workload stays the template's.
+  const [labelsText, setLabelsText] = useState('');
+  const [annotationRows, setAnnotationRows] = useState<KeyValueRow[]>([]);
+  const [isAdvancedExpanded, setAdvancedExpanded] = useState(false);
+  const launch = useSandboxLaunchOptions();
+  const approvalMode = useApplyApprovalMode(workspace);
 
-  const { error: policyError, parsed: parsedPolicy } =
-    useJsonValidation(policyText);
+  // The policy is read from whatever it was given as: the JSON of a preset,
+  // or a policy file, YAML or JSON, pasted or loaded over it.
+  const { error: readError, parsed: parsedPolicy } = usePolicyText(policyText);
+  const policyError = policyText.trim() ? readError : POLICY_REQUIRED;
   const activeTemplate = useMemo(
     () =>
       policyTemplates.find((candidate) => candidate.id === policyTemplateId),
     [policyTemplateId],
   );
-  const isValid = !policyError && Boolean(parsedPolicy);
+  const labels = parseLabels(labelsText);
+  const { record: annotations, error: annotationsError } =
+    rowsToRecord(annotationRows);
+  // The section opens by itself around a field that needs correcting.
+  const hasAdvancedError = Boolean(annotationsError) || !launch.isValid;
+  const isValid =
+    !policyError &&
+    Boolean(parsedPolicy) &&
+    labels !== null &&
+    !hasAdvancedError;
 
   const applyPolicyTemplate = (id: string) => {
     setPolicyTemplateId(id);
@@ -78,45 +104,91 @@ const CreateSandboxFromTemplateModal: React.FC<
     setName('');
     setSelectedProviders([]);
     setPolicyExpanded(false);
+    setLabelsText('');
+    setAnnotationRows([]);
+    setAdvancedExpanded(false);
+    launch.reset();
     applyPolicyTemplate(policyTemplates[0].id);
   };
 
   const close = () => {
     reset();
     createFromTemplate.reset();
+    approvalMode.reset();
     onClose();
   };
 
   const submit = () => {
-    if (!isValid || !parsedPolicy) {
+    if (!isValid || !parsedPolicy || labels === null) {
       return;
     }
+    const mode = launch.approvalMode;
     createFromTemplate.mutate(
       {
         name: name || undefined,
         templateName,
         providers: selectedProviders.length > 0 ? selectedProviders : undefined,
-        policy: parsedPolicy as SandboxPolicy,
+        policy: parsedPolicy,
+        labels: Object.keys(labels).length > 0 ? labels : undefined,
+        annotations:
+          Object.keys(annotations).length > 0 ? annotations : undefined,
+        ...launch.payload,
       },
       {
-        onSuccess: () => {
-          addSuccess(`Sandbox created from template "${templateName}"`);
-          close();
+        onSuccess: async (sandbox) => {
+          // The approval mode is a setting of the sandbox, written once the
+          // sandbox exists. If that fails the sandbox stays and the modal
+          // says so instead of closing.
+          if (await approvalMode.apply(sandbox, mode)) {
+            addSuccess(`Sandbox created from template "${templateName}"`);
+            close();
+          }
         },
       },
     );
   };
 
+  if (approvalMode.failure) {
+    return (
+      <Modal
+        variant="medium"
+        isOpen={isOpen}
+        onClose={close}
+        aria-label="Create sandbox from template"
+      >
+        <ModalHeader title={`Create sandbox from "${templateName}"`} />
+        <ModalBody>
+          <ApprovalModeFailureAlert failure={approvalMode.failure} />
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="primary"
+            onClick={close}
+            data-testid="create-from-template-done"
+          >
+            Close
+          </Button>
+        </ModalFooter>
+      </Modal>
+    );
+  }
+
+  // While the create is in flight the form cannot be closed. Closing it
+  // lets go of the request, and what follows a create that succeeds (the
+  // approval mode, which is written once the sandbox exists) would then never
+  // run: the sandbox would be created without it and nothing would say so.
+  const isBusy = createFromTemplate.isPending || approvalMode.isApplying;
+
   return (
     <Modal
       variant="medium"
       isOpen={isOpen}
-      onClose={close}
+      onClose={isBusy ? undefined : close}
       aria-label="Create sandbox from template"
     >
       <ModalHeader
         title={`Create sandbox from "${templateName}"`}
-        description="The image, environment, and resources come from the template. Supply only a security policy and any providers to attach."
+        description="The image, environment, and resources come from the template. Supply a security policy and any providers to attach, and optionally what the sandbox runs."
       />
       <ModalBody>
         <Form
@@ -133,6 +205,25 @@ const CreateSandboxFromTemplateModal: React.FC<
               onChange={(_event, value) => setName(value)}
               placeholder="Leave empty for a generated name"
             />
+          </FormGroup>
+          <FormGroup label="Labels" fieldId="from-template-labels">
+            <TextInput
+              id="from-template-labels"
+              data-testid="from-template-labels-input"
+              value={labelsText}
+              onChange={(_event, value) => setLabelsText(value)}
+              placeholder="team=ml, kind=agent"
+              validated={labels === null ? 'error' : 'default'}
+            />
+            <FormHelperText>
+              <HelperText>
+                <HelperTextItem variant={labels === null ? 'error' : 'default'}>
+                  {labels === null
+                    ? 'Labels must be comma-separated key=value pairs'
+                    : 'Optional comma-separated key=value pairs, used for filtering'}
+                </HelperTextItem>
+              </HelperText>
+            </FormHelperText>
           </FormGroup>
           <FormGroup
             label="Providers"
@@ -195,30 +286,51 @@ const CreateSandboxFromTemplateModal: React.FC<
             onToggle={(_event, expanded) => setPolicyExpanded(expanded)}
             data-testid="from-template-policy-expand"
           >
-            <FormGroup
-              label="Policy JSON"
-              isRequired
-              fieldId="from-template-policy"
-            >
-              <TextArea
-                id="from-template-policy"
-                data-testid="from-template-policy-input"
-                value={policyText}
-                onChange={(_event, value) => setPolicyText(value)}
-                rows={14}
-                className="pf-v6-u-font-family-monospace"
-                validated={policyError ? 'error' : 'default'}
+            <PolicyTextField
+              id="from-template-policy"
+              data-testid="from-template-policy-input"
+              value={policyText}
+              onChange={setPolicyText}
+              error={policyError}
+            />
+          </ExpandableSection>
+          <ExpandableSection
+            toggleText="Advanced options"
+            isExpanded={isAdvancedExpanded || hasAdvancedError}
+            onToggle={(_event, expanded) => setAdvancedExpanded(expanded)}
+            data-testid="from-template-advanced-expand"
+          >
+            <FormSection>
+              <FormGroup
+                label="Annotations"
+                fieldId="from-template-annotations"
+                role="group"
+              >
+                <KeyValueEditor
+                  rows={annotationRows}
+                  onChange={setAnnotationRows}
+                  testIdPrefix="from-template-annotation"
+                  addLabel="Add annotation"
+                  itemLabel="Annotation"
+                />
+                <FormHelperText>
+                  <HelperText>
+                    <HelperTextItem
+                      variant={annotationsError ? 'error' : 'default'}
+                      data-testid="from-template-annotations-help"
+                    >
+                      {annotationsError ??
+                        'Metadata kept with the sandbox. Unlike labels, annotations cannot be filtered on.'}
+                    </HelperTextItem>
+                  </HelperText>
+                </FormHelperText>
+              </FormGroup>
+              <SandboxLaunchFields
+                workspace={workspace}
+                options={launch}
+                idPrefix="from-template"
               />
-              <FormHelperText>
-                <HelperText>
-                  <HelperTextItem variant={policyError ? 'error' : 'default'}>
-                    {policyError
-                      ? `Invalid JSON: ${policyError}`
-                      : 'SandboxPolicy as JSON. Network rules can be edited after create; filesystem, landlock, and process are immutable once created.'}
-                  </HelperTextItem>
-                </HelperText>
-              </FormHelperText>
-            </FormGroup>
+            </FormSection>
           </ExpandableSection>
           {createFromTemplate.isError && (
             <Alert variant="danger" isInline title="Create failed">
@@ -231,13 +343,18 @@ const CreateSandboxFromTemplateModal: React.FC<
         <Button
           variant="primary"
           onClick={submit}
-          isDisabled={!isValid || createFromTemplate.isPending}
-          isLoading={createFromTemplate.isPending}
+          isDisabled={!isValid || isBusy}
+          isLoading={isBusy}
           data-testid="create-from-template-submit"
         >
           Create
         </Button>
-        <Button variant="link" onClick={close}>
+        <Button
+          variant="link"
+          onClick={close}
+          isDisabled={isBusy}
+          data-testid="create-from-template-cancel"
+        >
           Cancel
         </Button>
       </ModalFooter>

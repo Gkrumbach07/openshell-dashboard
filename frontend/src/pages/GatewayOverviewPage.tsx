@@ -11,6 +11,7 @@ import {
   DescriptionListTerm,
   Gallery,
   Label,
+  LabelGroup,
   PageSection,
   Spinner,
   Title,
@@ -24,7 +25,7 @@ import {
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
 import { useGatewayInfo } from '../api/gateway';
-import type { ServiceStatus } from '../types';
+import type { GatewayExtensionKind, ServiceStatus } from '../types';
 
 const statusColor = (
   status: ServiceStatus,
@@ -54,9 +55,37 @@ const statusIcon = (status: ServiceStatus) => {
   }
 };
 
-// Gateway overview. The API exposes exactly three things about the gateway:
-// status, version, and the compute driver list (GetGatewayInfoResponse) —
-// nothing else, so this page is intentionally small.
+const EXTENSION_KIND_LABELS: Record<GatewayExtensionKind, string> = {
+  COMPUTE_DRIVER: 'Compute driver',
+  CREDENTIAL_DRIVER: 'Credential driver',
+  GATEWAY_INTERCEPTOR: 'Gateway interceptor',
+  SUPERVISOR_MIDDLEWARE: 'Supervisor middleware',
+  UNSPECIFIED: 'Unspecified',
+};
+
+// A kind this build has no name for is shown as the gateway spelled it.
+const extensionKindLabel = (kind: string): string =>
+  (EXTENSION_KIND_LABELS as Record<string, string | undefined>)[kind] ?? kind;
+
+const CapabilityList: React.FC<{ capabilities?: string[] }> = ({
+  capabilities,
+}) =>
+  capabilities && capabilities.length > 0 ? (
+    <LabelGroup numLabels={4}>
+      {capabilities.map((capability) => (
+        <Label key={capability} color="grey" isCompact>
+          {capability}
+        </Label>
+      ))}
+    </LabelGroup>
+  ) : (
+    <>-</>
+  );
+
+// Gateway overview. The API exposes exactly four things about the gateway:
+// status, version, the compute driver list and the extensions it negotiated
+// with (GetGatewayInfoResponse) — nothing else, so this page is intentionally
+// small. It is what `openshell gateway info` prints.
 const GatewayOverviewPage: React.FC = () => {
   const gateway = useGatewayInfo();
 
@@ -89,6 +118,8 @@ const GatewayOverviewPage: React.FC = () => {
   }
 
   const info = gateway.data;
+  // Absent from a BFF that predates the field.
+  const extensions = info?.extensions ?? [];
   return (
     <>
       <PageSection>
@@ -145,6 +176,61 @@ const GatewayOverviewPage: React.FC = () => {
                 {(info?.computeDrivers ?? []).length === 0 && (
                   <Tr>
                     <Td colSpan={3}>No compute drivers reported</Td>
+                  </Tr>
+                )}
+              </Tbody>
+            </Table>
+          </CardBody>
+        </Card>
+      </PageSection>
+      <PageSection>
+        <Card data-testid="gateway-extensions-card">
+          <CardTitle>Extensions</CardTitle>
+          <CardBody>
+            <Table aria-label="Extensions" variant="compact">
+              <Thead>
+                <Tr>
+                  <Th>Name</Th>
+                  <Th>Kind</Th>
+                  <Th>Implementation</Th>
+                  <Th>Protocol</Th>
+                  <Th>Capabilities</Th>
+                  <Th>Requires from gateway</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {extensions.map((extension) => (
+                  <Tr key={`${extension.kind}/${extension.configuredName}`}>
+                    <Td dataLabel="Name">{extension.configuredName || '-'}</Td>
+                    <Td dataLabel="Kind">
+                      {extensionKindLabel(extension.kind)}
+                    </Td>
+                    <Td dataLabel="Implementation">
+                      {[
+                        extension.implementationName,
+                        extension.implementationVersion,
+                      ]
+                        .filter(Boolean)
+                        .join(' ') || '-'}
+                    </Td>
+                    <Td dataLabel="Protocol">
+                      {extension.protocolMajor}.{extension.protocolMinor}
+                    </Td>
+                    <Td dataLabel="Capabilities">
+                      <CapabilityList
+                        capabilities={extension.supportedCapabilities}
+                      />
+                    </Td>
+                    <Td dataLabel="Requires from gateway">
+                      <CapabilityList
+                        capabilities={extension.requiredCapabilities}
+                      />
+                    </Td>
+                  </Tr>
+                ))}
+                {extensions.length === 0 && (
+                  <Tr>
+                    <Td colSpan={6}>No extensions reported</Td>
                   </Tr>
                 )}
               </Tbody>

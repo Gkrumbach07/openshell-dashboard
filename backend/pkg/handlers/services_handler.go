@@ -8,6 +8,13 @@ import (
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
 
+// ExposeServiceRequest is the expose-service body. Service may be empty: a
+// sandbox has one unnamed endpoint, which is what `openshell service expose
+// <sandbox> <port>` creates when no service name is given.
+//
+// Domain is forwarded as it is. Gateways 0.1.0 to 0.1.2 ignore it and enable
+// browser-facing routing on every endpoint, which is also what the CLI asks
+// for.
 type ExposeServiceRequest struct {
 	Service    string `json:"service"`
 	TargetPort uint32 `json:"targetPort"`
@@ -24,6 +31,10 @@ func NewServicesHandler(svc services.ServiceServiceInterface) *ServicesHandler {
 	}
 }
 
+// ListServices lists the service endpoints of one sandbox. On the route
+// without a sandbox name it lists those of every sandbox in the workspace,
+// which is what the gateway does with an empty sandbox filter and what
+// `openshell service list` prints when no sandbox is named.
 func (h *ServicesHandler) ListServices(w http.ResponseWriter, r *http.Request) {
 	serviceEndpoints, err := h.svc.ListAll(r.Context(), r.PathValue("workspace"), r.PathValue("name"))
 	if err != nil {
@@ -42,10 +53,6 @@ func (h *ServicesHandler) ExposeService(w http.ResponseWriter, r *http.Request) 
 	if !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
-	if body.Service == "" {
-		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidService, "service name is required")
-		return
-	}
 	if body.TargetPort == 0 {
 		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPort, "targetPort must be greater than 0")
 		return
@@ -58,6 +65,9 @@ func (h *ServicesHandler) ExposeService(w http.ResponseWriter, r *http.Request) 
 	apiutils.WriteJSON(w, http.StatusCreated, models.FromSDKServiceEndpoint(svc))
 }
 
+// DeleteService removes one service endpoint of a sandbox. On the route
+// without a service name it removes the sandbox's unnamed endpoint, which a
+// path segment cannot name.
 func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) {
 	res, err := h.svc.Delete(r.Context(), r.PathValue("workspace"), r.PathValue("name"), r.PathValue("svc"))
 	if err != nil {

@@ -16,6 +16,7 @@ export { default as SandboxEgressSummary } from './sandbox/SandboxEgressSummary'
 export { default as SandboxGalleryView } from './sandbox/SandboxGalleryView';
 export { default as StatusDot } from './StatusDot';
 export { default as GatewayCompatibilityAlert } from './GatewayCompatibilityAlert';
+export { default as GatewayStatusIndicator } from './GatewayStatusIndicator';
 export * from './policy/policyTemplates';
 export { formatAge, formatTimestamp, formatUptime } from '../utils/formatters';
 export { credentialStorageKey } from '../utils/providerCredentials';

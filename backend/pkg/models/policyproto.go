@@ -11,11 +11,21 @@ package models
 // It covers EVERY field of the policy tree (L7 allow/deny rules, IP allowlists,
 // multi-port, GraphQL persisted queries, MCP options, credential binding,
 // signing, middleware, ...). If OpenShell adds a policy field upstream, add it
-// here too — the round-trip test in policyproto_test.go guards the known set.
+// here too — the round-trip tests in policyproto_test.go populate every field
+// the SDK's proto declares, so a field missing here fails them by name.
+//
+// The same goes for the incremental merge operations at the end of the file:
+// the browser sends them as protojson of openshell.v1.PolicyMergeOperation and
+// the SDK takes its own typed form, so they are converted in one direction.
 
 import (
+	"encoding/json"
+	"fmt"
+
 	ostypes "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
+	pb "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sbv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -364,6 +374,10 @@ func mcpOptionsFromProto(m *sbv1.McpOptions) *ostypes.McpOptions {
 	return &ostypes.McpOptions{
 		StrictToolNames:         copyBoolPtr(m.StrictToolNames),
 		AllowAllKnownMcpMethods: copyBoolPtr(m.AllowAllKnownMcpMethods),
+		// The gateway replaces an empty list with its pinned default revision,
+		// so dropping this turns an explicit allowlist into the default one on
+		// the next save.
+		Versions: copyStringSlice(m.GetVersions()),
 	}
 }
 
@@ -374,6 +388,7 @@ func mcpOptionsToProto(m *ostypes.McpOptions) *sbv1.McpOptions {
 	return &sbv1.McpOptions{
 		StrictToolNames:         copyBoolPtr(m.StrictToolNames),
 		AllowAllKnownMcpMethods: copyBoolPtr(m.AllowAllKnownMcpMethods),
+		Versions:                copyStringSlice(m.Versions),
 	}
 }
 
@@ -502,4 +517,114 @@ func graphqlOperationToProto(op *ostypes.GraphqlOperation) *sbv1.GraphqlOperatio
 		OperationName: op.OperationName,
 		Fields:        copyStringSlice(op.Fields),
 	}
+}
+
+// --- PolicyMergeOperation ---
+
+// ParseSDKPolicyMergeOperations parses incremental policy operations, each the
+// protojson form of openshell.v1.PolicyMergeOperation, into the SDK's typed
+// operations. These are what `openshell policy update` sends: the gateway
+// applies them to the sandbox's latest policy itself, so the policy does not
+// make a round trip through the browser. An error names the operation it is
+// about by its position in the request.
+func ParseSDKPolicyMergeOperations(raw []json.RawMessage) ([]ostypes.PolicyMergeOperation, error) {
+	operations := make([]ostypes.PolicyMergeOperation, 0, len(raw))
+	for i, item := range raw {
+		var op pb.PolicyMergeOperation
+		if err := protojson.Unmarshal(item, &op); err != nil {
+			return nil, fmt.Errorf("operations[%d]: %w", i, err)
+		}
+		converted, ok := policyMergeOperationFromProto(&op)
+		if !ok {
+			return nil, fmt.Errorf("operations[%d]: one of addRule, removeEndpoint, removeRule, "+
+				"addDenyRules, addAllowRules or removeBinary is required", i)
+		}
+		operations = append(operations, converted)
+	}
+	return operations, nil
+}
+
+// policyMergeOperationFromProto converts one incremental policy operation to
+// the SDK's typed form. It mirrors the SDK's own PolicyMergeOperationToProto
+// (openshell/v1/internal/converter/setting.go), which runs on the way out, so
+// the request the gateway receives is the one the browser sent. It reports
+// false for an operation that names none of the six variants.
+func policyMergeOperationFromProto(op *pb.PolicyMergeOperation) (ostypes.PolicyMergeOperation, bool) {
+	switch v := op.GetOperation().(type) {
+	case *pb.PolicyMergeOperation_AddRule:
+		add := &ostypes.AddNetworkRule{RuleName: v.AddRule.GetRuleName()}
+		if rule := networkPolicyRuleFromProto(v.AddRule.GetRule()); rule != nil {
+			add.Rule = *rule
+		}
+		return ostypes.PolicyMergeOperation{AddRule: add}, true
+	case *pb.PolicyMergeOperation_RemoveEndpoint:
+		return ostypes.PolicyMergeOperation{RemoveEndpoint: &ostypes.RemoveNetworkEndpoint{
+			RuleName: v.RemoveEndpoint.GetRuleName(),
+			Host:     v.RemoveEndpoint.GetHost(),
+			Port:     v.RemoveEndpoint.GetPort(),
+		}}, true
+	case *pb.PolicyMergeOperation_RemoveRule:
+		return ostypes.PolicyMergeOperation{RemoveRule: &ostypes.RemoveNetworkRule{
+			RuleName: v.RemoveRule.GetRuleName(),
+		}}, true
+	case *pb.PolicyMergeOperation_AddDenyRules:
+		add := &ostypes.AddDenyRules{Target: l7RuleTargetFromProto(v.AddDenyRules.GetTarget())}
+		if deny := v.AddDenyRules.GetDenyRules(); len(deny) > 0 {
+			add.DenyRules = make([]ostypes.L7DenyRule, len(deny))
+			for i, r := range deny {
+				if r != nil {
+					add.DenyRules[i] = l7DenyRuleFromProto(r)
+				}
+			}
+		}
+		return ostypes.PolicyMergeOperation{AddDenyRules: add}, true
+	case *pb.PolicyMergeOperation_AddAllowRules:
+		add := &ostypes.AddAllowRules{Target: l7RuleTargetFromProto(v.AddAllowRules.GetTarget())}
+		if rules := v.AddAllowRules.GetRules(); len(rules) > 0 {
+			add.Rules = make([]ostypes.L7Rule, len(rules))
+			for i, r := range rules {
+				if r != nil {
+					add.Rules[i] = l7RuleFromProto(r)
+				}
+			}
+		}
+		return ostypes.PolicyMergeOperation{AddAllowRules: add}, true
+	case *pb.PolicyMergeOperation_RemoveBinary:
+		return ostypes.PolicyMergeOperation{RemoveBinary: &ostypes.RemoveNetworkBinary{
+			RuleName:   v.RemoveBinary.GetRuleName(),
+			BinaryPath: v.RemoveBinary.GetBinaryPath(),
+		}}, true
+	}
+	return ostypes.PolicyMergeOperation{}, false
+}
+
+// l7RuleTargetFromProto copies the declared scope as sent. Whether path is
+// present matters as much as its value: an empty path selects the endpoint
+// that has no path, and an absent one asks the gateway for a unique match.
+func l7RuleTargetFromProto(target *pb.L7RuleTarget) *ostypes.L7RuleTarget {
+	if target == nil {
+		return nil
+	}
+	result := &ostypes.L7RuleTarget{
+		RuleName:  target.GetRuleName(),
+		Host:      target.GetHost(),
+		AnyBinary: target.GetAnyBinary(),
+	}
+	if ports := target.GetPorts(); len(ports) > 0 {
+		result.Ports = make([]uint32, len(ports))
+		copy(result.Ports, ports)
+	}
+	if target.Path != nil {
+		path := target.GetPath()
+		result.Path = &path
+	}
+	if bins := target.GetBinaries(); len(bins) > 0 {
+		result.Binaries = make([]ostypes.PolicyNetworkBinary, len(bins))
+		for i, b := range bins {
+			if b != nil {
+				result.Binaries[i] = ostypes.PolicyNetworkBinary{Path: b.GetPath()}
+			}
+		}
+	}
+	return result
 }

@@ -68,6 +68,56 @@ export const setAuthTokenHeader = (name: string): void => {
   authTokenHeader = name.trim() || 'Authorization';
 };
 
+/**
+ * The URL a request for an API path is sent to: the path under the base path
+ * set with `setApiBasePath`, or the path itself while none is set.
+ *
+ * `apiFetch` builds its URL with this. It is exported for the requests
+ * `apiFetch` cannot make, because they do not send or receive JSON: a
+ * multipart upload, a download read as a blob, a WebSocket. An embedding
+ * product may rely on every request of the package going to a URL this
+ * returns, and on `path` being appended as it is (it starts with `/api/v1`).
+ */
+export const apiUrl = (path: string): string => `${apiBasePath}${path}`;
+
+/**
+ * The headers that authenticate a request: the token of the getter set with
+ * `setAuthTokenGetter`, as `Bearer <token>`, on the header set with
+ * `setAuthTokenHeader` (`Authorization` unless changed).
+ *
+ * The getter is called once per call, so a host that refreshes its token in
+ * the getter gets to do so before every request. The result is empty when no
+ * getter is set, and when the getter returns null or an empty token: auth is
+ * then left to the fronting proxy (ADR 0002).
+ *
+ * `apiFetch` attaches exactly these. It is exported for the requests
+ * `apiFetch` cannot make (see `apiUrl`). An embedding product may rely on
+ * every HTTP request of the package carrying them.
+ */
+export const apiAuthHeaders = async (): Promise<Record<string, string>> => {
+  if (!authTokenGetter) {
+    return {};
+  }
+  const token = await authTokenGetter();
+  return token ? { [authTokenHeader]: `Bearer ${token}` } : {};
+};
+
+/**
+ * What a 401 means to the package: the handler set with
+ * `setSessionExpiredHandler` is run, once per call, and the error to throw is
+ * returned (status 401, message "Session expired", and the `code` of the
+ * response when it had one).
+ *
+ * `apiFetch` calls this for every 401 it receives. It is exported for the
+ * requests `apiFetch` cannot make (see `apiUrl`), which call it for theirs. An
+ * embedding product may rely on its handler running for a 401 on any HTTP
+ * request of the package. Call it only for a response that was a 401.
+ */
+export const sessionExpiredError = (code?: string): ApiError => {
+  onSessionExpired?.();
+  return buildError(401, code, 'Session expired');
+};
+
 export const apiFetch = async <T>(
   path: string,
   init?: RequestInit,
@@ -81,13 +131,12 @@ export const apiFetch = async <T>(
   // no Authorization header, no token in JS. When embedded in a host that must
   // authenticate to OpenShell as a second service, the host registers an auth
   // token getter (setAuthTokenGetter) that supplies the bearer per request.
+  // Without a getter there is nothing to wait for, and the request is sent
+  // before apiFetch first yields, as it always was.
   if (authTokenGetter) {
-    const token = await authTokenGetter();
-    if (token) {
-      headers[authTokenHeader] = `Bearer ${token}`;
-    }
+    Object.assign(headers, await apiAuthHeaders());
   }
-  const response = await fetch(`${apiBasePath}${path}`, { ...init, headers });
+  const response = await fetch(apiUrl(path), { ...init, headers });
   if (!response.ok) {
     let code: string | undefined;
     let message = `Request failed (${response.status})`;
@@ -105,8 +154,7 @@ export const apiFetch = async <T>(
     }
 
     if (response.status === 401) {
-      onSessionExpired?.();
-      throw buildError(401, code, 'Session expired');
+      throw sessionExpiredError(code);
     }
 
     throw buildError(response.status, code, message);

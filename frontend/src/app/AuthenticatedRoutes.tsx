@@ -12,11 +12,13 @@ import {
   useParams,
 } from 'react-router-dom';
 
+import AllWorkspacesPage from '../pages/AllWorkspacesPage';
 import GatewayOverviewPage from '../pages/GatewayOverviewPage';
 import WorkspaceListPage from '../pages/WorkspaceListPage';
 import WorkspaceDetailPage from '../pages/WorkspaceDetailPage';
 import SandboxDetailPage from '../pages/SandboxDetailPage';
 import ProviderDetailPage from '../pages/ProviderDetailPage';
+import ProviderProfilesPage from '../pages/ProviderProfilesPage';
 import GlobalPolicyPage from '../pages/GlobalPolicyPage';
 import SettingsPage from '../pages/SettingsPage';
 import { useUserRole } from '../api/rbac';
@@ -153,6 +155,22 @@ const AuthenticatedRoutes: React.FC = () => (
         element={
           <AdminRoute>
             <SettingsPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/all-workspaces"
+        element={
+          <AdminRoute>
+            <AllWorkspacesPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/provider-profiles"
+        element={
+          <AdminRoute>
+            <ProviderProfilesPage />
           </AdminRoute>
         }
       />

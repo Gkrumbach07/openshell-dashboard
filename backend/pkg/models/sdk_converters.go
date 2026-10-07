@@ -11,6 +11,7 @@ import (
 	"time"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 	sbv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -39,18 +40,36 @@ func FromSDKSandbox(sandbox *openshell.Sandbox) Sandbox {
 		out.Metadata.DeletionTimestampMs = sandbox.DeletionTimestamp.UnixMilli()
 	}
 
+	if provenance := sandbox.CreatedFromWorkloadTemplate; provenance != nil {
+		out.CreatedFromWorkloadTemplate = &WorkloadTemplateProvenance{
+			Name:            provenance.Name,
+			ResourceVersion: provenance.ResourceVersion,
+		}
+	}
+	if len(sandbox.ServiceURLs) > 0 {
+		out.ServiceURLs = sandbox.ServiceURLs
+	}
+
 	out.Spec = SandboxSpec{
 		LogLevel:    sandbox.Spec.LogLevel,
 		Environment: sandbox.Spec.Environment,
 		Providers:   sandbox.Spec.Providers,
+		Command:     sandbox.Spec.Command,
+		TTY:         sandbox.Spec.TTY,
+		// In the SDK's terms a count implies a GPU request.
+		GPU:      sandbox.Spec.GPU || sandbox.Spec.GPUCount != nil,
+		GPUCount: sandbox.Spec.GPUCount,
 	}
 	if sandbox.Spec.Template != nil {
 		out.Spec.Image = sandbox.Spec.Template.Image
+		out.Spec.Template = fromSDKSpecTemplate(sandbox.Spec.Template)
 	}
 	if sandbox.Spec.Policy != nil {
 		out.Spec.Policy = marshalSDKPolicy(sandbox.Spec.Policy)
 	}
 
+	// AgentFd and SandboxFd stay behind: they are how the gateway reaches the
+	// sandbox's own services and nothing a browser is to be told.
 	out.Status = SandboxStatus{
 		SandboxName:          sandbox.Name,
 		AgentPod:             sandbox.Status.AgentPod,
@@ -67,7 +86,82 @@ func FromSDKSandbox(sandbox *openshell.Sandbox) Sandbox {
 			LastTransitionTime: cond.LastTransitionTime,
 		})
 	}
+	for _, endpoint := range sandbox.Status.EndpointStatuses {
+		out.Status.EndpointStatuses = append(out.Status.EndpointStatuses, EndpointStatus{
+			EndpointID:     endpoint.EndpointID,
+			Host:           endpoint.Host,
+			Ports:          endpoint.Ports,
+			Path:           endpoint.Path,
+			LastResult:     sdkEndpointResultString(endpoint.LastResult),
+			LastReportedAt: endpoint.LastReportedAt,
+		})
+	}
+	if admission := sandbox.Status.ConfigurationAdmission; admission != nil {
+		// The SDK calls a state the gateway left unspecified "unknown".
+		state := strings.ToUpper(string(admission.State))
+		if state == "" || state == "UNKNOWN" {
+			state = "UNSPECIFIED"
+		}
+		out.Status.ConfigurationAdmission = &ConfigurationAdmission{
+			State:               state,
+			PolicyVersion:       admission.PolicyVersion,
+			PolicyHash:          admission.PolicyHash,
+			ConfigRevision:      admission.ConfigRevision,
+			ProviderEnvRevision: admission.ProviderEnvRevision,
+			Error:               admission.Error,
+		}
+	}
 	return out
+}
+
+// fromSDKSpecTemplate converts the inline template of a sandbox's spec, and
+// returns nil for one that holds nothing but the image, which SandboxSpec
+// carries itself. AgentSocket is a path on the sandbox host and is left out.
+func fromSDKSpecTemplate(t *openshell.SandboxTemplate) *SandboxSpecTemplate {
+	out := SandboxSpecTemplate{
+		RuntimeClassName: t.RuntimeClassName,
+		UserNamespaces:   t.UserNamespaces,
+	}
+	if len(t.Labels) > 0 {
+		out.Labels = t.Labels
+	}
+	if len(t.Annotations) > 0 {
+		out.Annotations = t.Annotations
+	}
+	if len(t.Environment) > 0 {
+		out.Environment = t.Environment
+	}
+	if len(t.Resources) > 0 {
+		out.Resources = t.Resources
+	}
+	if len(t.DriverConfig) > 0 {
+		out.DriverConfig = t.DriverConfig
+	}
+	if out.RuntimeClassName == "" && out.UserNamespaces == nil && out.Labels == nil && out.Annotations == nil &&
+		out.Environment == nil && out.Resources == nil && out.DriverConfig == nil {
+		return nil
+	}
+	return &out
+}
+
+func sdkEndpointResultString(result openshell.EndpointResult) string {
+	switch result {
+	case openshell.EndpointNoObservedExchange:
+		return "NO_OBSERVED_EXCHANGE"
+	case openshell.EndpointHTTPResponseReceived:
+		return "HTTP_RESPONSE_RECEIVED"
+	case openshell.EndpointPolicyDenied:
+		return "POLICY_DENIED"
+	case openshell.EndpointCredentialUnavailable:
+		return "CREDENTIAL_UNAVAILABLE"
+	case openshell.EndpointTLSFailed:
+		return "TLS_FAILED"
+	case openshell.EndpointTransportFailed:
+		return "TRANSPORT_FAILED"
+	case openshell.EndpointUpstreamRejected:
+		return "UPSTREAM_REJECTED"
+	}
+	return "UNSPECIFIED"
 }
 
 // BuildSDKSandboxSpec constructs an SDK SandboxSpec from a create request.
@@ -81,10 +175,14 @@ func BuildSDKSandboxSpec(req CreateSandboxRequest) (*openshell.SandboxSpec, erro
 		LogLevel:    req.LogLevel,
 		Environment: req.Environment,
 		Template: &openshell.SandboxTemplate{
-			Image: req.Image,
+			Image:            req.Image,
+			RuntimeClassName: req.RuntimeClassName,
+			DriverConfig:     req.DriverConfig,
 		},
 		Policy:    policy,
 		Providers: req.Providers,
+		Command:   req.Command,
+		TTY:       req.TTY,
 	}
 
 	if req.CPU != "" || req.Memory != "" {
@@ -105,6 +203,74 @@ func BuildSDKSandboxSpec(req CreateSandboxRequest) (*openshell.SandboxSpec, erro
 		spec.GPUCount = &gpu
 	}
 	return spec, nil
+}
+
+// BuildSDKCreateOptions builds the options of a sandbox create: the sandbox's
+// annotations and the services to expose with it. It returns none when there
+// is neither, which leaves the request as it was before either existed.
+func BuildSDKCreateOptions(annotations map[string]string, exposures []ServiceExposure) []openshell.CreateOptions {
+	if len(annotations) == 0 && len(exposures) == 0 {
+		return nil
+	}
+	opts := openshell.CreateOptions{Annotations: annotations}
+	for _, exposure := range exposures {
+		opts.ServiceExposures = append(opts.ServiceExposures, openshell.ServiceExposure{
+			Service:    exposure.Service,
+			TargetPort: exposure.TargetPort,
+		})
+	}
+	return []openshell.CreateOptions{opts}
+}
+
+func sdkSettingScopeString(scope openshell.SettingScope) string {
+	switch scope {
+	case openshell.SettingScopeSandbox:
+		return "SANDBOX"
+	case openshell.SettingScopeGlobal:
+		return "GLOBAL"
+	}
+	return "UNSPECIFIED"
+}
+
+func sdkPolicySourceString(source openshell.PolicySource) string {
+	switch source {
+	case openshell.PolicySourceSandbox:
+		return "SANDBOX"
+	case openshell.PolicySourceGlobal:
+		return "GLOBAL"
+	}
+	return "UNSPECIFIED"
+}
+
+// FromSDKSandboxSettings converts a sandbox's effective configuration to the
+// JSON DTO: its settings sorted by key, each with the scope it was resolved
+// from, and what the gateway says about the sandbox's policy. The policy
+// itself is left to the policy endpoint.
+func FromSDKSandboxSettings(config *openshell.SandboxConfig) SandboxSettings {
+	if config == nil {
+		return SandboxSettings{Settings: []SandboxSettingEntry{}, PolicySource: "UNSPECIFIED"}
+	}
+	out := SandboxSettings{
+		Settings:                    []SandboxSettingEntry{},
+		PolicySource:                sdkPolicySourceString(config.PolicySource),
+		PolicyHash:                  config.PolicyHash,
+		PolicyVersion:               config.PolicyVersion,
+		GlobalPolicyVersion:         config.GlobalPolicyVersion,
+		ConfigRevision:              config.ConfigRevision,
+		ProviderEnvRevision:         config.ProviderEnvRevision,
+		PolicyValidationFailureMode: config.PolicyValidationFailureMode,
+	}
+	for key, setting := range config.Settings {
+		out.Settings = append(out.Settings, SandboxSettingEntry{
+			Key:   key,
+			Value: sdkSettingValueJSON(setting.Value),
+			Scope: sdkSettingScopeString(setting.Scope),
+		})
+	}
+	sort.Slice(out.Settings, func(i, j int) bool {
+		return out.Settings[i].Key < out.Settings[j].Key
+	})
+	return out
 }
 
 // FromSDKSandboxTemplate converts an SDK SandboxWorkloadTemplate to the JSON
@@ -196,7 +362,7 @@ func buildSDKTemplateSpec(spec SandboxTemplateSpec) openshell.SandboxWorkloadTem
 
 // BuildSDKTemplateGovernanceSpec builds the governance-only SandboxSpec allowed
 // when creating a sandbox from a template. The gateway rejects any workload
-// fields here — only policy and providers may be supplied.
+// fields here — only policy, providers, command and tty may be supplied.
 func BuildSDKTemplateGovernanceSpec(req CreateSandboxFromTemplateRequest) (*openshell.SandboxSpec, error) {
 	policy, err := ParseSDKPolicy(req.Policy)
 	if err != nil {
@@ -205,6 +371,8 @@ func BuildSDKTemplateGovernanceSpec(req CreateSandboxFromTemplateRequest) (*open
 	return &openshell.SandboxSpec{
 		Policy:    policy,
 		Providers: req.Providers,
+		Command:   req.Command,
+		TTY:       req.TTY,
 	}, nil
 }
 
@@ -305,14 +473,28 @@ func FromSDKRefreshStatus(status *openshell.RefreshStatus) CredentialRefreshStat
 		return CredentialRefreshStatus{}
 	}
 	return CredentialRefreshStatus{
-		CredentialKey:   status.CredentialKey,
-		Strategy:        sdkRefreshStrategyString(status.Strategy),
-		Status:          status.Status,
-		ExpiresAtMs:     timeToMs(status.ExpiresAt),
-		NextRefreshAtMs: timeToMs(status.NextRefreshAt),
-		LastRefreshAtMs: timeToMs(status.LastRefreshAt),
-		LastError:       status.LastError,
+		CredentialKey:        status.CredentialKey,
+		Strategy:             sdkRefreshStrategyString(status.Strategy),
+		Status:               status.Status,
+		ExpiresAtMs:          timeToMs(status.ExpiresAt),
+		NextRefreshAtMs:      timeToMs(status.NextRefreshAt),
+		LastRefreshAtMs:      timeToMs(status.LastRefreshAt),
+		LastError:            status.LastError,
+		RecoveryAction:       sdkRecoveryActionString(status.RecoveryAction),
+		FailureCode:          status.FailureCode,
+		ProviderErrorSubtype: status.ProviderErrorSubtype,
+		LastErrorAtMs:        timeToMs(status.LastErrorAt),
 	}
+}
+
+// sdkRecoveryActionString names what a failed refresh needs, the way the
+// gateway's enum does (RETRY, REAUTHORIZE, FIX_CONFIGURATION, INVESTIGATE). A
+// refresh that needs nothing has no action, which is the empty string.
+func sdkRecoveryActionString(action types.RefreshRecoveryAction) string {
+	if action == types.RefreshRecoveryActionUnspecified {
+		return ""
+	}
+	return strings.ToUpper(action.String())
 }
 
 func sdkRefreshStrategyString(s openshell.RefreshStrategy) string {
@@ -333,59 +515,15 @@ func sdkRefreshStrategyString(s openshell.RefreshStrategy) string {
 	return "UNSPECIFIED"
 }
 
-// FromSDKProviderProfile converts an SDK ProviderProfile to the JSON DTO.
+// FromSDKProviderProfile converts an SDK ProviderProfile to the JSON DTO. The
+// SDK carries three fields of an endpoint, so the result summarizes the
+// endpoints and has no NetworkEndpoints; FromProtoProviderProfile converts a
+// profile that was read whole.
 func FromSDKProviderProfile(profile *openshell.ProviderProfile) ProviderProfile {
 	if profile == nil {
 		return ProviderProfile{Credentials: []ProfileCredential{}}
 	}
-	out := ProviderProfile{
-		ID:               profile.ID,
-		DisplayName:      profile.DisplayName,
-		Description:      profile.Description,
-		Category:         sdkProfileCategoryString(profile.Category),
-		Credentials:      []ProfileCredential{},
-		InferenceCapable: profile.InferenceCapable,
-		Source:           profile.Source,
-		Scope:            profile.Scope,
-		ResourceVersion:  profile.ResourceVersion,
-	}
-	for _, cred := range profile.Credentials {
-		out.Credentials = append(out.Credentials, ProfileCredential{
-			Name:        cred.Name,
-			Description: cred.Description,
-			EnvVars:     cred.EnvVars,
-			Required:    cred.Required,
-			AuthStyle:   cred.AuthStyle,
-		})
-	}
-	for _, endpoint := range profile.Endpoints {
-		if endpoint.Port > 0 {
-			out.Endpoints = append(out.Endpoints, fmt.Sprintf("%s:%d", endpoint.Host, endpoint.Port))
-		} else if endpoint.Host != "" {
-			out.Endpoints = append(out.Endpoints, endpoint.Host)
-		}
-	}
-	return out
-}
-
-func sdkProfileCategoryString(c openshell.ProfileCategory) string {
-	switch c {
-	case openshell.ProfileCategoryOther:
-		return "OTHER"
-	case openshell.ProfileCategoryInference:
-		return "INFERENCE"
-	case openshell.ProfileCategoryAgent:
-		return "AGENT"
-	case openshell.ProfileCategorySourceControl:
-		return "SOURCE_CONTROL"
-	case openshell.ProfileCategoryMessaging:
-		return "MESSAGING"
-	case openshell.ProfileCategoryData:
-		return "DATA"
-	case openshell.ProfileCategoryKnowledge:
-		return "KNOWLEDGE"
-	}
-	return "UNSPECIFIED"
+	return FromNarrowProviderProfile(ProviderProfileFromSDK(profile))
 }
 
 // ParseSDKProfileCategory maps the frontend UPPER_SNAKE category to the SDK type.
@@ -559,6 +697,25 @@ func ParseSDKNetworkPolicyRule(raw json.RawMessage) (*openshell.NetworkPolicyRul
 	return networkPolicyRuleFromProto(&pb), nil
 }
 
+// FromSDKEffectivePolicy converts the policy half of a sandbox's effective
+// configuration to the JSON DTO.
+func FromSDKEffectivePolicy(config *openshell.SandboxConfig) EffectivePolicy {
+	if config == nil {
+		return EffectivePolicy{}
+	}
+	out := EffectivePolicy{
+		Version:                     config.PolicyVersion,
+		PolicyHash:                  config.PolicyHash,
+		PolicySource:                sdkPolicySourceString(config.PolicySource),
+		GlobalPolicyVersion:         config.GlobalPolicyVersion,
+		PolicyValidationFailureMode: config.PolicyValidationFailureMode,
+	}
+	if config.Policy != nil {
+		out.Policy = marshalSDKPolicy(config.Policy)
+	}
+	return out
+}
+
 // FromSDKDraftPolicy converts an SDK DraftPolicy to the JSON DTO.
 func FromSDKDraftPolicy(draft *openshell.DraftPolicy) DraftPolicy {
 	if draft == nil {
@@ -587,6 +744,12 @@ func FromSDKDraftPolicy(draft *openshell.DraftPolicy) DraftPolicy {
 			RejectionReason:  chunk.RejectionReason,
 			ReviewToken:      chunk.ReviewToken,
 			ApplicationError: chunk.ApplicationError,
+
+			Stage:             chunk.Stage,
+			SupersedesChunkID: chunk.SupersedesChunkID,
+			DenialSummaryIDs:  chunk.DenialSummaryIDs,
+			FirstSeenMs:       timeToMs(chunk.FirstSeen),
+			LastSeenMs:        timeToMs(chunk.LastSeen),
 
 			CurrentEffectivePolicyHash:   chunk.CurrentEffectivePolicyHash,
 			CandidateEffectivePolicyHash: chunk.CandidateEffectivePolicyHash,
@@ -625,6 +788,9 @@ func FromSDKServiceEndpoint(svc *openshell.ServiceEndpoint) ServiceEndpoint {
 		return ServiceEndpoint{}
 	}
 	return ServiceEndpoint{
+		ID:          svc.ID,
+		Workspace:   svc.Workspace,
+		SandboxID:   svc.SandboxID,
 		SandboxName: svc.Sandbox,
 		ServiceName: svc.Name,
 		TargetPort:  svc.TargetPort,
@@ -719,7 +885,7 @@ func FromSDKCurrentUser(user *openshell.CurrentUser) CurrentUser {
 func sdkServiceStatusString(status openshell.ServiceStatus) string {
 	switch status {
 	case openshell.ServiceStatusHealthy:
-		return "HEALTHY"
+		return GatewayStatusHealthy
 	case openshell.ServiceStatusDegraded:
 		return "DEGRADED"
 	case openshell.ServiceStatusUnhealthy:
@@ -728,21 +894,48 @@ func sdkServiceStatusString(status openshell.ServiceStatus) string {
 	return "UNSPECIFIED"
 }
 
+func sdkExtensionKindString(kind openshell.ExtensionKind) string {
+	switch kind {
+	case openshell.ExtensionKindComputeDriver:
+		return "COMPUTE_DRIVER"
+	case openshell.ExtensionKindCredentialDriver:
+		return "CREDENTIAL_DRIVER"
+	case openshell.ExtensionKindGatewayInterceptor:
+		return "GATEWAY_INTERCEPTOR"
+	case openshell.ExtensionKindSupervisorMiddleware:
+		return "SUPERVISOR_MIDDLEWARE"
+	}
+	return "UNSPECIFIED"
+}
+
 // FromSDKGatewayInfo converts an SDK GatewayInfo to the JSON DTO.
 func FromSDKGatewayInfo(info *openshell.GatewayInfo) GatewayInfo {
 	if info == nil {
-		return GatewayInfo{Status: "UNSPECIFIED", ComputeDrivers: []ComputeDriver{}}
+		return GatewayInfo{Status: "UNSPECIFIED", ComputeDrivers: []ComputeDriver{}, Extensions: []GatewayExtension{}}
 	}
 	out := GatewayInfo{
 		Status:         sdkServiceStatusString(info.Status),
 		GatewayVersion: info.Version,
 		ComputeDrivers: []ComputeDriver{},
+		Extensions:     []GatewayExtension{},
 	}
 	for _, driver := range info.ComputeDrivers {
 		out.ComputeDrivers = append(out.ComputeDrivers, ComputeDriver{
 			Name:          driver.Name,
 			DriverName:    driver.DriverName,
 			DriverVersion: driver.DriverVersion,
+		})
+	}
+	for _, extension := range info.Extensions {
+		out.Extensions = append(out.Extensions, GatewayExtension{
+			Kind:                  sdkExtensionKindString(extension.Kind),
+			ConfiguredName:        extension.ConfiguredName,
+			ImplementationName:    extension.ImplementationName,
+			ImplementationVersion: extension.ImplementationVersion,
+			ProtocolMajor:         extension.ProtocolMajor,
+			ProtocolMinor:         extension.ProtocolMinor,
+			SupportedCapabilities: extension.SupportedCapabilities,
+			RequiredCapabilities:  extension.RequiredCapabilities,
 		})
 	}
 	return out

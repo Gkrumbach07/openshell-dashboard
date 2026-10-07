@@ -37,6 +37,35 @@ type CreateProfileModalProps = {
   onSuccess?: () => void;
 };
 
+// A credential as the form holds it. The environment variables are kept as
+// the text that was typed and split when the profile is sent: split on every
+// keystroke and joined again for display, a comma vanished as soon as it was
+// typed, and a second variable could not be entered.
+type CredentialRow = {
+  name: string;
+  envVarsText: string;
+  required: boolean;
+};
+
+// The environment variables a row names: what stands between the commas,
+// without the space around it and without what is empty.
+const envVarsOf = (text: string): string[] =>
+  text
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
+
+// The credential a row describes. One that names no environment variable
+// declares none, and is stored under its own name.
+const credentialOf = (row: CredentialRow): ProfileCredentialInput => {
+  const envVars = envVarsOf(row.envVarsText);
+  return {
+    name: row.name,
+    required: row.required,
+    ...(envVars.length > 0 ? { envVars } : {}),
+  };
+};
+
 const CATEGORIES: { value: ProviderProfileCategory; label: string }[] = [
   { value: 'INFERENCE', label: 'Inference' },
   { value: 'AGENT', label: 'Agent' },
@@ -58,7 +87,7 @@ const CreateProfileModal: React.FC<CreateProfileModalProps> = ({
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<ProviderProfileCategory>('OTHER');
   const [inferenceCapable, setInferenceCapable] = useState(false);
-  const [credentials, setCredentials] = useState<ProfileCredentialInput[]>([]);
+  const [credentials, setCredentials] = useState<CredentialRow[]>([]);
   const [endpoints, setEndpoints] = useState<ProfileEndpoint[]>([]);
   const importProfiles = useImportProviderProfiles(workspace);
 
@@ -81,7 +110,8 @@ const CreateProfileModal: React.FC<CreateProfileModalProps> = ({
       description: description || undefined,
       category,
       inferenceCapable,
-      credentials: credentials.length > 0 ? credentials : undefined,
+      credentials:
+        credentials.length > 0 ? credentials.map(credentialOf) : undefined,
       endpoints: endpoints.length > 0 ? endpoints : undefined,
     };
     importProfiles.mutate([profile], {
@@ -207,19 +237,11 @@ const CreateProfileModal: React.FC<CreateProfileModalProps> = ({
                       <TextInput
                         id={`cred-env-${index}`}
                         data-testid={`cred-env-${index}`}
-                        value={(cred.envVars ?? []).join(', ')}
+                        value={cred.envVarsText}
                         onChange={(_event, value) =>
                           setCredentials((rows) =>
                             rows.map((r, i) =>
-                              i === index
-                                ? {
-                                    ...r,
-                                    envVars: value
-                                      .split(',')
-                                      .map((v) => v.trim())
-                                      .filter(Boolean),
-                                  }
-                                : r,
+                              i === index ? { ...r, envVarsText: value } : r,
                             ),
                           )
                         }
@@ -265,7 +287,7 @@ const CreateProfileModal: React.FC<CreateProfileModalProps> = ({
               onClick={() =>
                 setCredentials((rows) => [
                   ...rows,
-                  { name: '', required: false },
+                  { name: '', envVarsText: '', required: false },
                 ])
               }
               data-testid="cred-add"

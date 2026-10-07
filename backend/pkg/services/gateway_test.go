@@ -91,3 +91,76 @@ func TestGetGatewayVersion(t *testing.T) {
 		t.Errorf("GetGatewayVersion on an unreachable gateway = %q, want an error", version)
 	}
 }
+
+// The default service is also what gives every signed-in user the gateway's
+// health, so it must keep offering the role-free source for that too.
+var _ GatewayHealthReader = (*GatewayService)(nil)
+
+// GetGatewayHealth hands on both halves of the health check's answer as the
+// SDK reports them, and an error when the gateway did not answer.
+func TestGetGatewayHealth(t *testing.T) {
+	tests := []struct {
+		name   string
+		result openshell.HealthResult
+	}{
+		{name: "healthy", result: openshell.HealthResult{Healthy: true, Version: "0.1.2"}},
+		{name: "not healthy", result: openshell.HealthResult{Healthy: false, Version: "0.1.2"}},
+		{name: "healthy without a version", result: openshell.HealthResult{Healthy: true}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.result
+			sdk := fake.NewClient(fake.WithHealthResult(&result))
+			service := NewGatewayService(sdk)
+
+			health, err := service.GetGatewayHealth(context.Background())
+			if err != nil {
+				t.Fatalf("GetGatewayHealth: %v", err)
+			}
+			if health == nil {
+				t.Fatal("GetGatewayHealth = nil, want the health check's answer")
+			}
+			if health.Healthy != tc.result.Healthy || health.Version != tc.result.Version {
+				t.Errorf("health = %+v, want %+v", *health, tc.result)
+			}
+
+			// A gateway that does not answer is an error, never a gateway
+			// that answered "not healthy".
+			if err := sdk.Close(); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+			if health, err := service.GetGatewayHealth(context.Background()); err == nil {
+				t.Errorf("GetGatewayHealth on an unreachable gateway = %+v, want an error", health)
+			}
+		})
+	}
+}
+
+// The health check is where the health comes from for the same reason it is
+// where the version comes from: it asks for no role. What it carries is a
+// status, read here from the SDK this build is pinned to.
+func TestGatewayHealthSourceCarriesAStatus(t *testing.T) {
+	response := (&openshellv1.HealthResponse{}).ProtoReflect().Descriptor()
+	status := response.Fields().ByName("status")
+	if status == nil || status.Kind() != protoreflect.EnumKind {
+		t.Fatalf("HealthResponse has no enum field named status: %v", status)
+	}
+	// The four values the gateway can answer with. The SDK's HealthResult
+	// keeps only whether it was HEALTHY, which is why the BFF reports a
+	// boolean and not a status.
+	var names []string
+	values := status.Enum().Values()
+	for i := 0; i < values.Len(); i++ {
+		names = append(names, string(values.Get(i).Name()))
+	}
+	want := []string{"SERVICE_STATUS_UNSPECIFIED", "SERVICE_STATUS_HEALTHY", "SERVICE_STATUS_DEGRADED", "SERVICE_STATUS_UNHEALTHY"}
+	if len(names) != len(want) {
+		t.Fatalf("ServiceStatus values = %v, want %v", names, want)
+	}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Errorf("ServiceStatus values = %v, want %v", names, want)
+			break
+		}
+	}
+}

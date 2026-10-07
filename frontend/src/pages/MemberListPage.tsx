@@ -29,6 +29,9 @@ import { useMembers, useRemoveMember } from '../api/workspaces';
 import { useWorkspaceRole } from '../api/rbac';
 import AddMemberModal from '../components/AddMemberModal';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import RefreshErrorAlert, {
+  isRefreshError,
+} from '../components/RefreshErrorAlert';
 import { formatAge } from '../utils/formatters';
 
 type MemberListPageProps = {
@@ -53,7 +56,11 @@ const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
     );
   }
 
-  if (members.isError) {
+  // The members are re-read while the page is open. A refresh that fails
+  // leaves the list, and a dialog open over it, as they were, with a note
+  // above; only a list that never loaded is replaced by the error.
+  const refreshFailed = isRefreshError(members);
+  if (members.isError && !refreshFailed) {
     return (
       <Alert variant="danger" title="Failed to load members">
         {(members.error as Error).message}
@@ -65,6 +72,15 @@ const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
 
   return (
     <>
+      {refreshFailed && (
+        <RefreshErrorAlert
+          title="The members could not be refreshed"
+          error={members.error}
+          onRetry={() => members.refetch()}
+          className="pf-v6-u-mb-md"
+          data-testid="members-refresh-error"
+        />
+      )}
       {rows.length === 0 ? (
         <EmptyState titleText="No members" icon={UsersIcon} variant="lg">
           <EmptyStateBody>

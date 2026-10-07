@@ -1,10 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 
 import { SANDBOX_POLL_MS } from '../constants';
-import { del, get, post } from './client';
-import { sandboxKeys } from './queryKeys';
+import {
+  apiAuthHeaders,
+  apiUrl,
+  del,
+  get,
+  post,
+  sessionExpiredError,
+} from './client';
+import { policyKeys, sandboxKeys } from './queryKeys';
 import type {
   CreateSandboxRequest,
+  DeleteResult,
   ExposeServiceRequest,
   LogFilters,
   Provider,
@@ -37,11 +46,13 @@ export const createSandbox = (
     body,
   );
 
+// The answer says what the gateway did, and it has often only accepted the
+// delete: see DeletionOutcome.
 export const deleteSandbox = (
   workspace: string,
   name: string,
-): Promise<{ deleted: boolean }> =>
-  del<{ deleted: boolean }>(
+): Promise<DeleteResult> =>
+  del<DeleteResult>(
     `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}`,
   );
 
@@ -96,6 +107,10 @@ export const getSandboxLogs = (
   }
   if (filters.sinceMs) {
     params.set('sinceMs', String(filters.sinceMs));
+  } else if (filters.sinceDurationMs) {
+    // A window that ends now, resolved when the request is sent: each poll
+    // of the same filters moves it forward.
+    params.set('sinceMs', String(Date.now() - filters.sinceDurationMs));
   }
   for (const source of filters.sources ?? []) {
     params.append('source', source);
@@ -155,6 +170,25 @@ export const useAttachedProviders = (workspace: string, name: string) =>
     queryFn: () => listAttachedProviders(workspace, name),
   });
 
+// What attaching or detaching a provider changes: the sandbox's list of
+// attached providers, the sandbox itself (spec.providers), and its effective
+// policy, into which the gateway composes one rule per attached provider.
+const invalidateAttachedProviders = (
+  queryClient: QueryClient,
+  workspace: string,
+  name: string,
+) => {
+  queryClient.invalidateQueries({
+    queryKey: sandboxKeys.providers(workspace, name),
+  });
+  queryClient.invalidateQueries({
+    queryKey: sandboxKeys.detail(workspace, name),
+  });
+  queryClient.invalidateQueries({
+    queryKey: policyKeys.effective(workspace, name),
+  });
+};
+
 export const useAttachProvider = (workspace: string, name: string) => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -165,14 +199,7 @@ export const useAttachProvider = (workspace: string, name: string) => {
       provider: string;
       expectedResourceVersion?: number;
     }) => attachProvider(workspace, name, provider, expectedResourceVersion),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: sandboxKeys.providers(workspace, name),
-      });
-      queryClient.invalidateQueries({
-        queryKey: sandboxKeys.detail(workspace, name),
-      });
-    },
+    onSuccess: () => invalidateAttachedProviders(queryClient, workspace, name),
   });
 };
 
@@ -180,14 +207,7 @@ export const useDetachProvider = (workspace: string, name: string) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (provider: string) => detachProvider(workspace, name, provider),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: sandboxKeys.providers(workspace, name),
-      });
-      queryClient.invalidateQueries({
-        queryKey: sandboxKeys.detail(workspace, name),
-      });
-    },
+    onSuccess: () => invalidateAttachedProviders(queryClient, workspace, name),
   });
 };
 
@@ -238,13 +258,17 @@ export const exposeService = (
     body,
   );
 
+// An empty service name is the sandbox's unnamed endpoint. It has no name to
+// put in the path, so it is deleted on the route that stops at /services.
 export const deleteService = (
   workspace: string,
   sandbox: string,
   service: string,
 ): Promise<{ deleted: boolean }> =>
   del<{ deleted: boolean }>(
-    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandbox)}/services/${encodeURIComponent(service)}`,
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandbox)}/services${
+      service ? `/${encodeURIComponent(service)}` : ''
+    }`,
   );
 
 export const useServices = (workspace: string, sandbox: string) =>
@@ -279,62 +303,194 @@ export const useDeleteService = (workspace: string, sandbox: string) => {
 
 // --- File upload/download ---
 
+// What became of one file of an upload.
+export type UploadedFile = {
+  path: string;
+  // Bytes sent to the sandbox. For a file that failed it is not how many
+  // were written.
+  size: number;
+  success: boolean;
+  // Why the sandbox did not write the file.
+  error?: string;
+};
+
+// The fields beside files describe the first file of the request, as they did
+// when a request was always one file.
 export type UploadResult = {
   exitCode: number;
   path: string;
   size: number;
   stdout: string;
   success: boolean;
+  files?: UploadedFile[];
 };
 
+export type UploadOptions = {
+  // Where below the destination directory the file goes, for a file that
+  // comes out of a folder: "project/src/main.go". Without it the file lands
+  // in the destination directory under its own name.
+  relativePath?: string;
+  // Called with how much of the request has been sent, from 0 to 1.
+  onProgress?: (sent: number) => void;
+  // Stops the upload when it is aborted. The promise then rejects with an
+  // error named AbortError (see isUploadAborted). What the sandbox had been
+  // sent until then may be left there as an incomplete file.
+  signal?: AbortSignal;
+};
+
+type UploadFailure = {
+  code?: string;
+  message?: string;
+  files?: UploadedFile[];
+};
+
+const parseUploadResponse = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+};
+
+const uploadAborted = (): Error =>
+  new DOMException('The upload was stopped', 'AbortError');
+
+// Whether an upload failed because it was stopped through its signal.
+export const isUploadAborted = (error: unknown): boolean =>
+  error instanceof Error && error.name === 'AbortError';
+
+// Uploads one file. XMLHttpRequest and not fetch, which cannot say how much
+// of a request has been sent, so the request is put together here from what
+// the client gives every request: its URL, its auth headers, and what a 401
+// means.
 export const uploadFile = async (
   workspace: string,
   name: string,
   file: File,
   dest?: string,
+  options: UploadOptions = {},
 ): Promise<UploadResult> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const params = dest ? `?dest=${encodeURIComponent(dest)}` : '';
-  const response = await fetch(
-    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/files${params}`,
-    {
-      method: 'POST',
-      body: formData,
-    },
-  );
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(
-      (body as { message?: string }).message ||
-        `Upload failed (${response.status})`,
+  const { relativePath, onProgress, signal } = options;
+  const headers = await apiAuthHeaders();
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(uploadAborted());
+      return;
+    }
+    const formData = new FormData();
+    // The path has to arrive before the file it belongs to.
+    if (relativePath) {
+      formData.append('relativePath', relativePath);
+    }
+    formData.append('file', file);
+    const params = dest ? `?dest=${encodeURIComponent(dest)}` : '';
+    const request = new XMLHttpRequest();
+    request.open(
+      'POST',
+      apiUrl(
+        `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/files${params}`,
+      ),
     );
-  }
-  return response.json() as Promise<UploadResult>;
+    Object.entries(headers).forEach(([header, value]) =>
+      request.setRequestHeader(header, value),
+    );
+    const abort = () => request.abort();
+    const settled = () => signal?.removeEventListener('abort', abort);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress?.(event.loaded / event.total);
+      }
+    };
+    request.onload = () => {
+      settled();
+      const body = parseUploadResponse(request.responseText);
+      if (request.status >= 200 && request.status < 300) {
+        resolve(body as UploadResult);
+        return;
+      }
+      const failure = body as UploadFailure;
+      if (request.status === 401) {
+        reject(sessionExpiredError(failure.code));
+        return;
+      }
+      // The reason the sandbox gave for this file says more than the
+      // request's own message.
+      reject(
+        new Error(
+          failure.files?.find((f) => !f.success)?.error ||
+            failure.message ||
+            `Upload failed (${request.status})`,
+        ),
+      );
+    };
+    request.onerror = () => {
+      settled();
+      reject(new Error('Upload failed: the connection was lost'));
+    };
+    request.onabort = () => {
+      settled();
+      reject(uploadAborted());
+    };
+    signal?.addEventListener('abort', abort);
+    request.send(formData);
+  });
+};
+
+export type DownloadedFile = {
+  fileName: string;
+  // A directory, which arrives as a tar archive of its contents.
+  isArchive: boolean;
+  size: number;
 };
 
 export const downloadFile = async (
   workspace: string,
   name: string,
   path: string,
-): Promise<void> => {
+): Promise<DownloadedFile> => {
+  // The body is read as a blob, which apiFetch does not do, so the request is
+  // put together here from what the client gives every request.
   const response = await fetch(
-    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/files?path=${encodeURIComponent(path)}`,
+    apiUrl(
+      `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/files?path=${encodeURIComponent(path)}`,
+    ),
+    { headers: await apiAuthHeaders() },
   );
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
+    const body = (await response.json().catch(() => ({}))) as {
+      code?: string;
+      message?: string;
+    };
+    if (response.status === 401) {
+      throw sessionExpiredError(body.code);
+    }
+    throw new Error(body.message || `Download failed (${response.status})`);
+  }
+  const isArchive = (response.headers.get('Content-Type') ?? '').startsWith(
+    'application/x-tar',
+  );
+  let blob: Blob;
+  try {
+    blob = await response.blob();
+  } catch {
+    // The download is streamed, so the status was sent before the sandbox
+    // had finished. A failure after that can only break the connection.
     throw new Error(
-      (body as { message?: string }).message ||
-        `Download failed (${response.status})`,
+      'Download failed part way: the sandbox stopped sending before the end. Nothing was saved.',
     );
   }
-  const blob = await response.blob();
+  // The last name in the path, with .tar for a directory. The root directory
+  // has no name, so its archive takes the sandbox's. The BFF names the
+  // attachment the same way.
+  const base = path.split('/').filter(Boolean).pop();
+  const fileName = isArchive ? `${base || name}.tar` : base || 'download';
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = path.split('/').pop() || 'download';
+  a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
+  return { fileName, isArchive, size: blob.size };
 };
 
 export const useUploadFile = (workspace: string, name: string) =>

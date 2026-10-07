@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -1086,6 +1087,51 @@ func TestGetProviderRefreshStatus(t *testing.T) {
 	}
 	if len(body) != 1 || body[0]["credentialKey"] != "api_key" || body[0]["strategy"] != "STATIC" {
 		t.Errorf("body = %v", body)
+	}
+}
+
+// A failed refresh is returned with what the gateway says about it: what it
+// needs, its stable failure code, and when it failed.
+func TestGetProviderRefreshStatusSaysWhatAFailureNeeds(t *testing.T) {
+	failedAt := time.UnixMilli(1_900_000_000_000)
+	sdk := &mockSDK{}
+	sdk.providers.refresh.getStatusFn = func(_ context.Context, _, _, _ string) ([]*openshell.RefreshStatus, error) {
+		return []*openshell.RefreshStatus{
+			{
+				CredentialKey:        "GOOGLE_ACCESS_TOKEN",
+				Strategy:             openshell.RefreshStrategyOAuth2RefreshToken,
+				Status:               "failed",
+				LastError:            "the refresh token was revoked",
+				RecoveryAction:       types.RefreshRecoveryActionReauthorize,
+				FailureCode:          "oauth_invalid_grant",
+				ProviderErrorSubtype: "token_revoked",
+				LastErrorAt:          failedAt,
+			},
+			{CredentialKey: "OTHER_TOKEN", Strategy: openshell.RefreshStrategyOAuth2ClientCredentials, Status: "active"},
+		}, nil
+	}
+	handler := NewProvidersHandler(services.NewProviderService(sdk.Providers()))
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/providers/{name}/refresh-status", handler.GetProviderRefreshStatus)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/workspaces/default/providers/google/refresh-status", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	var body []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	failed := body[0]
+	if failed["recoveryAction"] != "REAUTHORIZE" || failed["failureCode"] != "oauth_invalid_grant" ||
+		failed["providerErrorSubtype"] != "token_revoked" || failed["lastErrorAtMs"] != float64(failedAt.UnixMilli()) {
+		t.Errorf("failed refresh = %v", failed)
+	}
+	for _, key := range []string{"recoveryAction", "failureCode", "providerErrorSubtype", "lastErrorAtMs"} {
+		if _, present := body[1][key]; present {
+			t.Errorf("a refresh that is working carries %s: %v", key, body[1])
+		}
 	}
 }
 

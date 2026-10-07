@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
+	"time"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
@@ -12,12 +14,6 @@ import (
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
-
-// draftSummaryResponse matches the frontend DraftSummary type.
-type draftSummaryResponse struct {
-	Sandboxes    []any `json:"sandboxes"`
-	TotalPending int   `json:"totalPending"`
-}
 
 // ApproveDraftChunkRequest optionally carries the chunk's review token, which
 // the frontend already has from its last GetDraftPolicy fetch. Absent for
@@ -33,22 +29,181 @@ type RejectDraftChunkRequest struct {
 }
 
 type DraftsHandler struct {
-	svc services.PolicyServiceInterface
+	svc       services.PolicyServiceInterface
+	sandboxes services.SandboxServiceInterface
 }
 
 func NewDraftsHandler(svc services.PolicyServiceInterface) *DraftsHandler {
 	return &DraftsHandler{svc: svc}
 }
 
-// GetDraftSummary returns an aggregated summary of pending draft policy chunks
-// across all workspaces. TODO: No single gateway RPC provides a cross-workspace
-// draft summary. When one becomes available, aggregate real data here. For now,
-// return an empty response so the frontend route does not 404.
-func (h *DraftsHandler) GetDraftSummary(w http.ResponseWriter, _ *http.Request) {
-	apiutils.WriteJSON(w, http.StatusOK, draftSummaryResponse{
-		Sandboxes:    []any{},
-		TotalPending: 0,
-	})
+// SetSandboxService gives the handler the sandbox lists the draft summaries
+// are built from. It is a method rather than a NewDraftsHandler parameter so
+// that downstream callers of the constructor keep compiling; without it the
+// summaries are empty, which is what they were before there was anything to
+// build them from. Call it before the handler serves requests.
+func (h *DraftsHandler) SetSandboxService(sandboxes services.SandboxServiceInterface) {
+	h.sandboxes = sandboxes
+}
+
+// draftStatusPending is the status filter of a chunk nobody has decided yet.
+const draftStatusPending = "pending"
+
+// A draft summary is one GetDraftPolicy per sandbox. draftSummaryConcurrency
+// bounds how many are in flight at once (the TUI reads 16 at a time for the
+// same badges), and draftSummaryReadTimeout how long one may take before its
+// sandbox is reported as unavailable, so that a slow inbox cannot hold up the
+// summary of every other sandbox. draftSummaryTimeout bounds the whole
+// summary: a client polls it, so an answer that takes longer than a poll is
+// worth less than one that says which sandboxes it did not get to.
+const (
+	draftSummaryConcurrency = 16
+	draftSummaryReadTimeout = 5 * time.Second
+	draftSummaryTimeout     = 20 * time.Second
+)
+
+// GetWorkspaceDraftSummary counts the pending draft chunks of every sandbox
+// in a workspace. See summarizeDrafts.
+func (h *DraftsHandler) GetWorkspaceDraftSummary(w http.ResponseWriter, r *http.Request) {
+	h.writeDraftSummary(w, r, r.PathValue("workspace"))
+}
+
+// GetDraftSummary is the summary outside a workspace route. With ?workspace=
+// it is that workspace's, the same answer as GetWorkspaceDraftSummary.
+//
+// Without one it is empty, as it has always been. Frontends older than the
+// workspace route poll this URL without a workspace, every few seconds and
+// for every user. Answering them with a summary of every workspace would be
+// one draft read per sandbox on the gateway per poll, and a 403 for everyone
+// who is not a platform admin, where they have always had a 200.
+func (h *DraftsHandler) GetDraftSummary(w http.ResponseWriter, r *http.Request) {
+	workspace := r.URL.Query().Get("workspace")
+	if workspace == "" {
+		apiutils.WriteJSON(w, http.StatusOK, models.DraftSummary{Sandboxes: []models.DraftSandboxSummary{}})
+		return
+	}
+	h.writeDraftSummary(w, r, workspace)
+}
+
+func (h *DraftsHandler) writeDraftSummary(w http.ResponseWriter, r *http.Request, workspace string) {
+	if h.sandboxes == nil {
+		slog.Warn("draft summary requested, but the drafts handler was given no sandbox service")
+		apiutils.WriteJSON(w, http.StatusOK, models.DraftSummary{Sandboxes: []models.DraftSandboxSummary{}})
+		return
+	}
+	sandboxes, err := h.sandboxes.ListAll(r.Context(), workspace)
+	if err != nil {
+		apiutils.WriteSDKError(w, err)
+		return
+	}
+	apiutils.WriteJSON(w, http.StatusOK, h.summarizeDrafts(r.Context(), workspace, sandboxes))
+}
+
+// summarizeDrafts reads the pending draft chunks of each sandbox, a bounded
+// number at a time, and reports the sandboxes that have any.
+//
+// One sandbox failing does not fail the summary. Its entry says the count is
+// unavailable, which a client must not read as none pending, and so does the
+// entry of a sandbox the summary ran out of time for. A sandbox that is gone
+// by the time it is read is left out: there is nothing to report on.
+// workspace is the fallback for a sandbox that names none itself.
+func (h *DraftsHandler) summarizeDrafts(ctx context.Context, workspace string, sandboxes []*openshell.Sandbox) models.DraftSummary {
+	ctx, cancel := context.WithTimeout(ctx, draftSummaryTimeout)
+	defer cancel()
+
+	entries := make([]*models.DraftSandboxSummary, len(sandboxes))
+	read := make([]bool, len(sandboxes))
+	indexes := make(chan int)
+	var wg sync.WaitGroup
+	for range min(draftSummaryConcurrency, len(sandboxes)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range indexes {
+				sandbox := sandboxes[i]
+				if sandbox == nil {
+					continue
+				}
+				entries[i] = h.pendingDrafts(ctx, sandboxWorkspaceOr(sandbox, workspace), sandbox.Name)
+			}
+		}()
+	}
+	// Nothing more is started once the client has gone or the time is up.
+	for i := range sandboxes {
+		if ctx.Err() != nil {
+			break
+		}
+		read[i] = true
+		indexes <- i
+	}
+	close(indexes)
+	wg.Wait()
+
+	for i, sandbox := range sandboxes {
+		if !read[i] && sandbox != nil {
+			entries[i] = &models.DraftSandboxSummary{
+				Workspace:   sandboxWorkspaceOr(sandbox, workspace),
+				SandboxName: sandbox.Name,
+				Unavailable: true,
+			}
+		}
+	}
+
+	summary := models.DraftSummary{Sandboxes: []models.DraftSandboxSummary{}}
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		summary.Sandboxes = append(summary.Sandboxes, *entry)
+		summary.TotalPending += entry.PendingCount
+	}
+	return summary
+}
+
+// sandboxWorkspaceOr is the workspace a sandbox names, or the one it was
+// listed in when it names none.
+func sandboxWorkspaceOr(sandbox *openshell.Sandbox, workspace string) string {
+	if sandbox.Workspace != "" {
+		return sandbox.Workspace
+	}
+	return workspace
+}
+
+// pendingDrafts reads one sandbox's pending chunks and returns its summary
+// entry, or nil when it has none pending or no longer exists.
+func (h *DraftsHandler) pendingDrafts(ctx context.Context, workspace, name string) *models.DraftSandboxSummary {
+	readCtx, cancel := context.WithTimeout(ctx, draftSummaryReadTimeout)
+	defer cancel()
+	draft, err := h.svc.GetDraft(readCtx, workspace, name, openshell.WithStatusFilter(draftStatusPending))
+	switch {
+	case err == nil:
+	case openshell.IsNotFound(err):
+		return nil
+	default:
+		// A summary nobody is waiting for any more is not worth a line each.
+		if ctx.Err() == nil {
+			slog.Warn("pending draft chunks unavailable", "workspace", workspace, "sandbox", name, "error", err)
+		}
+		return &models.DraftSandboxSummary{Workspace: workspace, SandboxName: name, Unavailable: true}
+	}
+	if draft == nil || len(draft.Chunks) == 0 {
+		return nil
+	}
+	entry := &models.DraftSandboxSummary{
+		Workspace:    workspace,
+		SandboxName:  name,
+		PendingCount: len(draft.Chunks),
+	}
+	for i := range draft.Chunks {
+		chunk := &draft.Chunks[i]
+		if chunk.SecurityNotes != "" {
+			entry.HasSecurityFlags = true
+		}
+		if !chunk.CreatedAt.IsZero() && chunk.CreatedAt.UnixMilli() > entry.LatestDraftMs {
+			entry.LatestDraftMs = chunk.CreatedAt.UnixMilli()
+		}
+	}
+	return entry
 }
 
 // GetDraftPolicy returns the draft-policy inbox for a sandbox. Optional
@@ -131,23 +286,69 @@ func (h *DraftsHandler) RejectDraftChunk(w http.ResponseWriter, r *http.Request)
 	apiutils.WriteJSON(w, http.StatusOK, map[string]bool{"rejected": true})
 }
 
-// ApproveAllDraftChunksRequest mirrors the include_security_flagged option.
-type ApproveAllDraftChunksRequest struct {
-	IncludeSecurityFlagged bool `json:"includeSecurityFlagged,omitempty"`
+// DraftChunkApproval names one reviewed chunk and the review token it was
+// fetched with. It mirrors openshell.v1.DraftChunkApproval.
+type DraftChunkApproval struct {
+	ChunkID     string `json:"chunkId"`
+	ReviewToken string `json:"reviewToken,omitempty"`
 }
 
-// ApproveAllDraftChunks approves all pending chunks (security-flagged ones
-// are skipped unless explicitly included).
+// ApproveAllDraftChunksRequest mirrors ApproveAllDraftChunksRequest: the
+// chunks the reviewer saw, each with its review token, and whether the
+// security-flagged ones among them are approved too. Approvals is absent for
+// older clients.
+type ApproveAllDraftChunksRequest struct {
+	Approvals              []DraftChunkApproval `json:"approvals,omitempty"`
+	IncludeSecurityFlagged bool                 `json:"includeSecurityFlagged,omitempty"`
+}
+
+// ApproveAllDraftChunks approves pending chunks in one write (security-flagged
+// ones are skipped unless explicitly included).
+//
+// The gateway binds a bulk approval to review tokens the same way it binds a
+// single one: a chunk that has a token and is approved without it is skipped
+// as stale, so a request that names no approvals approves nothing against a
+// gateway that issues tokens. The tokens the client sends are used as they
+// are, because they pin what the reviewer was looking at. Only when it sends
+// none does the BFF read the pending chunks and approve those, which is what
+// `openshell draft approve-all` does.
 func (h *DraftsHandler) ApproveAllDraftChunks(w http.ResponseWriter, r *http.Request) {
+	workspace := r.PathValue("workspace")
+	name := r.PathValue("name")
+
 	var body ApproveAllDraftChunksRequest
 	if r.ContentLength > 0 && !apiutils.DecodeBody(w, r, &body) {
 		return
 	}
+
+	approvals := make([]openshell.DraftChunkApproval, 0, len(body.Approvals))
+	for _, approval := range body.Approvals {
+		if approval.ChunkID == "" {
+			apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidRequest, "approvals[].chunkId is required")
+			return
+		}
+		approvals = append(approvals, openshell.DraftChunkApproval{
+			ChunkID:     approval.ChunkID,
+			ReviewToken: approval.ReviewToken,
+		})
+	}
+	if len(approvals) == 0 {
+		pending, err := h.pendingDraftApprovals(r.Context(), workspace, name)
+		if err != nil {
+			apiutils.WriteSDKError(w, err)
+			return
+		}
+		approvals = pending
+	}
+
 	var opts []openshell.ApproveAllOption
 	if body.IncludeSecurityFlagged {
 		opts = append(opts, openshell.WithIncludeSecurityFlagged())
 	}
-	result, err := h.svc.ApproveAllDraftChunks(r.Context(), r.PathValue("workspace"), r.PathValue("name"), opts...)
+	if len(approvals) > 0 {
+		opts = append(opts, openshell.WithDraftApprovals(approvals...))
+	}
+	result, err := h.svc.ApproveAllDraftChunks(r.Context(), workspace, name, opts...)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
@@ -158,6 +359,27 @@ func (h *DraftsHandler) ApproveAllDraftChunks(w http.ResponseWriter, r *http.Req
 		"chunksApproved": result.ChunksApproved,
 		"chunksSkipped":  result.ChunksSkipped,
 	})
+}
+
+// pendingDraftApprovals returns an approval for every pending chunk of the
+// sandbox, each bound to the review token the chunk carries now. An empty
+// inbox yields none, and the gateway then answers the bulk approval itself.
+func (h *DraftsHandler) pendingDraftApprovals(ctx context.Context, workspace, name string) ([]openshell.DraftChunkApproval, error) {
+	draft, err := h.svc.GetDraft(ctx, workspace, name, openshell.WithStatusFilter(draftStatusPending))
+	if err != nil {
+		return nil, err
+	}
+	if draft == nil {
+		return nil, nil
+	}
+	approvals := make([]openshell.DraftChunkApproval, 0, len(draft.Chunks))
+	for i := range draft.Chunks {
+		approvals = append(approvals, openshell.DraftChunkApproval{
+			ChunkID:     draft.Chunks[i].ID,
+			ReviewToken: draft.Chunks[i].ReviewToken,
+		})
+	}
+	return approvals, nil
 }
 
 // EditDraftChunkRequest carries the replacement proposed rule as JSON.

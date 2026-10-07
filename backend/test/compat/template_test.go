@@ -4,6 +4,7 @@ package compat
 
 import (
 	"net/http"
+	"reflect"
 	"testing"
 )
 
@@ -18,6 +19,12 @@ type sandboxTemplate struct {
 			Environment map[string]string `json:"environment"`
 			Image       string            `json:"image"`
 		} `json:"workload"`
+		DesiredServiceLevel *struct {
+			Startup *struct {
+				ReadyWithinMs int64  `json:"readyWithinMs"`
+				MaxBurst      uint32 `json:"maxBurst"`
+			} `json:"startup"`
+		} `json:"desiredServiceLevel"`
 	} `json:"spec"`
 	Metadata objectMeta `json:"metadata"`
 }
@@ -59,6 +66,11 @@ func TestSandboxTemplates(t *testing.T) {
 				"environment": map[string]string{"COMPAT_FROM": "template"},
 				"resources":   map[string]string{"cpu": "500m", "memory": "512Mi"},
 			},
+			// `sandbox template create --ready-within 30s --max-burst 2`. The
+			// duration crosses the wire as a protobuf Duration.
+			"desiredServiceLevel": map[string]any{
+				"startup": map[string]any{"readyWithinMs": 30000, "maxBurst": 2},
+			},
 		},
 	}
 	check := func(t *testing.T, what string, tpl sandboxTemplate) {
@@ -80,6 +92,10 @@ func TestSandboxTemplates(t *testing.T) {
 		}
 		if w.Resources == nil || w.Resources.CPU != "500m" || w.Resources.Memory != "512Mi" {
 			t.Errorf("%s: workload resources = %+v, want cpu 500m and memory 512Mi", what, w.Resources)
+		}
+		level := tpl.Spec.DesiredServiceLevel
+		if level == nil || level.Startup == nil || level.Startup.ReadyWithinMs != 30000 || level.Startup.MaxBurst != 2 {
+			t.Errorf("%s: desiredServiceLevel = %+v, want a startup ready within 30000 ms with a burst of 2", what, level)
 		}
 	}
 
@@ -122,22 +138,50 @@ func TestSandboxTemplates(t *testing.T) {
 
 	t.Run("create sandbox from template", func(t *testing.T) {
 		requireSandboxes(t)
-		// The request carries governance only. The image and the environment
-		// asserted below were never sent: they can only come from the template.
+		// The request carries governance and what a template does not hold:
+		// the sandbox's own labels and annotations, its main command and a
+		// service to expose. The image and the environment asserted below
+		// were never sent: they can only come from the template.
+		command := []string{"sh", "-c", "exec sleep infinity"}
 		var created sandbox
 		mustJSON(t, http.MethodPost, sandboxesPath(ws)+"/from-template", map[string]any{
-			"name":         sb,
-			"templateName": name,
-			"policy":       basePolicy(),
-			"labels":       map[string]string{"compat-tag": tag},
+			"name":             sb,
+			"templateName":     name,
+			"policy":           basePolicy(),
+			"labels":           map[string]string{"compat-tag": tag},
+			"annotations":      map[string]string{"compat/purpose": "from template"},
+			"command":          command,
+			"serviceExposures": []map[string]any{{"targetPort": 8000}},
 		}, &created, http.StatusCreated)
 		if created.Metadata.Name != sb || created.Metadata.Labels["compat-tag"] != tag {
 			t.Errorf("created sandbox = %q with labels %v, want %q labelled compat-tag=%s",
 				created.Metadata.Name, created.Metadata.Labels, sb, tag)
 		}
+		if got := created.Metadata.Annotations["compat/purpose"]; got != "from template" {
+			t.Errorf("annotation compat/purpose = %q, want %q; annotations: %v", got, "from template", created.Metadata.Annotations)
+		}
 		if created.Spec.Image != sandboxImage() || created.Spec.Environment["COMPAT_FROM"] != "template" {
 			t.Errorf("sandbox spec image = %q, environment = %v; want the template's %q and COMPAT_FROM=template",
 				created.Spec.Image, created.Spec.Environment, sandboxImage())
+		}
+		if !reflect.DeepEqual(created.Spec.Command, command) {
+			t.Errorf("spec.command = %q, want %q", created.Spec.Command, command)
+		}
+		if created.ServiceURLs[""] == "" {
+			t.Errorf("serviceUrls = %v, want a URL for the unnamed service exposed with the sandbox", created.ServiceURLs)
+		}
+		// The sandbox page names the template a sandbox was made from.
+		if from := created.CreatedFromWorkloadTemplate; from == nil || from.Name != name {
+			t.Errorf("createdFromWorkloadTemplate = %+v, want template %q", from, name)
+		}
+		// The template's CPU and memory become the sandbox's limits, which is
+		// where the sandbox page reads them.
+		var limits any
+		if tpl := created.Spec.Template; tpl != nil {
+			limits = tpl.Resources["limits"]
+		}
+		if want := map[string]any{"cpu": "500m", "memory": "512Mi"}; !reflect.DeepEqual(limits, want) {
+			t.Errorf("spec.template.resources.limits = %v, want the template's %v", limits, want)
 		}
 		// A workload the gateway resolved from a template has to actually run.
 		waitForPhase(t, ws, sb, "READY")

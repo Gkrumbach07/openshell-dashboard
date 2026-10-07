@@ -169,6 +169,9 @@ export const interceptProviders = (workspace = 'default') => {
         ],
         inferenceCapable: true,
         source: 'user',
+        // A profile imported into the workspace: the scope is what makes it
+        // the workspace's own, to update and delete.
+        scope: 'workspace',
         resourceVersion: 1,
       },
     ],
@@ -215,6 +218,32 @@ export const interceptProviders = (workspace = 'default') => {
       credentialNames: ['api_key'],
     },
   }).as('createProvider');
+
+  // The provider detail page: the first provider of the list fixture, with a
+  // credential expiry and some configuration, and no refresh configured.
+  cy.intercept('GET', `/api/v1/workspaces/${workspace}/providers/anthropic`, {
+    statusCode: 200,
+    body: {
+      metadata: {
+        id: 'prov-1-id',
+        name: 'anthropic',
+        workspace,
+        labels: { team: 'ml' },
+        createdAtMs: 1722700000000,
+        resourceVersion: 1,
+      },
+      type: 'claude',
+      credentialNames: ['api_key'],
+      credentialExpiresAtMs: { api_key: 1893456000000 },
+      config: { ANTHROPIC_BASE_URL: 'https://api.anthropic.com' },
+    },
+  }).as('getProvider');
+
+  cy.intercept(
+    'GET',
+    `/api/v1/workspaces/${workspace}/providers/anthropic/refresh-status`,
+    { statusCode: 200, body: [] },
+  ).as('getProviderRefreshStatus');
 };
 
 export const interceptPolicies = (workspace = 'default') => {
@@ -281,6 +310,12 @@ export const interceptMisc = () => {
     statusCode: 200,
     body: { sandboxes: [], totalPending: 0 },
   }).as('draftSummary');
+
+  // What the sandbox list reads its "N pending rules" badges from.
+  cy.intercept('GET', /\/api\/v1\/workspaces\/[^/]+\/draft-summary$/, {
+    statusCode: 200,
+    body: { sandboxes: [], totalPending: 0 },
+  }).as('workspaceDraftSummary');
 
   cy.intercept('GET', /\/api\/v1\/workspaces\/[^/]+\/inference/, {
     statusCode: 404,

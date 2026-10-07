@@ -1,9 +1,16 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import type { DeletionOutcome } from '../types';
+import { deletionOutcome } from '../utils/deletion';
+
 // Deletes a set of named resources in parallel (the gateway API is
 // delete-by-name only), then invalidates the list query. Partial failures
 // surface as an error message while successful deletions stick.
+//
+// A delete that did not fail has not always deleted anything yet: the gateway
+// may only have accepted it. onDone is given what it answered for each name,
+// in the order of names, for the caller to report (see describeDeletions).
 export const useBulkDelete = (
   deleteOne: (name: string) => Promise<unknown>,
   invalidateKey: readonly unknown[],
@@ -12,7 +19,10 @@ export const useBulkDelete = (
   const [isDeleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
-  const run = async (names: string[], onDone: () => void) => {
+  const run = async (
+    names: string[],
+    onDone: (outcomes: DeletionOutcome[]) => void,
+  ) => {
     setDeleting(true);
     setError(undefined);
     const results = await Promise.allSettled(
@@ -24,7 +34,13 @@ export const useBulkDelete = (
     if (failed.length > 0) {
       setError(`${failed.length} of ${names.length} deletions failed`);
     } else {
-      onDone();
+      onDone(
+        results.map((result) =>
+          result.status === 'fulfilled'
+            ? deletionOutcome(result.value)
+            : 'unspecified',
+        ),
+      );
     }
   };
 

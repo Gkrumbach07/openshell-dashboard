@@ -168,6 +168,83 @@ func TestDeleteGlobalSetting(t *testing.T) {
 	}
 }
 
+// The answer to a global delete is the gateway's own. A key that had no
+// global value is not reported as deleted (the gateway answers deleted=false
+// and leaves the settings revision where it was), and a refusal is relayed
+// with the gateway's message.
+func TestDeleteGlobalSettingAnswer(t *testing.T) {
+	tests := []struct { //nolint:govet // fieldalignment: test readability
+		name       string
+		result     *openshell.ConfigUpdateResult
+		err        error
+		wantStatus int
+		want       string
+	}{
+		{
+			name:       "the key was set",
+			result:     &openshell.ConfigUpdateResult{Deleted: true, SettingsRevision: 29},
+			wantStatus: http.StatusOK,
+			want:       `{"settingsRevision":29,"deleted":true}`,
+		},
+		{
+			name:       "the key was not set",
+			result:     &openshell.ConfigUpdateResult{Deleted: false, SettingsRevision: 28},
+			wantStatus: http.StatusOK,
+			want:       `{"settingsRevision":28,"deleted":false}`,
+		},
+		{
+			// The SDK returns a result for every answer; nothing is claimed
+			// when it does not.
+			name:       "no result",
+			wantStatus: http.StatusOK,
+			want:       `{"settingsRevision":0,"deleted":false}`,
+		},
+		{
+			name: "a key the gateway does not know",
+			err: &openshell.StatusError{
+				Code:    openshell.ErrorInvalidArgument,
+				Message: "unknown setting key 'log_level'. Allowed keys: ocsf_json_enabled, ocsf_schema_version, agent_policy_proposals_enabled, proposal_approval_mode",
+			},
+			wantStatus: http.StatusBadRequest,
+			want:       `{"code":"invalid_argument","message":"unknown setting key 'log_level'. Allowed keys: ocsf_json_enabled, ocsf_schema_version, agent_policy_proposals_enabled, proposal_approval_mode"}`,
+		},
+		{
+			name:       "not a platform admin",
+			err:        &openshell.StatusError{Code: openshell.ErrorPermissionDenied, Message: "role 'openshell-admin' required"},
+			wantStatus: http.StatusForbidden,
+			want:       `{"code":"permission_denied","message":"role 'openshell-admin' required"}`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var got *openshell.ConfigUpdate
+			var gotWorkspace string
+			mock := &mockSDK{}
+			mock.config.updateFn = func(_ context.Context, workspace string, update *openshell.ConfigUpdate) (*openshell.ConfigUpdateResult, error) {
+				got, gotWorkspace = update, workspace
+				return tc.result, tc.err
+			}
+			handler := NewSettingsHandler(mock.Config())
+			w := httptest.NewRecorder()
+			handler.DeleteGlobalSetting(w, httptest.NewRequest(http.MethodDelete, "/settings/global?key=log_level", nil))
+
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
+			}
+			if body := strings.TrimSpace(w.Body.String()); body != tc.want {
+				t.Errorf("body = %s, want %s", body, tc.want)
+			}
+			// What was asked of the gateway: a global delete of that one key.
+			if got == nil {
+				t.Fatal("the gateway was not asked to delete anything")
+			}
+			if got.SettingKey != "log_level" || !got.DeleteSetting || !got.Global || got.SettingValue != nil || got.Name != "" || gotWorkspace != "" {
+				t.Errorf("update = %+v in workspace %q, want a global delete of log_level", *got, gotWorkspace)
+			}
+		})
+	}
+}
+
 func TestDeleteGlobalSettingMissingKey(t *testing.T) {
 	mock := &mockSDK{}
 	handler := NewSettingsHandler(mock.Config())

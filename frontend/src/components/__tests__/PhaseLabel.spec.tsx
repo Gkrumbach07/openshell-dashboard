@@ -11,12 +11,63 @@ describe('PhaseLabel', () => {
     ['PROVISIONING'],
     ['DELETING'],
     ['TERMINATING'],
+    ['STOPPING'],
+    ['STOPPED'],
+    ['STARTING'],
+    ['COMPLETED'],
     ['UNKNOWN'],
     ['UNSPECIFIED'],
   ])('renders %s phase with correct text', (phase) => {
     render(<PhaseLabel phase={phase} />);
     const label = screen.getByTestId('phase-label');
     expect(label).toHaveTextContent(phase);
+  });
+
+  // The class PatternFly gives a label of one color, e.g. "pf-m-green".
+  const colorOf = (ui: React.ReactElement): string => {
+    const { container, unmount } = render(ui);
+    const label = container.querySelector('.pf-v6-c-label');
+    const color = Array.from(label?.classList ?? []).find(
+      (name) => name.startsWith('pf-m-') && name !== 'pf-m-filled',
+    );
+    unmount();
+    return color ?? '';
+  };
+
+  it('shows COMPLETED as the success READY is, not as an unknown phase', () => {
+    expect(colorOf(<PhaseLabel phase="COMPLETED" />)).toBe(
+      colorOf(<PhaseLabel phase="READY" />),
+    );
+    expect(colorOf(<PhaseLabel phase="COMPLETED" />)).not.toBe(
+      colorOf(<PhaseLabel phase="UNKNOWN" />),
+    );
+    expect(colorOf(<PhaseLabel phase="COMPLETED" exitCode={0} />)).toBe(
+      colorOf(<PhaseLabel phase="READY" />),
+    );
+  });
+
+  it('shows a STOPPED sandbox with an exit code as the failure ERROR is', () => {
+    expect(colorOf(<PhaseLabel phase="STOPPED" exitCode={143} />)).toBe(
+      colorOf(<PhaseLabel phase="ERROR" />),
+    );
+    render(<PhaseLabel phase="STOPPED" exitCode={143} />);
+    expect(screen.getByTestId('phase-label')).toHaveTextContent(
+      'STOPPED (exit 143)',
+    );
+  });
+
+  it('shows a sandbox somebody stopped as stopped', () => {
+    expect(colorOf(<PhaseLabel phase="STOPPED" />)).not.toBe(
+      colorOf(<PhaseLabel phase="ERROR" />),
+    );
+    expect(colorOf(<PhaseLabel phase="STOPPED" />)).not.toBe(
+      colorOf(<PhaseLabel phase="READY" />),
+    );
+  });
+
+  it('ignores an exit code on a phase it does not change', () => {
+    render(<PhaseLabel phase="ERROR" exitCode={7} />);
+    expect(screen.getByTestId('phase-label')).toHaveTextContent(/^ERROR$/);
   });
 
   it('renders a PF Label with color prop for READY', () => {

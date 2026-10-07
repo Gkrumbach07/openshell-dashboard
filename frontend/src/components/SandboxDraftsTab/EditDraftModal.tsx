@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Button,
+  Content,
   Modal,
   ModalBody,
   ModalFooter,
@@ -18,13 +19,19 @@ type EditDraftModalProps = {
   onClose: () => void;
   onSave: (chunkId: string, proposedRule: NetworkPolicyRule) => void;
   isPending: boolean;
+  // Why the last save was refused, by the BFF's schema check or the gateway.
+  error?: string;
 };
 
+// Edits a pending proposal's rule as the document the gateway holds: every
+// field of the rule is in the JSON, and what is saved replaces the proposed
+// rule whole, so a field left as it is stays as it is.
 const EditDraftModal: React.FC<EditDraftModalProps> = ({
   chunk,
   onClose,
   onSave,
   isPending,
+  error,
 }) => {
   const [editJson, setEditJson] = useState('');
   const [editJsonError, setEditJsonError] = useState('');
@@ -38,14 +45,18 @@ const EditDraftModal: React.FC<EditDraftModalProps> = ({
 
   const handleSave = () => {
     if (!chunk) return;
-    let parsed: NetworkPolicyRule;
+    let parsed: unknown;
     try {
-      parsed = JSON.parse(editJson) as NetworkPolicyRule;
+      parsed = JSON.parse(editJson);
     } catch {
       setEditJsonError('Invalid JSON');
       return;
     }
-    onSave(chunk.id, parsed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      setEditJsonError('The rule must be a JSON object');
+      return;
+    }
+    onSave(chunk.id, parsed as NetworkPolicyRule);
   };
 
   if (!chunk) return null;
@@ -65,9 +76,28 @@ const EditDraftModal: React.FC<EditDraftModalProps> = ({
       />
       <ModalBody>
         <Stack hasGutter>
+          <StackItem>
+            <Content component="small">
+              The whole rule, with the gateway&apos;s field names. Saving
+              replaces the proposed rule with this document and the gateway
+              evaluates it again before it can be approved.
+            </Content>
+          </StackItem>
           {editJsonError && (
             <StackItem>
               <Alert variant="danger" isInline title={editJsonError} />
+            </StackItem>
+          )}
+          {error && !editJsonError && (
+            <StackItem>
+              <Alert
+                variant="danger"
+                isInline
+                title="The rule was not saved"
+                data-testid="edit-chunk-error"
+              >
+                {error}
+              </Alert>
             </StackItem>
           )}
           <StackItem>
@@ -80,9 +110,8 @@ const EditDraftModal: React.FC<EditDraftModalProps> = ({
                 setEditJsonError('');
               }}
               rows={16}
-              style={{
-                fontFamily: 'var(--pf-t--global--font--family--mono)',
-              }}
+              resizeOrientation="vertical"
+              className="pf-v6-u-font-family-monospace"
             />
           </StackItem>
         </Stack>

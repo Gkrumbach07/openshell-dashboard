@@ -92,6 +92,13 @@ nobody reads is deleted.
 HTTP call in the package goes through the configured client — a bypass is a
 bug, not an exception.
 
+A request `apiFetch` cannot make (a multipart upload with progress, a download
+read as a blob) is built from the same module's `apiUrl()`, `apiAuthHeaders()`
+and `sessionExpiredError()`, so the base path, the token getter and the
+session-expiry handler apply to it too. The terminal WebSocket takes the base
+path only: a browser cannot put a header on a WebSocket, which is why the
+terminal has its own feature flag.
+
 ### CSS policy: minimal
 
 Co-located CSS is kept to a minimum — only layout rules with no PatternFly

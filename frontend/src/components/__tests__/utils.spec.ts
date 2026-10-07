@@ -72,6 +72,14 @@ describe('formatAge', () => {
   it('handles missing timestamps', () => {
     expect(formatAge(0, now)).toBe('-');
   });
+
+  // The creation time is the gateway's. A browser whose clock is behind it
+  // sees a sandbox that was just created as created in the future.
+  it('reads a time the browser clock has not reached yet as just now', () => {
+    expect(formatAge(now + 4_000, now)).toBe('0s');
+    expect(formatAge(now + 1, now)).toBe('0s');
+    expect(formatAge(now, now)).toBe('0s');
+  });
 });
 
 describe('formatTimestamp', () => {

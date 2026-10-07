@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { RESOURCE_POLL_MS } from '../constants';
 import { del, get, post } from './client';
-import { sandboxKeys } from './queryKeys';
+import { allWorkspacesKeys, sandboxKeys } from './queryKeys';
 import { templateKeys } from './queryKeys';
 import type {
   CreateSandboxFromTemplateRequest,
   CreateSandboxTemplateRequest,
+  DeleteResult,
   Sandbox,
   SandboxTemplate,
 } from '../types';
@@ -40,8 +42,8 @@ export const createTemplate = (
 export const deleteTemplate = (
   workspace: string,
   name: string,
-): Promise<{ deleted: boolean }> =>
-  del<{ deleted: boolean }>(
+): Promise<DeleteResult> =>
+  del<DeleteResult>(
     `/api/v1/workspaces/${encodeURIComponent(workspace)}/templates/${encodeURIComponent(name)}`,
   );
 
@@ -54,10 +56,13 @@ export const createSandboxFromTemplate = (
     body,
   );
 
+// Polled: a template another workspace admin adds or deletes shows up without
+// a reload.
 export const useTemplates = (workspace: string, labelSelector?: string) =>
   useQuery({
     queryKey: templateKeys.list(workspace, labelSelector),
     queryFn: () => listTemplates(workspace, labelSelector),
+    refetchInterval: RESOURCE_POLL_MS,
   });
 
 export const useTemplate = (workspace: string, name: string) =>
@@ -66,13 +71,22 @@ export const useTemplate = (workspace: string, name: string) =>
     queryFn: () => getTemplate(workspace, name),
   });
 
+// A template is also a row of the list across workspaces, under every label
+// selector that list was asked for.
 export const useCreateTemplate = (workspace: string) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateSandboxTemplateRequest) =>
       createTemplate(workspace, body),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: templateKeys.all(workspace) }),
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: templateKeys.all(workspace),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: allWorkspacesKeys.allTemplates,
+        }),
+      ]),
   });
 };
 
@@ -81,7 +95,14 @@ export const useDeleteTemplate = (workspace: string) => {
   return useMutation({
     mutationFn: (name: string) => deleteTemplate(workspace, name),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: templateKeys.all(workspace) }),
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: templateKeys.all(workspace),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: allWorkspacesKeys.allTemplates,
+        }),
+      ]),
   });
 };
 
@@ -91,6 +112,13 @@ export const useCreateSandboxFromTemplate = (workspace: string) => {
     mutationFn: (body: CreateSandboxFromTemplateRequest) =>
       createSandboxFromTemplate(workspace, body),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: sandboxKeys.scope(workspace) }),
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: sandboxKeys.scope(workspace),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: allWorkspacesKeys.allSandboxes,
+        }),
+      ]),
   });
 };
