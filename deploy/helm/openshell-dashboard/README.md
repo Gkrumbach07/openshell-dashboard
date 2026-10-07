@@ -133,7 +133,7 @@ Chart version and appVersion start at `0.0.0`; release CI stamps both with the r
 | oidc.clientIdSecretKey | string | `""` | Optional key in oidc.existingSecret holding client ID; when set, takes precedence over oidc.clientId. |
 | oidc.codeChallengeMethod | string | `""` | PKCE challenge method (e.g. S256); empty disables PKCE for providers that do not support it. |
 | oidc.existingSecret | string | `"openshell-dashboard-oidc"` | Existing Secret containing keys client-secret and cookie-secret. |
-| oidc.issuer | string | `""` | OIDC issuer URL (e.g. https://keycloak.example.com/realms/openshell) |
+| oidc.issuer | string | `"https://keycloak.example.com/realms/openshell"` | OIDC issuer URL (e.g. https://keycloak.example.com/realms/openshell) |
 | oidc.provider | string | `"oidc"` | oauth2-proxy provider (oidc for generic OIDC, keycloak-oidc for Keycloak role filtering). |
 | oidc.redirectURL | string | `""` | Full public callback URL; required when host is dynamically allocated. Empty derives from Route/HTTPRoute host. |
 | oidc.rolesClaim | string | `""` | Same roles claim path as gateway server.oidc.rolesClaim (documented for installer parity). |
