@@ -119,7 +119,7 @@ oidc:
   # -- oauth2-proxy provider (oidc for generic OIDC, keycloak-oidc for Keycloak role filtering).
   provider: oidc
   # -- OIDC issuer URL (e.g. https://keycloak.example.com/realms/openshell)
-  issuer: ""
+  issuer: "https://keycloak.example.com/realms/openshell"
   # -- Expected audience claim for the API resource server. IdP must add it to token aud.
   audience: openshell-api
   # -- Same roles claim path as gateway server.oidc.rolesClaim (documented for installer parity).
