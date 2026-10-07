@@ -25,39 +25,39 @@ helm upgrade --install openshell-dashboard ./deploy/helm/openshell-dashboard \
 
 The default `oidc.provider=oidc` works with any compatible OIDC issuer. Use `oidc.allowedGroups` for group restrictions supported by the provider. For Keycloak client/realm role checks, set `oidc.provider=keycloak-oidc` and `oidc.allowedRoles` (roles are alternatives). Other issuer-specific settings such as `oidc.scope` and `oidc.codeChallengeMethod` are optional; the generic OIDC scope defaults to `openid email profile`.
 
-For Dashboard A, create the Secret outside Helm; do not put credentials or cookie keys in chart values or source control:
+Create the Secret outside Helm; do not put credentials or cookie keys in chart values or source control:
 
 ```sh
-oc -n namespace-a create secret generic dashboard-a-oidc \
-  --from-literal=client-id='openshell-dashboard-a' \
+oc -n namespace-a create secret generic openshell-dashboard-oidc \
+  --from-literal=client-id='openshell-dashboard' \
   --from-literal=client-secret='<DASHBOARD_A_CLIENT_SECRET>' \
   --from-literal=cookie-secret='<HIGH_ENTROPY_COOKIE_SECRET>'
 ```
 
-Put only non-secret settings in a values file:
+Apply a values file. For example that uses openshift routes:
 
 ```yaml
 gateway:
   url: grpcs://<gateway-service>.namespace-a.svc.cluster.local:<port>
   caSecretName: <gateway-ca-secret>
 oidc:
-  provider: keycloak-oidc
+  provider: oidc
   issuer: https://keycloak.example.com/realms/openshell
-  clientIdSecretKey: client-id
-  existingSecret: dashboard-a-oidc
-  adminRole: administrators-a
+  clientId: client-id
+  existingSecret: openshell-dashboard-oidc
+  adminRole: openshell-admin
   allowedRoles:
-    - openshell-api-a:users-a
-    - openshell-api-a:administrators-a
+    - openshell-api:openshell-admin
+    - openshell-api:openshell-user
   scope: openid profile email
   codeChallengeMethod: S256
 authProxy:
   cookie:
-    name: _openshell_a
+    name: _oauth2_proxy
     sameSite: lax
 openshiftRoute:
   enabled: true
-  host: dashboard-a.example.com
+  host: openshell-dashboard.example.com
 ```
 
 `oidc.clientIdSecretKey` reads the client ID from the same existing Secret and takes precedence over `oidc.clientId`. To use a non-Keycloak issuer, keep `oidc.provider=oidc` and omit `oidc.allowedRoles`. Edge Routes terminate TLS before oauth2-proxy; keep `authProxy.forceHTTPS=false` (default), with secure cookies enabled. Set `authProxy.forceHTTPS=true` only if proxy itself has HTTPS enabled via `authProxy.tls.secretName`.
