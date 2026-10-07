@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+# Restricted-v2 SCC supplies a namespace-specific UID and group.
+podSecurityContext: null
+securityContext:
+  runAsNonRoot: true
+  runAsUser: null
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]

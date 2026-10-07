@@ -2,6 +2,10 @@
 -include scripts/.env.dev
 export OPENSHELL_DIR OPENSHELL_GATEWAY_URL GATEWAY_CA_CERT OIDC_ISSUER OIDC_CLIENT_ID
 
+IMAGE_NAME ?= openshell-dashboard
+TAG ?= latest
+PLATFORMS ?= linux/amd64,linux/arm64
+
 .PHONY: setup dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean
 
 setup: ## Install frontend deps and Go deps

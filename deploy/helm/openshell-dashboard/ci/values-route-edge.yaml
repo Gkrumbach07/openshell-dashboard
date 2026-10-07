@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+# Replace with the cluster Route host; IdP redirect URI must match.
+openshiftRoute:
+  enabled: true
+  host: dashboard.apps.example.com

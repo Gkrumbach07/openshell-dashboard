@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+# Match upstream ci/values-keycloak.yaml server.oidc.*, but use an issuer URL
+# reachable by both browser and pods (not a private in-cluster-only hostname).
+# Add an audience mapper to the dashboard client so its ACCESS token aud
+# contains openshell-cli. Register https://dashboard.apps.example.com/oauth2/callback.
+oidc:
+  provider: keycloak-oidc
+  issuer: https://keycloak.keycloak.svc.cluster.local:443/realms/openshell
+  audience: openshell-cli
+  rolesClaim: realm_access.roles
+  adminRole: openshell-admin
+  caConfigMapName: openshell-keycloak-ca
+  clientId: openshell-dashboard
+  existingSecret: openshell-dashboard-oidc
+  codeChallengeMethod: S256
+openshiftRoute:
+  enabled: true
+  host: dashboard.apps.example.com
+podSecurityContext: null
+securityContext:
+  runAsNonRoot: true
+  runAsUser: null
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]

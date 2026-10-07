@@ -1,0 +1,153 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+suite: dashboard isolation and auth
+templates:
+  - templates/deployment.yaml
+  - templates/service.yaml
+  - templates/networkpolicy.yaml
+release:
+  name: openshell
+  namespace: my-namespace
+set:
+  oidc.issuer: https://idp.example.com/realms/openshell
+tests:
+  - it: keeps identity distinct even when installed with gateway release name
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: openshell-dashboard
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/name"]
+          value: openshell-dashboard
+  - it: exposes only proxy port via Service
+    template: templates/service.yaml
+    asserts:
+      - equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: openshell-dashboard
+      - equal:
+          path: spec.ports[0].targetPort
+          value: proxy
+      - lengthEqual:
+          path: spec.ports
+          count: 1
+  - it: binds dashboard to loopback and forwards access token, not ID token
+    template: templates/deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].ports
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LISTEN_ADDRESS
+            value: 127.0.0.1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AUTH_USER_HEADER
+            value: x-forwarded-user
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --pass-access-token=true
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --pass-authorization-header=false
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --skip-auth-strip-headers=true
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --proxy-websockets=true
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --force-https=true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LOGOUT_URL
+            value: /oauth2/sign_out
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cookie-samesite=lax
+  - it: keeps generic OIDC provider usable with group restrictions
+    template: templates/deployment.yaml
+    set:
+      oidc.allowedGroups: [operators]
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --provider=oidc
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --allowed-group=operators
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --allowed-role=operators
+  - it: configures Keycloak role gate and per-dashboard login settings
+    template: templates/deployment.yaml
+    set:
+      oidc.provider: keycloak-oidc
+      oidc.allowedRoles: [openshell-api-a:users-a, openshell-api-a:administrators-a]
+      oidc.scope: openid profile email
+      oidc.codeChallengeMethod: S256
+      oidc.clientIdSecretKey: client-id
+      oidc.existingSecret: dashboard-a-oidc
+      authProxy.cookie.name: _openshell_a
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --provider=keycloak-oidc
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --allowed-role=openshell-api-a:users-a
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --allowed-role=openshell-api-a:administrators-a
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --scope=openid profile email
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --code-challenge-method=S256
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cookie-name=_openshell_a
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --client-id=openshell-dashboard
+      - contains:
+          path: spec.template.spec.containers[1].env
+          content:
+            name: OAUTH2_PROXY_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: dashboard-a-oidc
+                key: client-id
+  - it: rejects Keycloak roles for generic OIDC, where they would be ignored
+    template: templates/deployment.yaml
+    set:
+      oidc.allowedRoles: [openshell-api-a:users-a]
+    asserts:
+      - failedTemplate:
+          errorMessage: oidc.allowedRoles requires oidc.provider=keycloak-oidc
+  - it: only permits controller namespace to proxy port
+    template: templates/networkpolicy.yaml
+    asserts:
+      - equal:
+          path: spec.podSelector.matchLabels["app.kubernetes.io/name"]
+          value: openshell-dashboard
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 4180
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: openshift-ingress
+  - it: rejects pod labels that would match gateway selectors
+    template: templates/deployment.yaml
+    set:
+      podLabels:
+        app.kubernetes.io/name: openshell
+    asserts:
+      - failedTemplate:
+          errorMessage: podLabels cannot override app.kubernetes.io/name or app.kubernetes.io/instance

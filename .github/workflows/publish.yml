@@ -258,3 +258,41 @@ jobs:
           set -euo pipefail
           read -r -a tags <<< "$IMAGE_TAGS"
           scripts/retag-image.sh quay.io/gkrumbach07/openshell-dashboard "$SOURCE_TAG" "${tags[@]}"
+
+  # Packaged from this commit with the image tag that tag-image just published.
+  # Never re-push a stable OCI version; an existing version is left unchanged.
+  publish-chart:
+    needs: [publish, tag-image]
+    if: needs.publish.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.publish.outputs.sha }}
+          persist-credentials: false
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+      - name: Publish immutable versioned chart
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          registry="oci://ghcr.io/${GITHUB_REPOSITORY,,}/helm-chart"
+          ref="$registry/openshell-dashboard"
+          if helm show chart "$ref" --version "$VERSION" > "$RUNNER_TEMP/chart-lookup.log" 2>&1; then
+            echo "Chart $ref:$VERSION already exists; leaving immutable version untouched."
+            exit 0
+          fi
+          if ! grep -Eqi 'not found|manifest unknown|404' "$RUNNER_TEMP/chart-lookup.log"; then
+            cat "$RUNNER_TEMP/chart-lookup.log"
+            exit 1
+          fi
+          helm package deploy/helm/openshell-dashboard --version "$VERSION" \
+            --app-version "$VERSION" --destination "$RUNNER_TEMP"
+          helm push "$RUNNER_TEMP/openshell-dashboard-${VERSION}.tgz" "$registry"

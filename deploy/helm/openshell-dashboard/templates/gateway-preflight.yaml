@@ -1,0 +1,7 @@
+{{/* SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+SPDX-License-Identifier: Apache-2.0 */}}
+{{- if .Values.gateway.preflight.enabled }}
+{{- if not (lookup "v1" "Service" .Release.Namespace .Values.gateway.serviceName) }}
+{{- fail (printf "gateway Service %s not found in namespace %s; set gateway.preflight.enabled=false for offline helm template" .Values.gateway.serviceName .Release.Namespace) }}
+{{- end }}
+{{- end }}

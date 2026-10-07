@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+# Only for gateways enforcing client cert authentication without OIDC.
+# Browser authentication through oauth2-proxy still requires an OIDC client.
+gateway:
+  clientCertSecretName: openshell-client-tls

@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+# Create a TLS Secret for oauth2-proxy with the Route host in the certificate SAN.
+# Replace destinationCACertificate with the signing CA (not a server cert).
+authProxy:
+  tls:
+    secretName: openshell-dashboard-proxy-tls
+openshiftRoute:
+  enabled: true
+  host: dashboard.apps.example.com
+  termination: reencrypt
+  destinationCACertificate: |
+    -----BEGIN CERTIFICATE-----
+    REPLACE_WITH_BASE64_ENCODED_CA_CERTIFICATE
+    -----END CERTIFICATE-----
