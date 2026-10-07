@@ -215,8 +215,17 @@ export const useDeleteSandbox = (workspace: string) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (name: string) => deleteSandbox(workspace, name),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: sandboxKeys.scope(workspace) }),
+    // The queries are marked for re-reading, and the mutation does not wait
+    // for them. The page that deletes a sandbox is usually the one showing
+    // it, and a refetch of a sandbox that is gone can only fail: a mutation
+    // that waited for it would stay pending through the retry, which React
+    // Query holds back for as long as the tab is hidden, and the delete
+    // dialog would spin over a sandbox that no longer exists.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: sandboxKeys.scope(workspace),
+      });
+    },
   });
 };
 
