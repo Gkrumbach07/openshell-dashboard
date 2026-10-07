@@ -9,12 +9,11 @@ jest.mock('../../api/gateway', () => ({
   useGatewayCompatibility: jest.fn(),
 }));
 jest.mock('../../api/auth', () => ({
-  useCurrentUser: () => ({ data: { subject: 'user-1', roles: [] } }),
+  useCurrentUser: jest.fn(),
+  useAuthConfig: jest.fn(),
   useFeatureFlags: () => ({ globalPolicy: true, settings: true }),
 }));
-jest.mock('../../api/rbac', () => ({
-  useUserRole: () => ({ isPlatformAdmin: false }),
-}));
+// Real useUserRole — badge/nav cases set roles on useCurrentUser below.
 jest.mock('../theme', () => ({
   useTheme: () => ({ theme: 'light', toggleTheme: jest.fn() }),
 }));
@@ -30,14 +29,37 @@ jest.mock('~/assets/openshell-logo-dark.svg', () => ({
 }));
 
 import AppLayout from '../AppLayout';
+import { useCurrentUser, useAuthConfig } from '../../api/auth';
 import { useGatewayCompatibility, useGatewayInfo } from '../../api/gateway';
 
 const mockUseGatewayInfo = useGatewayInfo as jest.Mock;
 const mockUseGatewayCompatibility = useGatewayCompatibility as jest.Mock;
+const mockUseCurrentUser = useCurrentUser as jest.Mock;
+const mockUseAuthConfig = useAuthConfig as jest.Mock;
 
-// The user in these tests is not a platform admin (see the rbac mock), so the
-// shell's own gateway-info request is refused, as a gateway with roles
-// refuses it. The notice must not depend on it.
+/** Drive the real useUserRole hook via whoami roles (adminRole stays "admin"). */
+const mockUser = (
+  user: {
+    roles?: string[] | null;
+    isLoading?: boolean;
+  } = {},
+) => {
+  mockUseAuthConfig.mockReturnValue({
+    data: { adminRole: 'admin' },
+  });
+  mockUseCurrentUser.mockReturnValue({
+    data: {
+      subject: 'user-1',
+      // undefined → []; null stays null so useUserRole's ?? [] is exercised
+      roles: user.roles === undefined ? [] : user.roles,
+    },
+    isLoading: user.isLoading ?? false,
+  });
+};
+
+// Default fixtures are not platform admins, so the shell's own gateway-info
+// request is refused, as a gateway with roles refuses it. The notice must
+// not depend on it.
 const refuseGatewayInfo = () =>
   mockUseGatewayInfo.mockReturnValue({
     isLoading: false,
@@ -75,10 +97,105 @@ const page = (
   </div>
 );
 
+describe('AppLayout role badge', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    refuseGatewayInfo();
+    mockVerdict('0.1.2', { status: 'supported', ...range });
+    mockUser();
+  });
+
+  it('shows Standard user when roles include a non-admin role', () => {
+    mockUser({ roles: ['user'] });
+    renderShell('/workspaces', page);
+
+    expect(screen.getByTestId('role-badge')).toHaveTextContent('Standard user');
+  });
+
+  it('shows Platform admin when roles include the admin role', () => {
+    mockUser({ roles: ['admin'] });
+    renderShell('/workspaces', page);
+
+    expect(screen.getByTestId('role-badge')).toHaveTextContent(
+      'Platform admin',
+    );
+  });
+
+  it('hides the badge when roles are empty', () => {
+    mockUser({ roles: [] });
+    renderShell('/workspaces', page);
+
+    expect(screen.queryByTestId('role-badge')).not.toBeInTheDocument();
+  });
+
+  it('hides the badge when roles are null', () => {
+    mockUser({ roles: null });
+    renderShell('/workspaces', page);
+
+    expect(screen.queryByTestId('role-badge')).not.toBeInTheDocument();
+  });
+
+  it('hides the badge while the role is loading', () => {
+    mockUser({ roles: ['user'], isLoading: true });
+    renderShell('/workspaces', page);
+
+    expect(screen.queryByTestId('role-badge')).not.toBeInTheDocument();
+  });
+});
+
+// Platform-admin UI gates (display/hide only — gateway still enforces).
+describe('AppLayout platform-admin gating', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    refuseGatewayInfo();
+    mockVerdict('0.1.2', { status: 'supported', ...range });
+    mockUser({ roles: ['user'] });
+  });
+
+  it('hides Gateway, Global policy, and Settings nav for a User', () => {
+    renderShell('/workspaces', page);
+
+    const nav = screen.getByLabelText('Primary navigation');
+    expect(within(nav).getByText('Workspaces')).toBeInTheDocument();
+    expect(within(nav).queryByText('Gateway')).not.toBeInTheDocument();
+    expect(within(nav).queryByText('Global policy')).not.toBeInTheDocument();
+    expect(within(nav).queryByText('Settings')).not.toBeInTheDocument();
+  });
+
+  it('shows Gateway, Global policy, and Settings nav for a Platform Admin', () => {
+    mockUser({ roles: ['admin'] });
+    renderShell('/workspaces', page);
+
+    const nav = screen.getByLabelText('Primary navigation');
+    expect(within(nav).getByText('Gateway')).toBeInTheDocument();
+    expect(within(nav).getByText('Workspaces')).toBeInTheDocument();
+    expect(within(nav).getByText('Global policy')).toBeInTheDocument();
+    expect(within(nav).getByText('Settings')).toBeInTheDocument();
+  });
+
+  it('points the logo home at /workspaces for a User', () => {
+    renderShell('/workspaces', page);
+
+    expect(
+      screen.getByAltText('OpenShell Dashboard').closest('a'),
+    ).toHaveAttribute('href', '/workspaces');
+  });
+
+  it('points the logo home at /gateway for a Platform Admin', () => {
+    mockUser({ roles: ['admin'] });
+    renderShell('/workspaces', page);
+
+    expect(
+      screen.getByAltText('OpenShell Dashboard').closest('a'),
+    ).toHaveAttribute('href', '/gateway');
+  });
+});
+
 describe('AppLayout gateway compatibility notice', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     refuseGatewayInfo();
+    mockUser({ roles: ['user'] });
   });
 
   // The route does not matter: the shell wraps every authenticated page.

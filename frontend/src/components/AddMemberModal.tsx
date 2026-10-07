@@ -16,6 +16,7 @@ import {
   TextInput,
 } from '@patternfly/react-core';
 
+import { useUserRole } from '../api/rbac';
 import { useAddMember } from '../api/workspaces';
 import { useAlerts } from '../app/AlertContext';
 import type { WorkspaceRole } from '../types';
@@ -35,6 +36,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
   const [role, setRole] = useState<WorkspaceRole>('USER');
   const addMember = useAddMember(workspace);
   const { addSuccess } = useAlerts();
+  const { isPlatformAdmin } = useUserRole();
 
   const close = () => {
     setSubject('');
@@ -99,7 +101,9 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
               onChange={(_event, value) => setRole(value as WorkspaceRole)}
             >
               <FormSelectOption value="USER" label="User" />
-              <FormSelectOption value="ADMIN" label="Admin" />
+              {isPlatformAdmin && (
+                <FormSelectOption value="ADMIN" label="Admin" />
+              )}
             </FormSelect>
             <FormHelperText>
               <HelperText>

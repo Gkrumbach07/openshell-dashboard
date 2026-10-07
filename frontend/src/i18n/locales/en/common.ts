@@ -15,6 +15,8 @@ export default {
     themeToDark: 'Switch to dark theme',
     help: 'Help',
     about: 'About',
+    roleAdmin: 'Platform admin',
+    roleUser: 'Standard user',
     userFallback: 'User',
     copySubject: 'Copy my subject ID',
     identity: 'My identity',

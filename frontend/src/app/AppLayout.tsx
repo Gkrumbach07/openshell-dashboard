@@ -47,6 +47,7 @@ import { useUserRole } from '../api/rbac';
 import CurrentUserModal from '../components/CurrentUserModal';
 import GatewayCompatibilityAlert from '../components/GatewayCompatibilityAlert';
 import GatewayStatusIndicator from '../components/GatewayStatusIndicator';
+import RoleBadge from '../components/RoleBadge';
 import { useI18n } from '../i18n';
 import { logout } from './logout';
 import { useTheme } from './theme';
@@ -95,7 +96,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const { t } = useI18n('common');
   const location = useLocation();
   const user = useCurrentUser();
-  const { isPlatformAdmin } = useUserRole();
+  const { isPlatformAdmin, isUser, isLoading: isRoleLoading } = useUserRole();
   const features = useFeatureFlags();
   const gateway = useGatewayInfo();
   const [isAboutOpen, setAboutOpen] = useState(false);
@@ -184,6 +185,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 </DropdownList>
               </Dropdown>
             </ToolbarItem>
+            {!isRoleLoading && (isPlatformAdmin || isUser) && (
+              <ToolbarItem alignSelf="center">
+                <RoleBadge
+                  isPlatformAdmin={isPlatformAdmin}
+                  isUser={isUser}
+                  isLoading={isRoleLoading}
+                />
+              </ToolbarItem>
+            )}
             <ToolbarItem>
               <Dropdown
                 isOpen={isUserOpen}
