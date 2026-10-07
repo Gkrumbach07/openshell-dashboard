@@ -6,7 +6,7 @@ IMAGE_NAME ?= openshell-dashboard
 TAG ?= latest
 PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: setup dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean
+.PHONY: setup dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean buildx
 
 setup: ## Install frontend deps and Go deps
 	cd frontend && npm install
@@ -49,6 +49,13 @@ dev-frontend:
 
 build: ## Build the container image (BFF + static frontend)
 	docker build -t openshell-dashboard:latest -f deploy/Dockerfile .
+
+buildx:
+	docker buildx build \
+		--platform ${PLATFORMS} \
+		-t ${IMAGE_NAME}:${TAG} \
+		-f deploy/Dockerfile \
+		--load .
 
 build-frontend:
 	cd frontend && npm run build
