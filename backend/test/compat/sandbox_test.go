@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,12 +28,24 @@ func sandboxImage() string {
 
 // sandbox mirrors models.Sandbox, field order included.
 type sandbox struct {
-	Spec struct {
+	CreatedFromWorkloadTemplate *struct {
+		Name            string `json:"name"`
+		ResourceVersion string `json:"resourceVersion"`
+	} `json:"createdFromWorkloadTemplate"`
+	ServiceURLs map[string]string `json:"serviceUrls"`
+	Spec        struct {
 		LogLevel    string            `json:"logLevel"`
 		Environment map[string]string `json:"environment"`
 		Image       string            `json:"image"`
 		Providers   []string          `json:"providers"`
 		Policy      json.RawMessage   `json:"policy"`
+		Template    *struct {
+			// A free-form struct on the wire: decoded loosely, so that a
+			// shape nobody expected fails one assertion and not every read.
+			Resources map[string]any `json:"resources"`
+		} `json:"template"`
+		Command []string `json:"command"`
+		TTY     bool     `json:"tty"`
 	} `json:"spec"`
 	Status struct {
 		ExitCode             *int32 `json:"exitCode"`
@@ -364,10 +377,11 @@ func TestSandboxLifecycle(t *testing.T) {
 // travel as a free-form struct under the sandbox's template, which is the kind
 // of field that breaks without a compile error.
 //
-// Nothing the BFF returns reports the limits back, so a sandbox that booted
-// would prove only that the gateway did not choke on them. They are read where
-// they take effect instead: in the cgroup the workload runs in. The sandbox's
-// policy lets it read /sys/fs/cgroup for that, which the base policy does not.
+// The sandbox reports the limits it was created with, which is what its page
+// shows, but a limit that is stored and reported is not yet a limit that is
+// applied. So they are also read where they take effect: in the cgroup the
+// workload runs in. The sandbox's policy lets it read /sys/fs/cgroup for that,
+// which the base policy does not.
 func TestSandboxCreateOptions(t *testing.T) {
 	requireSandboxes(t)
 	name := randName("co")
@@ -387,6 +401,18 @@ func TestSandboxCreateOptions(t *testing.T) {
 		t.Errorf("spec.logLevel = %q, want %q", created.Spec.LogLevel, "debug")
 	}
 	waitForPhase(t, "default", name, "READY")
+
+	t.Run("limits are reported back", func(t *testing.T) {
+		want := map[string]any{"cpu": "500m", "memory": "512Mi"}
+		var limits any
+		if tpl := getSandbox(t, "default", name).Spec.Template; tpl != nil {
+			limits = tpl.Resources["limits"]
+		}
+		if !reflect.DeepEqual(limits, want) {
+			t.Errorf("spec.template.resources.limits = %v, want %v — the sandbox page shows no CPU or memory "+
+				"limit for a sandbox created with both on gateway %s", limits, want, gatewayVersion)
+		}
+	})
 
 	// These are the cgroup v2 files; a cgroup v1 host keeps the same numbers
 	// under other names and would need those added here. A sandbox without

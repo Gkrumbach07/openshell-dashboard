@@ -19,6 +19,8 @@ import {
   MenuToggle,
   Stack,
   StackItem,
+  Timestamp,
+  TimestampTooltipVariant,
 } from '@patternfly/react-core';
 import { EllipsisVIcon, ScreenIcon } from '@patternfly/react-icons';
 
@@ -31,7 +33,11 @@ import LabelsList from '../LabelsList';
 import SandboxAttention from './SandboxAttention';
 import SandboxEgressSummary from './SandboxEgressSummary';
 import StatusDot from '../StatusDot';
-import { formatAge, formatUptime } from '../../utils/formatters';
+import {
+  formatAge,
+  formatTimestamp,
+  formatUptime,
+} from '../../utils/formatters';
 import { useSlots } from '../../slots';
 import { Label } from '@patternfly/react-core';
 type SandboxCardProps = {
@@ -50,6 +56,9 @@ const getSubtitleText = (sandbox: Sandbox): string => {
   const { status, metadata } = sandbox;
   if (status.phase === 'READY') return formatUptime(metadata.createdAtMs);
   if (status.phase === 'PROVISIONING') return 'provisioning…';
+  if (status.phase === 'COMPLETED') {
+    return `completed, created ${formatAge(metadata.createdAtMs)} ago`;
+  }
   return `created ${formatAge(metadata.createdAtMs)} ago`;
 };
 
@@ -91,7 +100,10 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
                       flexWrap={{ default: 'nowrap' }}
                     >
                       <FlexItem>
-                        <StatusDot phase={status.phase} />
+                        <StatusDot
+                          phase={status.phase}
+                          exitCode={status.exitCode}
+                        />
                       </FlexItem>
                       <FlexItem>
                         <Button
@@ -105,12 +117,28 @@ const SandboxCard: React.FC<SandboxCardProps> = ({
                         </Button>
                       </FlexItem>
                       <FlexItem>
-                        <Content
-                          component="small"
-                          className="pf-v6-u-white-space-nowrap"
-                        >
-                          {getSubtitleText(sandbox)}
-                        </Content>
+                        {/* How long ago, with the creation time itself in
+                            the tooltip. */}
+                        {metadata.createdAtMs ? (
+                          <Timestamp
+                            date={new Date(metadata.createdAtMs)}
+                            className="pf-v6-u-white-space-nowrap"
+                            tooltip={{
+                              variant: TimestampTooltipVariant.custom,
+                              content: `Created ${formatTimestamp(metadata.createdAtMs)}`,
+                            }}
+                            data-testid={`sandbox-card-created-${metadata.name}`}
+                          >
+                            {getSubtitleText(sandbox)}
+                          </Timestamp>
+                        ) : (
+                          <Content
+                            component="small"
+                            className="pf-v6-u-white-space-nowrap"
+                          >
+                            {getSubtitleText(sandbox)}
+                          </Content>
+                        )}
                       </FlexItem>
                     </Flex>
                   </StackItem>

@@ -12,7 +12,7 @@ Flags are set as **BFF environment variables** and exposed to the frontend via `
 |---------|---------|-------------|
 | `FEATURE_TERMINAL` | `true` | Interactive terminal tab (WebSocket to ExecSandboxInteractive). Disable in federated deployments where the proxy can't upgrade WS. |
 | `FEATURE_FILE_TRANSFER` | `true` | File upload/download via ExecSandbox. Disable if exec is restricted. |
-| `FEATURE_SETTINGS` | `true` | Gateway settings page (Platform Admin). Disable to prevent runtime config changes. |
+| `FEATURE_SETTINGS` | `true` | Gateway settings page (Platform Admin), and for a sandbox its Settings tab and the proposal-approval option of the create forms (Workspace Admin to change). Disable to prevent runtime config changes. |
 | `FEATURE_GLOBAL_POLICY` | `true` | Global policy page (Platform Admin). Disable in single-tenant deployments. |
 | `FEATURE_CREDENTIAL_REFRESH` | `true` | Credential refresh configure/rotate/delete on provider detail. Disable if refresh is managed externally. |
 | `FEATURE_SERVICES` | `true` | Sandbox services (expose/list/delete). Disable if service routing is not available. |

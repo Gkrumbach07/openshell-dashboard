@@ -481,7 +481,7 @@ Browser ── REST ──► Go BFF ── gRPC (bearer) ──► OpenShell ga
            (React Query)     (OpenShell Go SDK)
 ```
 
-- **The vendored Go SDK is the source of truth.** Handlers call `github.com/NVIDIA/OpenShell/sdk/go` directly. Two low-level escape hatches remain in `backend/pkg/clients`, each for a gap in the public SDK: `rawexec.go` for binary-safe file uploads, because the SDK lacks a non-TTY exec API that accepts raw stdin bytes, and `rawprovider.go` for the keys of the credentials a provider holds, because the SDK drops the map the gateway returns them in.
+- **The vendored Go SDK is the source of truth.** Handlers call `github.com/NVIDIA/OpenShell/sdk/go` directly. Three low-level escape hatches remain in `backend/pkg/clients`, each for a gap in the public SDK: `rawexec.go` for binary-safe file uploads, because the SDK lacks a non-TTY exec API that accepts raw stdin bytes, `rawprovider.go` for the keys of the credentials a provider holds, because the SDK drops the map the gateway returns them in, and `rawprofile.go` for provider profiles, because the SDK carries a host, a port and a protocol of each profile endpoint and drops the access preset, enforcement and L7 rules that bound a provider's traffic.
 - **Polling for status**: sandbox state uses polling (5s via React Query `refetchInterval`). WebSockets are used only for the interactive terminal.
 - **Secrets never reach the browser**: provider credentials are write-only; the BFF serializes only credential key names.
 - **Sandbox stop/start** (OpenShell v0.0.113+): the lifecycle is create → ready/error → (stop ⇄ start) → delete. Stopping retains persistent state; there is still no suspend/restart. The UI reflects the API as-is.

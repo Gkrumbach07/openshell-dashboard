@@ -21,7 +21,7 @@ backend/            Go BFF
   pkg/services/     Thin interfaces over the SDK — the downstream extension seam
   pkg/apiutils/     Shared HTTP helpers (WriteJSON/WriteError/DecodeBody, ResponseCode)
   pkg/auth/         Proxy-delegated token extraction (proxy.go)
-  pkg/clients/      SDK auth helper + the two raw gRPC escape hatches (binary-safe upload, provider credential keys)
+  pkg/clients/      SDK auth helper + the three raw gRPC escape hatches (binary-safe upload, provider credential keys, provider profiles)
   pkg/models/       Response DTOs (From*() converters) and request builders
 scripts/            Dev environment (dev-env.sh — Keycloak + gateway setup)
 docs/adrs/          Architecture Decision Records
@@ -50,11 +50,11 @@ Each rule has a corresponding Architecture Decision Record in [`docs/adrs/`](doc
 - **Surface the API as-is.** The upstream OpenShell API defines what exists — never invent RPCs, fields, lifecycle states, or abstractions (no Agent object; Sandbox is fundamental, labels categorize). See `.claude/rules/openshell-api.md` for the hard rules.
 - **Stay in parity with the gateway; the BFF translates nothing.** Request and response bodies mirror the gateway's messages. When the gateway wants something a particular way — a credential under its env var name, a provider's profile scope, a setting in its own type — the UI sends it that way and the BFF passes it on. The BFF does not rename keys, infer a scope or coerce a type to make an older request shape keep working. The OpenShell CLI and TUI are the reference for how a client is expected to call an RPC (hard facts 8, 21 and 22).
 - **PatternFly 6 only.** No MUI, no custom design system, no inline styles with hardcoded values.
-- **Use the vendored Go SDK directly.** Prefer `github.com/NVIDIA/OpenShell/sdk/go` over local wrappers or copied protos. The two intentional exceptions are in `pkg/clients`, each for a gap in the public SDK: `rawexec.go` for binary-safe uploads, because the SDK does not expose non-TTY exec with stdin, and `rawprovider.go` for the keys of the credentials a provider holds, because the SDK drops the map the gateway returns them in.
+- **Use the vendored Go SDK directly.** Prefer `github.com/NVIDIA/OpenShell/sdk/go` over local wrappers or copied protos. The three intentional exceptions are in `pkg/clients`, each for a gap in the public SDK: `rawexec.go` for binary-safe uploads, because the SDK does not expose non-TTY exec with stdin; `rawprovider.go` (and `rawprovider_allworkspaces.go`) for the keys of the credentials a provider holds, because the SDK drops the map the gateway returns them in; and `rawprofile.go` for provider profiles, because the SDK keeps only the host, port and protocol of a profile endpoint.
 
 ## OpenShell API reference
 
-The gateway exposes RPCs across 2 services (`OpenShell`, `Inference`), consumed via the vendored `github.com/NVIDIA/OpenShell/sdk/go` (see `.claude/rules/openshell-api.md`). Two paths still use the SDK's generated proto client directly, under `pkg/clients`: file upload (`rawexec.go`), because the public exec API does not yet accept raw stdin, and the keys of a provider's credentials (`rawprovider.go`), because the SDK's provider type does not carry them.
+The gateway's user-facing RPCs are one service, `openshell.v1.OpenShell` (upstream has had no `Inference` service since 0.1.0), consumed via the vendored `github.com/NVIDIA/OpenShell/sdk/go` (see `.claude/rules/openshell-api.md`). Three paths still use the SDK's generated proto client directly, under `pkg/clients`: file upload (`rawexec.go`), because the public exec API does not yet accept raw stdin; the keys of a provider's credentials (`rawprovider.go`), because the SDK's provider type does not carry them; and provider profiles (`rawprofile.go`), because the SDK's profile type drops most of each endpoint.
 
 ## Personas
 

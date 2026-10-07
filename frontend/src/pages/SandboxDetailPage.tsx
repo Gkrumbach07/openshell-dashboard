@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Bullseye,
@@ -24,15 +24,25 @@ import {
   Title,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFeatureFlags } from '../api/auth';
+import type { ApiError } from '../api/client';
 import { useDraftPolicy, useSandboxPolicy } from '../api/policy';
 import { useProviderExpiry } from '../api/providers';
-import { useSandbox, useStartSandbox, useStopSandbox } from '../api/sandboxes';
+import {
+  useDeleteSandbox,
+  useSandbox,
+  useStartSandbox,
+  useStopSandbox,
+} from '../api/sandboxes';
 import { useAlerts } from '../app/AlertContext';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import ConnectCard from '../components/ConnectCard';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
+import RefreshErrorAlert, {
+  isRefreshError,
+} from '../components/RefreshErrorAlert';
 import SandboxAttention from '../components/sandbox/SandboxAttention';
 import SandboxDraftsTab from '../components/SandboxDraftsTab';
 import SandboxFilesTab from '../components/sandbox/SandboxFilesTab';
@@ -41,7 +51,11 @@ import SandboxTerminalTab from '../components/sandbox/SandboxTerminalTab';
 import PolicyRuleEditor from '../components/PolicyRuleEditor';
 import SandboxProvidersTab from '../components/sandbox/SandboxProvidersTab';
 import SandboxServicesTab from '../components/sandbox/SandboxServicesTab';
-import { formatTimestamp } from '../utils/formatters';
+import SandboxSettingsTab from '../components/sandbox/SandboxSettingsTab';
+import SandboxSpecDetails from '../components/sandbox/SandboxSpecDetails';
+import SandboxStatusCards from '../components/sandbox/SandboxStatusCards';
+import { deletionOutcome, describeDeletion } from '../utils/deletion';
+import { formatAge, formatTimestamp } from '../utils/formatters';
 import { canStartSandbox, canStopSandbox } from '../utils/sandboxLifecycle';
 
 type SandboxDetailPageProps = {
@@ -49,14 +63,20 @@ type SandboxDetailPageProps = {
   sandboxName: string;
   activeTab?: string;
   onTabChange?: (tab: string) => void;
+  // Called once the sandbox has been deleted from this page. Without it the
+  // page goes back to the workspace, whose first tab is its sandbox list.
+  onDeleted?: () => void;
 };
 
 const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
   const { workspace, sandboxName } = props;
+  const navigate = useNavigate();
   const sandbox = useSandbox(workspace, sandboxName);
   const stopSandbox = useStopSandbox(workspace);
   const startSandbox = useStartSandbox(workspace);
-  const { addDanger } = useAlerts();
+  const deleteSandbox = useDeleteSandbox(workspace);
+  const [isDeleteOpen, setDeleteOpen] = useState(false);
+  const { addAlert, addDanger } = useAlerts();
   const features = useFeatureFlags();
   const policyQuery = useSandboxPolicy(workspace, sandboxName);
   const draftsQuery = useDraftPolicy(workspace, sandboxName);
@@ -71,6 +91,21 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
       setSearchParams(tab === 'details' ? {} : { tab }, { replace: true });
     }
   };
+
+  // The terminal opens a WebSocket and a shell in the sandbox as soon as it is
+  // mounted, so it is mounted when its tab is first shown and not with the
+  // page: most visits never open it. From then on it stays mounted, like every
+  // other tab, so that a session survives a look at another tab. It is kept
+  // per sandbox, so that going on to another sandbox starts without one.
+  const terminalOf = `${workspace}/${sandboxName}`;
+  const [terminalOpenedFor, setTerminalOpenedFor] = useState<string | null>(
+    null,
+  );
+  if (resolvedTab === 'terminal' && terminalOpenedFor !== terminalOf) {
+    setTerminalOpenedFor(terminalOf);
+  }
+  const isTerminalMounted =
+    resolvedTab === 'terminal' || terminalOpenedFor === terminalOf;
 
   const draftSummary = useMemo(() => {
     const chunks = draftsQuery.data?.chunks ?? [];
@@ -95,12 +130,25 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
     );
   }
 
-  if (sandbox.isError) {
+  // The sandbox is re-read every few seconds. A refresh that fails leaves the
+  // page as it was, with a note under the heading: every tab holds something
+  // that must not be thrown away because one request in the background did
+  // not get through (a terminal session, an upload, a form half filled in).
+  // Only a sandbox that never loaded, or one the gateway now says is gone,
+  // takes the page.
+  const isGone =
+    sandbox.isError && (sandbox.error as ApiError | null)?.status === 404;
+  const refreshFailed = isRefreshError(sandbox) && !isGone;
+  if (sandbox.isError && !refreshFailed) {
     return (
       <PageSection>
         <Alert
           variant="danger"
-          title={`Failed to load sandbox ${sandboxName}`}
+          title={
+            isGone && sandbox.data
+              ? `Sandbox ${sandboxName} no longer exists`
+              : `Failed to load sandbox ${sandboxName}`
+          }
           actionLinks={
             <Button variant="link" onClick={() => sandbox.refetch()}>
               Retry
@@ -129,7 +177,10 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
             <Title headingLevel="h1">{data.metadata.name}</Title>
           </FlexItem>
           <FlexItem>
-            <PhaseLabel phase={data.status.phase} />
+            <PhaseLabel
+              phase={data.status.phase}
+              exitCode={data.status.exitCode}
+            />
           </FlexItem>
           <FlexItem align={{ default: 'alignRight' }}>
             {canStartSandbox(data.status.phase) ? (
@@ -170,8 +221,63 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
               </Button>
             )}
           </FlexItem>
+          <FlexItem>
+            <Button
+              variant="secondary"
+              isDanger
+              data-testid="sandbox-delete-button"
+              onClick={() => setDeleteOpen(true)}
+            >
+              Delete
+            </Button>
+          </FlexItem>
         </Flex>
+        {refreshFailed && (
+          <RefreshErrorAlert
+            title="The sandbox could not be refreshed"
+            error={sandbox.error}
+            onRetry={() => sandbox.refetch()}
+            className="pf-v6-u-mt-md"
+            data-testid="sandbox-refresh-error"
+          />
+        )}
       </PageSection>
+      <ConfirmDeleteModal
+        title="Delete sandbox?"
+        body={`Sandbox "${sandboxName}" will be permanently deleted. This cannot be undone.`}
+        confirmName={sandboxName}
+        isOpen={isDeleteOpen}
+        isDeleting={deleteSandbox.isPending}
+        error={
+          deleteSandbox.isError
+            ? (deleteSandbox.error as Error).message
+            : undefined
+        }
+        onConfirm={() =>
+          deleteSandbox.mutate(sandboxName, {
+            onSuccess: (result) => {
+              // What the gateway did, which is often only to accept the
+              // delete and clean up afterwards.
+              const notice = describeDeletion(
+                { singular: 'sandbox', plural: 'sandboxes' },
+                sandboxName,
+                deletionOutcome(result),
+              );
+              addAlert(notice.title, notice.variant);
+              setDeleteOpen(false);
+              if (props.onDeleted) {
+                props.onDeleted();
+              } else {
+                navigate(`/workspaces/${workspace}`);
+              }
+            },
+          })
+        }
+        onCancel={() => {
+          deleteSandbox.reset();
+          setDeleteOpen(false);
+        }}
+      />
       <SandboxAttention
         sandbox={data}
         draftSummary={draftSummary}
@@ -226,6 +332,12 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
                         </DescriptionListDescription>
                       </DescriptionListGroup>
                       <DescriptionListGroup>
+                        <DescriptionListTerm>Age</DescriptionListTerm>
+                        <DescriptionListDescription data-testid="sandbox-age">
+                          {formatAge(data.metadata.createdAtMs)}
+                        </DescriptionListDescription>
+                      </DescriptionListGroup>
+                      <DescriptionListGroup>
                         <DescriptionListTerm>
                           Active policy version
                         </DescriptionListTerm>
@@ -268,6 +380,7 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
                           <LabelsList labels={data.metadata.labels} />
                         </DescriptionListDescription>
                       </DescriptionListGroup>
+                      <SandboxSpecDetails sandbox={data} />
                     </DescriptionList>
                   </CardBody>
                 </Card>
@@ -312,8 +425,12 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
                   </CardBody>
                 </Card>
               </StackItem>
+              <SandboxStatusCards sandbox={data} />
               <StackItem>
-                <ConnectCard sandboxName={data.metadata.name} />
+                <ConnectCard
+                  sandboxName={data.metadata.name}
+                  workspace={workspace}
+                />
               </StackItem>
             </Stack>
           </Tab>
@@ -333,10 +450,12 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
               data-testid="tab-terminal"
             >
               <div className="pf-v6-u-pt-lg">
-                <SandboxTerminalTab
-                  workspace={workspace}
-                  sandboxName={sandboxName}
-                />
+                {isTerminalMounted && (
+                  <SandboxTerminalTab
+                    workspace={workspace}
+                    sandboxName={sandboxName}
+                  />
+                )}
               </div>
             </Tab>
           )}
@@ -389,6 +508,24 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
                   workspace={workspace}
                   sandboxName={sandboxName}
                 />
+              </div>
+            </Tab>
+          )}
+          {features.settings && (
+            <Tab
+              eventKey="settings"
+              title={<TabTitleText>Settings</TabTitleText>}
+              data-testid="tab-sandbox-settings"
+            >
+              <div className="pf-v6-u-pt-lg">
+                {/* Read only while the tab is open: it is one more call to
+                    the gateway that most visits to this page do not need. */}
+                {resolvedTab === 'settings' && (
+                  <SandboxSettingsTab
+                    workspace={workspace}
+                    sandboxName={sandboxName}
+                  />
+                )}
               </div>
             </Tab>
           )}

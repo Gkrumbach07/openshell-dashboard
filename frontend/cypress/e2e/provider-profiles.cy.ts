@@ -102,23 +102,52 @@ describe('Provider Profile Management', () => {
     cy.contains('api_key (required)').should('be.visible');
   });
 
-  it('shows delete action only on custom (user) profiles', () => {
+  it('shows which scope owns a profile', () => {
+    cy.get('[data-testid="tab-profiles"]').click();
+    cy.wait('@listProviderProfiles');
+    cy.get('[data-testid="profiles-table"]').within(() => {
+      cy.contains('Custom LLM').closest('tr').contains('Workspace');
+    });
+  });
+
+  // Every profile can be exported. Only a profile the workspace owns can be
+  // updated or deleted through it.
+  it('shows update and delete only on the profiles the workspace owns', () => {
     cy.get('[data-testid="tab-profiles"]').click();
     cy.wait('@listProviderProfiles');
 
     cy.get('[data-testid="profiles-table"]').within(() => {
-      // Custom LLM row (source=user) should have kebab actions
       cy.contains('Custom LLM')
         .closest('tr')
         .find('.pf-v6-c-menu-toggle')
-        .should('exist');
+        .click();
+    });
+    cy.contains('[role="menuitem"]', 'Export as YAML').should('exist');
+    cy.contains('[role="menuitem"]', 'Export as JSON').should('exist');
+    cy.contains('[role="menuitem"]', 'Update from file').should('exist');
+    cy.contains('[role="menuitem"]', 'Delete').should('exist');
+    cy.get('body').type('{esc}');
 
-      // Builtin rows should NOT have kebab actions
+    cy.get('[data-testid="profiles-table"]').within(() => {
       cy.contains('Anthropic Claude')
         .closest('tr')
         .find('.pf-v6-c-menu-toggle')
-        .should('not.exist');
+        .click();
     });
+    cy.contains('[role="menuitem"]', 'Export as YAML').should('exist');
+    cy.contains('[role="menuitem"]', 'Update from file').should('not.exist');
+    cy.contains('[role="menuitem"]', 'Delete').should('not.exist');
+  });
+
+  it('opens the import dialog from the toolbar', () => {
+    cy.get('[data-testid="tab-profiles"]').click();
+    cy.wait('@listProviderProfiles');
+    cy.get('[data-testid="import-profiles"]').click();
+    cy.get('.pf-v6-c-modal-box').should('be.visible');
+    cy.contains('Import provider profiles').should('be.visible');
+    cy.get('[data-testid="profile-file-submit"]').should('be.disabled');
+    cy.get('.pf-v6-c-modal-box').contains('Cancel').click();
+    cy.get('.pf-v6-c-modal-box').should('not.exist');
   });
 
   it('deletes a custom profile', () => {

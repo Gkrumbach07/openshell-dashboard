@@ -3,6 +3,12 @@ import {
   Alert,
   Bullseye,
   Button,
+  CodeBlock,
+  CodeBlockCode,
+  DescriptionList,
+  DescriptionListDescription,
+  DescriptionListGroup,
+  DescriptionListTerm,
   EmptyState,
   EmptyStateActions,
   EmptyStateBody,
@@ -17,6 +23,7 @@ import {
 import { CubeIcon } from '@patternfly/react-icons';
 import {
   ActionsColumn,
+  ExpandableRowContent,
   Table,
   Tbody,
   Td,
@@ -28,10 +35,14 @@ import {
 import { useDeleteTemplate, useTemplates } from '../api/templates';
 import { useWorkspaceRole } from '../api/rbac';
 import { useAlerts } from '../app/AlertContext';
+import { deletionOutcome, describeDeletion } from '../utils/deletion';
 import { formatAge } from '../utils/formatters';
+import { formatDurationMs } from '../utils/sandboxOptions';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import CreateSandboxFromTemplateModal from './CreateSandboxFromTemplateModal';
 import CreateTemplateModal from './CreateTemplateModal';
+import LabelsList from './LabelsList';
+import RefreshErrorAlert, { isRefreshError } from './RefreshErrorAlert';
 import type { SandboxTemplate } from '../types';
 
 type TemplatesTabProps = {
@@ -60,14 +71,30 @@ const resourceSummary = (template: SandboxTemplate): string => {
   return parts.length > 0 ? parts.join(' · ') : '-';
 };
 
+// The startup service level of a template: the time a sandbox made from it
+// should be ready within, and the startup burst, as far as either is set.
+export const startupSummary = (template: SandboxTemplate): string => {
+  const startup = template.spec.desiredServiceLevel?.startup;
+  const parts: string[] = [];
+  if (startup?.readyWithinMs) {
+    parts.push(`ready within ${formatDurationMs(startup.readyWithinMs)}`);
+  }
+  if (startup?.maxBurst) {
+    parts.push(`burst ${startup.maxBurst}`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : '-';
+};
+
 const TemplatesTab: React.FC<TemplatesTabProps> = ({ workspace }) => {
   const templates = useTemplates(workspace);
   const deleteTemplate = useDeleteTemplate(workspace);
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
-  const { addSuccess } = useAlerts();
+  const { addAlert } = useAlerts();
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [useTarget, setUseTarget] = useState<string | null>(null);
+  // The templates whose row is expanded to show what does not fit a column.
+  const [expanded, setExpanded] = useState<string[]>([]);
 
   if (templates.isLoading) {
     return (
@@ -77,7 +104,11 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ workspace }) => {
     );
   }
 
-  if (templates.isError) {
+  // The templates are re-read while the tab is open. A refresh that fails
+  // leaves the list, and a form open over it, as they were, with a note
+  // above; only a list that never loaded is replaced by the error.
+  const refreshFailed = isRefreshError(templates);
+  if (templates.isError && !refreshFailed) {
     return (
       <Alert
         variant="danger"
@@ -94,6 +125,16 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ workspace }) => {
   }
 
   const rows = templates.data ?? [];
+
+  const refreshNote = refreshFailed && (
+    <RefreshErrorAlert
+      title="The templates could not be refreshed"
+      error={templates.error}
+      onRetry={() => templates.refetch()}
+      className="pf-v6-u-mb-md"
+      data-testid="templates-refresh-error"
+    />
+  );
 
   const modals = (
     <>
@@ -123,8 +164,13 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ workspace }) => {
         onConfirm={() => {
           if (deleteTarget) {
             deleteTemplate.mutate(deleteTarget, {
-              onSuccess: () => {
-                addSuccess(`Template "${deleteTarget}" deleted`);
+              onSuccess: (result) => {
+                const notice = describeDeletion(
+                  { singular: 'template', plural: 'templates' },
+                  deleteTarget,
+                  deletionOutcome(result),
+                );
+                addAlert(notice.title, notice.variant);
                 setDeleteTarget(null);
                 deleteTemplate.reset();
               },
@@ -139,34 +185,29 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ workspace }) => {
     </>
   );
 
-  if (rows.length === 0) {
-    return (
-      <>
-        <EmptyState variant="lg" titleText="No templates" icon={CubeIcon}>
-          <EmptyStateBody>
-            Templates are reusable workload shapes (image, environment,
-            resources). Create one to spin up sandboxes — such as a claude,
-            codex, or opencode harness — with a single click.
-          </EmptyStateBody>
-          {isWorkspaceAdmin && (
-            <EmptyStateFooter>
-              <EmptyStateActions>
-                <Button
-                  onClick={() => setCreateOpen(true)}
-                  data-testid="create-template-empty"
-                >
-                  Create template
-                </Button>
-              </EmptyStateActions>
-            </EmptyStateFooter>
-          )}
-        </EmptyState>
-        {modals}
-      </>
-    );
-  }
+  const emptyState = (
+    <EmptyState variant="lg" titleText="No templates" icon={CubeIcon}>
+      <EmptyStateBody>
+        Templates are reusable workload shapes (image, environment, resources).
+        Create one to spin up sandboxes — such as a claude, codex, or opencode
+        harness — with a single click.
+      </EmptyStateBody>
+      {isWorkspaceAdmin && (
+        <EmptyStateFooter>
+          <EmptyStateActions>
+            <Button
+              onClick={() => setCreateOpen(true)}
+              data-testid="create-template-empty"
+            >
+              Create template
+            </Button>
+          </EmptyStateActions>
+        </EmptyStateFooter>
+      )}
+    </EmptyState>
+  );
 
-  return (
+  const list = (
     <>
       {isWorkspaceAdmin && (
         <Toolbar aria-label="Template actions">
@@ -185,28 +226,66 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ workspace }) => {
       <Table aria-label="Templates" data-testid="templates-table">
         <Thead>
           <Tr>
+            <Th screenReaderText="Details" />
             <Th>Name</Th>
             <Th>Image</Th>
             <Th>Resources</Th>
+            <Th>Startup</Th>
             <Th>Labels</Th>
             <Th>Age</Th>
             <Th screenReaderText="Actions" />
           </Tr>
         </Thead>
-        <Tbody>
-          {rows.map((template) => {
-            const labels = template.metadata.labels ?? {};
-            return (
-              <Tr key={template.metadata.name}>
+        {rows.map((template, rowIndex) => {
+          const labels = template.metadata.labels ?? {};
+          const name = template.metadata.name;
+          const isExpanded = expanded.includes(name);
+          const driverConfig = template.spec.driverConfig;
+          return (
+            <Tbody key={name} isExpanded={isExpanded}>
+              <Tr>
+                <Td
+                  expand={{
+                    rowIndex,
+                    isExpanded,
+                    onToggle: () =>
+                      setExpanded((current) =>
+                        isExpanded
+                          ? current.filter((item) => item !== name)
+                          : [...current, name],
+                      ),
+                    expandId: 'template-details',
+                  }}
+                  data-testid={`template-expand-${name}`}
+                />
                 <Td dataLabel="Name">
                   <strong>{template.metadata.name}</strong>
                 </Td>
-                <Td dataLabel="Image">
-                  <span className="pf-v6-u-font-family-monospace">
-                    {template.spec.workload?.image ?? '-'}
-                  </span>
+                {/* An image pinned by digest is one long word. Left unbroken
+                    it pushes every column after it out of view. */}
+                <Td
+                  dataLabel="Image"
+                  modifier="breakWord"
+                  data-testid={`template-image-${name}`}
+                >
+                  {/* A template without an image is one for the gateway's
+                      default image, which the CLI lists as "<default>". */}
+                  {template.spec.workload?.image ? (
+                    <span className="pf-v6-u-font-family-monospace">
+                      {template.spec.workload.image}
+                    </span>
+                  ) : (
+                    'Gateway default'
+                  )}
                 </Td>
                 <Td dataLabel="Resources">{resourceSummary(template)}</Td>
+                <Td
+                  dataLabel="Startup"
+                  modifier="nowrap"
+                  data-testid={`template-startup-${name}`}
+                >
+                  {startupSummary(template)}
+                </Td>
                 <Td dataLabel="Labels">
                   {Object.keys(labels).length === 0 ? (
                     '-'
@@ -243,10 +322,63 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ workspace }) => {
                   />
                 </Td>
               </Tr>
-            );
-          })}
-        </Tbody>
+              <Tr isExpanded={isExpanded}>
+                <Td />
+                <Td colSpan={7} dataLabel="Details">
+                  <ExpandableRowContent>
+                    <DescriptionList
+                      isHorizontal
+                      isCompact
+                      data-testid={`template-details-${name}`}
+                    >
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Environment</DescriptionListTerm>
+                        <DescriptionListDescription>
+                          <LabelsList
+                            labels={template.spec.workload?.environment}
+                          />
+                        </DescriptionListDescription>
+                      </DescriptionListGroup>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Annotations</DescriptionListTerm>
+                        <DescriptionListDescription>
+                          <LabelsList labels={template.metadata.annotations} />
+                        </DescriptionListDescription>
+                      </DescriptionListGroup>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Driver config</DescriptionListTerm>
+                        <DescriptionListDescription>
+                          {driverConfig &&
+                          Object.keys(driverConfig).length > 0 ? (
+                            <CodeBlock>
+                              <CodeBlockCode>
+                                {JSON.stringify(driverConfig, null, 2)}
+                              </CodeBlockCode>
+                            </CodeBlock>
+                          ) : (
+                            '-'
+                          )}
+                        </DescriptionListDescription>
+                      </DescriptionListGroup>
+                    </DescriptionList>
+                  </ExpandableRowContent>
+                </Td>
+              </Tr>
+            </Tbody>
+          );
+        })}
       </Table>
+    </>
+  );
+
+  // The empty state and the list take turns in one place, and the dialogs
+  // follow in a place of their own. A poll that takes the list from empty to
+  // not empty, or back, then swaps what is in that one place and leaves an
+  // open form, and what was typed into it, where it is.
+  return (
+    <>
+      {refreshNote}
+      {rows.length === 0 ? emptyState : list}
       {modals}
     </>
   );

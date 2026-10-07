@@ -1,10 +1,25 @@
 import type { ProfileCredential } from '../types';
 
-// The key the gateway stores a profile credential under. It accepts a
-// credential's env var names as keys when the profile declares any, and the
-// credential's own name only when it declares none; anything else is refused
-// as "not declared by profile". The first env var is the one the gateway
-// itself names when a required credential is missing.
+// The keys the gateway accepts a profile credential under: its env var names
+// when the profile declares any, and the credential's own name only when it
+// declares none. Anything else is refused as "not declared by profile". It is
+// accepted_stored_keys in upstream's profiles.rs.
+export const acceptedCredentialKeys = (
+  credential: ProfileCredential,
+): string[] =>
+  credential.envVars?.length ? credential.envVars : [credential.name];
+
+// The accepted key a provider holds a credential under, if it holds it. A
+// credential stored under several of its keys is found under the first.
+export const storedCredentialKey = (
+  credential: ProfileCredential,
+  storedKeys: string[],
+): string | undefined =>
+  acceptedCredentialKeys(credential).find((key) => storedKeys.includes(key));
+
+// The key the gateway stores a profile credential under, when nobody chose
+// one: the first it accepts, which is the one the gateway itself names when a
+// required credential is missing.
 //
 // `storedKeys` are the keys a provider already holds. When one of them belongs
 // to this credential it is the one to write to, so that rotating a credential
@@ -12,12 +27,9 @@ import type { ProfileCredential } from '../types';
 export const credentialStorageKey = (
   credential: ProfileCredential,
   storedKeys: string[] = [],
-): string => {
-  const accepted = credential.envVars?.length
-    ? credential.envVars
-    : [credential.name];
-  return accepted.find((key) => storedKeys.includes(key)) ?? accepted[0];
-};
+): string =>
+  storedCredentialKey(credential, storedKeys) ??
+  acceptedCredentialKeys(credential)[0];
 
 // A date, or a date and time with its UTC offset, as RFC 3339 writes them. A
 // time without an offset is refused: it would be read in the browser's own

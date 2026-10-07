@@ -29,29 +29,14 @@ type ConfigureProviderRefreshBody struct {
 	SecretMaterialKeys []string          `json:"secretMaterialKeys,omitempty"`
 }
 
-type ImportProfileCredentialBody struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	AuthStyle   string   `json:"authStyle,omitempty"`
-	EnvVars     []string `json:"envVars,omitempty"`
-	Required    bool     `json:"required"`
-}
-
-type ImportProfileBody struct {
-	ID               string                        `json:"id"`
-	DisplayName      string                        `json:"displayName"`
-	Description      string                        `json:"description,omitempty"`
-	Category         string                        `json:"category"`
-	Credentials      []ImportProfileCredentialBody `json:"credentials,omitempty"`
-	Endpoints        []EndpointBody                `json:"endpoints,omitempty"`
-	InferenceCapable bool                          `json:"inferenceCapable"`
-	ResourceVersion  uint64                        `json:"resourceVersion,omitempty"`
-}
-
-type EndpointBody struct {
-	Host string `json:"host"`
-	Port uint32 `json:"port,omitempty"`
-}
+// The profile a client writes, for import, update and lint, is
+// models.ProviderProfileInput: every field of the gateway's ProviderProfile.
+// These names predate it and are kept for the code that uses them.
+type (
+	ImportProfileCredentialBody = models.ProfileCredential
+	ImportProfileBody           = models.ProviderProfileInput
+	EndpointBody                = models.ProfileEndpointInput
+)
 
 type ImportProviderProfilesBody struct {
 	Profiles []ImportProfileBody `json:"profiles"`
@@ -66,12 +51,39 @@ type UpdateProviderBody struct {
 }
 
 type ProvidersHandler struct {
-	svc  services.ProviderServiceInterface
-	keys services.ProviderCredentialKeyReader
+	svc      services.ProviderServiceInterface
+	keys     services.ProviderCredentialKeyReader
+	profiles services.ProviderProfileStore
 }
 
 func NewProvidersHandler(svc services.ProviderServiceInterface) *ProvidersHandler {
 	return &ProvidersHandler{svc: svc}
+}
+
+// SetProfileStore gives the handler the way to read and write provider
+// profiles with their endpoints whole. Without one profiles go through the
+// SDK, which carries a host, a port and a protocol of each endpoint: profiles
+// are then returned without networkEndpoints, a profile that sets more on an
+// endpoint is refused rather than stored without it, and an update still
+// replaces whatever the stored profile's endpoints held (see
+// services.SDKProviderProfileStore). Like SetCredentialKeyReader it is a
+// setter so that existing callers of the constructor keep compiling. Call it
+// before the handler serves requests.
+func (h *ProvidersHandler) SetProfileStore(profiles services.ProviderProfileStore) {
+	h.profiles = profiles
+}
+
+// profileStore is the store the profile routes use, and whether the profiles
+// it returns hold their endpoints in part only.
+func (h *ProvidersHandler) profileStore() (store services.ProviderProfileStore, narrow bool) {
+	store = h.profiles
+	if store == nil {
+		store = services.NewSDKProviderProfileStore(h.svc.Profiles())
+	}
+	if n, ok := store.(services.NarrowProviderProfileStore); ok {
+		narrow = n.EndpointsAreNarrow()
+	}
+	return store, narrow
 }
 
 // SetCredentialKeyReader gives the handler the way to read which credentials
@@ -315,165 +327,4 @@ func (h *ProvidersHandler) DeleteProviderRefresh(w http.ResponseWriter, r *http.
 		return
 	}
 	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKDeletion(res))
-}
-
-// ListProviderProfiles returns the provider type profiles whose credential
-// schemas drive the Add Provider form.
-func (h *ProvidersHandler) ListProviderProfiles(w http.ResponseWriter, r *http.Request) {
-	profiles, err := h.svc.Profiles().ListAll(r.Context(), r.PathValue("workspace"))
-	if err != nil {
-		apiutils.WriteSDKError(w, err)
-		return
-	}
-	out := make([]models.ProviderProfile, 0, len(profiles))
-	for _, profile := range profiles {
-		out = append(out, models.FromSDKProviderProfile(profile))
-	}
-	apiutils.WriteJSON(w, http.StatusOK, out)
-}
-
-func (h *ProvidersHandler) GetProviderProfile(w http.ResponseWriter, r *http.Request) {
-	profile, err := h.svc.Profiles().Get(r.Context(), r.PathValue("workspace"), r.PathValue("profileId"))
-	if err != nil {
-		apiutils.WriteSDKError(w, err)
-		return
-	}
-	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKProviderProfile(profile))
-}
-
-func toSDKProfileImportItem(body ImportProfileBody) openshell.ProfileImportItem {
-	creds := make([]openshell.ProfileCredential, 0, len(body.Credentials))
-	for _, c := range body.Credentials {
-		creds = append(creds, openshell.ProfileCredential{
-			Name:        c.Name,
-			Description: c.Description,
-			EnvVars:     c.EnvVars,
-			Required:    c.Required,
-			AuthStyle:   c.AuthStyle,
-		})
-	}
-	endpoints := make([]openshell.NetworkEndpoint, 0, len(body.Endpoints))
-	for _, e := range body.Endpoints {
-		endpoints = append(endpoints, openshell.NetworkEndpoint{
-			Host: e.Host,
-			Port: e.Port,
-		})
-	}
-	return openshell.ProfileImportItem{
-		Profile: openshell.ProviderProfile{
-			ID:               body.ID,
-			DisplayName:      body.DisplayName,
-			Description:      body.Description,
-			Category:         models.ParseSDKProfileCategory(body.Category),
-			Credentials:      creds,
-			Endpoints:        endpoints,
-			InferenceCapable: body.InferenceCapable,
-			ResourceVersion:  body.ResourceVersion,
-		},
-	}
-}
-
-func (h *ProvidersHandler) ImportProviderProfiles(w http.ResponseWriter, r *http.Request) {
-	var body ImportProviderProfilesBody
-	if !apiutils.DecodeBody(w, r, &body) {
-		return
-	}
-	if len(body.Profiles) == 0 {
-		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidRequest, "at least one profile is required")
-		return
-	}
-	items := make([]openshell.ProfileImportItem, 0, len(body.Profiles))
-	for _, p := range body.Profiles {
-		if p.ID == "" || p.DisplayName == "" {
-			apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidProfile, "id and displayName are required")
-			return
-		}
-		items = append(items, toSDKProfileImportItem(p))
-	}
-	resp, err := h.svc.Profiles().Import(r.Context(), r.PathValue("workspace"), items)
-	if err != nil {
-		apiutils.WriteSDKError(w, err)
-		return
-	}
-	profiles := make([]models.ProviderProfile, 0, len(resp.Profiles))
-	for i := range resp.Profiles {
-		profiles = append(profiles, models.FromSDKProviderProfile(&resp.Profiles[i]))
-	}
-	apiutils.WriteJSON(w, http.StatusCreated, models.ImportProviderProfilesResult{
-		Diagnostics: models.FromSDKDiagnostics(resp.Diagnostics),
-		Profiles:    profiles,
-		Imported:    resp.Imported,
-	})
-}
-
-type UpdateProviderProfileBody struct {
-	Profile                 ImportProfileBody `json:"profile"`
-	ExpectedResourceVersion uint64            `json:"expectedResourceVersion,omitempty"`
-}
-
-func (h *ProvidersHandler) UpdateProviderProfile(w http.ResponseWriter, r *http.Request) {
-	var body UpdateProviderProfileBody
-	if !apiutils.DecodeBody(w, r, &body) {
-		return
-	}
-	profileID := r.PathValue("profileId")
-	if body.Profile.ID != "" && body.Profile.ID != profileID {
-		apiutils.WriteError(w, http.StatusBadRequest, apiutils.IDMismatch, "profile id in body must match URL")
-		return
-	}
-	body.Profile.ID = profileID
-	resp, err := h.svc.Profiles().Update(
-		r.Context(),
-		r.PathValue("workspace"),
-		profileID,
-		body.ExpectedResourceVersion,
-		toSDKProfileImportItem(body.Profile),
-	)
-	if err != nil {
-		apiutils.WriteSDKError(w, err)
-		return
-	}
-	var profile *models.ProviderProfile
-	if resp.Profile != nil {
-		p := models.FromSDKProviderProfile(resp.Profile)
-		profile = &p
-	}
-	apiutils.WriteJSON(w, http.StatusOK, models.UpdateProviderProfileResult{
-		Diagnostics: models.FromSDKDiagnostics(resp.Diagnostics),
-		Profile:     profile,
-		Updated:     resp.Updated,
-	})
-}
-
-func (h *ProvidersHandler) DeleteProviderProfile(w http.ResponseWriter, r *http.Request) {
-	res, err := h.svc.Profiles().Delete(r.Context(), r.PathValue("workspace"), r.PathValue("profileId"))
-	if err != nil {
-		apiutils.WriteSDKError(w, err)
-		return
-	}
-	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKDeletion(res))
-}
-
-type LintProviderProfilesBody struct {
-	Profiles []ImportProfileBody `json:"profiles"`
-}
-
-func (h *ProvidersHandler) LintProviderProfiles(w http.ResponseWriter, r *http.Request) {
-	var body LintProviderProfilesBody
-	if !apiutils.DecodeBody(w, r, &body) {
-		return
-	}
-	items := make([]openshell.ProfileImportItem, 0, len(body.Profiles))
-	for _, p := range body.Profiles {
-		items = append(items, toSDKProfileImportItem(p))
-	}
-	resp, err := h.svc.Profiles().Lint(r.Context(), r.PathValue("workspace"), items)
-	if err != nil {
-		apiutils.WriteSDKError(w, err)
-		return
-	}
-	apiutils.WriteJSON(w, http.StatusOK, models.LintProviderProfilesResult{
-		Diagnostics: models.FromSDKDiagnostics(resp.Diagnostics),
-		Valid:       resp.Valid,
-	})
 }

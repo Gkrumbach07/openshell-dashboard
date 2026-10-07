@@ -32,7 +32,8 @@ backend/
 │   ├── clients/               # Narrow SDK escape hatches
 │   │   ├── auth.go            # Per-request bearer forwarding
 │   │   ├── rawexec.go         # Non-TTY stdin exec for binary uploads
-│   │   └── rawprovider.go     # Keys of the credentials a provider holds
+│   │   ├── rawprovider.go     # Keys of the credentials a provider holds
+│   │   └── rawprofile.go      # Provider profiles, whole (endpoints included)
 │   └── models/                # Response DTOs and request builders
 │       ├── models.go          # DTOs shared with the frontend
 │       ├── auth.go            # AuthConfigResponse, FeatureFlags
@@ -73,7 +74,7 @@ SDK sub-clients once (`Sandboxes()`, `Workspaces()`, `Providers()`, `Exec()`,
 that interface into the handler as `h.svc`. Downstream can substitute its own
 implementation of any `services.*Interface` without forking the handler.
 
-The two intentional exceptions are in `pkg/clients`, and both use the SDK's
+The three intentional exceptions are in `pkg/clients`, and all use the SDK's
 generated proto client because of a gap in the public SDK:
 
 - `rawexec.go` streams a file into a sandbox for binary-safe uploads, because
@@ -82,7 +83,13 @@ generated proto client because of a gap in the public SDK:
   the SDK's converter drops the redacted `credentials` map the gateway returns
   them in. `app.SetProviderCredentialKeys` wires it in; handlers reach it
   through `services.ProviderCredentialKeyReader`, beside the SDK call that
-  returns the provider itself.
+  returns the provider itself. `rawprovider_allworkspaces.go` is the same
+  read for the all-workspaces provider list.
+- `rawprofile.go` reads and writes provider profiles, because the SDK's
+  profile endpoint type keeps a host, a port and a protocol and drops the
+  access preset, enforcement and L7 rules the gateway stores with them. An
+  update replaces the stored profile, so a profile that went through the SDK
+  type would come back narrower than it was.
 
 Do not add new local wrappers, copied protos, or generated stub trees unless
 there is a concrete upstream SDK gap you can point to, and delete an exception
@@ -186,7 +193,7 @@ can return is declared there so the frontend has one authoritative list.
 - Table-driven tests with `*_test.go` adjacent to implementation
 - `httptest.NewRecorder()` + `http.NewRequest()` for handler tests
 - `mock_sdk_test.go` provides `openshell.ClientInterface` test doubles for handler coverage
-- `rawexec_test.go` and `rawprovider_test.go` cover the two low-level gRPC escape hatches against a fake gateway that enforces the real one's 1 MiB message limit
+- `rawexec_test.go`, `rawprovider_test.go` (with `rawprovider_allworkspaces_test.go`) and `rawprofile_test.go` cover the three low-level gRPC escape hatches against a fake gateway that enforces the real one's 1 MiB message limit
 - `slog` for structured logging
 
 ## SDK updates

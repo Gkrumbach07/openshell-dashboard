@@ -24,7 +24,9 @@
 // A green lane on gateways 0.1.0 to 0.1.2 has no test that SKIPs. The skips
 // the suite can produce all say why: a known bug (see the end of this comment,
 // none at present), a gateway that is not this run's own (the writing subtests
-// of TestGlobalSettings and TestGlobalPolicy), a delete the gateway only
+// of TestGlobalSettings, TestGlobalPolicy and TestSandboxSettings, and all of
+// TestSandboxSettingManagedGlobally), a compute driver other than the compat
+// stack's Docker (TestRuntimeClassReachesTheDriver), a delete the gateway only
 // accepted, or a BFF started without a supported gateway range
 // (TestGatewayCompatibility, which CI always gives one). On the disposable
 // gateway CI uses, any skip, or any failure, is news. The comment does not
@@ -35,27 +37,62 @@
 //
 // Covered, one test per capability the UI depends on:
 //
-//	gateway        health, readiness, info, auth config        gateway_test.go
-//	settings       global settings read, set, delete           gateway_test.go
+//	gateway        health, readiness, info with the negotiated
+//	               extensions, auth config                     gateway_test.go
+//	               the health every signed-in user can read    compatibility_test.go
+//	settings       global settings read, set, delete, the
+//	               refusal of a value a setting does not take,
+//	               and the delete of a setting that is not set gateway_test.go
+//	               a sandbox's settings read with their scope,
+//	               set and delete, and the refusal of both
+//	               while the key is set globally               sandbox_options_test.go
 //	workspaces     lifecycle, label selector, delete envelope  workspace_test.go, contract_test.go
 //	members        add, list, role change, remove              workspace_test.go
-//	sandboxes      lifecycle, CPU and memory limits (read back
-//	               from the sandbox's own cgroup) and log
-//	               level, labels and the label selector,
-//	               workspace isolation, stop and start, logs
-//	               with the lines/level/source/since filters,
-//	               exposed services                            sandbox_test.go
+//	sandboxes      lifecycle, CPU and memory limits (reported
+//	               back, and read from the sandbox's own
+//	               cgroup) and log level, labels and the label
+//	               selector, workspace isolation, stop and
+//	               start, logs with the lines/level/source/
+//	               since filters, exposed services             sandbox_test.go
+//	               the main command and its terminal,
+//	               environment, annotations and services
+//	               exposed at create, read back; a runtime
+//	               class and a driver config, by the refusal
+//	               each gets on this stack                     sandbox_options_test.go
+//	               a create without an image, which runs the
+//	               gateway's default one; every starter policy
+//	               of the create form, by a sandbox created
+//	               from it; a template without an image and a
+//	               sandbox made from it                        sandbox_create_defaults_test.go
+//	               the pending draft chunks of a workspace's
+//	               sandboxes, and of every workspace's         draft_summary_test.go
 //	exec           file upload, including one larger than a
 //	               gRPC message the gateway accepts, and
 //	               download (the raw proto escape hatch in
 //	               pkg/clients/rawexec.go and the SDK's
 //	               non-interactive Exec().Run), the terminal
 //	               websocket (interactive exec)                exec_test.go
+//	files          a folder up with its structure and a
+//	               directory down as a tar, files of several
+//	               megabytes both ways (a download is relayed
+//	               from the SDK's Exec().Stream), a path that
+//	               is missing, unreadable or a device refused
+//	               before a byte is sent, and a transfer that
+//	               breaks when tar fails after                 files_test.go
+//	terminal       a session started with a command, a
+//	               working directory, an environment and no
+//	               login shell; the default shell when the
+//	               start message chooses nothing; a first
+//	               frame that is not a start message refused   terminal_options_test.go
 //	policy         revisions, network-policy updates with and
 //	               without a stale resource version, the
 //	               sections a live sandbox refuses to change,
 //	               the enum spelling, global policy, the draft
-//	               inbox                                       policy_test.go, contract_test.go
+//	               inbox, incremental updates (add an endpoint,
+//	               append an allow rule, remove an endpoint or
+//	               a rule) that leave untouched rules as they
+//	               were, one revision by number, the effective
+//	               policy and its source                       policy_test.go, contract_test.go
 //	providers      profiles (lint, import, get, update,
 //	               delete), provider create/get/list/update/
 //	               delete with write-only credentials whose
@@ -63,7 +100,19 @@
 //	               a platform one and an id both hold, attach
 //	               and detach on a sandbox including the stale
 //	               resource version, credential refresh status provider_test.go
-//	templates      create/get/list/delete, create-from-template template_test.go
+//	               an edit that sends only the configuration it
+//	               changed, the key a credential with several
+//	               is stored under, the refusal of a key the
+//	               profile does not declare, a provider whose
+//	               profile was deleted from under it           provider_form_test.go
+//	templates      create/get/list/delete with a startup service
+//	               level, create-from-template with a command
+//	               and a service exposed                       template_test.go
+//	all workspaces sandboxes, templates, providers (with their
+//	               credential names) and service endpoints
+//	               listed across workspaces, each carrying its
+//	               own workspace; a workspace's endpoints; the
+//	               unnamed service endpoint                    allworkspaces_test.go
 //	list shapes    lists are JSON arrays, not pager envelopes  contract_test.go
 //
 // Most of these tests run in a workspace other than "default" on purpose.
@@ -77,16 +126,19 @@
 //   - Inference routes and a standalone exec endpoint: the BFF has no such
 //     routes. Non-interactive exec is reachable only through file transfer,
 //     which is where it is covered.
-//   - auth/whoami and draft-summary: the BFF answers both without calling
-//     the gateway — whoami because this stack runs with AUTH_DISABLED,
-//     draft-summary because it is a stub.
-//   - Deciding a real draft chunk (approve, reject, edit, undo): chunks are
-//     produced only by the in-sandbox supervisor's policy analysis, which a
-//     test cannot trigger on demand. The endpoints are driven against an
-//     empty inbox instead, which still proves each RPC reaches the gateway.
+//   - auth/whoami: the BFF answers it without calling the gateway, because
+//     this stack runs with AUTH_DISABLED.
+//   - Deciding a real draft chunk (approve, reject, edit, undo), and a draft
+//     summary that counts one: chunks are produced only by the in-sandbox
+//     supervisor's policy analysis, which a test cannot trigger on demand.
+//     The endpoints are driven against an empty inbox instead, which still
+//     proves each RPC reaches the gateway.
 //   - A successful credential-refresh configuration: it needs a profile that
 //     declares a token endpoint and a live OAuth server behind it.
 //   - GPU requests on create: the compat stack has no GPU to give.
+//   - A runtime class or a driver config that takes effect: the compat
+//     stack's Docker driver refuses the first and its gateway has not enabled
+//     the second. Each refusal is asserted, which proves the field arrives.
 //   - Request validation the BFF does on its own (bad names, bad paths,
 //     malformed bodies): it never reaches the gateway, so it belongs in the
 //     handler unit tests.
@@ -101,21 +153,27 @@
 // platform-scoped provider profile per provider test, which every workspace
 // lists until that test ends.
 //
-// Two tests change state that belongs to the whole gateway, and both read
+// Three tests change state that belongs to the whole gateway, and all read
 // before they write:
 //
 //   - TestGlobalSettings sets and unsets a setting, and only one the gateway
 //     reports as unset. The value it writes is what the gateway does anyway
 //     while the setting is unset.
+//   - TestSandboxSettingManagedGlobally does the same with the same setting,
+//     to see a sandbox report it and refuse to override it.
 //   - TestGlobalPolicy sets and removes a global policy, and only when none is
 //     in force. A global policy replaces the policy of every sandbox on the
 //     gateway and blocks their own policy updates while it is set.
 //
-// Both also stand down when the gateway runs a sandbox this run did not create
-// (see foreignSandboxes), because gateway scope wins over sandbox scope for
-// settings and policy alike. In each of those cases the writing subtests skip
-// and say exactly what they found, and the reads are still asserted. Neither
-// test removes anything it cannot show it wrote.
+// All three also stand down when the gateway runs a sandbox this run did not
+// create (see foreignSandboxes), because gateway scope wins over sandbox scope
+// for settings and policy alike. In each of those cases the writing subtests
+// skip and say exactly what they found, and the reads are still asserted. None
+// of them removes anything it cannot show it wrote.
+//
+// TestDeleteUnsetGlobalSetting sends the gateway a delete too, for a setting
+// it has just read as unset. That removes nothing and moves no revision, so
+// it runs on a shared gateway as well.
 //
 // What a run cannot take back: every global policy it sets stays in the
 // revision history as SUPERSEDED, and the settings revision counter moves on.
@@ -138,7 +196,6 @@ package compat
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -150,8 +207,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 var (
@@ -190,7 +245,6 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	// os.Exit skips deferred calls, so the shared fixtures are released here.
 	teardownShared()
-	closeGatewayClient()
 	// When the gateway could not boot sandboxes, most of the failures above
 	// have that one cause, so it is said once where a reader of the log looks
 	// first: at the end.
@@ -622,45 +676,6 @@ func teardownShared() {
 	}
 }
 
-// gateway is a direct SDK connection to the gateway, used for exactly one
-// thing: seeding a platform-scoped provider profile (see seedPlatformProfile).
-// Everything else in this suite goes through the BFF.
-var gateway struct {
-	client openshell.ClientInterface
-	err    error
-	addr   string
-	once   sync.Once
-}
-
-// gatewayClient dials the gateway the BFF is pointed at. COMPAT_GATEWAY_URL
-// overrides the address; the default is where deploy/ci/docker-compose.e2e.yml
-// publishes the gateway and where CI and e2e-stack.sh point the BFF. The
-// compat stack serves plaintext with unauthenticated users allowed, so no TLS
-// or token is involved.
-func gatewayClient() (openshell.ClientInterface, error) {
-	gateway.once.Do(func() {
-		addr := os.Getenv("COMPAT_GATEWAY_URL")
-		if addr == "" {
-			addr = "localhost:8080"
-		}
-		if !strings.Contains(addr, "://") {
-			addr = "http://" + addr
-		}
-		gateway.addr = addr
-		gateway.client, gateway.err = openshell.NewClient(openshell.Config{
-			Address: addr,
-			TLS:     &openshell.TLSConfig{Insecure: true},
-		})
-	})
-	return gateway.client, gateway.err
-}
-
-func closeGatewayClient() {
-	if gateway.client != nil {
-		_ = gateway.client.Close()
-	}
-}
-
 // profileCredentialKey is the one credential the profiles of this suite
 // require, seeded or imported. The gateway keys a provider's credentials by
 // environment variable name, not by the credential's own name, so here the
@@ -669,57 +684,62 @@ func closeGatewayClient() {
 // they do in the profiles upstream publishes.
 const profileCredentialKey = "COMPAT_API_KEY"
 
+// credentialSchema is one credential of a provider profile, as the BFF takes
+// it in a profile body.
+type credentialSchema struct {
+	Name     string   `json:"name"`
+	EnvVars  []string `json:"envVars,omitempty"`
+	Required bool     `json:"required"`
+}
+
 // agreeingCredential is the credential schema described at
 // profileCredentialKey.
-func agreeingCredential() openshell.ProfileCredential {
-	return openshell.ProfileCredential{
+func agreeingCredential() credentialSchema {
+	return credentialSchema{
 		Name: profileCredentialKey, EnvVars: []string{profileCredentialKey}, Required: true,
 	}
 }
 
-// seedPlatformProfile registers a platform-scoped provider profile with one
-// credential directly on the gateway and returns its id, which is the provider
-// "type" to create against.
+// seedPlatformProfile imports a platform-scoped provider profile with one
+// credential and returns its id, which is the provider "type" to create
+// against.
 //
-// It bypasses the BFF because the BFF only imports profiles into a workspace,
-// and the dashboard also has to work with the profiles it did not import: the
-// ones a gateway ships and the ones an admin imports for every workspace. The
-// compat stack's gateway ships none (it logs `provider profile sources
+// The dashboard also has to work with the profiles a workspace did not import:
+// the ones a gateway ships and the ones an admin imports for every workspace.
+// The compat stack's gateway ships none (it logs `provider profile sources
 // configured sources=["user"]`), so a platform profile is seeded to stand in
 // for them. TestProviderFromWorkspaceProfile covers the other kind, imported
-// through the BFF.
-func seedPlatformProfile(t *testing.T, credential openshell.ProfileCredential) string {
+// into a workspace.
+//
+// It goes through the BFF's own platform route, POST /api/v1/provider-profiles,
+// like everything else in this suite: every test that seeds a profile then
+// also shows that the route works. Until the BFF had that route this helper
+// went around it, with an SDK connection of its own to the gateway.
+func seedPlatformProfile(t *testing.T, credential credentialSchema) string {
 	t.Helper()
-	client, err := gatewayClient()
-	if err != nil {
-		t.Fatalf("connect to the gateway at %s to seed a provider profile: %v — set COMPAT_GATEWAY_URL "+
-			"to the gateway's gRPC address", gateway.addr, err)
-	}
 	id := randName("cpp")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	res, err := client.Providers().Profiles().Import(ctx, "", []openshell.ProfileImportItem{{
-		Profile: openshell.ProviderProfile{
-			ID:               id,
-			DisplayName:      "Compat platform profile",
-			Description:      "seeded by backend/test/compat",
-			Category:         openshell.ProfileCategoryInference,
-			InferenceCapable: true,
-			Credentials:      []openshell.ProfileCredential{credential},
-		},
-	}})
-	if err != nil {
-		t.Fatalf("seed platform profile %s on the gateway at %s [gateway %s]: %v — set COMPAT_GATEWAY_URL "+
-			"to the gateway's gRPC address if it is not published there", id, gateway.addr, gatewayVersion, err)
+	path := platformProfilesPath()
+	var res struct {
+		Diagnostics []profileDiagnostic `json:"diagnostics"`
+		Imported    bool                `json:"imported"`
 	}
+	// Registered before the import: a platform profile is listed in every
+	// workspace, and an import that applied but whose answer was lost must
+	// not leave one behind. Deleting an id that was never imported is a 404.
+	t.Cleanup(func() {
+		_, _, _ = do(http.MethodDelete, path+"/"+id, nil)
+	})
+	mustJSON(t, http.MethodPost, path, map[string]any{"profiles": []any{map[string]any{
+		"id":               id,
+		"displayName":      "Compat platform profile",
+		"description":      "seeded by backend/test/compat",
+		"category":         "INFERENCE",
+		"inferenceCapable": true,
+		"credentials":      []credentialSchema{credential},
+	}}}, &res, http.StatusCreated)
 	if !res.Imported {
-		t.Fatalf("seed platform profile %s [gateway %s]: gateway did not import it; diagnostics: %+v",
+		t.Fatalf("seed platform profile %s [gateway %s]: the gateway did not import it; diagnostics: %+v",
 			id, gatewayVersion, res.Diagnostics)
 	}
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		_, _ = client.Providers().Profiles().Delete(ctx, "", id)
-	})
 	return id
 }

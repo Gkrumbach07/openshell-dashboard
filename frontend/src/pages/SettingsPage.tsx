@@ -27,6 +27,9 @@ import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import RefreshErrorAlert, {
+  isRefreshError,
+} from '../components/RefreshErrorAlert';
 import SettingValueField from '../components/SettingValueField';
 import { useAlerts } from '../app/AlertContext';
 import {
@@ -34,7 +37,7 @@ import {
   useGlobalSettings,
   useSetGlobalSetting,
 } from '../api/settings';
-import type { SettingEntry } from '../types';
+import type { SettingEntry, SettingValue } from '../types';
 import {
   emptySettingText,
   formatSettingValue,
@@ -43,11 +46,31 @@ import {
   type SettingType,
 } from '../utils/settings';
 
+// A setting that is about to be written, waiting for the user to confirm it.
+// `from` is where it was entered, which is where a refusal is shown.
+type PendingSetting = {
+  key: string;
+  value: SettingValue;
+  from: 'add' | 'edit';
+};
+
+// The type a value is sent in, in words: "a string", "a boolean".
+const settingTypeLabel = (value: SettingValue): string => {
+  switch (settingTypeOf(value)) {
+    case 'boolean':
+      return 'a boolean';
+    case 'integer':
+      return 'an integer';
+    default:
+      return 'a string';
+  }
+};
+
 const SettingsPage: React.FC = () => {
   const settings = useGlobalSettings();
   const setSetting = useSetGlobalSetting();
   const deleteSetting = useDeleteGlobalSetting();
-  const { addSuccess } = useAlerts();
+  const { addAlert, addSuccess } = useAlerts();
 
   const [isAddOpen, setAddOpen] = useState(false);
   const [addKey, setAddKey] = useState('');
@@ -61,6 +84,11 @@ const SettingsPage: React.FC = () => {
   const [editType, setEditType] = useState<SettingType>('string');
   const [isEditTypeKnown, setEditTypeKnown] = useState(false);
   const [editText, setEditText] = useState('');
+
+  // A global setting reaches every sandbox on the gateway the moment it is
+  // written, so nothing is written before the user has seen exactly what
+  // will be and said yes to it, as in the TUI.
+  const [pending, setPending] = useState<PendingSetting | null>(null);
 
   const [deleteKey, setDeleteKey] = useState<string | null>(null);
 
@@ -92,25 +120,50 @@ const SettingsPage: React.FC = () => {
 
   const submitAdd = () => {
     if (!addKey.trim() || addValue === undefined) return;
-    setSetting.mutate(
-      { key: addKey.trim(), value: addValue },
-      {
-        onSuccess: () => {
-          setAddOpen(false);
-          addSuccess(`Setting "${addKey.trim()}" saved`);
-        },
-      },
-    );
+    // The form makes way for the question and comes back, as it was, if the
+    // answer is no or the gateway refuses the value.
+    setAddOpen(false);
+    setSetting.reset();
+    setPending({ key: addKey.trim(), value: addValue, from: 'add' });
   };
 
   const submitEdit = () => {
     if (!editKey || editValue === undefined) return;
+    setSetting.reset();
+    setPending({ key: editKey, value: editValue, from: 'edit' });
+  };
+
+  const cancelPending = () => {
+    if (pending?.from === 'add') {
+      setAddOpen(true);
+    }
+    setPending(null);
+  };
+
+  const confirmPending = () => {
+    if (!pending) return;
+    const { key, value, from } = pending;
     setSetting.mutate(
-      { key: editKey, value: editValue },
+      { key, value },
       {
         onSuccess: () => {
-          setEditKey(null);
-          addSuccess(`Setting "${editKey}" updated`);
+          setPending(null);
+          if (from === 'edit') {
+            setEditKey(null);
+          }
+          addSuccess(
+            from === 'add'
+              ? `Setting "${key}" saved`
+              : `Setting "${key}" updated`,
+          );
+        },
+        // The gateway's reason is shown where the value was entered, so that
+        // it can be corrected there: under the row, or in the form.
+        onError: () => {
+          setPending(null);
+          if (from === 'add') {
+            setAddOpen(true);
+          }
         },
       },
     );
@@ -119,9 +172,16 @@ const SettingsPage: React.FC = () => {
   const confirmDelete = () => {
     if (!deleteKey) return;
     deleteSetting.mutate(deleteKey, {
-      onSuccess: () => {
+      onSuccess: (result) => {
         setDeleteKey(null);
-        addSuccess(`Setting "${deleteKey}" deleted`);
+        // The gateway says whether there was anything to delete.
+        if (result.deleted) {
+          addSuccess(`Setting "${deleteKey}" deleted`);
+        } else {
+          addAlert(
+            `Setting "${deleteKey}" was not set, so nothing was deleted`,
+          );
+        }
       },
     });
   };
@@ -136,7 +196,10 @@ const SettingsPage: React.FC = () => {
     );
   }
 
-  if (settings.isError) {
+  // Only a first load that failed takes the page. A refresh that failed
+  // leaves the settings that loaded before on screen, with a note above them.
+  const refreshFailed = isRefreshError(settings);
+  if (settings.isError && !refreshFailed) {
     return (
       <PageSection>
         <Alert
@@ -166,6 +229,15 @@ const SettingsPage: React.FC = () => {
         </Content>
       </PageSection>
       <PageSection>
+        {refreshFailed && (
+          <RefreshErrorAlert
+            title="The settings could not be refreshed"
+            error={settings.error}
+            onRetry={() => settings.refetch()}
+            className="pf-v6-u-mb-md"
+            data-testid="settings-refresh-error"
+          />
+        )}
         <Toolbar aria-label="Settings actions">
           <ToolbarContent>
             <ToolbarItem>
@@ -368,6 +440,7 @@ const SettingsPage: React.FC = () => {
               isInline
               title="Failed to save setting"
               className="pf-v6-u-mt-md"
+              data-testid="add-setting-error"
             >
               {(setSetting.error as Error).message}
             </Alert>
@@ -390,9 +463,60 @@ const SettingsPage: React.FC = () => {
         </ModalFooter>
       </Modal>
 
+      {/* The question before a setting is written: `Set k = v globally?` */}
+      <Modal
+        variant="small"
+        isOpen={pending !== null}
+        onClose={cancelPending}
+        aria-label="Confirm global setting change"
+        data-testid="confirm-set-modal"
+      >
+        <ModalHeader
+          title="Confirm global setting change"
+          titleIconVariant="warning"
+        />
+        <ModalBody>
+          <Content component="p" data-testid="confirm-set-question">
+            Set{' '}
+            <span className="pf-v6-u-font-family-monospace">
+              {pending?.key} ={' '}
+              {pending ? formatSettingValue(pending.value) : ''}
+            </span>{' '}
+            globally?
+          </Content>
+          {/* true the boolean and "true" the string read alike above, and the
+              gateway takes only one of them for a given key. */}
+          <Content component="p" data-testid="confirm-set-type">
+            The value is sent as{' '}
+            {pending ? settingTypeLabel(pending.value) : ''}.
+          </Content>
+          <Content component="p">
+            This will apply to all sandboxes on this gateway.
+          </Content>
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            onClick={confirmPending}
+            isDisabled={setSetting.isPending}
+            isLoading={setSetting.isPending}
+            data-testid="confirm-set-setting"
+          >
+            Set globally
+          </Button>
+          <Button
+            variant="link"
+            onClick={cancelPending}
+            isDisabled={setSetting.isPending}
+            data-testid="cancel-set-setting"
+          >
+            Cancel
+          </Button>
+        </ModalFooter>
+      </Modal>
+
       <ConfirmDeleteModal
         title="Delete setting?"
-        body={`Are you sure you want to delete the setting "${deleteKey}"?`}
+        body={`Delete the global setting "${deleteKey}"? This will unset the value for all sandboxes on this gateway.`}
         isOpen={deleteKey !== null}
         isDeleting={deleteSetting.isPending}
         error={

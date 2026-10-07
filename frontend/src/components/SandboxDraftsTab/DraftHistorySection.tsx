@@ -54,6 +54,7 @@ const DraftHistorySection: React.FC<DraftHistorySectionProps> = ({
           <Thead>
             <Tr>
               <Th>Event</Th>
+              <Th>Chunk</Th>
               <Th>Description</Th>
               <Th>Time</Th>
             </Tr>
@@ -65,6 +66,9 @@ const DraftHistorySection: React.FC<DraftHistorySectionProps> = ({
                   <Label isCompact color={eventColor(entry.eventType)}>
                     {entry.eventType}
                   </Label>
+                </Td>
+                <Td dataLabel="Chunk" className="pf-v6-u-font-family-monospace">
+                  {entry.chunkId ? entry.chunkId.slice(0, 8) : '-'}
                 </Td>
                 <Td dataLabel="Description">{entry.description}</Td>
                 <Td dataLabel="Time">

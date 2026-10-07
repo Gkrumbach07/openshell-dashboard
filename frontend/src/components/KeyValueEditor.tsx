@@ -19,6 +19,10 @@ type KeyValueEditorProps = {
   valuePlaceholder?: string;
   testIdPrefix?: string;
   addLabel?: string;
+  // What one row is, in the singular: "Label", "Annotation", "Environment
+  // variable". It names the two inputs of a row for a screen reader ("Label
+  // key", "Label value"), which otherwise have only a placeholder to go by.
+  itemLabel?: string;
 };
 
 const KeyValueEditor: React.FC<KeyValueEditorProps> = ({
@@ -28,6 +32,7 @@ const KeyValueEditor: React.FC<KeyValueEditorProps> = ({
   valuePlaceholder = 'value',
   testIdPrefix = 'kv',
   addLabel = 'Add entry',
+  itemLabel = 'Config',
 }) => {
   const updateRow = (index: number, field: 'key' | 'value', val: string) => {
     onChange(rows.map((r, i) => (i === index ? { ...r, [field]: val } : r)));
@@ -41,8 +46,11 @@ const KeyValueEditor: React.FC<KeyValueEditorProps> = ({
     onChange([...rows, { key: '', value: '' }]);
   };
 
+  // A block of its own: a PatternFly Stack is as tall as its container, and
+  // directly inside a form group it takes the whole height and pushes the add
+  // button, and any helper text after the editor, over the next field.
   return (
-    <>
+    <div>
       {rows.length > 0 && (
         <Stack hasGutter>
           {rows.map((row, index) => (
@@ -55,7 +63,7 @@ const KeyValueEditor: React.FC<KeyValueEditorProps> = ({
                     value={row.key}
                     onChange={(_event, value) => updateRow(index, 'key', value)}
                     placeholder={keyPlaceholder}
-                    aria-label="Config key"
+                    aria-label={`${itemLabel} key`}
                   />
                 </GridItem>
                 <GridItem span={5}>
@@ -67,7 +75,7 @@ const KeyValueEditor: React.FC<KeyValueEditorProps> = ({
                       updateRow(index, 'value', value)
                     }
                     placeholder={valuePlaceholder}
-                    aria-label="Config value"
+                    aria-label={`${itemLabel} value`}
                   />
                 </GridItem>
                 <GridItem span={2}>
@@ -92,7 +100,7 @@ const KeyValueEditor: React.FC<KeyValueEditorProps> = ({
       >
         {addLabel}
       </Button>
-    </>
+    </div>
   );
 };
 

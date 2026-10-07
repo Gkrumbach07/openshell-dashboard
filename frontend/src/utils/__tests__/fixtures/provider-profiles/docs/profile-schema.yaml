@@ -1,0 +1,118 @@
+id: custom-api
+# Present on exported custom profiles; preserve it when updating.
+resource_version: 1
+annotations:
+  example.com/source: platform
+display_name: Custom API
+description: Custom API access for sandbox agents
+category: data
+inference_capable: false
+
+credentials:
+  - name: user_oidc_token
+    description: User OIDC token stored for gateway-side token exchange only
+    required: true
+
+  - name: api_token
+    description: API access token
+    env_vars: [CUSTOM_API_TOKEN]
+    required: true
+
+    # Accepted values: basic, bearer, header, query, path.
+    # These fields describe static credential placement.
+    # Static runtime injection still uses env placeholder resolution.
+    auth_style: bearer
+    header_name: authorization
+    query_param: api_key
+    path_template: /v1/{credential}/resources
+
+    refresh:
+      # Accepted values:
+      # static, external, oauth2_refresh_token,
+      # oauth2_client_credentials, google_service_account_jwt.
+      strategy: oauth2_client_credentials
+      token_url: https://login.example.com/oauth2/token
+      scopes: [api.read, api.write]
+      refresh_before: "300s"
+      max_lifetime: "3600s"
+      material:
+        - name: client_id
+          description: OAuth client ID
+          required: true
+          secret: false
+        - name: client_secret
+          description: OAuth client secret
+          required: true
+          secret: true
+
+    # Optional dynamic credential. The sandbox supervisor resolves this on
+    # demand for matching endpoint traffic, caches the returned access token,
+    # and injects it according to auth_style/header_name.
+    token_grant:
+      # Accepted values: client_credentials, token_exchange.
+      grant_type: token_exchange
+      token_endpoint: https://login.example.com/realms/custom/protocol/openid-connect/token
+      audience: api://custom-api
+      jwt_svid_audience: https://login.example.com/realms/custom
+      client_assertion_type: urn:ietf:params:oauth:client-assertion-type:jwt-spiffe
+      scopes: [api.read, api.write]
+      cache_ttl: "300s"
+      requested_token_type: urn:ietf:params:oauth:token-type:access_token
+      subject_token:
+        source: provider_credential
+        credential: user_oidc_token
+        subject_token_type: urn:ietf:params:oauth:token-type:access_token
+      audience_overrides:
+        - host: api.example.com
+          port: 443
+          path: /v1/projects/**
+          audience: api://custom-projects
+          scopes: [projects.read]
+
+discovery:
+  credentials: [api_token]
+
+endpoints:
+  - host: api.example.com
+    port: 443
+    path: /v1/**
+    protocol: rest
+    tls: ""
+    enforcement: enforce
+    allowed_ips: []
+    ports: []
+    allow_encoded_slash: false
+    websocket_credential_rewrite: false
+    request_body_credential_rewrite: false
+    allow_uninspected_credentials: false
+    persisted_queries: deny
+    graphql_max_body_bytes: 65536
+    rules:
+      - allow:
+          method: GET
+          path: /v1/projects/**
+          command: ""
+          query:
+            tag:
+              any: ["prod-*", "staging-*"]
+          operation_type: ""
+          operation_name: ""
+          fields: []
+    deny_rules:
+      - method: DELETE
+        path: /v1/projects/**
+        command: ""
+        query: {}
+        operation_type: ""
+        operation_name: ""
+        fields: []
+    graphql_persisted_queries:
+      # Key must match the request's persisted query hash or saved-query ID.
+      9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08:
+        operation_type: query
+        operation_name: GetProject
+        fields: [project]
+
+binaries:
+  - /usr/bin/curl
+  - /usr/local/bin/custom-cli

@@ -49,10 +49,10 @@ func (h *TemplatesHandler) CreateSandboxTemplate(w http.ResponseWriter, r *http.
 		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidName, "template name must be a valid DNS-1123 label")
 		return
 	}
-	if body.Spec.Workload == nil || body.Spec.Workload.Image == "" {
-		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidImage, "spec.workload.image is required")
-		return
-	}
+	// A workload without an image is a template for the gateway's default
+	// image, which `openshell sandbox template create` without --image makes
+	// and lists as "<default>". What a workload must hold is the gateway's to
+	// judge, and its answer is passed on.
 	template, err := h.svc.Create(r.Context(), r.PathValue("workspace"), models.BuildSDKSandboxWorkloadTemplate(body))
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
@@ -83,8 +83,9 @@ func (h *TemplatesHandler) DeleteSandboxTemplate(w http.ResponseWriter, r *http.
 }
 
 // CreateSandboxFromTemplate creates a sandbox from a named workload template.
-// The request supplies only governance fields (policy, providers); the workload
-// (image, environment, resources) comes from the template.
+// The request supplies only governance fields (policy, providers) and what a
+// template does not hold (the main command, the services to expose); the
+// workload (image, environment, resources) comes from the template.
 func (h *TemplatesHandler) CreateSandboxFromTemplate(w http.ResponseWriter, r *http.Request) {
 	var body models.CreateSandboxFromTemplateRequest
 	if !apiutils.DecodeBody(w, r, &body) {
@@ -99,7 +100,10 @@ func (h *TemplatesHandler) CreateSandboxFromTemplate(w http.ResponseWriter, r *h
 		return
 	}
 	if len(body.Policy) == 0 {
-		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPolicy, "policy is required — SandboxSpec.policy is a required field")
+		apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidPolicy, "policy is required: the gateway accepts a sandbox without one, but unless it has a default policy to apply the sandbox never becomes ready")
+		return
+	}
+	if !validServiceExposures(w, body.ServiceExposures) {
 		return
 	}
 	spec, err := models.BuildSDKTemplateGovernanceSpec(body)
@@ -109,10 +113,7 @@ func (h *TemplatesHandler) CreateSandboxFromTemplate(w http.ResponseWriter, r *h
 		return
 	}
 
-	var createOpts []openshell.CreateOptions
-	if len(body.Annotations) > 0 {
-		createOpts = append(createOpts, openshell.CreateOptions{Annotations: body.Annotations})
-	}
+	createOpts := models.BuildSDKCreateOptions(body.Annotations, body.ServiceExposures)
 
 	sandbox, err := h.svc.CreateSandboxFromTemplate(r.Context(), r.PathValue("workspace"), body.Name, body.TemplateName, spec, body.Labels, createOpts...)
 	if err != nil {

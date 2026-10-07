@@ -17,6 +17,7 @@ import type {
   SandboxPolicyView,
 } from '../../types';
 import { formatAge } from '../../utils/formatters';
+import { getConfigurationRejection } from '../../utils/sandboxLifecycle';
 
 type AlertVariant = 'danger' | 'warning' | 'info';
 
@@ -45,22 +46,39 @@ export const buildAttentionItems = (
   const { metadata, status } = sandbox;
   const now = Date.now();
 
+  // Whatever the phase: a sandbox that rejected its configuration is held in
+  // PROVISIONING, where nothing else on the card says that it will not start.
+  const rejection = getConfigurationRejection(sandbox);
+  if (rejection) {
+    items.push({
+      key: 'invalid-config',
+      variant: 'danger',
+      title: 'Invalid config',
+      description: rejection.message,
+    });
+  }
+
   if (status.phase === 'ERROR') {
     const condition = status.conditions?.find(
       (c) => c.status === 'False' || c.reason,
     );
-    items.push({
-      key: 'error',
-      variant: 'danger',
-      title: condition?.reason ?? 'Error',
-      description:
-        [
-          condition?.message,
-          status.currentPolicyVersion === 0 ? 'Policy never loaded' : undefined,
-        ]
-          .filter(Boolean)
-          .join(' · ') || undefined,
-    });
+    // When the rejection is the error, the item above has already said it.
+    if (!rejection || condition?.reason !== 'ConfigurationInvalid') {
+      items.push({
+        key: 'error',
+        variant: 'danger',
+        title: condition?.reason ?? 'Error',
+        description:
+          [
+            condition?.message,
+            status.currentPolicyVersion === 0
+              ? 'Policy never loaded'
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join(' · ') || undefined,
+      });
+    }
   }
 
   if (policyView?.latest) {
@@ -103,6 +121,17 @@ export const buildAttentionItems = (
             onClick: () => callbacks.onReviewDrafts!(metadata.name),
           }
         : undefined,
+    });
+  }
+
+  // Not the same as none proposed: the count could not be read.
+  if (draftSummary?.unavailable) {
+    items.push({
+      key: 'drafts-unavailable',
+      variant: 'info',
+      title: 'Proposed rules unavailable',
+      description:
+        'The pending rule proposals of this sandbox could not be read.',
     });
   }
 

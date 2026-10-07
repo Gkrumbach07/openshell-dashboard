@@ -26,7 +26,7 @@ const gatewayMaxMessage = 1 << 20
 // fakeExecServer plays the gateway's ExecSandboxInteractive: it takes the
 // start message, reads stdin frames until the client closes its side, then
 // replays a fixed event sequence (stdout, stderr, exit).
-type fakeExecServer struct {
+type fakeExecServer struct { //nolint:govet // fieldalignment: test readability
 	pb.UnimplementedOpenShellServer
 	// failWith, when set, ends the stream with this status after the start
 	// message instead of running anything.
@@ -39,9 +39,17 @@ type fakeExecServer struct {
 	// exitEarly makes the command exit right after it starts, without reading
 	// its stdin, the way dd does when it cannot open its output file.
 	exitEarly bool
+	// stdinEnded is set when the client closed its side of the stream, which
+	// is what the gateway turns into end of input for the command.
+	stdinEnded bool
+	// done, when set, is closed when the call is over on the server.
+	done chan struct{}
 }
 
 func (f *fakeExecServer) ExecSandboxInteractive(stream grpc.BidiStreamingServer[pb.ExecSandboxInput, pb.ExecSandboxEvent]) error {
+	if f.done != nil {
+		defer close(f.done)
+	}
 	first, err := stream.Recv()
 	if err != nil {
 		return err
@@ -60,6 +68,9 @@ func (f *fakeExecServer) ExecSandboxInteractive(stream grpc.BidiStreamingServer[
 		for {
 			msg, recvErr := stream.Recv()
 			if errors.Is(recvErr, io.EOF) {
+				f.mu.Lock()
+				f.stdinEnded = true
+				f.mu.Unlock()
 				break
 			}
 			if recvErr != nil {
@@ -273,5 +284,140 @@ func TestExecWithStdinReturnsTheGatewayStatus(t *testing.T) {
 	}
 	if code != -1 {
 		t.Errorf("exit code = %d, want -1: the command never ran", code)
+	}
+}
+
+// smallReads hands out its bytes a few at a time, as a multipart part read
+// off a network connection does.
+type smallReads struct {
+	data []byte
+	step int
+}
+
+func (r *smallReads) Read(p []byte) (int, error) {
+	if len(r.data) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, r.data[:min(r.step, len(r.data))])
+	r.data = r.data[n:]
+	return n, nil
+}
+
+// A reader that yields little at a time must not become as many messages: the
+// payload is gathered into full chunks, and still arrives whole and in order
+// in messages the gateway accepts.
+func TestExecWithStdinStreamGathersSmallReads(t *testing.T) {
+	tests := []struct {
+		name string
+		size int
+		step int
+	}{
+		{name: "4 KiB reads over several chunks", size: 3*stdinChunkSize + 7, step: 4096},
+		{name: "odd-sized reads that straddle chunk boundaries", size: 2*stdinChunkSize + 1000, step: 1000},
+		{name: "several times the gateway's message limit", size: 5 * gatewayMaxMessage, step: 32 << 10},
+		{name: "less than one chunk", size: 100, step: 7},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeExecServer{}
+			rc := newTestRawExec(t, fake)
+			payload := binaryPayload(tc.size)
+
+			_, code, err := rc.ExecWithStdinStream(context.Background(), "default", "sb", []string{"dd", "of=/x"},
+				&smallReads{data: append([]byte(nil), payload...), step: tc.step})
+			if err != nil {
+				t.Fatalf("ExecWithStdinStream with %d bytes: %v", tc.size, err)
+			}
+			if code != 0 {
+				t.Errorf("exit code = %d, want 0", code)
+			}
+			start, stdin, chunks := fake.received()
+			if start.GetTty() {
+				t.Error("Tty = true, want false")
+			}
+			if !bytes.Equal(stdin, payload) {
+				t.Errorf("the server received %d bytes that differ from the %d sent", len(stdin), len(payload))
+			}
+			if want := (tc.size + stdinChunkSize - 1) / stdinChunkSize; len(chunks) != want {
+				t.Errorf("stdin arrived in %d messages, want %d: reads of %d bytes were not gathered", len(chunks), want, tc.step)
+			}
+		})
+	}
+}
+
+// failingReader yields data and then fails with err.
+type failingReader struct {
+	err  error
+	data []byte
+}
+
+func (r *failingReader) Read(p []byte) (int, error) {
+	if len(r.data) == 0 {
+		return 0, r.err
+	}
+	n := copy(p, r.data)
+	r.data = r.data[n:]
+	return n, nil
+}
+
+// A stdin that fails is not a stdin that ended. The command must never be
+// told its input is complete, because it would then report a truncated file
+// as written, and the caller gets the reader's own error back.
+func TestExecWithStdinStreamReaderFailure(t *testing.T) {
+	errBody := errors.New("request body: connection reset")
+	tests := []struct { //nolint:govet // fieldalignment: test readability
+		name string
+		err  error
+		size int
+	}{
+		{name: "before the first byte", err: errBody, size: 0},
+		{name: "part way through the first chunk", err: errBody, size: 1000},
+		{name: "on a chunk boundary", err: errBody, size: 2 * stdinChunkSize},
+		{name: "after several chunks", err: errBody, size: 3*stdinChunkSize + 500},
+		// What a multipart part returns when the body ends before the
+		// closing boundary, and also what io.ReadFull makes of a reader that
+		// simply ended: the two must not be mixed up.
+		{name: "an unexpected EOF part way through a chunk", err: io.ErrUnexpectedEOF, size: 1000},
+		{name: "an unexpected EOF on a chunk boundary", err: io.ErrUnexpectedEOF, size: stdinChunkSize},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeExecServer{done: make(chan struct{})}
+			rc := newTestRawExec(t, fake)
+
+			type result struct {
+				err  error
+				code int
+			}
+			returned := make(chan result, 1)
+			go func() {
+				_, code, err := rc.ExecWithStdinStream(context.Background(), "default", "sb", []string{"dd", "of=/x"},
+					&failingReader{data: binaryPayload(tc.size), err: tc.err})
+				returned <- result{code: code, err: err}
+			}()
+			select {
+			case got := <-returned:
+				if !errors.Is(got.err, tc.err) {
+					t.Errorf("error = %v, want the reader's own: %v", got.err, tc.err)
+				}
+				if got.code == 0 {
+					t.Error("exit code = 0: a failed upload reads as one that succeeded")
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("ExecWithStdinStream did not return after its stdin failed")
+			}
+
+			select {
+			case <-fake.done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the call is still open on the server 10s after stdin failed")
+			}
+			fake.mu.Lock()
+			ended := fake.stdinEnded
+			fake.mu.Unlock()
+			if ended {
+				t.Error("the server was told stdin ended: the command would write a truncated file and exit 0")
+			}
+		})
 	}
 }

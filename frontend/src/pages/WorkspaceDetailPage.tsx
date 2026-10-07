@@ -4,6 +4,10 @@ import {
   Badge,
   Bullseye,
   Button,
+  DescriptionList,
+  DescriptionListDescription,
+  DescriptionListGroup,
+  DescriptionListTerm,
   Flex,
   FlexItem,
   PageSection,
@@ -13,16 +17,27 @@ import {
   Tabs,
   Title,
 } from '@patternfly/react-core';
+import { useNavigate } from 'react-router-dom';
 
+import { useFeatureFlags } from '../api/auth';
 import { useProviders } from '../api/providers';
 import { useSandboxes } from '../api/sandboxes';
 import { useTemplates } from '../api/templates';
-import { useMembers, useWorkspace } from '../api/workspaces';
+import {
+  useMembers,
+  useWorkspace,
+  useWorkspaceServices,
+} from '../api/workspaces';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
 import ProfilesTab from '../components/provider/ProfilesTab';
+import RefreshErrorAlert, {
+  isRefreshError,
+} from '../components/RefreshErrorAlert';
+import ServiceEndpointsTable from '../components/ServiceEndpointsTable';
 import TemplatesTab from '../components/TemplatesTab';
 import { useSlots } from '../slots';
+import { formatTimestamp } from '../utils/formatters';
 import MemberListPage from './MemberListPage';
 import ProviderListPage from './ProviderListPage';
 import SandboxListPage from './SandboxListPage';
@@ -55,7 +70,21 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
   const templateCount = useTemplates(workspace);
   const providerCount = useProviders(workspace);
   const memberCount = useMembers(workspace);
+  const features = useFeatureFlags();
+  const services = useWorkspaceServices(workspace, {
+    enabled: features.services,
+  });
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<string | number>('sandboxes');
+
+  // A service endpoint is exposed and deleted on its sandbox's Services tab.
+  const viewSandboxServices = (name: string) => {
+    if (onViewSandbox) {
+      onViewSandbox(name, 'services');
+    } else {
+      navigate(`/workspaces/${workspace}/sandboxes/${name}?tab=services`);
+    }
+  };
 
   if (workspaceQuery.isLoading) {
     return (
@@ -67,7 +96,12 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
     );
   }
 
-  if (workspaceQuery.isError) {
+  // The workspace is re-read while the page is open. Only a first load that
+  // failed takes the page: every tab below, and any dialog open in one, lives
+  // in this component, and a refresh that did not get through must not throw
+  // them away. It is reported above the details instead.
+  const refreshFailed = isRefreshError(workspaceQuery);
+  if (workspaceQuery.isError && !refreshFailed) {
     return (
       <PageSection>
         <Alert
@@ -88,6 +122,15 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
   return (
     <>
       <PageSection>
+        {refreshFailed && (
+          <RefreshErrorAlert
+            title={`Workspace ${workspace} could not be refreshed`}
+            error={workspaceQuery.error}
+            onRetry={() => workspaceQuery.refetch()}
+            className="pf-v6-u-mb-md"
+            data-testid="workspace-refresh-error"
+          />
+        )}
         <Flex
           alignItems={{ default: 'alignItemsCenter' }}
           gap={{ default: 'gapMd' }}
@@ -101,10 +144,39 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
             </FlexItem>
           )}
         </Flex>
-        {workspaceQuery.data &&
-          Object.keys(workspaceQuery.data.metadata.labels ?? {}).length > 0 && (
-            <LabelsList labels={workspaceQuery.data.metadata.labels} />
-          )}
+        {workspaceQuery.data && (
+          <DescriptionList
+            isHorizontal
+            isCompact
+            className="pf-v6-u-mt-md"
+            data-testid="workspace-details"
+          >
+            <DescriptionListGroup>
+              <DescriptionListTerm>ID</DescriptionListTerm>
+              <DescriptionListDescription>
+                {workspaceQuery.data.metadata.id || '-'}
+              </DescriptionListDescription>
+            </DescriptionListGroup>
+            <DescriptionListGroup>
+              <DescriptionListTerm>Resource version</DescriptionListTerm>
+              <DescriptionListDescription>
+                {workspaceQuery.data.metadata.resourceVersion}
+              </DescriptionListDescription>
+            </DescriptionListGroup>
+            <DescriptionListGroup>
+              <DescriptionListTerm>Created</DescriptionListTerm>
+              <DescriptionListDescription>
+                {formatTimestamp(workspaceQuery.data.metadata.createdAtMs)}
+              </DescriptionListDescription>
+            </DescriptionListGroup>
+            <DescriptionListGroup>
+              <DescriptionListTerm>Labels</DescriptionListTerm>
+              <DescriptionListDescription>
+                <LabelsList labels={workspaceQuery.data.metadata.labels} />
+              </DescriptionListDescription>
+            </DescriptionListGroup>
+          </DescriptionList>
+        )}
       </PageSection>
       <PageSection>
         <Tabs
@@ -184,6 +256,30 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
               <MemberListPage workspace={workspace} />
             </TabPanel>
           </Tab>
+          {features.services && (
+            <Tab
+              eventKey="services"
+              title={
+                <TabTitleText>
+                  Services{' '}
+                  {services.data && (
+                    <Badge isRead>{services.data.length}</Badge>
+                  )}
+                </TabTitleText>
+              }
+              data-testid="tab-services"
+            >
+              <TabPanel>
+                <ServiceEndpointsTable
+                  query={services}
+                  workspace={workspace}
+                  onSelectSandbox={(_workspace, name) =>
+                    viewSandboxServices(name)
+                  }
+                />
+              </TabPanel>
+            </Tab>
+          )}
           <Tab
             eventKey="profiles"
             title={<TabTitleText>Profiles</TabTitleText>}

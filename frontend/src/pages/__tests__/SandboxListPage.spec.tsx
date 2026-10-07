@@ -54,8 +54,17 @@ jest.mock('../../api/auth', () => ({
 }));
 
 jest.mock('../../api/policy', () => ({
-  useDraftNotifications: jest.fn(() => ({ items: [], totalPending: 0 })),
   useSandboxPolicies: jest.fn(() => ({})),
+}));
+
+// The list, its filters and its badges are covered in
+// SandboxListPage.list.spec.tsx.
+jest.mock('../../api/draftSummary', () => ({
+  useWorkspaceDraftSummary: jest.fn(() => ({
+    items: [],
+    bySandbox: {},
+    totalPending: 0,
+  })),
 }));
 
 jest.mock('../../api/providers', () => ({

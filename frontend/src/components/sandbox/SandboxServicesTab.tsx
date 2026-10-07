@@ -3,9 +3,11 @@ import {
   Alert,
   Bullseye,
   Button,
-  Checkbox,
   Form,
   FormGroup,
+  FormHelperText,
+  HelperText,
+  HelperTextItem,
   Label,
   Modal,
   ModalBody,
@@ -33,10 +35,21 @@ import {
   useExposeService,
   useServices,
 } from '../../api/sandboxes';
+import RefreshErrorAlert, { isRefreshError } from '../RefreshErrorAlert';
+import { serviceDisplayName } from '../ServiceEndpointsTable';
 
 type SandboxServicesTabProps = {
   workspace: string;
   sandboxName: string;
+};
+
+// A loopback TCP port inside the sandbox: 1 to 65535.
+const parsePort = (input: string): number | undefined => {
+  if (!/^\d{1,5}$/.test(input.trim())) {
+    return undefined;
+  }
+  const port = Number(input.trim());
+  return port >= 1 && port <= 65535 ? port : undefined;
 };
 
 const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({
@@ -50,22 +63,24 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [serviceName, setServiceName] = useState('');
   const [targetPort, setTargetPort] = useState('');
-  const [domain, setDomain] = useState(false);
+  const port = parsePort(targetPort);
 
   const resetModal = () => {
     setServiceName('');
     setTargetPort('');
-    setDomain(false);
     setIsModalOpen(false);
   };
 
+  // The request `openshell service expose <sandbox> <port> [service]` sends:
+  // the name may be empty, which is the sandbox's unnamed service, and domain
+  // is always asked for. Gateways 0.1.0 to 0.1.2 route every endpoint for the
+  // browser whatever the flag says, so there is nothing to choose.
   const handleExpose = () => {
-    const port = parseInt(targetPort, 10);
-    if (!serviceName || !port) {
+    if (port === undefined) {
       return;
     }
     expose.mutate(
-      { service: serviceName, targetPort: port, domain },
+      { service: serviceName.trim(), targetPort: port, domain: true },
       { onSuccess: resetModal },
     );
   };
@@ -78,7 +93,11 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({
     );
   }
 
-  if (services.isError) {
+  // The services are re-read every few seconds. A refresh that fails leaves
+  // them, and an open Expose service form, as they were, with a note above;
+  // only a list that never loaded is replaced by the error.
+  const refreshFailed = isRefreshError(services);
+  if (services.isError && !refreshFailed) {
     return (
       <Alert
         variant="danger"
@@ -98,6 +117,15 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({
 
   return (
     <>
+      {refreshFailed && (
+        <RefreshErrorAlert
+          title="The services could not be refreshed"
+          error={services.error}
+          onRetry={() => services.refetch()}
+          className="pf-v6-u-mb-md"
+          data-testid="services-refresh-error"
+        />
+      )}
       <Toolbar aria-label="Service actions">
         <ToolbarContent>
           <ToolbarItem>
@@ -132,7 +160,7 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({
         <Tbody>
           {rows.map((svc) => (
             <Tr key={svc.serviceName}>
-              <Td dataLabel="Service">{svc.serviceName}</Td>
+              <Td dataLabel="Service">{serviceDisplayName(svc.serviceName)}</Td>
               <Td dataLabel="Target port">{svc.targetPort}</Td>
               <Td dataLabel="URL">
                 {svc.url ? (
@@ -176,14 +204,22 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({
         <ModalHeader title="Expose service" />
         <ModalBody>
           <Form>
-            <FormGroup label="Service name" isRequired fieldId="svc-name">
+            <FormGroup label="Service name" fieldId="svc-name">
               <TextInput
                 id="svc-name"
                 data-testid="expose-service-name"
                 value={serviceName}
                 onChange={(_event, value) => setServiceName(value)}
-                isRequired
               />
+              <FormHelperText>
+                <HelperText>
+                  <HelperTextItem>
+                    A lowercase DNS label of at most 19 characters. Leave it
+                    empty for the sandbox&apos;s unnamed service, of which it
+                    can have one.
+                  </HelperTextItem>
+                </HelperText>
+              </FormHelperText>
             </FormGroup>
             <FormGroup label="Target port" isRequired fieldId="svc-port">
               <TextInput
@@ -194,15 +230,14 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({
                 onChange={(_event, value) => setTargetPort(value)}
                 isRequired
               />
-            </FormGroup>
-            <FormGroup fieldId="svc-domain">
-              <Checkbox
-                id="svc-domain"
-                data-testid="expose-service-domain"
-                label="Enable browser-facing domain routing"
-                isChecked={domain}
-                onChange={(_event, checked) => setDomain(checked)}
-              />
+              <FormHelperText>
+                <HelperText>
+                  <HelperTextItem>
+                    The port the service listens on inside the sandbox, on
+                    127.0.0.1.
+                  </HelperTextItem>
+                </HelperText>
+              </FormHelperText>
             </FormGroup>
           </Form>
           {expose.isError && (
@@ -220,7 +255,7 @@ const SandboxServicesTab: React.FC<SandboxServicesTabProps> = ({
           <Button
             onClick={handleExpose}
             isLoading={expose.isPending}
-            isDisabled={expose.isPending || !serviceName || !targetPort}
+            isDisabled={expose.isPending || port === undefined}
             data-testid="expose-service-confirm"
           >
             Expose

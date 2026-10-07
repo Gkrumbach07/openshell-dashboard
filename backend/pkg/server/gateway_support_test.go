@@ -118,6 +118,7 @@ func TestGatewayCompatibilityRoute_ServesUsersWithoutTheAdminRole(t *testing.T) 
 		t.Fatalf("GET /api/v1/gateway/compatibility = %d, want 200; body: %s", verdict.Code, verdict.Body.String())
 	}
 	var body struct {
+		Healthy        *bool  `json:"healthy"`
 		GatewayVersion string `json:"gatewayVersion"`
 		Compatibility  struct {
 			Status       string `json:"status"`
@@ -131,6 +132,11 @@ func TestGatewayCompatibilityRoute_ServesUsersWithoutTheAdminRole(t *testing.T) 
 	if body.GatewayVersion != "0.0.116" || body.Compatibility.Status != "unsupported" ||
 		body.Compatibility.SupportedMin != "0.1.0" || body.Compatibility.SupportedMax != "0.1.2" {
 		t.Errorf("body = %s, want gateway 0.0.116 unsupported against 0.1.0..0.1.2", verdict.Body.String())
+	}
+	// And so does the gateway's health, which GET /gateway would have told
+	// an admin.
+	if body.Healthy == nil || !*body.Healthy {
+		t.Errorf("body = %s, want healthy true for a user without the admin role", verdict.Body.String())
 	}
 
 	// "Every signed-in user", not everyone: the route is behind the same
@@ -151,7 +157,7 @@ func TestGatewayCompatibilityRoute_WithoutGatewaySupportReportsUnknown(t *testin
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("GET /api/v1/gateway/compatibility = %d; body: %s", recorder.Code, recorder.Body.String())
 	}
-	const want = `{"gatewayVersion":"0.0.116","compatibility":{"status":"unknown"}}`
+	const want = `{"gatewayVersion":"0.0.116","healthy":true,"compatibility":{"status":"unknown"}}`
 	if got := strings.TrimSpace(recorder.Body.String()); got != want {
 		t.Errorf("body = %s, want %s", got, want)
 	}

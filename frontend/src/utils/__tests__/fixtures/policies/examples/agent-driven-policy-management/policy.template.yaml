@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Initial sandbox policy for the agent-driven policy demo.
+#
+# The demo exercises two flavors of denial-→-propose-→-decision:
+#
+#  - Step 1 hits raw.githubusercontent.com (no credential in scope). The
+#    host is pre-listed at L7 with no allowed paths, so the agent's GET
+#    structured-403's. The agent proposes the exact path; the prover
+#    sees no credential exposure and the gateway auto-approves.
+#
+#  - Step 2 hits api.github.com PUT (github credential in scope). The
+#    host is pre-allowed for read-only access, so the PUT
+#    structured-403's. The agent proposes the narrow PUT path; the
+#    prover sees github_token in scope and emits MEDIUM. The chunk
+#    lands in pending for human review; demo.sh approves on behalf.
+#
+# This shows both halves of the loop in one run: free path for safe
+# changes, single human approval for credentialed ones.
+
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only: [/usr, /lib, /proc, /dev/urandom, /app, /etc, /var/log]
+  read_write: [/sandbox, /tmp, /dev/null]
+
+landlock:
+  compatibility: best_effort
+
+network_policies:
+  codex:
+    name: codex
+    endpoints:
+      - { host: api.openai.com, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: auth.openai.com, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: chatgpt.com, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: ab.chatgpt.com, port: 443, protocol: rest, enforcement: enforce, access: full }
+    binaries:
+      - { path: /usr/bin/codex }
+      - { path: /sandbox/payload/codex }
+      - { path: /usr/bin/node }
+      - { path: "/usr/lib/node_modules/@openai/**" }
+
+  github_api_readonly:
+    # api.github.com pre-allowed for read-only access. Writes (PUT/POST/PATCH/DELETE)
+    # structured-403 at L7 — the agent proposes the specific method/path,
+    # and the prover gates on credential-in-scope (github provider attached).
+    name: github-api-readonly
+    endpoints:
+      - host: api.github.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+    binaries:
+      - { path: /usr/bin/curl }
+
+  github_raw_scoped:
+    # raw.githubusercontent.com — pre-listed at L7 with one bootstrap
+    # path so the L7 validator accepts the rule. The agent must propose
+    # any additional GET paths it actually needs. Each new proposal is
+    # un-credentialed (no provider declares this host), so the prover
+    # sees no findings and the gateway auto-approves narrow scoped reads
+    # when `proposal_approval_mode = auto` (set via `--approval-mode auto`
+    # at create or via `openshell settings set` at runtime).
+    name: github-raw-scoped
+    endpoints:
+      - host: raw.githubusercontent.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow:
+              method: GET
+              path: /github/rest-api-description/main/README.md
+    binaries:
+      - { path: /usr/bin/curl }

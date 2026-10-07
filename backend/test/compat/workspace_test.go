@@ -143,6 +143,33 @@ func TestWorkspaceLabels(t *testing.T) {
 	if len(none) != 0 {
 		t.Errorf("workspaces matching a label nobody has = %d entries, want none", len(none))
 	}
+
+	// The workspace list's filter box sends what the user typed. A selector
+	// that is not key=value pairs has to come back as a 400 the page can show
+	// beside the box, not as an empty list or a 500.
+	wantError(t, http.MethodGet, "/api/v1/workspaces?labelSelector=compat-tag", nil,
+		http.StatusBadRequest, "invalid_argument")
+
+	// The detail page shows what `openshell workspace get` prints: the id, the
+	// resource version and the creation time beside the labels. The id and
+	// the creation time are set when the workspace is created.
+	var got struct {
+		Metadata struct {
+			Labels          map[string]string `json:"labels"`
+			ID              string            `json:"id"`
+			CreatedAtMs     int64             `json:"createdAtMs"`
+			ResourceVersion uint64            `json:"resourceVersion"`
+		} `json:"metadata"`
+	}
+	mustJSON(t, http.MethodGet, "/api/v1/workspaces/"+name, nil, &got, http.StatusOK)
+	t.Logf("workspace metadata: %+v", got.Metadata)
+	if got.Metadata.ID == "" || got.Metadata.ID != created.Metadata.ID || got.Metadata.CreatedAtMs <= 0 {
+		t.Errorf("workspace metadata = %+v, want the id it was created with (%q) and a creation time",
+			got.Metadata, created.Metadata.ID)
+	}
+	if got.Metadata.Labels["compat-tag"] != tag {
+		t.Errorf("label compat-tag on the fetched workspace = %q, want %q", got.Metadata.Labels["compat-tag"], tag)
+	}
 }
 
 // workspaceMember mirrors models.WorkspaceMember.

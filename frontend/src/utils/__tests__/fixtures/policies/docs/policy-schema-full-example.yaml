@@ -1,0 +1,27 @@
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only: [/usr, /lib, /etc]
+  read_write: [/tmp]
+
+network_policies:
+  github_rest_api:
+    endpoints:
+      - host: api.github.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+    binaries:
+      - path: /usr/bin/gh
+  npm_registry:
+    endpoints:
+      - host: registry.npmjs.org
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+        allow_encoded_slash: true
+    binaries:
+      - path: /usr/bin/node

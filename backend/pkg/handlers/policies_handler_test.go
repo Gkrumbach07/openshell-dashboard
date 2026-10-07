@@ -371,6 +371,8 @@ func TestGetDraftHistory(t *testing.T) {
 func TestGetDraftSummary(t *testing.T) {
 	mock := &mockSDK{}
 	handler := NewDraftsHandler(services.NewPolicyService(mock.Policy()))
+	// The summary is built from the sandbox list (drafts_summary_handler_test.go).
+	handler.SetSandboxService(services.NewSandboxService(mock.Sandboxes()))
 	req := httptest.NewRequest(http.MethodGet, "/draft-summary", nil)
 	w := httptest.NewRecorder()
 	handler.GetDraftSummary(w, req)

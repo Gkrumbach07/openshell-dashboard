@@ -16,6 +16,29 @@ const mockFormSetters = {
   toggleProvider: jest.fn(),
   reset: jest.fn(),
   buildPayload: jest.fn(() => null),
+  setEnvRows: jest.fn(),
+  setAnnotationRows: jest.fn(),
+  setLogLevel: jest.fn(),
+  setRuntimeClassName: jest.fn(),
+  setDriverConfigText: jest.fn(),
+  setAdvancedExpanded: jest.fn(),
+};
+
+// The launch options the form embeds (see useSandboxLaunchOptions), untouched.
+const defaultLaunchState = {
+  commandText: '',
+  setCommandText: jest.fn(),
+  command: [] as string[],
+  tty: false,
+  setTty: jest.fn(),
+  exposureRows: [] as { service: string; port: string }[],
+  setExposureRows: jest.fn(),
+  exposureError: undefined as string | undefined,
+  approvalMode: 'manual' as const,
+  setApprovalMode: jest.fn(),
+  isValid: true,
+  payload: {},
+  reset: jest.fn(),
 };
 
 const defaultFormState = {
@@ -42,6 +65,17 @@ const defaultFormState = {
     policy: { version: 1, networkPolicies: {} },
   },
   isValid: false,
+  envRows: [] as { key: string; value: string }[],
+  envError: undefined as string | undefined,
+  annotationRows: [] as { key: string; value: string }[],
+  annotationsError: undefined as string | undefined,
+  logLevel: '',
+  runtimeClassName: '',
+  driverConfigText: '',
+  driverConfigError: undefined as string | undefined,
+  isAdvancedExpanded: false,
+  hasAdvancedError: false,
+  launch: defaultLaunchState,
   ...mockFormSetters,
 };
 
@@ -82,6 +116,15 @@ jest.mock('../../app/AlertContext', () => ({
     addSuccess: jest.fn(),
     addDanger: jest.fn(),
   })),
+}));
+
+// The approval-mode field asks who is looking before it shows itself.
+jest.mock('../../api/auth', () => ({
+  useFeatureFlags: jest.fn(() => ({ settings: true })),
+}));
+
+jest.mock('../../api/rbac', () => ({
+  useWorkspaceRole: jest.fn(() => ({ isWorkspaceAdmin: true })),
 }));
 
 const defaultProps = {

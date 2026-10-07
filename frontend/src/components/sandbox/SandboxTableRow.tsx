@@ -8,16 +8,30 @@ import {
   LabelGroup,
   Stack,
   StackItem,
+  Timestamp,
+  TimestampFormat,
+  Tooltip,
+  Truncate,
 } from '@patternfly/react-core';
-import { SecurityIcon } from '@patternfly/react-icons';
+import { ExclamationCircleIcon, SecurityIcon } from '@patternfly/react-icons';
 import { ActionsColumn, Td, Tr } from '@patternfly/react-table';
 
 import LabelsList from '../LabelsList';
+import PendingProposalsLabel from './PendingProposalsLabel';
 import { getPolicySummary } from './SandboxEgressSummary';
 import StatusDot from '../StatusDot';
 import { formatAge } from '../../utils/formatters';
-import { canStartSandbox, canStopSandbox } from '../../utils/sandboxLifecycle';
-import type { Sandbox, SandboxPolicyView } from '../../types';
+import {
+  canStartSandbox,
+  canStopSandbox,
+  getConfigurationRejection,
+  sandboxPhaseTone,
+} from '../../utils/sandboxLifecycle';
+import type {
+  DraftSandboxSummary,
+  Sandbox,
+  SandboxPolicyView,
+} from '../../types';
 
 type PolicySummary = ReturnType<typeof getPolicySummary>;
 
@@ -33,14 +47,27 @@ type SandboxTableRowProps = {
   onViewLogs: () => void;
   onOpenTerminal?: () => void;
   policyView?: SandboxPolicyView;
+  // The sandbox's pending rule proposals, when it has any or they could not
+  // be read, and the way to its proposals.
+  draftSummary?: DraftSandboxSummary;
+  onReviewDrafts?: () => void;
 };
 
+// An image pinned by digest is some eighty characters that do not wrap, which
+// is wider than the table has room for. The cut text is in the tooltip.
+const IMAGE_MAX_CHARS = 32;
+
 const getStatusText = (sandbox: Sandbox): string => {
-  if (sandbox.status.phase === 'READY') return 'Ready';
-  if (sandbox.status.phase === 'ERROR') {
-    return sandbox.status.conditions?.find((c) => c.reason)?.reason ?? 'Error';
+  const { phase, exitCode, conditions } = sandbox.status;
+  if (phase === 'READY') return 'Ready';
+  if (phase === 'COMPLETED') return 'Completed';
+  if (phase === 'ERROR') {
+    return conditions?.find((c) => c.reason)?.reason ?? 'Error';
   }
-  return sandbox.status.phase;
+  if (phase === 'STOPPED' && exitCode !== undefined) {
+    return `STOPPED (exit ${exitCode})`;
+  }
+  return phase;
 };
 
 const SandboxTableRow: React.FC<SandboxTableRowProps> = ({
@@ -55,27 +82,44 @@ const SandboxTableRow: React.FC<SandboxTableRowProps> = ({
   onViewLogs,
   onOpenTerminal,
   policyView,
+  draftSummary,
+  onReviewDrafts,
 }) => {
   const pc: PolicySummary = getPolicySummary(
     policyView,
     sandbox.spec.policy,
     sandbox.status.currentPolicyVersion,
   );
+  const { name, createdAtMs } = sandbox.metadata;
+  const { phase, exitCode } = sandbox.status;
   const providers = sandbox.spec.providers ?? [];
   const imageParts = (sandbox.spec.image || '').split('/');
   const imageShort = imageParts[imageParts.length - 1] || '-';
+  const isFailure = sandboxPhaseTone(phase, exitCode) === 'danger';
+  const rejection = getConfigurationRejection(sandbox);
 
   const actionItems = [
     ...(onOpenTerminal ? [{ title: 'Terminal', onClick: onOpenTerminal }] : []),
     { title: 'Logs', onClick: onViewLogs },
-    ...(onStop && canStopSandbox(sandbox.status.phase)
+    ...(onStop && canStopSandbox(phase)
       ? [{ title: 'Stop', onClick: onStop }]
       : []),
-    ...(onStart && canStartSandbox(sandbox.status.phase)
+    ...(onStart && canStartSandbox(phase)
       ? [{ title: 'Start', onClick: onStart }]
       : []),
     { title: 'Delete', onClick: onDelete },
   ];
+
+  const invalidConfig = rejection && (
+    <Label
+      color="red"
+      isCompact
+      icon={<ExclamationCircleIcon />}
+      data-testid={`sandbox-invalid-config-${name}`}
+    >
+      Invalid config
+    </Label>
+  );
 
   return (
     <Tr>
@@ -89,49 +133,75 @@ const SandboxTableRow: React.FC<SandboxTableRowProps> = ({
       <Td dataLabel="Name">
         <Stack>
           <StackItem>
-            <Button
-              variant="link"
-              isInline
-              onClick={onNameClick}
-              data-testid={`sandbox-link-${sandbox.metadata.name}`}
+            <Flex
+              alignItems={{ default: 'alignItemsCenter' }}
+              gap={{ default: 'gapSm' }}
             >
-              {sandbox.metadata.name}
-            </Button>
+              <FlexItem>
+                <Button
+                  variant="link"
+                  isInline
+                  onClick={onNameClick}
+                  data-testid={`sandbox-link-${name}`}
+                >
+                  {name}
+                </Button>
+              </FlexItem>
+              <FlexItem>
+                <PendingProposalsLabel
+                  sandboxName={name}
+                  summary={draftSummary}
+                  onReview={onReviewDrafts}
+                />
+              </FlexItem>
+            </Flex>
           </StackItem>
           <StackItem>
             <Content
               component="small"
-              style={{
-                fontFamily: 'var(--pf-t--global--font--family--mono)',
-              }}
+              className="pf-v6-u-font-family-monospace"
+              data-testid={`sandbox-image-${name}`}
             >
-              {imageShort}
+              <Truncate
+                content={imageShort}
+                maxCharsDisplayed={IMAGE_MAX_CHARS}
+                position="middle"
+              />
             </Content>
           </StackItem>
         </Stack>
       </Td>
       <Td dataLabel="Status">
-        <Flex
-          alignItems={{ default: 'alignItemsCenter' }}
-          gap={{ default: 'gapSm' }}
-          flexWrap={{ default: 'nowrap' }}
-        >
-          <FlexItem>
-            <StatusDot phase={sandbox.status.phase} />
-          </FlexItem>
-          <FlexItem>
-            <span
-              style={{
-                color:
-                  sandbox.status.phase === 'ERROR'
-                    ? 'var(--pf-t--global--text--color--status--danger--default)'
-                    : undefined,
-              }}
+        <Stack>
+          <StackItem>
+            <Flex
+              alignItems={{ default: 'alignItemsCenter' }}
+              gap={{ default: 'gapSm' }}
+              flexWrap={{ default: 'nowrap' }}
             >
-              {getStatusText(sandbox)}
-            </span>
-          </FlexItem>
-        </Flex>
+              <FlexItem>
+                <StatusDot phase={phase} exitCode={exitCode} />
+              </FlexItem>
+              <FlexItem
+                className={
+                  isFailure ? 'pf-v6-u-text-color-status-danger' : undefined
+                }
+                data-testid={`sandbox-status-${name}`}
+              >
+                {getStatusText(sandbox)}
+              </FlexItem>
+            </Flex>
+          </StackItem>
+          {invalidConfig && (
+            <StackItem>
+              {rejection?.message ? (
+                <Tooltip content={rejection.message}>{invalidConfig}</Tooltip>
+              ) : (
+                invalidConfig
+              )}
+            </StackItem>
+          )}
+        </Stack>
       </Td>
       <Td dataLabel="Policy">
         <Stack>
@@ -172,7 +242,25 @@ const SandboxTableRow: React.FC<SandboxTableRowProps> = ({
       <Td dataLabel="Labels">
         <LabelsList labels={sandbox.metadata.labels} numLabels={2} />
       </Td>
-      <Td dataLabel="Age">{formatAge(sandbox.metadata.createdAtMs)}</Td>
+      <Td dataLabel="Created">
+        {createdAtMs ? (
+          <Stack>
+            <StackItem>
+              <Timestamp
+                date={new Date(createdAtMs)}
+                dateFormat={TimestampFormat.medium}
+                timeFormat={TimestampFormat.short}
+                data-testid={`sandbox-created-${name}`}
+              />
+            </StackItem>
+            <StackItem>
+              <Content component="small">{formatAge(createdAtMs)} ago</Content>
+            </StackItem>
+          </Stack>
+        ) : (
+          '-'
+        )}
+      </Td>
       <Td isActionCell>
         <ActionsColumn items={actionItems} />
       </Td>

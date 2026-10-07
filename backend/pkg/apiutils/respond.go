@@ -50,7 +50,9 @@ const (
 	MissingFile        ResponseCode = "missing_file"
 	FileReadError      ResponseCode = "read_error"
 	FileUploadFailed   ResponseCode = "upload_failed"
+	FileTooLarge       ResponseCode = "upload_too_large"
 	FileNotFound       ResponseCode = "file_not_found"
+	FileDownloadFailed ResponseCode = "download_failed"
 	IDMismatch         ResponseCode = "id_mismatch"
 )
 

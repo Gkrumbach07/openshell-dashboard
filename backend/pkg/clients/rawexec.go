@@ -1,9 +1,11 @@
 package clients
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,7 +18,7 @@ import (
 )
 
 // RawExecClient calls the gateway through the SDK's generated proto client for
-// the two things the OpenShell Go SDK's own client does not offer. It shares
+// the three things the OpenShell Go SDK's own client does not offer. It shares
 // the same address, TLS, and per-request bearer forwarding as the main SDK
 // client.
 //
@@ -33,7 +35,8 @@ import (
 // the gateway refuses any gRPC message over 1 MiB.
 //
 // The second, in rawprovider.go, is reading which credentials a provider
-// holds.
+// holds. The third, in rawprofile.go, is reading and writing a provider
+// profile with its endpoints whole.
 type RawExecClient struct {
 	conn   *grpc.ClientConn
 	client pb.OpenShellClient
@@ -94,6 +97,19 @@ const stdinChunkSize = 256 << 10
 // stdin is streamed in chunks, so its size is bounded by the caller and not by
 // the gateway's per-message limit.
 func (r *RawExecClient) ExecWithStdin(ctx context.Context, workspace, sandboxName string, command []string, stdin []byte) (string, int, error) {
+	return r.ExecWithStdinStream(ctx, workspace, sandboxName, command, bytes.NewReader(stdin))
+}
+
+// ExecWithStdinStream is ExecWithStdin with stdin read as it is sent, so the
+// payload is never held whole: one chunk is in flight at a time, and the
+// gateway's flow control decides how fast the reader is drained.
+//
+// A stdin that fails part way is not a shorter stdin. The command is not told
+// its input ended, the stream is cancelled instead, and the reader's own error
+// is returned. What the command wrote before that stays written.
+//
+// The reader is not touched again once this returns.
+func (r *RawExecClient) ExecWithStdinStream(ctx context.Context, workspace, sandboxName string, command []string, stdin io.Reader) (string, int, error) {
 	// Cancelling ends the send side when the receive side returns first, as it
 	// does when the command exits without reading all of its stdin.
 	ctx, cancel := context.WithCancel(ctx)
@@ -109,22 +125,26 @@ func (r *RawExecClient) ExecWithStdin(ctx context.Context, workspace, sandboxNam
 		Tty:            false,
 	}
 	sent := make(chan error, 1)
-	go func() { sent <- sendStdin(stream, start, stdin) }()
-	// The sender holds stdin, so it must not outlive this call.
-	defer func() {
-		cancel()
-		<-sent
+	go func() {
+		sendErr := sendStdin(stream, start, stdin)
+		var readErr *stdinReadError
+		if errors.As(sendErr, &readErr) {
+			cancel()
+		}
+		sent <- sendErr
 	}()
 
 	var out strings.Builder
 	exitCode := -1
+	var recvErr error
 	for {
-		ev, recvErr := stream.Recv()
-		if recvErr == io.EOF {
+		ev, err := stream.Recv()
+		if err == io.EOF {
 			break
 		}
-		if recvErr != nil {
-			return out.String(), exitCode, recvErr
+		if err != nil {
+			recvErr = err
+			break
 		}
 		switch p := ev.Payload.(type) {
 		case *pb.ExecSandboxEvent_Stdout:
@@ -135,25 +155,70 @@ func (r *RawExecClient) ExecWithStdin(ctx context.Context, workspace, sandboxNam
 			exitCode = int(p.Exit.GetExitCode())
 		}
 	}
-	return out.String(), exitCode, nil
+	// The sender holds stdin, so it must not outlive this call.
+	cancel()
+	var readErr *stdinReadError
+	if errors.As(<-sent, &readErr) {
+		return out.String(), exitCode, readErr.err
+	}
+	return out.String(), exitCode, recvErr
 }
+
+// stdinReadError is a failure of the reader stdin comes from, as opposed to a
+// failure of the stream it is sent on.
+type stdinReadError struct{ err error }
+
+func (e *stdinReadError) Error() string { return "read stdin: " + e.err.Error() }
+
+func (e *stdinReadError) Unwrap() error { return e.err }
 
 // sendStdin sends the start message, then stdin in chunks, then closes the
 // send side, which is what tells the gateway to close the command's stdin.
 //
-// Its error is not reported: when the gateway ends the stream early, Send
-// fails with io.EOF and the status that says why arrives through Recv, and a
-// failure on this side cancels the stream, which Recv reports as well.
-func sendStdin(stream grpc.BidiStreamingClient[pb.ExecSandboxInput, pb.ExecSandboxEvent], start *pb.ExecSandboxRequest, stdin []byte) error {
+// A stream error is not reported by the caller: when the gateway ends the
+// stream early, Send fails with io.EOF and the status that says why arrives
+// through Recv, and a failure on this side cancels the stream, which Recv
+// reports as well. A failure to read stdin is reported, as a stdinReadError.
+func sendStdin(stream grpc.BidiStreamingClient[pb.ExecSandboxInput, pb.ExecSandboxEvent], start *pb.ExecSandboxRequest, stdin io.Reader) error {
 	if err := stream.Send(&pb.ExecSandboxInput{Payload: &pb.ExecSandboxInput_Start{Start: start}}); err != nil {
 		return err
 	}
-	for len(stdin) > 0 {
-		n := min(len(stdin), stdinChunkSize)
-		if err := stream.Send(&pb.ExecSandboxInput{Payload: &pb.ExecSandboxInput_Stdin{Stdin: stdin[:n]}}); err != nil {
-			return err
+	for {
+		// A chunk of its own for every message: gRPC may still hold a message
+		// after Send returns.
+		chunk := make([]byte, stdinChunkSize)
+		n, ended, err := fillChunk(stdin, chunk)
+		if err != nil {
+			return &stdinReadError{err: err}
 		}
-		stdin = stdin[n:]
+		if n > 0 {
+			if err := stream.Send(&pb.ExecSandboxInput{Payload: &pb.ExecSandboxInput_Stdin{Stdin: chunk[:n]}}); err != nil {
+				return err
+			}
+		}
+		if ended {
+			return stream.CloseSend()
+		}
 	}
-	return stream.CloseSend()
+}
+
+// fillChunk reads until chunk is full or the reader ends, so that a reader
+// which hands out a few kilobytes at a time does not become as many messages.
+//
+// Only io.EOF is the end. io.ReadFull would not do here: it reports a reader
+// that ended part way through the chunk as io.ErrUnexpectedEOF, which is also
+// what a multipart body cut short by a dropped connection returns, and the two
+// must not be confused. One is a whole file and the other is not.
+func fillChunk(r io.Reader, chunk []byte) (n int, ended bool, err error) {
+	for n < len(chunk) {
+		read, readErr := r.Read(chunk[n:])
+		n += read
+		if readErr == io.EOF {
+			return n, true, nil
+		}
+		if readErr != nil {
+			return n, false, readErr
+		}
+	}
+	return n, false, nil
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -214,10 +215,11 @@ func TestSandboxPolicy(t *testing.T) {
 // force, or nil when the gateway has none.
 //
 // Removing a global policy does not remove its revisions: it marks them
-// SUPERSEDED, and the view's activeVersion goes on naming the last one. So the
-// only sign that a policy is in force is a revision that has not been
-// superseded. One that is still PENDING or that FAILED to load counts as well:
-// somebody set it, and it is not this suite's to replace.
+// SUPERSEDED. So the only sign that a policy is in force is a revision that
+// has not been superseded. One that is still PENDING or that FAILED to load
+// counts as well: somebody set it, and it is not this suite's to replace. The
+// view's activeVersion is the BFF's reading of the same sign; the guards read
+// the revisions themselves, so that a wrong reading cannot stand them down.
 func globalPolicyInForce(v policyView) *policyRevision {
 	for i := range v.Revisions {
 		if v.Revisions[i].Status != "SUPERSEDED" {
@@ -326,6 +328,62 @@ func TestGlobalPolicy(t *testing.T) {
 		}
 	})
 
+	// The gateway lists global revisions without their policy. The page shows
+	// the policy in force and starts an edit from it, so the view has to carry
+	// it, and any one revision has to be readable with its payload.
+	t.Run("the policy in force is readable", func(t *testing.T) {
+		if set.Version == 0 {
+			t.Skip("no global policy to read: this test did not set one")
+		}
+		v := read(t)
+		if v.ActiveVersion != set.Version {
+			t.Errorf("activeVersion = %d while revision v%d is in force", v.ActiveVersion, set.Version)
+		}
+		if v.Latest == nil || v.Latest.Version != set.Version {
+			t.Fatalf("latest = %+v, want revision v%d", v.Latest, set.Version)
+		}
+		if !bytes.Contains(v.Latest.Policy, []byte(`"readWrite"`)) {
+			t.Errorf("latest carries no policy, so the page has nothing to show or edit: %s", truncate(v.Latest.Policy))
+		}
+
+		var one policyRevision
+		mustJSON(t, http.MethodGet, fmt.Sprintf("%s/revisions/%d", path, set.Version), nil, &one, http.StatusOK)
+		if one.Version != set.Version || one.PolicyHash != set.PolicyHash {
+			t.Errorf("revision read by version = v%d %q, want v%d %q", one.Version, one.PolicyHash, set.Version, set.PolicyHash)
+		}
+		if !bytes.Contains(one.Policy, []byte(`"readWrite"`)) {
+			t.Errorf("revision v%d read by version carries no policy: %s", set.Version, truncate(one.Policy))
+		}
+		wantError(t, http.MethodGet, fmt.Sprintf("%s/revisions/%d", path, set.Version+1000), nil, http.StatusNotFound, "not_found")
+	})
+
+	// A sandbox under a global policy runs that policy, not its own, and the
+	// Policy tab has to be able to say so. The sandbox does not have to boot
+	// for the gateway to answer what it would be given.
+	t.Run("a sandbox reports the global policy as its source", func(t *testing.T) {
+		if set.Version == 0 {
+			t.Skip("no global policy in force: this test did not set one")
+		}
+		if testing.Short() {
+			t.Skip("skipping: creates a sandbox, which -short excludes")
+		}
+		ws := newWorkspace(t)
+		name := randName("gp")
+		createSandbox(t, ws, name, nil)
+		var eff effectivePolicy
+		mustJSON(t, http.MethodGet, sandboxPath(ws, name)+"/policy/effective", nil, &eff, http.StatusOK)
+		if eff.PolicySource != "GLOBAL" || eff.GlobalPolicyVersion != set.Version {
+			t.Errorf("effective policy source = %q, global version %d; want GLOBAL, v%d", eff.PolicySource, eff.GlobalPolicyVersion, set.Version)
+		}
+		if !bytes.Contains(eff.Policy, []byte(`"readWrite"`)) {
+			t.Errorf("the effective policy carries no policy: %s", truncate(eff.Policy))
+		}
+		// And its own policy cannot be edited meanwhile.
+		wantError(t, http.MethodPost, sandboxPath(ws, name)+"/policy/merge", map[string]any{
+			"operations": []any{addEndpointOperation("allow_docs_example_com_443", "docs.example.com", nil)},
+		}, http.StatusConflict, "conflict")
+	})
+
 	t.Run("delete", func(t *testing.T) {
 		if set.Version == 0 {
 			t.Skip("not deleting the global policy: this test did not set one")
@@ -349,6 +407,314 @@ func TestGlobalPolicy(t *testing.T) {
 		if rev.Status != "SUPERSEDED" {
 			t.Errorf("revision v%d has status %q after the global policy was removed, want SUPERSEDED", set.Version, rev.Status)
 		}
+		if after.ActiveVersion != 0 {
+			t.Errorf("activeVersion = %d after the global policy was removed, want 0: none is in force", after.ActiveVersion)
+		}
+	})
+}
+
+// effectivePolicy mirrors models.EffectivePolicy.
+type effectivePolicy struct {
+	PolicyHash          string          `json:"policyHash"`
+	PolicySource        string          `json:"policySource"`
+	Policy              json.RawMessage `json:"policy"`
+	Version             uint32          `json:"version"`
+	GlobalPolicyVersion uint32          `json:"globalPolicyVersion"`
+}
+
+// addEndpointOperation is the operation the rule editor's "Add endpoint" form
+// sends, which is the one `openshell policy update --add-endpoint` sends: a
+// rule holding the one endpoint, under a name of its own, with the port in
+// both spellings.
+func addEndpointOperation(ruleName, host string, binaries []string) map[string]any {
+	rule := map[string]any{
+		"name": ruleName,
+		"endpoints": []map[string]any{{
+			"host":        host,
+			"port":        443,
+			"ports":       []int{443},
+			"protocol":    "rest",
+			"access":      "NETWORK_ACCESS_PRESET_READ_ONLY",
+			"enforcement": "NETWORK_ENFORCEMENT_MODE_ENFORCE",
+		}},
+	}
+	if len(binaries) > 0 {
+		paths := make([]map[string]any, 0, len(binaries))
+		for _, path := range binaries {
+			paths = append(paths, map[string]any{"path": path})
+		}
+		rule["binaries"] = paths
+	}
+	return map[string]any{"addRule": map[string]any{"ruleName": ruleName, "rule": rule}}
+}
+
+// richNetworkPolicies is a pair of rules that use what the rule editor's form
+// cannot express: several ports, a path scope, explicit allow and deny rules
+// with a query matcher, several binaries, a rule name that is not its key, and
+// an MCP endpoint that pins protocol revisions other than the gateway's
+// default. The MCP rule is upstream's own example
+// (crates/openshell-policy/testdata/mcp-version-profiles.yaml) with a shorter
+// allowlist.
+func richNetworkPolicies() map[string]any {
+	return map[string]any{
+		"api": map[string]any{
+			"name": "internal-api",
+			"endpoints": []map[string]any{{
+				"host":              "api.example.com",
+				"port":              443,
+				"ports":             []int{443, 8443},
+				"protocol":          "rest",
+				"enforcement":       "NETWORK_ENFORCEMENT_MODE_ENFORCE",
+				"path":              "/v1/**",
+				"allowEncodedSlash": true,
+				"rules": []map[string]any{{"allow": map[string]any{
+					"method": "GET",
+					"path":   "/v1/models/**",
+					"query":  map[string]any{"page": map[string]any{"glob": "1*"}},
+				}}},
+				"denyRules": []map[string]any{{"method": "DELETE", "path": "/v1/models/**"}},
+			}},
+			"binaries": []map[string]any{{"path": "/usr/bin/curl"}, {"path": "/usr/bin/python3"}},
+		},
+		"mcp": map[string]any{
+			"name": "versioned_mcp",
+			"endpoints": []map[string]any{{
+				"host":        "mcp.example.com",
+				"port":        443,
+				"protocol":    "mcp",
+				"enforcement": "NETWORK_ENFORCEMENT_MODE_ENFORCE",
+				"mcp":         map[string]any{"versions": []string{"2025-03-26", "2025-06-18"}},
+				"rules":       []map[string]any{{"allow": map[string]any{"method": "initialize"}}},
+			}},
+			"binaries": []map[string]any{{"path": "/usr/bin/mcp-client"}},
+		},
+	}
+}
+
+// networkRules returns the network rules of a policy, each decoded to plain
+// JSON values so that two readings of a rule can be compared whole.
+func networkRules(t *testing.T, policy json.RawMessage) map[string]any {
+	t.Helper()
+	var decoded struct {
+		NetworkPolicies map[string]any `json:"networkPolicies"`
+	}
+	mustDecode(t, policy, &decoded)
+	return decoded.NetworkPolicies
+}
+
+// TestSandboxPolicyEdits covers the ways the Policy tab changes a live
+// sandbox's policy, and the property all of them have to have: a rule nobody
+// touched comes back exactly as it was.
+//
+// The rich policy goes in as a whole document, the way the tab's document
+// editor replaces a policy. Every later change is one the rule editor makes,
+// sent as the incremental operation `openshell policy update` sends, and after
+// each the untouched rules are read back and compared with what they were.
+func TestSandboxPolicyEdits(t *testing.T) {
+	requireSandboxes(t)
+	ws := newWorkspace(t)
+	name := randName("pe")
+	createSandbox(t, ws, name, nil)
+	waitForPhase(t, ws, name, "READY")
+	policyPath := sandboxPath(ws, name) + "/policy"
+
+	latest := func(t *testing.T) policyRevision {
+		t.Helper()
+		var v policyView
+		mustJSON(t, http.MethodGet, policyPath, nil, &v, http.StatusOK)
+		if v.Latest == nil {
+			t.Fatalf("policy view has no latest revision [gateway %s]", gatewayVersion)
+		}
+		return *v.Latest
+	}
+	merge := func(t *testing.T, operations ...any) policyUpdateResult {
+		t.Helper()
+		var res policyUpdateResult
+		mustJSON(t, http.MethodPost, policyPath+"/merge", map[string]any{"operations": operations}, &res, http.StatusOK)
+		return res
+	}
+
+	var replaced policyUpdateResult
+	mustJSON(t, http.MethodPut, policyPath, map[string]any{"policy": policyWith(richNetworkPolicies(), nil)}, &replaced, http.StatusOK)
+	if replaced.Version != 2 {
+		t.Fatalf("replacing the policy produced v%d, want v2", replaced.Version)
+	}
+	before := networkRules(t, latest(t).Policy)
+	// baseline is what each rule looked like when it was last changed on
+	// purpose. It starts as revision 2 and gains the rule a later step adds.
+	baseline := map[string]any{}
+	for key, rule := range before {
+		baseline[key] = rule
+	}
+
+	// untouched fails when a rule the last change did not name differs from
+	// its baseline.
+	untouched := func(t *testing.T, rules map[string]any, keys ...string) {
+		t.Helper()
+		for _, key := range keys {
+			if !reflect.DeepEqual(rules[key], baseline[key]) {
+				was, _ := json.Marshal(baseline[key])
+				now, _ := json.Marshal(rules[key])
+				t.Errorf("rule %q changed although the update did not name it [gateway %s].\nwas: %s\nnow: %s", key, gatewayVersion, was, now)
+			}
+		}
+	}
+
+	t.Run("a replaced policy keeps every field it was given", func(t *testing.T) {
+		raw, _ := json.Marshal(before)
+		// One mark per field the form cannot express. A missing one was
+		// dropped on the way in or on the way out.
+		for _, want := range []string{
+			`"internal-api"`, `8443`, `"/v1/**"`, `"allowEncodedSlash":true`, `"/v1/models/**"`, `"1*"`,
+			`"denyRules"`, `"DELETE"`, `"/usr/bin/python3"`, `"versioned_mcp"`, `"initialize"`,
+		} {
+			if !bytes.Contains(raw, []byte(want)) {
+				t.Errorf("the stored policy lacks %s [gateway %s]: %s", want, gatewayVersion, truncate(raw))
+			}
+		}
+		// The gateway replaces a missing MCP revision allowlist with its
+		// pinned default, so an allowlist that got lost reads back as
+		// ["2025-11-25"] rather than as nothing.
+		if !bytes.Contains(raw, []byte(`"versions":["2025-03-26","2025-06-18"]`)) {
+			t.Errorf("the MCP endpoint's revision allowlist is not the one that was sent [gateway %s]: %s", gatewayVersion, truncate(raw))
+		}
+	})
+
+	t.Run("adding an endpoint leaves the other rules alone", func(t *testing.T) {
+		res := merge(t, addEndpointOperation("allow_docs_example_com_443", "docs.example.com", []string{"/usr/bin/curl"}))
+		if res.Version != 3 || res.PolicyHash == "" {
+			t.Errorf("merge result = %+v, want version 3 with a policyHash", res)
+		}
+		rules := networkRules(t, latest(t).Policy)
+		untouched(t, rules, "api", "mcp")
+		added, _ := json.Marshal(rules["allow_docs_example_com_443"])
+		for _, want := range []string{"docs.example.com", "NETWORK_ACCESS_PRESET_READ_ONLY", "/usr/bin/curl"} {
+			if !bytes.Contains(added, []byte(want)) {
+				t.Errorf("the added rule lacks %q: %s", want, truncate(added))
+			}
+		}
+		// From here on the added rule is one of the rules later changes have
+		// to leave alone.
+		baseline["allow_docs_example_com_443"] = rules["allow_docs_example_com_443"]
+	})
+
+	// The target names the endpoint's whole scope: every port and every
+	// binary of the rule. The gateway refuses an append that leaves any out.
+	target := map[string]any{
+		"ruleName": "api",
+		"host":     "api.example.com",
+		"ports":    []int{443, 8443},
+		"path":     "/v1/**",
+		"binaries": []map[string]any{{"path": "/usr/bin/curl"}, {"path": "/usr/bin/python3"}},
+	}
+	allowChat := map[string]any{"allow": map[string]any{"method": "POST", "path": "/v1/chat/**"}}
+
+	t.Run("an allow rule is appended to the endpoint it names", func(t *testing.T) {
+		merge(t, map[string]any{"addAllowRules": map[string]any{"target": target, "rules": []any{allowChat}}})
+		rules := networkRules(t, latest(t).Policy)
+		untouched(t, rules, "mcp", "allow_docs_example_com_443")
+		api, _ := json.Marshal(rules["api"])
+		// What was there stays, and the new rule is there with it.
+		for _, want := range []string{
+			`"/v1/chat/**"`, `"/v1/models/**"`, `"1*"`, `"denyRules"`, `"DELETE"`, `8443`, `"/v1/**"`,
+			`"allowEncodedSlash":true`, `"internal-api"`, `"/usr/bin/python3"`,
+		} {
+			if !bytes.Contains(api, []byte(want)) {
+				t.Errorf("rule api lacks %s after the append [gateway %s]: %s", want, gatewayVersion, truncate(api))
+			}
+		}
+	})
+
+	t.Run("an append that does not declare the whole scope is refused", func(t *testing.T) {
+		partial := map[string]any{"ruleName": "api", "host": "api.example.com", "ports": []int{443}, "path": "/v1/**", "anyBinary": true}
+		status, raw, err := do(http.MethodPost, policyPath+"/merge", map[string]any{
+			"operations": []any{map[string]any{"addAllowRules": map[string]any{"target": partial, "rules": []any{allowChat}}}},
+		})
+		if err != nil {
+			t.Fatalf("[gateway %s] %v", gatewayVersion, err)
+		}
+		if status < 400 || status >= 500 {
+			t.Errorf("an append naming one of two ports and any binary: status = %d, want a refusal; body: %s", status, truncate(raw))
+		}
+	})
+
+	t.Run("removing an endpoint removes its rule and nothing else", func(t *testing.T) {
+		merge(t, map[string]any{"removeEndpoint": map[string]any{
+			"ruleName": "allow_docs_example_com_443", "host": "docs.example.com", "port": 443,
+		}})
+		rules := networkRules(t, latest(t).Policy)
+		if _, still := rules["allow_docs_example_com_443"]; still {
+			t.Errorf("the rule is still there after its only endpoint was removed: %v", rules["allow_docs_example_com_443"])
+		}
+		untouched(t, rules, "mcp")
+		if _, kept := rules["api"]; !kept {
+			t.Error("rule api went with it")
+		}
+	})
+
+	t.Run("a rule is removed by name", func(t *testing.T) {
+		merge(t, map[string]any{"removeRule": map[string]any{"ruleName": "api"}})
+		rules := networkRules(t, latest(t).Policy)
+		if _, still := rules["api"]; still {
+			t.Error("rule api is still there after it was removed")
+		}
+		untouched(t, rules, "mcp")
+	})
+
+	t.Run("malformed operations are refused before the gateway", func(t *testing.T) {
+		wantError(t, http.MethodPost, policyPath+"/merge", map[string]any{"operations": []any{}}, http.StatusBadRequest, "invalid_policy")
+		wantError(t, http.MethodPost, policyPath+"/merge", map[string]any{
+			"operations": []any{map[string]any{"renameRule": map[string]any{"ruleName": "mcp"}}},
+		}, http.StatusBadRequest, "invalid_policy")
+	})
+
+	// The sandbox's own policy is what its revisions hold, and what it is
+	// given to enforce is the effective one. With no provider attached and no
+	// global policy the two are the same policy.
+	t.Run("effective policy", func(t *testing.T) {
+		var eff effectivePolicy
+		mustJSON(t, http.MethodGet, policyPath+"/effective", nil, &eff, http.StatusOK)
+		now := latest(t)
+		if eff.PolicySource != "SANDBOX" || eff.GlobalPolicyVersion != 0 {
+			t.Errorf("effective policy source = %q, global version %d; want SANDBOX and none", eff.PolicySource, eff.GlobalPolicyVersion)
+		}
+		if eff.Version != now.Version {
+			t.Errorf("effective policy version = v%d, want the latest revision, v%d", eff.Version, now.Version)
+		}
+		if eff.PolicyHash == "" {
+			t.Error("effective policy has no policyHash")
+		}
+		if !reflect.DeepEqual(networkRules(t, eff.Policy), networkRules(t, now.Policy)) {
+			t.Errorf("effective rules differ from the latest revision's with nothing to compose in.\neffective: %s\nlatest:    %s",
+				truncate(eff.Policy), truncate(now.Policy))
+		}
+	})
+
+	t.Run("one revision by its number", func(t *testing.T) {
+		var second policyRevision
+		mustJSON(t, http.MethodGet, policyPath+"/revisions/2", nil, &second, http.StatusOK)
+		if second.Version != 2 || second.PolicyHash != replaced.PolicyHash {
+			t.Errorf("revision 2 = v%d %q, want v2 %q", second.Version, second.PolicyHash, replaced.PolicyHash)
+		}
+		if !knownLoadStatus[second.Status] {
+			t.Errorf("revision 2 has status %q, not a PolicyLoadStatus the UI knows [gateway %s]", second.Status, gatewayVersion)
+		}
+		// The payload of the revision asked for, not of the latest one: only
+		// revision 2 still has both rules as they were sent.
+		if !reflect.DeepEqual(networkRules(t, second.Policy), before) {
+			t.Errorf("revision 2 does not carry the policy it was created with: %s", truncate(second.Policy))
+		}
+		wantError(t, http.MethodGet, policyPath+"/revisions/9999", nil, http.StatusNotFound, "not_found")
+		wantError(t, http.MethodGet, policyPath+"/revisions/0", nil, http.StatusBadRequest, "invalid_request")
+	})
+
+	t.Run("unknown sandbox is a 404", func(t *testing.T) {
+		missing := sandboxPath(ws, "no-such-sandbox") + "/policy"
+		wantError(t, http.MethodGet, missing+"/effective", nil, http.StatusNotFound, "not_found")
+		wantError(t, http.MethodGet, missing+"/revisions/1", nil, http.StatusNotFound, "not_found")
+		wantError(t, http.MethodPost, missing+"/merge", map[string]any{
+			"operations": []any{map[string]any{"removeRule": map[string]any{"ruleName": "mcp"}}},
+		}, http.StatusNotFound, "not_found")
 	})
 }
 
@@ -398,6 +764,12 @@ func TestDraftPolicy(t *testing.T) {
 		wantError(t, http.MethodPost, drafts+"/approve-all", nil, http.StatusConflict, "conflict")
 		wantError(t, http.MethodPost, drafts+"/approve-all",
 			map[string]any{"includeSecurityFlagged": true}, http.StatusConflict, "conflict")
+		// What the tab sends: the chunks the reviewer saw, each with its
+		// review token. The gateway looks for pending chunks before it looks
+		// at the approvals, so it answers the same.
+		wantError(t, http.MethodPost, drafts+"/approve-all", map[string]any{
+			"approvals": []map[string]any{{"chunkId": "no-such-chunk", "reviewToken": "stale"}},
+		}, http.StatusConflict, "conflict")
 	})
 
 	t.Run("clearing an empty inbox clears nothing", func(t *testing.T) {

@@ -94,6 +94,48 @@ func TestGatewayCompatibility(t *testing.T) {
 	}
 }
 
+// TestGatewayCompatibilityHealth checks that the route every signed-in user
+// can read also says whether the gateway calls itself healthy, which is what
+// the status indicator in the masthead shows. GET /api/v1/gateway says the
+// same, but the gateway answers that one for platform admins only.
+//
+// The health comes from the gateway's health check, like the version. What
+// only a live gateway can show is that the check's status survives the trip:
+// a status the SDK stopped reading would come through as "not healthy" for a
+// gateway that is fine. Gateways 0.1.0 to 0.1.2 answer the check with healthy
+// and nothing else, so a gateway that is reachable — and this suite does not
+// start without one — is a healthy one.
+func TestGatewayCompatibilityHealth(t *testing.T) {
+	const path = "/api/v1/gateway/compatibility"
+	raw := mustRaw(t, http.MethodGet, path, nil, http.StatusOK)
+	var body struct {
+		Healthy *bool `json:"healthy"`
+	}
+	mustDecode(t, raw, &body)
+	t.Logf("GET %s [gateway %s] -> %s", path, gatewayVersion, truncate(raw))
+
+	if body.Healthy == nil {
+		t.Fatalf("GET %s [gateway %s] has no healthy field — the default gateway service always reports "+
+			"what the health check said; body: %s", path, gatewayVersion, truncate(raw))
+	}
+	if !*body.Healthy {
+		t.Errorf("GET %s [gateway %s]: healthy = false for a gateway that answers every other call — "+
+			"the health check's status is no longer read as healthy; body: %s", path, gatewayVersion, truncate(raw))
+	}
+
+	// The admin-only route reports a status, and the two must not disagree:
+	// an admin would see one answer in the masthead and another on the
+	// Gateway page.
+	var info struct {
+		Status string `json:"status"`
+	}
+	mustJSON(t, http.MethodGet, "/api/v1/gateway", nil, &info, http.StatusOK)
+	if (info.Status == "HEALTHY") != *body.Healthy {
+		t.Errorf("GET /api/v1/gateway reports status %q but GET %s reports healthy = %v — both come from "+
+			"the same gateway and must agree", info.Status, path, *body.Healthy)
+	}
+}
+
 // TestGatewayCompatibilityVersionSource checks the one thing the verdict route
 // takes on trust from reading upstream's source: that the gateway's health
 // check reports the SAME version string as GetGatewayInfo.

@@ -6,8 +6,6 @@ import (
 	"bytes"
 	"net/http"
 	"testing"
-
-	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 // providerProfile mirrors models.ProviderProfile.
@@ -67,11 +65,10 @@ func providerBody(profileWorkspace, name, profile string, credentials map[string
 	return body
 }
 
-// profileBody is a profile the BFF's import endpoint can express and the
-// gateway accepts: one required credential, named after the environment
-// variable it is injected as, and no endpoints. Gateway 0.1.2 was seen to
-// reject a profile that has both a credential and an endpoint, asking for
-// fields the import body cannot carry (a header name, L7 inspection).
+// profileBody is the smallest profile the gateway accepts: one required
+// credential, named after the environment variable it is injected as, and no
+// endpoints. A profile with both a credential and an endpoint has to say more
+// (a header name, L7 inspection); githubProfileBody in profile_test.go is one.
 func profileBody(id, displayName string) map[string]any {
 	return map[string]any{
 		"id":               id,
@@ -298,7 +295,7 @@ func TestProviderCredentialKeyedByEnvVar(t *testing.T) {
 	ws := newWorkspace(t)
 	const credential, envVar = "api_key", "COMPAT_NAMED_API_KEY"
 	const secret, rotated = "s3cr3t-keyed-by-env-var", "r0tated-keyed-by-env-var"
-	profile := seedPlatformProfile(t, openshell.ProfileCredential{
+	profile := seedPlatformProfile(t, credentialSchema{
 		Name: credential, EnvVars: []string{envVar}, Required: true,
 	})
 	base := providersPath(ws)
@@ -372,7 +369,7 @@ func TestProviderCredentialKeyedByEnvVar(t *testing.T) {
 func TestProviderProfileScope(t *testing.T) {
 	ws := newWorkspace(t)
 	const platformKey, workspaceKey = "COMPAT_PLATFORM_KEY", "COMPAT_WORKSPACE_KEY"
-	id := seedPlatformProfile(t, openshell.ProfileCredential{
+	id := seedPlatformProfile(t, credentialSchema{
 		Name: platformKey, EnvVars: []string{platformKey}, Required: true,
 	})
 	base := providersPath(ws)

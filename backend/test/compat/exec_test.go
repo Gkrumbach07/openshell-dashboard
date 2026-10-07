@@ -28,14 +28,17 @@ func binaryPayload(n int) []byte {
 	return b
 }
 
-// TestFileTransfer covers the file upload and download endpoints. Download is
-// also the only way the BFF reaches the gateway's non-interactive exec.
+// TestFileTransfer covers the file upload and download endpoints one file at
+// a time; files_test.go covers folders and files of several megabytes. File
+// transfer is also the only way the BFF reaches the gateway's non-interactive
+// exec.
 //
 // Upload is the likeliest path to break on a wire change: the SDK has no
 // non-TTY exec with stdin, so pkg/clients/rawexec.go builds the exec request
 // by hand from the generated proto types, workspace scope included, and
 // streams the bytes into `dd` over the gateway's interactive exec RPC, asked
-// for without a TTY. Download goes through the SDK's Exec().Run with `cat`.
+// for without a TTY. Download asks the sandbox what the path is through the
+// SDK's Exec().Run and relays `cat` through Exec().Stream.
 // Both run against a workspace other than "default".
 func TestFileTransfer(t *testing.T) {
 	ws, name := sharedSandbox(t)
