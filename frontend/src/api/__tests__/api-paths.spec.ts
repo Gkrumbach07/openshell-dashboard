@@ -322,7 +322,9 @@ describe('auth API', () => {
 
   it('getCurrentUser calls correct path', async () => {
     await getCurrentUser();
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/auth/whoami');
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/auth/whoami', {
+      notifySessionExpired: false,
+    });
   });
 });
 

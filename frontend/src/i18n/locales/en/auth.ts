@@ -7,7 +7,15 @@ export default {
   proxySignInBody: 'Reload the page to be redirected to sign-in.',
   sessionLoading: 'Loading session',
   sessionVerifyFailed: 'Cannot verify session',
-  sessionBffUnreachable: 'Check that the BFF is running and reachable.',
+  sessionRejectedTitle: 'Session rejected',
+  sessionRejectedBody:
+    'The OpenShell gateway rejected your session. Reload the page to sign in again.',
+  sessionReload: 'Reload page',
+  sessionGatewayUnavailableHelp:
+    'Retry in a moment. If the problem persists, contact your administrator.',
+  sessionPermissionDeniedHelp: 'Ask your administrator to check your access.',
+  sessionBffUnreachable:
+    'Check your network connection and retry. If the problem persists, contact your administrator.',
   requiredTitle: 'Authentication required',
   requiredLead:
     'This deployment requires a signed-in session. For local development, run',

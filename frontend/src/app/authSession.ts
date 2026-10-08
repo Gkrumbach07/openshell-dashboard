@@ -25,3 +25,8 @@ export const reloadOnceForProxyReauth = (): void => {
   }
   window.location.reload();
 };
+
+/** Reload on a user action after whoami reports a rejected session. */
+export const reloadPageForProxyReauth = (): void => {
+  window.location.reload();
+};

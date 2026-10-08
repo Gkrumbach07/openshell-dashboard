@@ -17,7 +17,7 @@ export const useAuthConfig = () =>
   });
 
 export const getCurrentUser = (): Promise<CurrentUser> =>
-  get<CurrentUser>('/api/v1/auth/whoami');
+  get<CurrentUser>('/api/v1/auth/whoami', { notifySessionExpired: false });
 
 type UseCurrentUserOptions = {
   enabled?: boolean;
