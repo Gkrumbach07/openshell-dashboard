@@ -11,49 +11,26 @@ Deploys one stateless dashboard Deployment alongside an [OpenShell gateway](http
 Install the upstream gateway into the **same namespace**, release name `openshell` (or override `gateway.serviceName` / `gateway.url`). Set `server.oidc.issuer`, `server.oidc.audience`, `server.oidc.rolesClaim`, `server.oidc.adminRole`, and `server.oidc.caConfigMapName` there to the same values as `oidc.*` here. For OpenShift, layer `ci/values-openshift-scc.yaml` and `ci/values-route-edge.yaml`. Replace sample issuer and host before installing.
 
 Create a confidential client `openshell-dashboard` at the same IdP with `https://<dashboard-host>/oauth2/callback` as its redirect URI. oauth2-proxy forwards its **access token** to the gateway. That token's `aud` must contain gateway `server.oidc.audience` (`openshell-cli` by default); chart value `oidc.audience` documents this expectation but does not alter tokens. With API-client roles in the token, Keycloak's built-in Audience Resolve mapper can add that client to `aud`; realm-role-only or authentication-only setups need an explicit audience mapper. Check the access token, not the ID token.
-Provision the Secret outside Helm (the cookie secret must be a random 32-byte value):
+From the repository root, provision the Secret outside Helm (the cookie secret must be a random 32-byte value):
 
 
 ```sh
-kubectl -n openshell create secret generic openshell-dashboard-oidc \
+kubectl -n openshell-helm create secret generic openshell-dashboard-oidc \
   --from-literal=client-secret='<client secret>' \
   --from-literal=cookie-secret='<random cookie secret>'
 
-helm upgrade --install openshell-dashboard ./deploy/helm/openshell-dashboard \
-  -n openshell -f ./deploy/helm/openshell-dashboard/ci/values-openshift-scc.yaml \
-  -f ./deploy/helm/openshell-dashboard/ci/values-route-edge.yaml \
-  --set oidc.issuer=https://keycloak.apps.example.com/realms/openshell \
-  --set openshiftRoute.host=dashboard.apps.example.com \
-  --set dashboard.image.tag=<image tag> \
-  --set oidc.adminRole=openshell-admin
+cd ./deploy/helm/openshell-dashboard
+helm upgrade --install openshell-dashboard . \
+  -n openshell-helm -f ./ci/values-openshift-scc.yaml \
+  -f ./ci/values-route-edge.yaml \
+  -f ./ci/values-keycloak.yaml \
+  --set oidc.issuer=<issuer url> \
+  --set openshiftRoute.host=openshell-dashboard.<hostname> \
+  --set authProxy.whitelistDomains='{<redirect urls after invalid token response separated by commas>}'
 ```
 
 ### Configuring your installation
-Apply a values file. For an example that uses openshift routes and keycloak:
-
-```yaml
-gateway:
-  url: grpcs://<gateway-service>.namespace-a.svc.cluster.local:<port>
-  caSecretName: <gateway-ca-secret>
-oidc:
-  provider: keycloak-oidc
-  issuer: https://keycloak.example.com/realms/openshell
-  clientId: openshell-dashboard
-  existingSecret: openshell-dashboard-oidc
-  adminRole: openshell-admin
-  allowedRoles:
-    - openshell-api:openshell-admin
-    - openshell-api:openshell-user
-  scope: openid profile email
-  codeChallengeMethod: S256
-authProxy:
-  cookie:
-    name: _oauth2_proxy
-    sameSite: lax
-openshiftRoute:
-  enabled: true
-  host: openshell-dashboard.example.com
-```
+The install example layers the CI-rendered [Keycloak](ci/values-keycloak.yaml), [edge Route](ci/values-route-edge.yaml), and [OpenShift SCC](ci/values-openshift-scc.yaml) values. Replace the cluster-specific issuer, Route host, image, and whitelist domains for your installation. `oidc.caConfigMapName` defaults to empty; set it only for a private issuer CA.
 
 The default `oidc.provider=oidc` works with any compatible OIDC issuer. Use `oidc.allowedGroups` for group restrictions supported by the provider. For Keycloak client/realm role checks, set `oidc.provider=keycloak-oidc` and `oidc.allowedRoles` (roles are alternatives). Other issuer-specific settings such as `oidc.scope` and `oidc.codeChallengeMethod` are optional; the generic OIDC scope defaults to `openid email profile`.
 

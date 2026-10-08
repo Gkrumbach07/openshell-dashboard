@@ -14,5 +14,8 @@ oidc:
   rolesClaim: realm_access.roles
   adminRole: openshell-admin
   clientId: openshell-dashboard
+  allowedRoles:
+    - openshell-api:openshell-admin
+    - openshell-api:openshell-user
   existingSecret: openshell-dashboard-oidc
   codeChallengeMethod: S256
