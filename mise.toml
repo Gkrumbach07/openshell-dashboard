@@ -1,0 +1,5 @@
+[tools]
+helm-docs = "1.14.2"
+
+[task_config]
+includes = ["tasks/*.toml"]
