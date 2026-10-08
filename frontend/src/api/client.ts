@@ -112,11 +112,12 @@ export const apiAuthHeaders = async (): Promise<Record<string, string>> => {
  * returned (status 401, message "Session expired", and the `code` of the
  * response when it had one).
  *
- * `apiFetch` calls this for each 401 unless the caller disables notification
- * (as whoami does so its error remains visible). It is exported for the
- * requests `apiFetch` cannot make (see `apiUrl`), which call it for theirs. An
- * embedding product may rely on its handler running for a 401 on calls that
- * have not disabled notification. Call it only for a response that was a 401.
+ * `apiFetch` calls this for each 401 unless the caller disables notification,
+ * as the standalone auth gate does for whoami so it can render the error. It
+ * is exported for requests `apiFetch` cannot make (see `apiUrl`), which call it
+ * for theirs. An embedding product may rely on its handler running for a 401
+ * on calls that have not disabled notification. Call it only for a response
+ * that was a 401.
  */
 export const sessionExpiredError = (code?: string): ApiError => {
   onSessionExpired?.();

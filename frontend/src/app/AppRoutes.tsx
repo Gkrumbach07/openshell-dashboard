@@ -46,7 +46,10 @@ const AppRoutes: React.FC = () => {
     isError: whoamiError,
     error: whoamiQueryError,
     refetch: refetchWhoami,
-  } = useCurrentUser({ enabled: authRequired });
+  } = useCurrentUser({
+    enabled: authRequired,
+    notifySessionExpired: false,
+  });
 
   // Stale dev-mode flag from a prior `make dev` run must not trigger 401 redirects.
   useLayoutEffect(() => {
