@@ -18,21 +18,18 @@ kubectl -n openshell-helm create secret generic openshell-dashboard-oidc \
   --from-literal=client-secret='<client secret>' \
   --from-literal=cookie-secret='<random cookie secret>'
 
-# For an openshift deployment with openshift routes
 cd ./deploy/helm/openshell-dashboard
 helm upgrade --install openshell-dashboard . \
   -n openshell-helm -f ./ci/values-openshift-scc.yaml \
   -f ./ci/values-route-edge.yaml \
   -f ./ci/values-keycloak.yaml \
   --set oidc.issuer=<issuer url> \
-  --set openshiftRoute.host=<openshift route host> \
-  --set oidc.adminRole=openshell-admin \
-  --set authProxy.whitelistDomains='{a.com,https://keycloak.apps.rosa.derxu-cluster-1.b1id.p3.openshiftapps.com,b.com}'
+  --set openshiftRoute.host=openshell-dashboard.<hostname> \
+  --set authProxy.whitelistDomains='{<redirect urls after invalid token response separated by commas>}'
 ```
 
 ### Configuring your installation
-
-The install example layers the CI-rendered [Keycloak](ci/values-keycloak.yaml), [edge Route](ci/values-route-edge.yaml), and [OpenShift SCC](ci/values-openshift-scc.yaml) values. Replace the cluster-specific issuer, Route host, and whitelist domains for your installation. `oidc.caConfigMapName` defaults to empty; set it only for a private issuer CA.
+The install example layers the CI-rendered [Keycloak](ci/values-keycloak.yaml), [edge Route](ci/values-route-edge.yaml), and [OpenShift SCC](ci/values-openshift-scc.yaml) values. Replace the cluster-specific issuer, Route host, image, and whitelist domains for your installation. `oidc.caConfigMapName` defaults to empty; set it only for a private issuer CA.
 
 The default `oidc.provider=oidc` works with any compatible OIDC issuer. Use `oidc.allowedGroups` for group restrictions supported by the provider. For Keycloak client/realm role checks, set `oidc.provider=keycloak-oidc` and `oidc.allowedRoles` (roles are alternatives). Other issuer-specific settings such as `oidc.scope` and `oidc.codeChallengeMethod` are optional; the generic OIDC scope defaults to `openid email profile`.
 
@@ -49,7 +46,7 @@ Chart version and appVersion start at `0.0.0`; release CI stamps both with the r
 ## Values
 
 | Key | Type | Default | Description |
-| ----- | ------ | --------- | ------------- |
+|-----|------|---------|-------------|
 | affinity | object | `{}` | Affinity. |
 | authProxy.apiRoutes | list | `["^/api/"]` | API path patterns that return HTTP 401 instead of redirecting to the identity provider on an expired session. |
 | authProxy.cookie.name | string | `"_oauth2_proxy"` | Session cookie name; use a distinct name when dashboards share a hostname. |
@@ -117,7 +114,7 @@ Chart version and appVersion start at `0.0.0`; release CI stamps both with the r
 | oidc.clientIdSecretKey | string | `""` | Optional key in oidc.existingSecret holding client ID; when set, takes precedence over oidc.clientId. |
 | oidc.codeChallengeMethod | string | `""` | PKCE challenge method (e.g. S256); empty disables PKCE for providers that do not support it. |
 | oidc.existingSecret | string | `"openshell-dashboard-oidc"` | Existing Secret containing keys client-secret and cookie-secret. |
-| oidc.issuer | string | `""` | OIDC issuer URL (e.g. <https://keycloak.example.com/realms/openshell>) |
+| oidc.issuer | string | `""` | OIDC issuer URL (e.g. https://keycloak.example.com/realms/openshell) |
 | oidc.provider | string | `"oidc"` | oauth2-proxy provider (oidc for generic OIDC, keycloak-oidc for Keycloak role filtering). |
 | oidc.redirectURL | string | `""` | Full public callback URL; required when host is dynamically allocated. Empty derives from Route/HTTPRoute host. |
 | oidc.rolesClaim | string | `""` | Same roles claim path as gateway server.oidc.rolesClaim (documented for installer parity and purely informaitonal). |
