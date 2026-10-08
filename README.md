@@ -67,7 +67,7 @@ Releases up to and including `1.1.1` predate this and declare nothing: their rel
 
 ## Quick start (local dev)
 
-Prereqs: Go 1.25.1+, Node 20+, and a running OpenShell gateway (`openshell gateway start`).
+Prereqs: Go 1.26.7+, Node 20+, and a running OpenShell gateway (`openshell gateway start`).
 
 ```bash
 make setup                                # npm install + go mod download

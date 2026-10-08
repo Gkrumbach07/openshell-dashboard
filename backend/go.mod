@@ -1,6 +1,6 @@
 module github.com/Gkrumbach07/openshell-dashboard/backend
 
-go 1.25.13
+go 1.26.7
 
 require (
 	github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20260928030816-6648bd0c290e
