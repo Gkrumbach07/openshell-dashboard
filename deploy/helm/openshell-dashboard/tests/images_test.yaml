@@ -39,6 +39,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[1].image
           value: quay.io/oauth2-proxy/oauth2-proxy:test
+  - it: converts YAML numeric image tags to strings
+    template: templates/deployment.yaml
+    set:
+      dashboard.image.tag: 1.2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: quay.io/gkrumbach07/openshell-dashboard:1.2
   - it: OpenShift SCC leaves UID and group to the namespace
     template: templates/deployment.yaml
     set:
@@ -64,6 +72,15 @@ tests:
       - equal:
           path: spec.scaleTargetRef.kind
           value: Deployment
+  - it: omits Deployment replicas when HPA is enabled
+    template: templates/deployment.yaml
+    set:
+      autoscaling.enabled: true
+      resources.requests.cpu: 100m
+      authProxy.resources.requests.cpu: 100m
+    asserts:
+      - notExists:
+          path: spec.replicas
   - it: refuses HPA with no CPU requests on proxy
     template: templates/deployment.yaml
     set:

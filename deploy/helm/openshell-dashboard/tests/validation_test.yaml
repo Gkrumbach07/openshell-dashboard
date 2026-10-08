@@ -1,0 +1,199 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+suite: chart value validation and scaling
+templates:
+  - templates/deployment.yaml
+  - templates/hpa.yaml
+  - templates/gateway-preflight.yaml
+release:
+  name: openshell-dashboard
+  namespace: tenant-a
+set:
+  oidc.issuer: https://idp.example.com/realms/openshell
+tests:
+  - it: omits the HPA by default
+    template: templates/hpa.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: renders CPU and memory autoscaling targets
+    template: templates/hpa.yaml
+    set:
+      autoscaling.enabled: true
+      autoscaling.minReplicas: 2
+      autoscaling.maxReplicas: 6
+      autoscaling.targetCPUUtilizationPercentage: 75
+      autoscaling.targetMemoryUtilizationPercentage: 90
+      resources.requests.cpu: 100m
+      resources.requests.memory: 128Mi
+      authProxy.resources.requests.cpu: 50m
+      authProxy.resources.requests.memory: 64Mi
+    asserts:
+      - equal:
+          path: spec.scaleTargetRef.name
+          value: openshell-dashboard
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 6
+      - equal:
+          path: spec.metrics[0].resource.name
+          value: cpu
+      - equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 75
+      - equal:
+          path: spec.metrics[1].resource.name
+          value: memory
+      - equal:
+          path: spec.metrics[1].resource.target.averageUtilization
+          value: 90
+  - it: allows memory-only autoscaling using container limits
+    template: templates/hpa.yaml
+    set:
+      autoscaling.enabled: true
+      autoscaling.targetCPUUtilizationPercentage: null
+      autoscaling.targetMemoryUtilizationPercentage: 70
+      resources.limits.memory: 128Mi
+      authProxy.resources.limits.memory: 64Mi
+    asserts:
+      - lengthEqual:
+          path: spec.metrics
+          count: 1
+      - equal:
+          path: spec.metrics[0].resource.name
+          value: memory
+  - it: rejects invalid autoscaling replica bounds
+    template: templates/deployment.yaml
+    set:
+      autoscaling.enabled: true
+      autoscaling.minReplicas: 3
+      autoscaling.maxReplicas: 2
+    asserts:
+      - failedTemplate:
+          errorMessage: autoscaling requires minReplicas >= 1 and maxReplicas >= minReplicas
+  - it: rejects autoscaling without any metric target
+    template: templates/deployment.yaml
+    set:
+      autoscaling.enabled: true
+      autoscaling.targetCPUUtilizationPercentage: null
+      autoscaling.targetMemoryUtilizationPercentage: null
+    asserts:
+      - failedTemplate:
+          errorMessage: autoscaling requires at least one utilization target
+  - it: requires CPU resources on the dashboard for CPU scaling
+    template: templates/deployment.yaml
+    set:
+      autoscaling.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: autoscaling CPU target requires resources.requests.cpu or resources.limits.cpu
+  - it: requires memory resources on the proxy for memory scaling
+    template: templates/deployment.yaml
+    set:
+      autoscaling.enabled: true
+      autoscaling.targetCPUUtilizationPercentage: null
+      autoscaling.targetMemoryUtilizationPercentage: 70
+      resources.requests.memory: 128Mi
+    asserts:
+      - failedTemplate:
+          errorMessage: autoscaling memory target requires authProxy.resources.requests.memory or authProxy.resources.limits.memory
+  - it: requires OIDC issuer explicitly
+    template: templates/deployment.yaml
+    set:
+      oidc.issuer: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: oidc.issuer must be set and match gateway server.oidc.issuer
+  - it: requires an OIDC secret
+    template: templates/deployment.yaml
+    set:
+      oidc.existingSecret: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: oidc.existingSecret must name a Secret with client-secret and cookie-secret
+  - it: requires a client ID or client ID secret key
+    template: templates/deployment.yaml
+    set:
+      oidc.clientId: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: oidc.clientId or oidc.clientIdSecretKey is required
+  - it: rejects unsupported gateway URL schemes
+    template: templates/deployment.yaml
+    set:
+      gateway.url: ftp://openshell.tenant-a.svc.cluster.local:8080
+    asserts:
+      - failedTemplate:
+          errorMessage: gateway.url must start with grpcs://, https://, grpc://, or http://
+  - it: rejects enabling Route and HTTPRoute together
+    template: templates/deployment.yaml
+    set:
+      openshiftRoute.enabled: true
+      httpRoute.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: enable only one of openshiftRoute and httpRoute
+  - it: requires a Route host or explicit callback
+    template: templates/deployment.yaml
+    set:
+      openshiftRoute.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: openshiftRoute.host or oidc.redirectURL is required for OIDC callback
+  - it: requires HTTPRoute hostnames or explicit callback
+    template: templates/deployment.yaml
+    set:
+      httpRoute.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: httpRoute.hostnames or oidc.redirectURL is required for OIDC callback
+  - it: requires HTTPRoute to create a Gateway
+    template: templates/deployment.yaml
+    set:
+      httpRoute.gateway.create: true
+    asserts:
+      - failedTemplate:
+          errorMessage: httpRoute.gateway.create requires httpRoute.enabled
+  - it: forbids creating a Gateway in another namespace
+    template: templates/deployment.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.create: true
+      httpRoute.gateway.namespace: another-namespace
+    asserts:
+      - failedTemplate:
+          errorMessage: a created Gateway must be in the release namespace
+  - it: rejects unsupported Gateway listener protocols
+    template: templates/deployment.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.create: true
+      httpRoute.gateway.listener.protocol: TCP
+    asserts:
+      - failedTemplate:
+          errorMessage: httpRoute.gateway.listener.protocol must be HTTP or HTTPS
+  - it: rejects a proxy TLS secret without Route reencrypt
+    template: templates/deployment.yaml
+    set:
+      authProxy.tls.secretName: proxy-tls
+    asserts:
+      - failedTemplate:
+          errorMessage: authProxy.tls.secretName requires openshiftRoute.termination=reencrypt
+  - it: skips Service preflight by default for offline rendering
+    template: templates/gateway-preflight.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: reports the missing gateway Service when preflight is enabled
+    template: templates/gateway-preflight.yaml
+    set:
+      gateway.preflight.enabled: true
+      gateway.serviceName: missing-gateway
+    asserts:
+      - failedTemplate:
+          errorMessage: gateway Service missing-gateway not found in namespace tenant-a; set gateway.preflight.enabled=false for offline helm template

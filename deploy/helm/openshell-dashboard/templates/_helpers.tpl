@@ -67,7 +67,7 @@ Image definition
 {{- if $image.digest -}}
 {{- printf "%s@%s" $repository $image.digest -}}
 {{- else -}}
-{{- printf "%s:%s" $repository ($image.tag | default $global.tag | default .root.Chart.AppVersion) -}}
+{{- printf "%s:%s" $repository (($image.tag | default $global.tag | default .root.Chart.AppVersion) | toString) -}}
 {{- end -}}
 {{- end -}}
 
@@ -75,7 +75,7 @@ Image definition
 Sets the gateway URL 
 */}}
 {{- define "openshell-dashboard.gatewayURL" -}}
-{{- .Values.gateway.url | default (printf "grpcs://%s.%s.svc.cluster.local:8080" .Values.gateway.serviceName .Release.Namespace) -}}
+{{- .Values.gateway.url | default (printf "%s://%s.%s.svc.cluster.local:8080" (ternary "grpcs" "grpc" .Values.gateway.tls.enabled) .Values.gateway.serviceName .Release.Namespace) -}}
 {{- end -}}
 
 {{/*
@@ -145,13 +145,16 @@ Value validation
 {{- fail "oidc.existingSecret must name a Secret with client-secret and cookie-secret" -}}
 {{- end -}}
 {{- if not .Values.oidc.issuer -}}
-{{- fail "oidc.issuer must match gateway server.oidc.issuer" -}}
+{{- fail "oidc.issuer must be set and match gateway server.oidc.issuer" -}}
 {{- end -}}
 {{- if and (not .Values.oidc.clientId) (not .Values.oidc.clientIdSecretKey) -}}
 {{- fail "oidc.clientId or oidc.clientIdSecretKey is required" -}}
 {{- end -}}
 {{- if and .Values.oidc.allowedRoles (ne .Values.oidc.provider "keycloak-oidc") -}}
 {{- fail "oidc.allowedRoles requires oidc.provider=keycloak-oidc" -}}
+{{- end -}}
+{{- if and .Values.gateway.clientCertSecretName (not (or .Values.oidc.allowedGroups .Values.oidc.allowedRoles)) -}}
+{{- fail "gateway.clientCertSecretName requires oidc.allowedGroups or oidc.allowedRoles to restrict shared certificate access" -}}
 {{- end -}}
 {{- if and .Values.autoscaling.enabled (or (lt (int .Values.autoscaling.minReplicas) 1) (lt (int .Values.autoscaling.maxReplicas) (int .Values.autoscaling.minReplicas))) -}}
 {{- fail "autoscaling requires minReplicas >= 1 and maxReplicas >= minReplicas" -}}

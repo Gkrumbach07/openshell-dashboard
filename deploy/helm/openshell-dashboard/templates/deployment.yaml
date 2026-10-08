@@ -54,8 +54,10 @@ spec:
               value: x-forwarded-user
             - name: AUTH_TOKEN_HEADER
               value: x-forwarded-access-token
+            {{- if .Values.oidc.adminRole }}
             - name: ADMIN_ROLE
               value: {{ .Values.oidc.adminRole | quote }}
+            {{- end }}
             - name: LOGOUT_URL
               value: {{ .Values.dashboard.logoutURL | quote }}
             - name: OPENSHELL_GATEWAY_URL
@@ -72,19 +74,22 @@ spec:
             {{- end }}
           startupProbe:
             exec:
-              command: [sh, -c, 'wget -q -O /dev/null http://127.0.0.1:{{ .Values.dashboard.port }}/api/v1/healthz']
+              command: {{ .Values.probes.startup.dashboardCommand | toJson }}
             failureThreshold: {{ .Values.probes.startup.failureThreshold }}
             periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: 3
           livenessProbe:
             exec:
-              command: [sh, -c, 'wget -q -O /dev/null http://127.0.0.1:{{ .Values.dashboard.port }}/api/v1/healthz']
+              command: {{ .Values.probes.liveness.dashboardCommand | toJson }}
             failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: 3
           readinessProbe:
             exec:
-              command: [sh, -c, 'wget -q -O /dev/null http://127.0.0.1:{{ .Values.dashboard.port }}/api/v1/healthz']
+              command: {{ .Values.probes.readiness.dashboardCommand | toJson }}
             failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: 3
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -139,6 +144,7 @@ spec:
             {{- end }}
             {{- if .Values.oidc.caConfigMapName }}
             - --provider-ca-file=/etc/openshell/oidc/ca.crt
+            - --use-system-trust-store=true
             {{- end }}
             - --pass-access-token=true
             - --pass-authorization-header=false
@@ -152,14 +158,30 @@ spec:
             - --force-https=true
             {{- end }}
             - --email-domain=*
-            - --reverse-proxy=true
             - --cookie-secure=true
             - --cookie-httponly=true
             - --cookie-name={{ .Values.authProxy.cookie.name }}
             {{- with .Values.authProxy.cookie.sameSite }}
             - --cookie-samesite={{ . }}
             {{- end }}
+            {{- with .Values.authProxy.cookie.refresh }}
+            - --cookie-refresh={{ . }}
+            {{- end }}
+            {{- with .Values.authProxy.upstreamTimeout }}
+            - --upstream-timeout={{ . }}
+            {{- end }}
+            {{- range .Values.authProxy.apiRoutes }}
+            - {{ printf "--api-route=%s" . | quote }}
+            {{- end }}
+            {{- range .Values.authProxy.whitelistDomains }}
+            - {{ printf "--whitelist-domain=%s" . | quote }}
+            {{- end }}
+            {{- if not .Values.authProxy.whitelistDomains }}
             - --skip-provider-button=true
+            {{- end }}
+            {{- range .Values.authProxy.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
           env:
             {{- if .Values.oidc.clientIdSecretKey }}
             - name: OAUTH2_PROXY_CLIENT_ID

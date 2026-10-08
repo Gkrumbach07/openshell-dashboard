@@ -4,3 +4,6 @@
 # Browser authentication through oauth2-proxy still requires an OIDC client.
 gateway:
   clientCertSecretName: openshell-client-tls
+oidc:
+  # Replace with a group present in your IdP before using shared gateway identity.
+  allowedGroups: [openshell-users]

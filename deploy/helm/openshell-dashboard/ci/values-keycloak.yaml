@@ -10,7 +10,6 @@ oidc:
   audience: openshell-cli
   rolesClaim: realm_access.roles
   adminRole: openshell-admin
-  caConfigMapName: openshell-keycloak-ca
   clientId: openshell-dashboard
   existingSecret: openshell-dashboard-oidc
   codeChallengeMethod: S256

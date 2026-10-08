@@ -127,7 +127,8 @@ Keycloak and the gateway survive across `make dev` restarts. Stop them explicitl
 
 ## Configuration
 
-All flags have env var fallbacks:
+Most server flags have env var fallbacks. `--healthcheck` is probe-only: it checks
+`http://127.0.0.1:$PORT/api/v1/healthz` and exits without starting a server.
 
 | Flag | Env var | Default | Description |
 |------|---------|---------|-------------|

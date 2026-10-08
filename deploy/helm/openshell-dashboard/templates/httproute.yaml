@@ -15,7 +15,9 @@ spec:
   parentRefs:
     - name: {{ .Values.httpRoute.gateway.name | default (include "openshell-dashboard.fullname" .) }}
       namespace: {{ .Values.httpRoute.gateway.namespace | default .Release.Namespace }}
-      sectionName: {{ ternary "https" "http" (eq .Values.httpRoute.gateway.listener.protocol "HTTPS") }}
+      {{- if or .Values.httpRoute.gateway.create .Values.httpRoute.gateway.sectionName }}
+      sectionName: {{ .Values.httpRoute.gateway.sectionName | default (ternary "https" "http" (eq .Values.httpRoute.gateway.listener.protocol "HTTPS")) }}
+      {{- end }}
   {{- with .Values.httpRoute.hostnames }}
   hostnames:
     {{- toYaml . | nindent 4 }}

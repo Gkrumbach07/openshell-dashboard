@@ -1,5 +1,0 @@
-["helm:docs"]
-description = "Generate the OpenShell gateway and workspace Helm chart READMEs"
-run = """
-  helm-docs --chart-search-root deploy/helm/openshell-dashboard
-"""

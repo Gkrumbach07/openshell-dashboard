@@ -33,12 +33,20 @@ tests:
     template: templates/deployment.yaml
     set:
       gateway.clientCertSecretName: openshell-client-tls
+      oidc.allowedGroups: [operators]
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
             name: GATEWAY_CLIENT_CERT
             value: /etc/openshell/client/tls.crt
+  - it: rejects shared client certificates without a user allow-list
+    template: templates/deployment.yaml
+    set:
+      gateway.clientCertSecretName: openshell-client-tls
+    asserts:
+      - failedTemplate:
+          errorMessage: gateway.clientCertSecretName requires oidc.allowedGroups or oidc.allowedRoles to restrict shared certificate access
   - it: accepts grpcs gateway URL and forwards it to the BFF
     template: templates/deployment.yaml
     set:
@@ -69,6 +77,17 @@ tests:
             value: grpc://openshell.my-namespace.svc.cluster.local:8080
       - notExists:
           path: spec.template.spec.volumes
+  - it: derives plaintext gateway URL from the release namespace
+    template: templates/deployment.yaml
+    set:
+      gateway.tls.enabled: false
+      gateway.caSecretName: ""
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSHELL_GATEWAY_URL
+            value: grpc://openshell.my-namespace.svc.cluster.local:8080
   - it: refuses CA on plaintext grpc gateway
     template: templates/deployment.yaml
     set:
@@ -104,7 +123,7 @@ tests:
           value: proxy
       - equal:
           path: metadata.annotations["haproxy.router.openshift.io/timeout-tunnel"]
-          value: 300s
+          value: 1h
   - it: rejects passthrough Route
     template: templates/deployment.yaml
     set:
@@ -168,6 +187,18 @@ tests:
       - equal:
           path: spec.parentRefs[0].namespace
           value: envoy-gateway-system
+      - notExists:
+          path: spec.parentRefs[0].sectionName
+  - it: accepts an existing Gateway's custom listener name
+    template: templates/httproute.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.sectionName: dashboard-listener
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].sectionName
+          value: dashboard-listener
   - it: restricts HTTPRoute traffic to gateway data-plane namespace
     template: templates/networkpolicy.yaml
     set:
@@ -206,6 +237,21 @@ tests:
       - equal:
           path: spec.listeners[0].tls.certificateRefs[0].name
           value: dashboard-tls
+      - equal:
+          path: spec.listeners[0].name
+          value: https
+  - it: attaches to the HTTPS listener when Gateway is chart-created
+    template: templates/httproute.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.create: true
+      httpRoute.gateway.listener.tls.certificateRefs:
+        - name: dashboard-tls
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].sectionName
+          value: https
   - it: rejects HTTPS Gateway without certificate
     template: templates/deployment.yaml
     set:

@@ -14,9 +14,13 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
+        {{- if .Values.networkPolicy.ingressFrom }}
+        {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
+        {{- else }}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace | default (ternary (.Values.httpRoute.gateway.namespace | default .Release.Namespace) "openshift-ingress" .Values.httpRoute.enabled) }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: {{ .Values.authProxy.port }}
