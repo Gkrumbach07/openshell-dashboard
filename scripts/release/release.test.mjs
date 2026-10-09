@@ -14,13 +14,13 @@ import { delimiter, dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { readGatewayRange } from '../gateway-range.mjs';
+import { formatLine, readGatewayLine } from '../gateway-range.mjs';
 import { generateNotes, supportedGatewaysNotes } from './gateway-range-plugin.mjs';
 import { releaseAt } from './released-version.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SDK = 'v0.0.0-20260928030816-6648bd0c290e';
-const range = { floor: '0.1.0', ceiling: '0.1.2', range: '>=0.1.0 <=0.1.2', sdk: SDK };
+const declared = { line: '0.1', tested: ['0.1.0', '0.1.2'], sdk: SDK };
 
 function tempDir(t) {
   const dir = mkdtempSync(join(tmpdir(), 'openshell-dashboard-release-'));
@@ -30,41 +30,65 @@ function tempDir(t) {
 
 // --- release notes ---------------------------------------------------------
 
-test('the notes state the range and the SDK, and link the README of that release', () => {
+test('the notes state the line, what it was tested on and the SDK, and link the README of that release', () => {
   const notes = supportedGatewaysNotes({
-    range,
-    previous: range,
+    declared,
+    previous: declared,
     previousTag: 'v1.1.0',
     readmeUrl: 'https://github.com/o/r/blob/v1.2.0/README.md#compatibility',
   });
   assert.match(notes, /^### Supported OpenShell gateways\n/);
-  assert.match(notes, new RegExp(`\\*\\*0\\.1\\.0 – 0\\.1\\.2\\*\\*, built against OpenShell Go SDK \`${SDK}\``));
+  assert.ok(
+    notes.includes(`**0.1.x**, tested on 0.1.0 and 0.1.2, built against OpenShell Go SDK \`${SDK}\`.`),
+    notes,
+  );
   assert.match(notes, /\[Compatibility\]\(https:\/\/github\.com\/o\/r\/blob\/v1\.2\.0\/README\.md#compatibility\)/);
-  assert.doesNotMatch(notes, /range changed/);
+  assert.doesNotMatch(notes, /release line changed/);
 });
 
-test('a moved range is called out, because semver will not say so', () => {
+test('the releases a line was tested on read as a list, however many there are', () => {
+  const tested = (releases) =>
+    supportedGatewaysNotes({ declared: { ...declared, tested: releases }, previous: null, readmeUrl: null });
+  assert.ok(tested(['0.1.3']).includes('**0.1.x**, tested on 0.1.3, built against'));
+  assert.ok(tested(['0.1.0', '0.1.2', '0.1.3']).includes('**0.1.x**, tested on 0.1.0, 0.1.2 and 0.1.3, built against'));
+});
+
+test('a new release line is called out, because a patch number will not say so', () => {
   const notes = supportedGatewaysNotes({
-    range,
-    previous: { floor: '0.1.0', ceiling: '0.1.1' },
+    declared: { line: '0.2', tested: ['0.2.0'], sdk: SDK },
+    previous: declared,
     previousTag: 'v1.1.0',
     readmeUrl: null,
   });
-  assert.match(notes, /> \*\*The supported range changed in this release\.\*\* v1\.1\.0 supported 0\.1\.0 – 0\.1\.1\./);
+  assert.match(
+    notes,
+    /> \*\*The supported gateway release line changed in this release\.\*\* v1\.1\.0 supported 0\.1\.x\./,
+  );
 });
 
-test('nothing is claimed about a previous release whose range is unknown', () => {
-  const notes = supportedGatewaysNotes({ range, previous: null, previousTag: 'v1.1.0', readmeUrl: null });
-  assert.doesNotMatch(notes, /range changed/);
+test('a newer patch of the same line is not a change of line', () => {
+  const notes = supportedGatewaysNotes({
+    declared: { ...declared, tested: ['0.1.0', '0.1.3'] },
+    previous: declared,
+    previousTag: 'v1.1.0',
+    readmeUrl: null,
+  });
+  assert.doesNotMatch(notes, /release line changed/);
+});
+
+test('nothing is claimed about a previous release whose line is unknown', () => {
+  const notes = supportedGatewaysNotes({ declared, previous: null, previousTag: 'v1.1.0', readmeUrl: null });
+  assert.doesNotMatch(notes, /release line changed/);
 });
 
 test('generateNotes reads the committed pins and tolerates a first release', async () => {
-  const committed = readGatewayRange();
+  const committed = readGatewayLine();
   const notes = await generateNotes(
     { pkgRoot: 'frontend' },
     { cwd: repoRoot, lastRelease: {}, nextRelease: { gitTag: 'v9.9.9', version: '9.9.9' } },
   );
-  assert.ok(notes.includes(committed.floor) && notes.includes(committed.ceiling) && notes.includes(committed.sdk));
+  assert.ok(notes.includes(`**${formatLine(committed.line)}**`) && notes.includes(committed.sdk));
+  assert.ok(committed.tested.every((release) => notes.includes(release)));
   assert.match(notes, /\/blob\/v9\.9\.9\/README\.md#compatibility\)/);
   // The URL comes from package.json, never from the credentialed push URL.
   assert.match(notes, /\(https:\/\/github\.com\/Gkrumbach07\/openshell-dashboard\/blob\//);

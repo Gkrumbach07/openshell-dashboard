@@ -73,9 +73,9 @@ ci: revert "pin the runners"
 
 Use `fix:` or `feat:` only for something a user of the dashboard would notice. The rules live in [`release.config.cjs`](release.config.cjs); CI runs sample commits through them on every pull request (`scripts/release/check-release-config.mjs`), and [docs/releasing.md](docs/releasing.md) describes the rest of the pipeline.
 
-#### If you move the supported gateway range
+#### If you move a gateway lane or the SDK pin
 
-The range of OpenShell gateways a release supports is derived from the required lanes in `deploy/ci/gateway-pins.json`, never written by hand. The README restates it in one generated table, which has to be regenerated in the same change that moves the pins:
+The OpenShell gateway release line a release is for, and the releases it is tested on, are derived from the required lanes in `deploy/ci/gateway-pins.json`, never written by hand. The README restates them in one generated table, which has to be regenerated in the same change that moves the pins:
 
 ```bash
 node scripts/readme-gateway-range.mjs --write
@@ -83,7 +83,12 @@ node scripts/readme-gateway-range.mjs --write
 
 The compat sweep's automated pull requests run this themselves, so their table is already up to date when they are opened. Run it yourself when you change the pins file by hand, and commit the result with the pins.
 
-One thing has to agree between the pins file and the code: its `sdk` field must equal the OpenShell SDK version in `backend/go.mod`. `node scripts/gateway-range.mjs --check` fails when it does not. Nothing else is tied together. The SDK and the gateway lanes are separate changes with separate evidence: one pull request moves the SDK (`go.mod`, `go.sum` and the `sdk` field), another moves a gateway lane, and neither needs the other ([ADR 0006](docs/adrs/0006-compat-links-and-sweep-axes.md)).
+Two things have to agree between the pins file and the code, and `node scripts/gateway-range.mjs --check` fails when either does not:
+
+- The `sdk` field must equal the OpenShell SDK version in `backend/go.mod`.
+- The gateway release line compiled into the BFF (`BuiltInGatewayReleaseLine` in `backend/pkg/models/gateway_release_line.go`) must be the major and minor number of the newest required lane. Moving that lane to a newer patch release changes nothing here. Moving it to a new minor is a new release line, and the constant changes in the same pull request ([ADR 0009](docs/adrs/0009-console-release-policy.md)).
+
+Nothing else is tied together. The SDK and the gateway lanes are separate changes with separate evidence: one pull request moves the SDK (`go.mod`, `go.sum` and the `sdk` field), another moves a gateway lane, and neither needs the other ([ADR 0006](docs/adrs/0006-compat-links-and-sweep-axes.md)).
 
 ### Developer Certificate of Origin (DCO)
 

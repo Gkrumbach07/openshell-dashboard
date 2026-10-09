@@ -93,17 +93,18 @@ func NewApp(
 	return app
 }
 
-// SetGatewaySupport declares the range of gateway releases this build
-// supports. GET /gateway/compatibility (for every signed-in user) and
-// GET /gateway (for platform admins) then report where the connected gateway
-// falls relative to it; without a range they report "unknown". Nothing is
-// ever blocked on the result.
+// SetGatewayReleaseLine replaces the gateway release line this build is for.
+// GET /gateway/compatibility (for every signed-in user) and GET /gateway (for
+// platform admins) report whether the connected gateway is on it. An App that
+// never calls this uses the line compiled into the build
+// (models.BuiltInGatewayReleaseLine); given the zero value, both routes report
+// "unknown". Nothing is ever blocked on the result.
 //
 // It is a method rather than a NewApp parameter because NewApp's trailing
 // parameter is already the variadic extension list, and downstream callers of
 // NewApp must keep compiling. Call it before Routes.
-func (app *App) SetGatewaySupport(support models.GatewaySupport) {
-	app.gateway.SetGatewaySupport(support)
+func (app *App) SetGatewayReleaseLine(line models.GatewayReleaseLine) {
+	app.gateway.SetGatewayReleaseLine(line)
 }
 
 // SetProviderCredentialKeys gives the app the way to read which credentials
@@ -112,8 +113,8 @@ func (app *App) SetGatewaySupport(support models.GatewaySupport) {
 // reads them from the gateway's own answer. Without it providers are returned
 // with no credential names against gateways 0.1.x.
 //
-// Like SetGatewaySupport it is a method rather than a NewApp parameter so that
-// downstream callers of NewApp keep compiling. Call it before Routes.
+// Like SetGatewayReleaseLine it is a method rather than a NewApp parameter so
+// that downstream callers of NewApp keep compiling. Call it before Routes.
 func (app *App) SetProviderCredentialKeys(keys services.ProviderCredentialKeyReader) {
 	app.providers.SetCredentialKeyReader(keys)
 	app.logs.SetCredentialKeyReader(keys)
@@ -129,8 +130,8 @@ func (app *App) SetProviderCredentialKeys(keys services.ProviderCredentialKeyRea
 // drops whatever the stored profile's endpoints held beyond those three
 // fields.
 //
-// Like SetGatewaySupport it is a method rather than a NewApp parameter so that
-// downstream callers of NewApp keep compiling. Call it before Routes.
+// Like SetGatewayReleaseLine it is a method rather than a NewApp parameter so
+// that downstream callers of NewApp keep compiling. Call it before Routes.
 func (app *App) SetProviderProfiles(profiles services.ProviderProfileStore) {
 	app.providers.SetProfileStore(profiles)
 }

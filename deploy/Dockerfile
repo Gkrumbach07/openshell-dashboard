@@ -27,30 +27,29 @@ ENV PORT=8080 \
     STATIC_DIR=/srv/static
 EXPOSE 8080
 
-# Which OpenShell gateways this build supports (#66, ADR 0005).
-#
-# CI passes these from `node scripts/gateway-range.mjs`, which derives them from
-# the required compat lanes in deploy/ci/gateway-pins.json — the same source as
-# the release notes, so the two cannot disagree. They are
-# build args, not literals, so that nothing here needs editing when the range
-# moves. A plain `docker build` without them still works and leaves all of them
-# empty, which means "this build does not say", not "any gateway". Because empty
-# is allowed, ci.yml's image-range job reads the pushed image back and fails if
-# CI's own build came out empty.
-#
-# The two env vars are for the BFF, which can compare them with the version the
-# gateway reports. The labels say the same thing to someone holding only an
-# image reference:
+# Which OpenShell gateway release line this build is for, and the SDK it was
+# built against (#66, ADR 0009), as labels for someone holding only an image
+# reference:
 #   skopeo inspect docker://<image> | jq .Labels
 #
-# Kept at the end of the stage so that moving the range rebuilds nothing above.
-ARG GATEWAY_SUPPORTED_MIN=""
-ARG GATEWAY_SUPPORTED_MAX=""
+# These two build args set the labels and nothing else. The BFF does not read
+# them: the release line it compares a gateway with is compiled into the
+# binary (backend/pkg/models/gateway_release_line.go), so an image built with
+# no build args and started with no environment still knows it. Do not add an
+# ENV for the line here; GATEWAY_RELEASE_LINE is an override for tests and
+# local development.
+#
+# CI passes them from `node scripts/gateway-range.mjs`, which derives them from
+# the required compat lanes in deploy/ci/gateway-pins.json — the same source as
+# the release notes, so the two cannot disagree. A plain `docker build` without
+# them still works and leaves both labels empty. Because empty is allowed,
+# ci.yml's image-range job reads the pushed image back and fails if CI's own
+# build came out empty.
+#
+# Kept at the end of the stage so that changing them rebuilds nothing above.
+ARG GATEWAY_RELEASE_LINE=""
 ARG OPENSHELL_SDK_VERSION=""
-ENV GATEWAY_SUPPORTED_MIN=${GATEWAY_SUPPORTED_MIN} \
-    GATEWAY_SUPPORTED_MAX=${GATEWAY_SUPPORTED_MAX}
-LABEL io.github.gkrumbach07.openshell-dashboard.gateway.min="${GATEWAY_SUPPORTED_MIN}" \
-      io.github.gkrumbach07.openshell-dashboard.gateway.max="${GATEWAY_SUPPORTED_MAX}" \
+LABEL io.github.gkrumbach07.openshell-dashboard.gateway.line="${GATEWAY_RELEASE_LINE}" \
       io.github.gkrumbach07.openshell-dashboard.sdk="${OPENSHELL_SDK_VERSION}"
 
 ENTRYPOINT ["/usr/local/bin/openshell-dashboard"]

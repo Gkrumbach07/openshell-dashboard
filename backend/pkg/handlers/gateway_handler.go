@@ -14,29 +14,36 @@ type GatewayHandler struct {
 	svc        services.GatewayServiceInterface
 	auth       auth.MiddlewareInterface
 	authConfig models.AuthConfigResponse
-	// support is the gateway range this build supports. The zero value means
-	// none was configured, and every gateway is then reported as "unknown".
-	support models.GatewaySupport
+	// line is the gateway release line this build is for. The zero value means
+	// it was replaced by one that cannot be read, and every gateway is then
+	// reported as "unknown".
+	line models.GatewayReleaseLine
 }
 
+// NewGatewayHandler returns a handler that judges gateways against the release
+// line compiled into this build (models.BuiltInGatewayReleaseLine), so a
+// caller that configures nothing still gets a verdict.
 func NewGatewayHandler(svc services.GatewayServiceInterface, authMiddleware auth.MiddlewareInterface, authConfig models.AuthConfigResponse) *GatewayHandler {
-	return &GatewayHandler{svc: svc, auth: authMiddleware, authConfig: authConfig}
+	// The constant always parses: its unit test holds it to that. If it ever
+	// did not, the zero value reports "unknown", never a wrong verdict.
+	line, _ := models.ParseGatewayReleaseLine(models.BuiltInGatewayReleaseLine)
+	return &GatewayHandler{svc: svc, auth: authMiddleware, authConfig: authConfig, line: line}
 }
 
-// SetGatewaySupport declares the gateway range this build supports, which
-// GetGateway and GetGatewayCompatibility compare the gateway's reported
-// version against. It is a setter rather than a NewGatewayHandler parameter so
-// that existing callers of the constructor keep compiling. Call it before the
-// handler serves requests.
-func (h *GatewayHandler) SetGatewaySupport(support models.GatewaySupport) {
-	h.support = support
+// SetGatewayReleaseLine replaces the built-in release line that GetGateway and
+// GetGatewayCompatibility compare the gateway's reported version against. It
+// is a setter rather than a NewGatewayHandler parameter so that existing
+// callers of the constructor keep compiling. Call it before the handler
+// serves requests.
+func (h *GatewayHandler) SetGatewayReleaseLine(line models.GatewayReleaseLine) {
+	h.line = line
 }
 
 // GetGateway returns gateway status, version, and compute drivers, plus the
 // dashboard's own verdict on whether that version is one it supports.
 //
-// The verdict only informs. A gateway outside the range is still served in
-// full — the BFF relays and never blocks (ADR 0002) — so the UI can explain
+// The verdict only informs. A gateway on another release line is still served
+// in full — the BFF relays and never blocks (ADR 0002) — so the UI can explain
 // the errors a mismatched gateway produces instead of leaving them unexplained.
 //
 // A gateway that enforces roles answers GetGatewayInfo only for platform
@@ -57,7 +64,7 @@ func (h *GatewayHandler) GetGateway(w http.ResponseWriter, r *http.Request) {
 	// downstream replacing GatewayServiceInterface. Copy first: the service
 	// owns the value it returned.
 	out := *info
-	compatibility := h.support.Check(info.GatewayVersion)
+	compatibility := h.line.Check(info.GatewayVersion)
 	out.Compatibility = &compatibility
 	apiutils.WriteJSON(w, http.StatusOK, out)
 }
@@ -66,12 +73,12 @@ func (h *GatewayHandler) GetGateway(w http.ResponseWriter, r *http.Request) {
 // calls itself healthy, and the dashboard's verdict on the version, to any
 // signed-in caller.
 //
-// A gateway that is too old breaks every user's pages, not only an admin's,
-// so the explanation must not depend on a role. Neither the version nor the
-// health is privileged: the gateway's health check hands both to anyone,
-// without a token. This route therefore reads them from the health check
-// instead of from GetGatewayInfo, and makes no authorization decision of its
-// own.
+// A gateway on another release line breaks every user's pages, not only an
+// admin's, so the explanation must not depend on a role. Neither the version
+// nor the health is privileged: the gateway's health check hands both to
+// anyone, without a token. This route therefore reads them from the health
+// check instead of from GetGatewayInfo, and makes no authorization decision of
+// its own.
 //
 // Like GetGateway it only informs. A gateway that cannot be reached is relayed
 // as the error it is, never dressed up as a verdict or as an unhealthy
@@ -86,7 +93,7 @@ func (h *GatewayHandler) GetGatewayCompatibility(w http.ResponseWriter, r *http.
 	apiutils.WriteJSON(w, http.StatusOK, models.GatewayCompatibilityInfo{
 		GatewayVersion: version,
 		Healthy:        healthy,
-		Compatibility:  h.support.Check(version),
+		Compatibility:  h.line.Check(version),
 	})
 }
 

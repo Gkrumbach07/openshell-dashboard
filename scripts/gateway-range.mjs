@@ -1,24 +1,30 @@
 #!/usr/bin/env node
-// The supported OpenShell gateway range, derived from deploy/ci/gateway-pins.json.
+// The OpenShell gateway release line this build is for, derived from
+// deploy/ci/gateway-pins.json.
 //
-// A dashboard build supports a window of gateway releases, not "latest"
-// (ADR 0005, as amended by ADR 0006). Nobody gets to type that window: it is
-// whatever the REQUIRED compat lanes prove against real gateways on every pull
-// request. The floor is the lowest version among those lanes and the ceiling
-// is the highest.
+// A dashboard build shares the gateway's minor release line (ADR 0009): a
+// build for 0.1 works with every gateway 0.1.x and with no other line. Nobody
+// gets to type the line an artifact declares. It is the major.minor of the
+// newest REQUIRED compat lane, the gateway release this build is tested on.
 //
-// This file is the only place that turns the pins into a range. The container
-// image's build args (ci.yml), the release notes (release.config.cjs) and the
+// This file is the only place that turns the pins into a line. The container
+// image's label (ci.yml), the release notes (release.config.cjs) and the
 // README's Compatibility section (readme-gateway-range.mjs) all call it, so a
 // published artifact cannot claim something CI did not test and two artifacts
 // cannot disagree with each other.
-// What moves the range is therefore a change to the pins file, and nothing else.
+//
+// One thing restates the line and cannot call this file: the BFF, which has
+// the line compiled in so that every image knows it whatever built it
+// (BuiltInGatewayReleaseLine in backend/pkg/models/gateway_release_line.go).
+// --check holds that constant to the pins.
 //
 //   node scripts/gateway-range.mjs                  summary for a person
 //   node scripts/gateway-range.mjs --format json    for scripts
 //   node scripts/gateway-range.mjs --format github  key=value lines for $GITHUB_OUTPUT
-//   node scripts/gateway-range.mjs --check          also fail when the pins' sdk
-//                                                   is not the one in backend/go.mod
+//   node scripts/gateway-range.mjs --check          also fail when the line compiled
+//                                                   into the BFF is not the pins' line,
+//                                                   or the pins' sdk is not the one in
+//                                                   backend/go.mod
 import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,11 +37,15 @@ export const PINS_FILE = 'deploy/ci/gateway-pins.json';
 export const PINS_PATH = join(repoRoot, PINS_FILE);
 export const GO_MOD_PATH = join(repoRoot, 'backend', 'go.mod');
 export const SDK_MODULE = 'github.com/NVIDIA/OpenShell/sdk/go';
+// Where the BFF's built-in line is written, and the name it is written under.
+export const LINE_SOURCE_FILE = 'backend/pkg/models/gateway_release_line.go';
+export const LINE_SOURCE_PATH = join(repoRoot, LINE_SOURCE_FILE);
+export const LINE_CONSTANT = 'BuiltInGatewayReleaseLine';
 
 // A release is exactly X.Y.Z. Upstream also tags pre-releases (v0.1.3-pre.4)
 // and publishes dev builds (0.1.3-dev.84); neither is something a deployment
 // can be told to install, and a dev gateway pulls a moving sandbox image at
-// runtime, so a range with one of those as an end would not mean anything.
+// runtime, so a build is never declared to be tested on one.
 const RELEASE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 function compareReleases(a, b) {
@@ -49,18 +59,24 @@ function compareReleases(a, b) {
   return 0;
 }
 
+/** "0.1.3" -> "0.1": the minor release line a release belongs to. */
+export function lineOf(release) {
+  return release.split('.').slice(0, 2).join('.');
+}
+
 /**
- * Turn the parsed pins file into the range this build may claim.
+ * Turn the parsed pins file into what this build may declare: the release
+ * line, the releases it is tested on and the SDK.
  *
  * Only lanes with `"required": true` count. An advisory lane is allowed to
- * fail, so it proves nothing and must not widen the claim.
+ * fail, so it proves nothing and must not appear in the claim.
  */
-export function deriveGatewayRange(pins) {
+export function deriveGatewayLine(pins) {
   const lanes = Array.isArray(pins?.lanes) ? pins.lanes : [];
   const required = lanes.filter((lane) => lane?.required === true);
   if (required.length === 0) {
     throw new Error(
-      'no lane has "required": true, so no gateway is proven to work and there is no range to declare',
+      'no lane has "required": true, so no gateway is proven to work and there is no release line to declare',
     );
   }
   for (const lane of required) {
@@ -68,7 +84,7 @@ export function deriveGatewayRange(pins) {
       throw new Error(
         `required lane ${JSON.stringify(lane.label ?? lane.version)} has version ` +
           `${JSON.stringify(lane.version)}, which is not a gateway release (X.Y.Z). ` +
-          'A supported range can only be declared over releases; make a dev or ' +
+          'A release line can only be declared from releases; make a dev or ' +
           'pre-release lane advisory ("required": false) instead.',
       );
     }
@@ -77,23 +93,17 @@ export function deriveGatewayRange(pins) {
     throw new Error('"sdk" is missing: it must record the SDK pin from backend/go.mod');
   }
 
-  const versions = [...new Set(required.map((lane) => lane.version))].sort(compareReleases);
-  const floor = versions[0];
-  const ceiling = versions[versions.length - 1];
+  // The releases CI actually runs against, oldest first. The newest is the
+  // release this build is built on, and its major.minor is the line.
+  const tested = [...new Set(required.map((lane) => lane.version))].sort(compareReleases);
   return {
-    floor,
-    ceiling,
-    // node-semver range syntax, so a consumer can hand it straight to
-    // semver.satisfies(gatewayVersion, range).
-    range: `>=${floor} <=${ceiling}`,
+    line: lineOf(tested[tested.length - 1]),
+    tested,
     sdk: pins.sdk,
-    // The releases CI actually runs against: the ends of the range, plus any
-    // other required lane in between.
-    tested: versions,
   };
 }
 
-export function readGatewayRange(pinsPath = PINS_PATH) {
+export function readGatewayLine(pinsPath = PINS_PATH) {
   let pins;
   try {
     pins = JSON.parse(readFileSync(pinsPath, 'utf8'));
@@ -101,7 +111,7 @@ export function readGatewayRange(pinsPath = PINS_PATH) {
     throw new Error(`cannot read ${pinsPath}: ${error.message}`);
   }
   try {
-    return deriveGatewayRange(pins);
+    return deriveGatewayLine(pins);
   } catch (error) {
     throw new Error(`${pinsPath}: ${error.message}`);
   }
@@ -118,9 +128,64 @@ export function sdkInGoMod(goModPath = GO_MOD_PATH) {
   return match[1];
 }
 
-/** "0.1.0 – 0.1.2", or just "0.1.2" when the range is a single release. */
-export function formatRange({ floor, ceiling }) {
-  return floor === ceiling ? floor : `${floor} – ${ceiling}`;
+/** The release line compiled into the BFF, as its Go source states it. */
+export function lineInGoSource(sourcePath = LINE_SOURCE_PATH) {
+  const source = readFileSync(sourcePath, 'utf8');
+  const match = source.match(new RegExp(`^const ${LINE_CONSTANT} = "([^"]*)"$`, 'm'));
+  if (!match) {
+    throw new Error(
+      `${sourcePath} does not declare the built-in gateway release line. This check reads it ` +
+        `from a line of the form  const ${LINE_CONSTANT} = "0.1"  and found none.`,
+    );
+  }
+  return match[1];
+}
+
+/** "0.1.x": the line the way people write it. */
+export function formatLine(line) {
+  return `${line}.x`;
+}
+
+/**
+ * Hold what the build contains to what the pins say. Two things restate the
+ * pins and each has to agree with them; nothing else is tied together.
+ */
+function check(declared, pinsPath) {
+  // The line. The pins say which gateway release the build is tested on; the
+  // Go constant is what a running BFF compares a gateway with. If they
+  // differ, the image's label and the notice in the UI would name different
+  // lines.
+  const built = lineInGoSource();
+  if (built !== declared.line) {
+    const newest = declared.tested[declared.tested.length - 1];
+    throw new Error(
+      `${LINE_SOURCE_FILE} says ${LINE_CONSTANT} = ${JSON.stringify(built)}, but the newest required ` +
+        `lane in ${pinsPath} is gateway ${newest}, which is release line ${declared.line}. ` +
+        'The line compiled into the BFF must be the line of the newest required lane.\n' +
+        `  If the gateway started a new minor release line and this build is moving to it, set ` +
+        `${LINE_CONSTANT} = ${JSON.stringify(declared.line)} in the same pull request that moves the lane, ` +
+        'and run `node scripts/readme-gateway-range.mjs --write`. Moving to a new line is a minor ' +
+        'release of the dashboard (ADR 0009).\n' +
+        '  If the lane moved by mistake, move it back: a patch release of the gateway never changes the line.',
+    );
+  }
+
+  // The SDK. The `sdk` field of the pins file equals the SDK version in
+  // backend/go.mod. The field is a record, written by hand or by the sweep's
+  // SDK pull request; go.mod is what the BFF is compiled against. If they
+  // differ, every artifact would declare an SDK the build does not contain.
+  //
+  // The gateway lanes are a separate matter: the SDK can move while the lanes
+  // stay, and a lane can move while the SDK stays (ADR 0006), so the message
+  // must not send anyone to change both.
+  const sdk = sdkInGoMod();
+  if (sdk !== declared.sdk) {
+    throw new Error(
+      `${pinsPath} says "sdk": ${JSON.stringify(declared.sdk)}, but backend/go.mod builds against ${sdk}. ` +
+        'The sdk field must equal the SDK version in backend/go.mod. Bring the stale one of the ' +
+        'two in line; the gateway lanes are not involved and do not need to change.',
+    );
+  }
 }
 
 function main() {
@@ -133,42 +198,24 @@ function main() {
   });
 
   const pinsPath = values.pins ?? PINS_PATH;
-  const range = readGatewayRange(pinsPath);
+  const declared = readGatewayLine(pinsPath);
 
   if (values.check) {
-    // The one invariant between the two files: the `sdk` field of the pins
-    // file equals the SDK version in backend/go.mod. The field is a record,
-    // written by hand or by the sweep's SDK pull request; go.mod is what the
-    // BFF is compiled against. If they differ, every artifact would declare an
-    // SDK the build does not contain.
-    //
-    // That is all that has to agree. The gateway lanes are a separate matter:
-    // the SDK can move while the lanes stay, and a lane can move while the SDK
-    // stays (ADR 0006), so the message must not send anyone to change both.
-    const built = sdkInGoMod();
-    if (built !== range.sdk) {
-      throw new Error(
-        `${pinsPath} says "sdk": ${JSON.stringify(range.sdk)}, but backend/go.mod builds against ${built}. ` +
-          'The sdk field must equal the SDK version in backend/go.mod. Bring the stale one of the ' +
-          'two in line; the gateway lanes are not involved and do not need to change.',
-      );
-    }
+    check(declared, pinsPath);
   }
 
   switch (values.format) {
     case 'json':
-      process.stdout.write(`${JSON.stringify(range, null, 2)}\n`);
+      process.stdout.write(`${JSON.stringify(declared, null, 2)}\n`);
       break;
     case 'github':
-      process.stdout.write(
-        `floor=${range.floor}\nceiling=${range.ceiling}\nrange=${range.range}\nsdk=${range.sdk}\n`,
-      );
+      process.stdout.write(`line=${declared.line}\ntested=${declared.tested.join(',')}\nsdk=${declared.sdk}\n`);
       break;
     case 'text':
       process.stdout.write(
-        `Supported OpenShell gateways: ${formatRange(range)}  (${range.range})\n` +
-          `Required compat lanes:        ${range.tested.join(', ')}\n` +
-          `OpenShell Go SDK:             ${range.sdk}\n`,
+        `Supported OpenShell gateways: ${formatLine(declared.line)}  (release line ${declared.line})\n` +
+          `Required compat lanes:        ${declared.tested.join(', ')}\n` +
+          `OpenShell Go SDK:             ${declared.sdk}\n`,
       );
       break;
     default:

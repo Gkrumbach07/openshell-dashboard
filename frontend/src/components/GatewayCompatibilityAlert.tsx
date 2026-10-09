@@ -1,9 +1,4 @@
-import { useState } from 'react';
-import {
-  Alert,
-  AlertActionCloseButton,
-  AlertGroup,
-} from '@patternfly/react-core';
+import { Alert, AlertGroup } from '@patternfly/react-core';
 import type { AlertProps } from '@patternfly/react-core';
 
 import { useGatewayCompatibility } from '../api/gateway';
@@ -27,10 +22,11 @@ type GatewayCompatibilityAlertProps = {
   wrapper?: (alert: React.ReactElement) => React.ReactElement;
 };
 
-// Says so when the dashboard is pointed at a gateway outside the range of
-// gateway releases it supports. Without it, a gateway that is too old shows up
-// only as errors that do not name the cause — "workspace '\n\adefault' not
-// found" on every page.
+// Says so when the dashboard is pointed at a gateway on another release line
+// than the one it is built for (a line is every gateway release that shares a
+// major.minor, such as 0.1.x). Without it, a mismatched gateway shows up only
+// as errors that do not name the cause — "workspace '\n\adefault' not found"
+// on every page.
 //
 // The verdict comes from the BFF (GET /gateway/compatibility), which every
 // signed-in user can read; this only presents it. Nothing is shown while the
@@ -51,25 +47,16 @@ const GatewayCompatibilityAlert: React.FC<GatewayCompatibilityAlertProps> = ({
 }) => {
   const { t } = useI18n('common');
   const gateway = useGatewayCompatibility();
-  // The gateway version the "untested" notice was dismissed for. Keyed by
-  // version, and kept only in memory, so the notice comes back on reload and
-  // whenever the gateway changes to another version nobody has tested.
-  const [dismissedVersion, setDismissedVersion] = useState<string>();
 
   const version = gateway.data?.gatewayVersion ?? '';
   const compatibility = gateway.data?.compatibility;
   const status = compatibility?.status;
+  const line = compatibility?.supportedLine ?? '';
 
-  const min = compatibility?.supportedMin ?? '';
-  const max = compatibility?.supportedMax ?? '';
-  const supported =
-    min === max ? min : t('gatewayCompatibility.versionRange', { min, max });
-
-  let alert: React.ReactElement | null = null;
-  if (status === 'unsupported') {
-    // No close button: a warning stays until what caused it is resolved, and
-    // this one explains every other error on the page.
-    alert = (
+  // No close button: a warning stays until what caused it is resolved, and
+  // this one explains every other error on the page.
+  const alert =
+    status === 'unsupported' ? (
       <Alert
         variant="warning"
         isInline
@@ -79,37 +66,14 @@ const GatewayCompatibilityAlert: React.FC<GatewayCompatibilityAlertProps> = ({
         data-testid="gateway-compatibility-alert"
         data-status={status}
       >
-        {t('gatewayCompatibility.unsupported.body', { version, supported })}
+        {t('gatewayCompatibility.unsupported.body', { version, line })}
       </Alert>
-    );
-  } else if (status === 'untested' && dismissedVersion !== version) {
-    alert = (
-      <Alert
-        variant="info"
-        isInline
-        className={className}
-        component={component}
-        title={t('gatewayCompatibility.untested.title')}
-        actionClose={
-          <AlertActionCloseButton
-            aria-label={t('gatewayCompatibility.untested.dismiss')}
-            onClose={() => setDismissedVersion(version)}
-            data-testid="gateway-compatibility-alert-dismiss"
-          />
-        }
-        data-testid="gateway-compatibility-alert"
-        data-status={status}
-      >
-        {t('gatewayCompatibility.untested.body', { version, supported })}
-      </Alert>
-    );
-  }
+    ) : null;
 
   // PatternFly's way to have an alert that appears later announced: an alert
   // group that is a polite live region and is in the DOM from the start.
   // Animations are switched off rather than inherited from the host: the
-  // group's slide-in and slide-out are made for a stack of toasts, and with
-  // them on the close button waits for a transition before it dismisses.
+  // group's slide-in and slide-out are made for a stack of toasts.
   return (
     <AlertGroup
       isLiveRegion

@@ -773,23 +773,21 @@ export type ComputeDriver = {
   driverVersion?: string;
 };
 
-// Where the gateway's version falls relative to the range of gateway releases
-// this dashboard supports:
-//   unsupported — older than the oldest supported release; calls may fail
-//   supported   — inside the range
-//   untested    — newer than the newest release it was tested against
-//   unknown     — no range configured, the version could not be read, or the
-//                 gateway does not know its own version (it reports 0.0.0)
+// Whether the gateway is on the release line this dashboard is built for. A
+// line is every gateway release that shares a major.minor, such as 0.1:
+//   supported   — on the line: any patch, pre-release or rebuild of it
+//   unsupported — on another line, older or newer; calls may fail
+//   unknown     — the version could not be read, the gateway does not know
+//                 its own version (it reports 0.0.0), or the BFF has no line
 export type GatewayCompatibilityStatus =
-  'unsupported' | 'supported' | 'untested' | 'unknown';
+  'unsupported' | 'supported' | 'unknown';
 
 // The dashboard's own verdict on the gateway — computed by the BFF, not
-// reported by the gateway. supportedMin/supportedMax are absent when the BFF
-// was not given a range.
+// reported by the gateway. supportedLine is the line the dashboard is built
+// for, written major.minor ("0.1"); it is absent when the BFF has none.
 export type GatewayCompatibility = {
   status: GatewayCompatibilityStatus;
-  supportedMin?: string;
-  supportedMax?: string;
+  supportedLine?: string;
 };
 
 // openshell.v1.ExtensionKind without its prefix. UNSPECIFIED is a kind the

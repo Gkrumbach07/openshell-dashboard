@@ -5,27 +5,23 @@
 //   generateNotes  appends a "Supported OpenShell gateways" section to the
 //                  notes, which is what the GitHub release is published with
 //
-// It takes the range from scripts/gateway-range.mjs at release time, so the
-// claim is the one the required compat lanes proved for the commit being
-// released. The step does not run unless a release is actually being cut, and
-// it runs before semantic-release creates the tag: if the pins cannot be turned
-// into a range, the release stops before anything is published.
+// It takes the gateway release line from scripts/gateway-range.mjs at release
+// time, so the claim is the one the required compat lanes proved for the
+// commit being released. The step does not run unless a release is actually
+// being cut, and it runs before semantic-release creates the tag: if the pins
+// cannot be turned into a line, the release stops before anything is
+// published.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import {
-  PINS_FILE,
-  deriveGatewayRange,
-  formatRange,
-  readGatewayRange,
-} from '../gateway-range.mjs';
+import { PINS_FILE, deriveGatewayLine, formatLine, readGatewayLine } from '../gateway-range.mjs';
 
 /**
- * The range a previous release declared, or null when it cannot be known —
+ * What a previous release declared, or null when it cannot be known —
  * no previous release, or a release from before the lanes were releases.
  */
-function rangeAtTag(tag, cwd) {
+function declaredAtTag(tag, cwd) {
   if (!tag) {
     return null;
   }
@@ -35,7 +31,7 @@ function rangeAtTag(tag, cwd) {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     });
-    return deriveGatewayRange(JSON.parse(pins));
+    return deriveGatewayLine(JSON.parse(pins));
   } catch {
     return null;
   }
@@ -52,29 +48,38 @@ function repositoryUrl(pkgPath) {
   }
 }
 
-export function supportedGatewaysNotes({ range, previous, previousTag, readmeUrl }) {
+/** "0.1.0", "0.1.0 and 0.1.3", "0.1.0, 0.1.2 and 0.1.3". */
+function listReleases(releases) {
+  if (releases.length <= 1) {
+    return releases.join('');
+  }
+  return `${releases.slice(0, -1).join(', ')} and ${releases[releases.length - 1]}`;
+}
+
+export function supportedGatewaysNotes({ declared, previous, previousTag, readmeUrl }) {
   const lines = [
     '### Supported OpenShell gateways',
     '',
-    `**${formatRange(range)}**, built against OpenShell Go SDK \`${range.sdk}\`.`,
+    `**${formatLine(declared.line)}**, tested on ${listReleases(declared.tested)}, ` +
+      `built against OpenShell Go SDK \`${declared.sdk}\`.`,
     '',
   ];
 
-  // The version number does not describe the gateway a deployment needs:
-  // moving the range can break a running installation in a patch release
-  // (ADR 0005). So a change is called out rather than left to a diff of two
-  // release pages.
-  if (previous && (previous.floor !== range.floor || previous.ceiling !== range.ceiling)) {
+  // Moving to another line breaks a running installation that stays on the old
+  // one, so a change is called out rather than left to a diff of two release
+  // pages.
+  if (previous && previous.line !== declared.line) {
     lines.push(
-      `> **The supported range changed in this release.** ${previousTag} supported ${formatRange(previous)}.`,
+      `> **The supported gateway release line changed in this release.** ${previousTag} supported ${formatLine(previous.line)}.`,
       '',
     );
   }
 
   const compatibility = readmeUrl ? `[Compatibility](${readmeUrl})` : 'Compatibility in the README';
   lines.push(
-    'These are the oldest and newest gateway releases this commit passed the ' +
-      'compatibility suite against. A gateway outside the range is not supported ' +
+    `This release is for the gateway ${formatLine(declared.line)} release line: any patch release of ` +
+      'it, and any pre-release or rebuild of one. The releases named above are the ones this commit ' +
+      'passed the compatibility suite against. A gateway on another release line is not supported ' +
       `by this release; see ${compatibility} for which dashboard to run instead.`,
   );
   return lines.join('\n');
@@ -84,11 +89,11 @@ export async function generateNotes(pluginConfig, context) {
   const { cwd, lastRelease, nextRelease } = context;
   const repo = repositoryUrl(join(cwd, pluginConfig.pkgRoot ?? '.', 'package.json'));
   return supportedGatewaysNotes({
-    range: readGatewayRange(),
-    previous: rangeAtTag(lastRelease?.gitTag, cwd),
+    declared: readGatewayLine(),
+    previous: declaredAtTag(lastRelease?.gitTag, cwd),
     previousTag: lastRelease?.gitTag,
     // Link the README as of this release: its Compatibility section states the
-    // same range, and stays right for this version after main has moved on.
+    // same line, and stays right for this version after main has moved on.
     readmeUrl: repo && nextRelease?.gitTag ? `${repo}/blob/${nextRelease.gitTag}/README.md#compatibility` : null,
   });
 }

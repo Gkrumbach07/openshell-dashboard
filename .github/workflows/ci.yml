@@ -110,7 +110,7 @@ jobs:
           path: frontend/cypress/screenshots
           if-no-files-found: ignore
 
-  # Gateway compatibility (ADR 0005 as amended by ADR 0006).
+  # Gateway compatibility (ADR 0005 as amended by ADR 0006 and ADR 0009).
   #
   # The version chain is gateway -> SDK -> BFF -> UI, and each link is proven
   # separately. The two jobs below prove the WIRE link (gateway<->SDK), which
@@ -118,13 +118,14 @@ jobs:
   # work with the newest SDK, in either direction. The SOURCE link (SDK<->BFF)
   # is check-backend's job — the compiler and the unit tests.
   #
-  # compat-pins reads deploy/ci/gateway-pins.json, the one place the supported
+  # compat-pins reads deploy/ci/gateway-pins.json, the one place the tested
   # gateways are written down, and fails fast when that file is malformed: no
   # required lane, a lane image without @sha256:, a version that is not x.y.z,
   # a dev lane, or an `sdk` field that disagrees with backend/go.mod.
   #
-  # The supported range is DERIVED, never restated: the floor is the lowest
-  # and the ceiling the highest `version` among the lanes with required=true.
+  # The gateway release line this build is for is the major.minor of the
+  # newest required lane. It is compiled into the BFF, and release-tooling
+  # below fails when that constant and the pins disagree.
   compat-pins:
     runs-on: ubuntu-latest
     permissions:
@@ -132,8 +133,6 @@ jobs:
     outputs:
       lanes: ${{ steps.read.outputs.lanes }}
       sandbox_image: ${{ steps.read.outputs.sandbox_image }}
-      supported_min: ${{ steps.read.outputs.supported_min }}
-      supported_max: ${{ steps.read.outputs.supported_max }}
     steps:
       - uses: actions/checkout@v4
       # The validator below and the scheduled sweep share this code. A second
@@ -147,16 +146,11 @@ jobs:
           set -euo pipefail
           echo "lanes=$(jq -c '.lanes' deploy/ci/gateway-pins.json)" >> "$GITHUB_OUTPUT"
           echo "sandbox_image=$(jq -er '.sandbox_image' deploy/ci/gateway-pins.json)" >> "$GITHUB_OUTPUT"
-          # The supported range, derived from the required lanes. The compat
-          # lanes start the BFF with it, the way a released image carries it.
-          python3 deploy/ci/sweep/sweep.py range deploy/ci/gateway-pins.json \
-            | python3 -c 'import json, sys; r = json.load(sys.stdin); print("supported_min=" + r["floor"]); print("supported_max=" + r["ceiling"])' \
-            >> "$GITHUB_OUTPUT"
 
   # One job per lane in deploy/ci/gateway-pins.json.
   #
-  # A PR tests the PINS — the oldest and the newest released gateway this
-  # dashboard claims to work with — and nothing else. Looking at other
+  # A PR tests the PINS — an old and the newest release of the gateway line
+  # this dashboard is for — and nothing else. Looking at other
   # releases, at upstream HEAD and at newer SDKs is the scheduled sweep's job
   # (compat-sweep.yml), not something every PR should pay for.
   #
@@ -206,14 +200,13 @@ jobs:
       OPENSHELL_GATEWAY_IMAGE: ${{ matrix.gateway_image }}
       OPENSHELL_SUPERVISOR_IMAGE: ${{ matrix.supervisor_image }}
       OPENSHELL_CONFIG_SCHEMA: ${{ matrix.config_schema }}
-      # The BFF under test gets the supported range, exactly as a released
-      # image does, and a required lane then has to be judged "supported":
-      # every required lane is inside the range by construction, so any other
-      # verdict means the version comparison, the range derivation or the
-      # gateway's version report broke. An advisory lane may sit outside the
-      # range, so nothing is asserted for it.
-      GATEWAY_SUPPORTED_MIN: ${{ needs.compat-pins.outputs.supported_min }}
-      GATEWAY_SUPPORTED_MAX: ${{ needs.compat-pins.outputs.supported_max }}
+      # The BFF under test is told nothing about gateways: like a released
+      # image, it judges them against the release line compiled into it. A
+      # required lane then has to be judged "supported". Every required lane
+      # is a release of that line, so any other verdict means the line in the
+      # BFF is not the pins' line, the comparison broke, or the gateway's
+      # version report changed. An advisory lane may be on another line, so
+      # nothing is asserted for it.
       COMPAT_EXPECT_COMPATIBILITY: ${{ matrix.required && 'supported' || '' }}
     steps:
       - uses: actions/checkout@v4
@@ -288,14 +281,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      # The image states which gateways it supports, as two env vars the BFF
-      # can read and as labels. The values come from the same script that
-      # writes the release notes, which derives them
-      # from the required compat lanes — nothing here is typed by hand, and a
-      # pins file that yields no range fails the build rather than shipping an
-      # image that claims nothing.
-      - name: Derive the supported gateway range
-        id: range
+      # The image states which gateway release line it is for, and the SDK it
+      # was built against, as labels. The values come from the same script
+      # that writes the release notes, which derives them from the required
+      # compat lanes — nothing here is typed by hand, and a pins file that
+      # yields no line fails the build rather than shipping an image that
+      # claims nothing. The BFF does not read the labels: its line is compiled
+      # in, and release-tooling holds that constant to the same pins.
+      - name: Derive the gateway release line
+        id: gateway
         run: |
           # pipefail, or a failing derivation would hide behind tee's exit 0.
           set -euo pipefail
@@ -319,9 +313,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            GATEWAY_SUPPORTED_MIN=${{ steps.range.outputs.floor }}
-            GATEWAY_SUPPORTED_MAX=${{ steps.range.outputs.ceiling }}
-            OPENSHELL_SDK_VERSION=${{ steps.range.outputs.sdk }}
+            GATEWAY_RELEASE_LINE=${{ steps.gateway.outputs.line }}
+            OPENSHELL_SDK_VERSION=${{ steps.gateway.outputs.sdk }}
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,scope=${{ matrix.platform }},mode=max
           outputs: ${{ env.PUBLISH_IMAGE == 'true' && 'type=image,name=quay.io/gkrumbach07/openshell-dashboard,push-by-digest=true,name-canonical=true,push=true' || '' }}
@@ -383,13 +376,14 @@ jobs:
             $(printf 'quay.io/gkrumbach07/openshell-dashboard@sha256:%s ' *)
 
   # Reads the image that push-manifest just pushed back from the registry and
-  # checks that it declares the supported gateway range on both platforms.
+  # checks that its labels declare the gateway release line and the SDK on both
+  # platforms.
   #
-  # Nothing else would notice if it did not. The Dockerfile's build args default
-  # to the empty string so that a plain `docker build` works, which also means a
-  # misspelt arg name in the build job above is not an error: the image is
-  # published claiming nothing. This inspects the image config; it does not pull
-  # or run the image.
+  # Nothing else would notice if they did not. The Dockerfile's build args
+  # default to the empty string so that a plain `docker build` works, which also
+  # means a misspelt arg name in the build job above is not an error: the image
+  # is published with empty labels. This inspects the image config; it does not
+  # pull or run the image.
   image-range:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -400,7 +394,7 @@ jobs:
         with:
           node-version: "22"
       - uses: docker/setup-buildx-action@v3
-      - name: The pushed image declares the supported gateway range
+      - name: The pushed image declares its gateway release line
         run: node scripts/check-image-range.mjs "quay.io/gkrumbach07/openshell-dashboard:sha-${GITHUB_SHA::7}"
 
   # `latest` only moves to a commit that passed everything, and only forward.
@@ -489,12 +483,13 @@ jobs:
 
   # The release pipeline (publish.yml, release.config.cjs, scripts/release/)
   # runs for real only on main, after a merge. This job is where a mistake in it
-  # is caught beforehand, and it is also where the supported gateway range is
-  # kept honest:
+  # is caught beforehand, and it is also where the supported gateway release
+  # line is kept honest:
   #
-  #   - the range can be derived from the pins, and the SDK the pins name is the
-  #     one backend/go.mod builds against
-  #   - the README's Compatibility section states that range (it is generated;
+  #   - the line can be derived from the pins, the line compiled into the BFF
+  #     (backend/pkg/models/gateway_release_line.go) is that line, and the SDK
+  #     the pins name is the one backend/go.mod builds against
+  #   - the README's Compatibility section states that line (it is generated;
   #     this fails when someone moved the pins and did not regenerate it)
   #   - the scripts that write release notes, detect a
   #     release, decide whether `latest` may move and retag the image do what
@@ -509,9 +504,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Supported gateway range
+      - name: The built-in gateway release line and the SDK pin match the pins
         run: node scripts/gateway-range.mjs --check
-      - name: README states the supported gateway range
+      - name: README states the supported gateway release line
         run: node scripts/readme-gateway-range.mjs --check
       - name: Release script tests
         run: node --test "scripts/**/*.test.mjs"

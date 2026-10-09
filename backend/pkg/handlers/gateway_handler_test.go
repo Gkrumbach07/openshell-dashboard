@@ -144,47 +144,69 @@ func TestGetWhoAmIIdentity(t *testing.T) {
 	}
 }
 
+// gatewayLine is a release line for a test to hand a handler, so that what the
+// test expects does not move when the line compiled into the build does. An
+// empty string is the zero value: a line the BFF could not read.
+func gatewayLine(t *testing.T, raw string) models.GatewayReleaseLine {
+	t.Helper()
+	if raw == "" {
+		return models.GatewayReleaseLine{}
+	}
+	line, err := models.ParseGatewayReleaseLine(raw)
+	if err != nil {
+		t.Fatalf("ParseGatewayReleaseLine: %v", err)
+	}
+	return line
+}
+
 // GET /gateway carries the dashboard's verdict on the gateway's version. The
-// three gateways here are the ones that matter today: the release the 0.x
-// line serves, the newest release this line is tested against, and upstream
-// HEAD. Each body is logged, so `go test -v -run TestGetGatewayCompatibility`
-// shows exactly what the frontend receives.
+// gateways here are the ones that matter today: the release the 0.2.x
+// dashboard serves, a release of this build's line, upstream HEAD on that
+// line, and the first release of the next line. Each body is logged, so
+// `go test -v -run TestGetGatewayCompatibility` shows exactly what the
+// frontend receives.
 func TestGetGatewayCompatibility(t *testing.T) {
 	tests := []struct { //nolint:govet // fieldalignment: test readability
-		name       string
-		minVersion string
-		maxVersion string
-		reported   string
-		want       map[string]any
+		name     string
+		line     string
+		reported string
+		want     map[string]any
 	}{
 		{
-			name:       "gateway older than the range",
-			minVersion: "0.1.0", maxVersion: "0.1.2",
+			name:     "gateway on an older line",
+			line:     "0.1",
 			reported: "0.0.116",
-			want:     map[string]any{"status": "unsupported", "supportedMin": "0.1.0", "supportedMax": "0.1.2"},
+			want:     map[string]any{"status": "unsupported", "supportedLine": "0.1"},
 		},
 		{
-			name:       "gateway inside the range",
-			minVersion: "0.1.0", maxVersion: "0.1.2",
+			name:     "gateway on the line",
+			line:     "0.1",
 			reported: "0.1.2",
-			want:     map[string]any{"status": "supported", "supportedMin": "0.1.0", "supportedMax": "0.1.2"},
+			want:     map[string]any{"status": "supported", "supportedLine": "0.1"},
 		},
 		{
-			name:       "gateway newer than the range",
-			minVersion: "0.1.0", maxVersion: "0.1.2",
+			name:     "dev build of the line",
+			line:     "0.1",
 			reported: "0.1.3-dev.84+ge7fdd6bee",
-			want:     map[string]any{"status": "untested", "supportedMin": "0.1.0", "supportedMax": "0.1.2"},
+			want:     map[string]any{"status": "supported", "supportedLine": "0.1"},
 		},
 		{
-			name:       "gateway version unreadable",
-			minVersion: "0.1.0", maxVersion: "0.1.2",
+			name:     "gateway on a newer line",
+			line:     "0.1",
+			reported: "0.2.0",
+			want:     map[string]any{"status": "unsupported", "supportedLine": "0.1"},
+		},
+		{
+			name:     "gateway version unreadable",
+			line:     "0.1",
 			reported: "",
-			want:     map[string]any{"status": "unknown", "supportedMin": "0.1.0", "supportedMax": "0.1.2"},
+			want:     map[string]any{"status": "unknown", "supportedLine": "0.1"},
 		},
 		{
-			// No range configured: the BFF does not guess one, even for a
-			// gateway it would otherwise call unsupported.
-			name:     "no range configured",
+			// The line was overridden with something that is not one: the
+			// BFF does not fall back to another, even for a gateway it would
+			// otherwise call unsupported.
+			name:     "a line that could not be read",
 			reported: "0.0.116",
 			want:     map[string]any{"status": "unknown"},
 		},
@@ -200,21 +222,17 @@ func TestGetGatewayCompatibility(t *testing.T) {
 					ComputeDrivers: []openshell.ComputeDriverInfo{{Name: "podman"}},
 				}, nil
 			}
-			support, err := models.ParseGatewaySupport(tc.minVersion, tc.maxVersion)
-			if err != nil {
-				t.Fatalf("ParseGatewaySupport: %v", err)
-			}
 			handler := NewGatewayHandler(services.NewGatewayService(sdk), auth.New(auth.Config{}), models.AuthConfigResponse{})
-			handler.SetGatewaySupport(support)
+			handler.SetGatewayReleaseLine(gatewayLine(t, tc.line))
 
 			w := httptest.NewRecorder()
 			handler.GetGateway(w, httptest.NewRequest(http.MethodGet, "/gateway", nil))
 
-			// Informational only: an out-of-range gateway is still a 200.
+			// Informational only: a gateway on another line is still a 200.
 			if w.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
 			}
-			t.Logf("gateway %q, range %q -> %s", tc.reported, support.String(), w.Body.String())
+			t.Logf("gateway %q, line %q -> %s", tc.reported, tc.line, w.Body.String())
 
 			var body map[string]any
 			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -248,11 +266,7 @@ func TestGetGatewayUnavailable(t *testing.T) {
 		return nil, &openshell.StatusError{Code: openshell.ErrorUnavailable, Message: "down"}
 	}
 	handler := NewGatewayHandler(services.NewGatewayService(sdk), auth.New(auth.Config{}), models.AuthConfigResponse{})
-	support, err := models.ParseGatewaySupport("0.1.0", "0.1.2")
-	if err != nil {
-		t.Fatalf("ParseGatewaySupport: %v", err)
-	}
-	handler.SetGatewaySupport(support)
+	handler.SetGatewayReleaseLine(gatewayLine(t, "0.1"))
 	req := httptest.NewRequest(http.MethodGet, "/gateway", nil)
 	w := httptest.NewRecorder()
 	handler.GetGateway(w, req)
@@ -261,8 +275,30 @@ func TestGetGatewayUnavailable(t *testing.T) {
 	}
 }
 
+// A handler nobody configured judges gateways against the line compiled into
+// the build. This is what an image built with no build args and started with
+// no environment serves, and it has to be a verdict, not "unknown".
+func TestGetGatewayCompatibilityUsesTheBuiltInLine(t *testing.T) {
+	builtIn := models.BuiltInGatewayReleaseLine
+	sdk := &mockSDK{}
+	sdk.health.checkFn = func(_ context.Context) (*openshell.HealthResult, error) {
+		return &openshell.HealthResult{Healthy: true, Version: builtIn + ".0"}, nil
+	}
+	handler := NewGatewayHandler(services.NewGatewayService(sdk), auth.New(auth.Config{}), models.AuthConfigResponse{})
+
+	w := httptest.NewRecorder()
+	handler.GetGatewayCompatibility(w, httptest.NewRequest(http.MethodGet, "/gateway/compatibility", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	want := `{"gatewayVersion":"` + builtIn + `.0","healthy":true,"compatibility":{"status":"supported","supportedLine":"` + builtIn + `"}}`
+	if got := strings.TrimSpace(w.Body.String()); got != want {
+		t.Errorf("body = %s, want %s", got, want)
+	}
+}
+
 // The gateway refuses GetGatewayInfo to anyone who is not a platform admin
-// ("role 'openshell-admin' required"), yet a gateway that is too old breaks
+// ("role 'openshell-admin' required"), yet a gateway on another line breaks
 // that user's pages just the same. The verdict therefore has a route of its
 // own that reads the version from the health check, which needs no role.
 func TestGetGatewayCompatibilityNeedsNoAdminRole(t *testing.T) {
@@ -276,11 +312,7 @@ func TestGetGatewayCompatibilityNeedsNoAdminRole(t *testing.T) {
 		return &openshell.HealthResult{Healthy: true, Version: "0.0.116"}, nil
 	}
 	handler := NewGatewayHandler(services.NewGatewayService(sdk), auth.New(auth.Config{}), models.AuthConfigResponse{})
-	support, err := models.ParseGatewaySupport("0.1.0", "0.1.2")
-	if err != nil {
-		t.Fatalf("ParseGatewaySupport: %v", err)
-	}
-	handler.SetGatewaySupport(support)
+	handler.SetGatewayReleaseLine(gatewayLine(t, "0.1"))
 
 	// The admin-only route stays refused: the BFF relays the gateway's answer
 	// and does not paper over it.
@@ -297,7 +329,7 @@ func TestGetGatewayCompatibilityNeedsNoAdminRole(t *testing.T) {
 		t.Fatalf("GET /gateway/compatibility = %d, want 200; body: %s", w.Code, w.Body.String())
 	}
 	t.Logf("GetGatewayInfo refused -> %s", w.Body.String())
-	const want = `{"gatewayVersion":"0.0.116","healthy":true,"compatibility":{"status":"unsupported","supportedMin":"0.1.0","supportedMax":"0.1.2"}}`
+	const want = `{"gatewayVersion":"0.0.116","healthy":true,"compatibility":{"status":"unsupported","supportedLine":"0.1"}}`
 	if got := strings.TrimSpace(w.Body.String()); got != want {
 		t.Errorf("body = %s, want %s", got, want)
 	}
@@ -313,52 +345,63 @@ func TestGetGatewayCompatibilityNeedsNoAdminRole(t *testing.T) {
 // what the notice in the UI receives.
 func TestGetGatewayCompatibilityRoute(t *testing.T) {
 	tests := []struct { //nolint:govet // fieldalignment: test readability
-		name       string
-		minVersion string
-		maxVersion string
-		reported   string
-		want       string
+		name     string
+		line     string
+		reported string
+		want     string
 	}{
 		{
-			name:       "gateway older than the range",
-			minVersion: "0.1.0", maxVersion: "0.1.2",
+			name:     "gateway on an older line",
+			line:     "0.1",
 			reported: "0.0.116",
-			want:     `{"gatewayVersion":"0.0.116","healthy":true,"compatibility":{"status":"unsupported","supportedMin":"0.1.0","supportedMax":"0.1.2"}}`,
+			want:     `{"gatewayVersion":"0.0.116","healthy":true,"compatibility":{"status":"unsupported","supportedLine":"0.1"}}`,
 		},
 		{
-			name:       "gateway inside the range",
-			minVersion: "0.1.0", maxVersion: "0.1.2",
+			name:     "gateway on the line",
+			line:     "0.1",
 			reported: "0.1.2",
-			want:     `{"gatewayVersion":"0.1.2","healthy":true,"compatibility":{"status":"supported","supportedMin":"0.1.0","supportedMax":"0.1.2"}}`,
+			want:     `{"gatewayVersion":"0.1.2","healthy":true,"compatibility":{"status":"supported","supportedLine":"0.1"}}`,
 		},
 		{
-			name:       "gateway newer than the range",
-			minVersion: "0.1.0", maxVersion: "0.1.2",
+			name:     "dev build of the line",
+			line:     "0.1",
 			reported: "0.1.3-dev.84+ge7fdd6bee",
-			want:     `{"gatewayVersion":"0.1.3-dev.84+ge7fdd6bee","healthy":true,"compatibility":{"status":"untested","supportedMin":"0.1.0","supportedMax":"0.1.2"}}`,
+			want:     `{"gatewayVersion":"0.1.3-dev.84+ge7fdd6bee","healthy":true,"compatibility":{"status":"supported","supportedLine":"0.1"}}`,
 		},
 		{
 			// The version is passed through as reported; only the verdict
 			// reads it as the release it rebuilds.
-			name:       "downstream rebuild of the minimum",
-			minVersion: "0.1.2", maxVersion: "0.1.2",
+			name:     "downstream rebuild of a release of the line",
+			line:     "0.1",
 			reported: "0.1.2-rhaiv.5",
-			want:     `{"gatewayVersion":"0.1.2-rhaiv.5","healthy":true,"compatibility":{"status":"supported","supportedMin":"0.1.2","supportedMax":"0.1.2"}}`,
+			want:     `{"gatewayVersion":"0.1.2-rhaiv.5","healthy":true,"compatibility":{"status":"supported","supportedLine":"0.1"}}`,
 		},
 		{
-			name:       "gateway that does not know its own version",
-			minVersion: "0.1.0", maxVersion: "0.1.2",
+			name:     "gateway on a newer line",
+			line:     "0.1",
+			reported: "0.2.0",
+			want:     `{"gatewayVersion":"0.2.0","healthy":true,"compatibility":{"status":"unsupported","supportedLine":"0.1"}}`,
+		},
+		{
+			name:     "pre-release of a newer line",
+			line:     "0.1",
+			reported: "0.2.0-pre.1",
+			want:     `{"gatewayVersion":"0.2.0-pre.1","healthy":true,"compatibility":{"status":"unsupported","supportedLine":"0.1"}}`,
+		},
+		{
+			name:     "gateway that does not know its own version",
+			line:     "0.1",
 			reported: "0.0.0",
-			want:     `{"gatewayVersion":"0.0.0","healthy":true,"compatibility":{"status":"unknown","supportedMin":"0.1.0","supportedMax":"0.1.2"}}`,
+			want:     `{"gatewayVersion":"0.0.0","healthy":true,"compatibility":{"status":"unknown","supportedLine":"0.1"}}`,
 		},
 		{
-			name:       "gateway version empty",
-			minVersion: "0.1.0", maxVersion: "0.1.2",
+			name:     "gateway version empty",
+			line:     "0.1",
 			reported: "",
-			want:     `{"gatewayVersion":"","healthy":true,"compatibility":{"status":"unknown","supportedMin":"0.1.0","supportedMax":"0.1.2"}}`,
+			want:     `{"gatewayVersion":"","healthy":true,"compatibility":{"status":"unknown","supportedLine":"0.1"}}`,
 		},
 		{
-			name:     "no range configured",
+			name:     "a line that could not be read",
 			reported: "0.0.116",
 			want:     `{"gatewayVersion":"0.0.116","healthy":true,"compatibility":{"status":"unknown"}}`,
 		},
@@ -370,21 +413,17 @@ func TestGetGatewayCompatibilityRoute(t *testing.T) {
 			sdk.health.checkFn = func(_ context.Context) (*openshell.HealthResult, error) {
 				return &openshell.HealthResult{Healthy: true, Version: tc.reported}, nil
 			}
-			support, err := models.ParseGatewaySupport(tc.minVersion, tc.maxVersion)
-			if err != nil {
-				t.Fatalf("ParseGatewaySupport: %v", err)
-			}
 			handler := NewGatewayHandler(services.NewGatewayService(sdk), auth.New(auth.Config{}), models.AuthConfigResponse{})
-			handler.SetGatewaySupport(support)
+			handler.SetGatewayReleaseLine(gatewayLine(t, tc.line))
 
 			w := httptest.NewRecorder()
 			handler.GetGatewayCompatibility(w, httptest.NewRequest(http.MethodGet, "/gateway/compatibility", nil))
 
-			// Informational only: an out-of-range gateway is still a 200.
+			// Informational only: a gateway on another line is still a 200.
 			if w.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
 			}
-			t.Logf("gateway %q, range %q -> %s", tc.reported, support.String(), w.Body.String())
+			t.Logf("gateway %q, line %q -> %s", tc.reported, tc.line, w.Body.String())
 			if got := strings.TrimSpace(w.Body.String()); got != tc.want {
 				t.Errorf("body = %s, want %s", got, tc.want)
 			}
@@ -400,11 +439,7 @@ func TestGetGatewayCompatibilityUnavailable(t *testing.T) {
 		return nil, &openshell.StatusError{Code: openshell.ErrorUnavailable, Message: "down"}
 	}
 	handler := NewGatewayHandler(services.NewGatewayService(sdk), auth.New(auth.Config{}), models.AuthConfigResponse{})
-	support, err := models.ParseGatewaySupport("0.1.0", "0.1.2")
-	if err != nil {
-		t.Fatalf("ParseGatewaySupport: %v", err)
-	}
-	handler.SetGatewaySupport(support)
+	handler.SetGatewayReleaseLine(gatewayLine(t, "0.1"))
 
 	w := httptest.NewRecorder()
 	handler.GetGatewayCompatibility(w, httptest.NewRequest(http.MethodGet, "/gateway/compatibility", nil))
@@ -531,37 +566,38 @@ func TestGetGatewayCompatibilityHealthSources(t *testing.T) {
 		{
 			name: "version reader only: no health to report",
 			svc:  versionOnlyGatewayService{version: "0.1.2"},
-			want: `{"gatewayVersion":"0.1.2","compatibility":{"status":"unknown"}}`,
+			want: `{"gatewayVersion":"0.1.2","compatibility":{"status":"supported","supportedLine":"0.1"}}`,
 		},
 		{
 			name: "gateway info only, healthy",
 			svc:  infoOnlyGatewayService{info: &models.GatewayInfo{Status: "HEALTHY", GatewayVersion: "0.1.2"}},
-			want: `{"gatewayVersion":"0.1.2","healthy":true,"compatibility":{"status":"unknown"}}`,
+			want: `{"gatewayVersion":"0.1.2","healthy":true,"compatibility":{"status":"supported","supportedLine":"0.1"}}`,
 		},
 		{
 			name: "gateway info only, degraded",
 			svc:  infoOnlyGatewayService{info: &models.GatewayInfo{Status: "DEGRADED", GatewayVersion: "0.1.2"}},
-			want: `{"gatewayVersion":"0.1.2","healthy":false,"compatibility":{"status":"unknown"}}`,
+			want: `{"gatewayVersion":"0.1.2","healthy":false,"compatibility":{"status":"supported","supportedLine":"0.1"}}`,
 		},
 		{
 			name: "gateway info only, unhealthy",
 			svc:  infoOnlyGatewayService{info: &models.GatewayInfo{Status: "UNHEALTHY", GatewayVersion: "0.1.2"}},
-			want: `{"gatewayVersion":"0.1.2","healthy":false,"compatibility":{"status":"unknown"}}`,
+			want: `{"gatewayVersion":"0.1.2","healthy":false,"compatibility":{"status":"supported","supportedLine":"0.1"}}`,
 		},
 		{
 			name: "gateway info only, without a status",
 			svc:  infoOnlyGatewayService{info: &models.GatewayInfo{GatewayVersion: "0.1.2"}},
-			want: `{"gatewayVersion":"0.1.2","compatibility":{"status":"unknown"}}`,
+			want: `{"gatewayVersion":"0.1.2","compatibility":{"status":"supported","supportedLine":"0.1"}}`,
 		},
 		{
 			name: "gateway info only, answering with nothing",
 			svc:  infoOnlyGatewayService{},
-			want: `{"gatewayVersion":"","compatibility":{"status":"unknown"}}`,
+			want: `{"gatewayVersion":"","compatibility":{"status":"unknown","supportedLine":"0.1"}}`,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := NewGatewayHandler(tc.svc, auth.New(auth.Config{}), models.AuthConfigResponse{})
+			handler.SetGatewayReleaseLine(gatewayLine(t, "0.1"))
 			w := httptest.NewRecorder()
 			handler.GetGatewayCompatibility(w, httptest.NewRequest(http.MethodGet, "/gateway/compatibility", nil))
 			if w.Code != http.StatusOK {
@@ -593,13 +629,9 @@ func (infoOnlyGatewayService) GetCurrentUser(context.Context) (*models.CurrentUs
 // Such a service still compiles and still gets a verdict, from the only
 // version source it has. That source is admin-only, so its refusal is relayed.
 func TestGetGatewayCompatibilityFallsBackToGatewayInfo(t *testing.T) {
-	support, err := models.ParseGatewaySupport("0.1.0", "0.1.2")
-	if err != nil {
-		t.Fatalf("ParseGatewaySupport: %v", err)
-	}
 	get := func(svc services.GatewayServiceInterface) *httptest.ResponseRecorder {
 		handler := NewGatewayHandler(svc, auth.New(auth.Config{}), models.AuthConfigResponse{})
-		handler.SetGatewaySupport(support)
+		handler.SetGatewayReleaseLine(gatewayLine(t, "0.1"))
 		w := httptest.NewRecorder()
 		handler.GetGatewayCompatibility(w, httptest.NewRequest(http.MethodGet, "/gateway/compatibility", nil))
 		return w
@@ -609,7 +641,7 @@ func TestGetGatewayCompatibilityFallsBackToGatewayInfo(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
 	}
-	const want = `{"gatewayVersion":"0.0.116","healthy":true,"compatibility":{"status":"unsupported","supportedMin":"0.1.0","supportedMax":"0.1.2"}}`
+	const want = `{"gatewayVersion":"0.0.116","healthy":true,"compatibility":{"status":"unsupported","supportedLine":"0.1"}}`
 	if got := strings.TrimSpace(w.Body.String()); got != want {
 		t.Errorf("body = %s, want %s", got, want)
 	}

@@ -179,6 +179,7 @@ range has to be discovered by test, not promised in advance.
 ## Amendments
 
 - [ADR 0006](0006-compat-links-and-sweep-axes.md) — replaces decision 4 and the rule that the SDK pin and the gateway pins move together; no `dev` pins.
+- [ADR 0009](0009-console-release-policy.md) — replaces decision 1: a release is for one gateway minor release line, not a window with a floor and a ceiling, and the compatibility notice compares release lines (no `untested`). Decision 5 holds for the console's own patch releases only. Never claiming `latest` stands.
 
 ## References
 

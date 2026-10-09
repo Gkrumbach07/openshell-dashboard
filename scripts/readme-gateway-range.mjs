@@ -1,31 +1,32 @@
 #!/usr/bin/env node
-// Keeps the README's statement of the CURRENT supported gateway range in step
-// with deploy/ci/gateway-pins.json.
+// Keeps the README's statement of the gateway release line this branch is for
+// in step with deploy/ci/gateway-pins.json.
 //
-// The README is where people look first, and a range written there by hand goes
-// stale the day the pins move — at which point it contradicts the release
-// notes, the package and the image, which are all derived. So the few lines
-// that restate the range sit between two marker comments and are generated,
-// and CI fails when they are out of date.
+// The README is where people look first, and a statement written there by hand
+// goes stale the day the pins move — at which point it contradicts the release
+// notes and the image, which are both derived. So the few lines that restate
+// the line, the releases it is tested on and the SDK sit between two marker
+// comments and are generated, and CI fails when they are out of date.
 //
 //   node scripts/readme-gateway-range.mjs --write   regenerate the block
 //   node scripts/readme-gateway-range.mjs --check   exit 1 when it is stale (CI)
 //
 // Whatever moves the pins runs --write in the same change. That includes the
-// compat sweep's automated pull requests: one moves the ceiling lane and the
+// compat sweep's automated pull requests: one moves the newest lane and the
 // other the SDK, the block restates both, and a pull request that left it stale
 // could never pass --check. --write changes nothing outside the markers and is
 // a no-op when the block is already right, so it is safe to run every time.
 //
 // Only the part between the markers is generated. The prose around it —
 // including the hand-written facts about older dashboard releases — is never
-// touched.
+// touched. The markers still say "gateway-range": the compat sweep finds the
+// block by them (deploy/ci/sweep/guard.py).
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { readGatewayRange } from './gateway-range.mjs';
+import { formatLine, readGatewayLine } from './gateway-range.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -34,15 +35,14 @@ export const BEGIN =
   '<!-- gateway-range:begin (generated from deploy/ci/gateway-pins.json by scripts/readme-gateway-range.mjs; do not edit) -->';
 export const END = '<!-- gateway-range:end -->';
 
-export function renderBlock(range) {
+export function renderBlock(declared) {
   return [
     BEGIN,
     '| | |',
     '|---|---|',
-    `| Oldest supported gateway | \`${range.floor}\` |`,
-    `| Newest tested gateway | \`${range.ceiling}\` |`,
-    `| Declared as | \`${range.range}\` |`,
-    `| OpenShell Go SDK | \`${range.sdk}\` |`,
+    `| Supported gateways | \`${formatLine(declared.line)}\` |`,
+    `| Tested on | ${declared.tested.map((release) => `\`${release}\``).join(', ')} |`,
+    `| OpenShell Go SDK | \`${declared.sdk}\` |`,
     END,
   ].join('\n');
 }
@@ -73,21 +73,21 @@ function main() {
     throw new Error('pass exactly one of --write or --check');
   }
 
-  const block = renderBlock(readGatewayRange(values.pins));
+  const block = renderBlock(readGatewayLine(values.pins));
   const current = readFileSync(values.readme, 'utf8');
   const wanted = replaceBlock(current, block);
 
   if (current === wanted) {
-    process.stdout.write(`${values.readme}: the supported gateway range is up to date\n`);
+    process.stdout.write(`${values.readme}: the supported gateway release line is up to date\n`);
     return;
   }
   if (values.write) {
     writeFileSync(values.readme, wanted);
-    process.stdout.write(`${values.readme}: regenerated the supported gateway range\n`);
+    process.stdout.write(`${values.readme}: regenerated the supported gateway release line\n`);
     return;
   }
   throw new Error(
-    `${values.readme} is stale: it does not state the range that deploy/ci/gateway-pins.json ` +
+    `${values.readme} is stale: it does not state what deploy/ci/gateway-pins.json ` +
       `now gives. It should read:\n\n${block}\n\n` +
       'Run `node scripts/readme-gateway-range.mjs --write` and commit the result.',
   );

@@ -170,8 +170,7 @@ Env vars (some also available as CLI flags):
 | `AUTH_USER_HEADER` | `-auth-user-header` | `x-auth-request-user` | User header name |
 | `ADMIN_ROLE` | `-admin-role` | `admin` | OIDC role claim for admin (display gating only — gateway enforces) |
 | `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out` | Proxy sign-out path the frontend redirects to on logout |
-| `GATEWAY_SUPPORTED_MIN` | `-gateway-supported-min` | | Oldest gateway release this build supports, plain `x.y.z`. Set together with `GATEWAY_SUPPORTED_MAX`; with either unset or unparsable, `compatibility.status` is `unknown`. The verdict is served by `GET /gateway/compatibility` to every signed-in user (version read from the gateway's unauthenticated health check) and also rides on `GET /gateway`, which the gateway answers for platform admins only. Informational only — the BFF never blocks on it |
-| `GATEWAY_SUPPORTED_MAX` | `-gateway-supported-max` | | Newest gateway release this build was tested against, plain `x.y.z`. Both are derived from the required lanes in `deploy/ci/gateway-pins.json` (`make dev` does this) — never hand-write a range |
+| `GATEWAY_RELEASE_LINE` | `-gateway-release-line` | compiled in | Gateway release line this build is for, written `major.minor` (`0.1`). A gateway whose version starts with those two numbers is `supported` (any patch, pre-release, dev build or downstream rebuild), any other line is `unsupported`, and a gateway with no usable version is `unknown`. The default is `models.BuiltInGatewayReleaseLine` in `backend/pkg/models/gateway_release_line.go`, the line of the newest required lane in `deploy/ci/gateway-pins.json`; `node scripts/gateway-range.mjs --check` fails in CI when the two disagree. Override it only for tests and local development: no image or chart sets it, and a value that is not a line turns the status into `unknown`. The verdict is served by `GET /gateway/compatibility` to every signed-in user (version read from the gateway's unauthenticated health check) and also rides on `GET /gateway`, which the gateway answers for platform admins only. Informational only — the BFF never blocks on it (ADR 0009) |
 | `FEATURE_*` | | varies | Feature flags: `FEATURE_TERMINAL`, `FEATURE_FILE_TRANSFER`, `FEATURE_SETTINGS`, `FEATURE_GLOBAL_POLICY`, `FEATURE_CREDENTIAL_REFRESH`, `FEATURE_SERVICES`, `FEATURE_DRAFT_POLICY` |
 
 ## Error handling
@@ -228,14 +227,14 @@ Then, in the same PR:
 - Fix the call sites and the test doubles in `mock_sdk_test.go`, and commit
   them with the pin: a commit that moves the SDK without them does not build.
 - Do **not** move a gateway lane. The required compat lanes prove the wire
-  link (gateway <-> SDK) against every gateway we support; a moved lane would
+  link (gateway <-> SDK) against every gateway we pin; a moved lane would
   hide which link changed.
 - Use a `fix:` commit. The published BFF is built against the SDK, so the
   move has to be released.
 
-If the new SDK fails the floor lane, moving to it drops a supported gateway.
-That is a decision about the supported range, not a dependency bump. Stop and
-raise it. The one case where the SDK and the lanes do move in a single PR is
+If the new SDK fails the oldest required lane, moving to it breaks a gateway
+of the release line this build is for (ADR 0009). That is not a dependency
+bump. Stop and raise it. The one case where the SDK and the lanes do move in a single PR is
 a wire break no build spans — the new SDK fails every required lane and the
 pinned SDK fails every new gateway — and that PR is a person's decision,
 recorded as such (ADR 0006, decision 6). It is never a routine update and the

@@ -19,30 +19,15 @@ dev-full: ## Start Keycloak + gateway, then frontend + BFF (one command)
 dev: ## Start frontend dev server (:3000) and Go BFF (:8080)
 	@$(MAKE) -j2 dev-backend dev-frontend
 
-# The gateway range this checkout supports, for the BFF's compatibility notice.
-# It is DERIVED from the lanes CI requires in deploy/ci/gateway-pins.json —
-# the lowest and the highest `version` among lanes with required=true — and
-# never restated here, so a dev BFF claims exactly what the compat suite proves.
-#
-# $(call gateway_supported,.[0]) is the floor and $(call gateway_supported,.[-1])
-# the ceiling. Both come out empty when jq is not installed or the pins cannot
-# be read as plain x.y.z versions, and the BFF then reports compatibility as
-# "unknown" rather than guessing a range.
-GATEWAY_PINS := deploy/ci/gateway-pins.json
-gateway_supported = $(shell jq -r '[.lanes[] | select(.required == true) | .version] | sort_by(split(".") | map(tonumber)) | $(1) // empty' $(GATEWAY_PINS) 2>/dev/null)
-
 # Default auth-off for plain make dev. Override: AUTH_DISABLED=false make dev
 # (or export AUTH_DISABLED=false). Ignores stale AUTH_DISABLED in scripts/.env.dev
 # because that file is included as a make var but not exported to the shell.
 #
-# GATEWAY_SUPPORTED_MIN / GATEWAY_SUPPORTED_MAX default to the derived range.
-# A value already in the environment wins, including an empty one, which turns
-# the notice off: GATEWAY_SUPPORTED_MIN= GATEWAY_SUPPORTED_MAX= make dev
+# Nothing is passed for the compatibility notice: the gateway release line the
+# BFF is for is compiled in. To see the notice against a gateway of that line,
+# start the BFF for another one: GATEWAY_RELEASE_LINE=9.9 make dev
 dev-backend:
-	cd backend && AUTH_DISABLED=$${AUTH_DISABLED:-true} \
-		GATEWAY_SUPPORTED_MIN=$${GATEWAY_SUPPORTED_MIN-$(call gateway_supported,.[0])} \
-		GATEWAY_SUPPORTED_MAX=$${GATEWAY_SUPPORTED_MAX-$(call gateway_supported,.[-1])} \
-		go run ./cmd/server
+	cd backend && AUTH_DISABLED=$${AUTH_DISABLED:-true} go run ./cmd/server
 
 dev-frontend:
 	cd frontend && npm start

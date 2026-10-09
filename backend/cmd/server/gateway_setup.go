@@ -105,26 +105,37 @@ func warnGatewayConfig(gatewayURL, gatewayCACert string, authDisabled bool) {
 	}
 }
 
-// gatewaySupport reads the range of gateway releases this build supports.
+// gatewayReleaseLine reads the gateway release line this BFF judges gateways
+// against.
 //
-// The range is handed to the BFF by whatever builds or launches it, from the
-// compat lanes that build was tested against (deploy/ci/gateway-pins.json); a
-// BFF started without one simply does not report compatibility. A range that
-// cannot be used is logged and dropped — never fatal, and never replaced by a
-// guess. The result only feeds a notice in the UI, so a bad value must not
-// stop the BFF serving, and an invented range would mislead more than a
-// missing one.
-func gatewaySupport(minVersion, maxVersion string) models.GatewaySupport {
-	support, err := models.ParseGatewaySupport(minVersion, maxVersion)
+// The line is compiled into the build (models.BuiltInGatewayReleaseLine), so a
+// BFF that is told nothing still reports compatibility. GATEWAY_RELEASE_LINE
+// replaces it, for tests and local development; an empty value is no override.
+// An override that is not a line is logged and dropped — never fatal, and
+// never swapped for the built-in line: the operator asked for something else,
+// so compatibility is reported as unknown until the value is fixed. The result
+// only feeds a notice in the UI, so a bad value must not stop the BFF serving.
+func gatewayReleaseLine(override string) models.GatewayReleaseLine {
+	if strings.TrimSpace(override) == "" {
+		override = models.BuiltInGatewayReleaseLine
+	}
+	line, err := models.ParseGatewayReleaseLine(override)
 	if err != nil {
 		slog.Warn(
-			"supported gateway range ignored — gateway compatibility will be reported as unknown; set GATEWAY_SUPPORTED_MIN and GATEWAY_SUPPORTED_MAX together, each a plain x.y.z version",
+			"gateway release line ignored — gateway compatibility will be reported as unknown; set GATEWAY_RELEASE_LINE to major.minor, or unset it to use the line this build is for",
 			"error", err,
-			"min", minVersion,
-			"max", maxVersion,
+			"builtIn", models.BuiltInGatewayReleaseLine,
+		)
+		return line
+	}
+	if line.String() != models.BuiltInGatewayReleaseLine {
+		slog.Info(
+			"gateway release line overridden by GATEWAY_RELEASE_LINE or -gateway-release-line",
+			"line", line.String(),
+			"builtIn", models.BuiltInGatewayReleaseLine,
 		)
 	}
-	return support
+	return line
 }
 
 func exitOnError(msg string, err error) {

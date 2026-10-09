@@ -27,6 +27,10 @@ return <Button>{t('create')}</Button>;
 2. Call `t('…')` with `useI18n('<namespace>')`.
 3. Prefer **additive** keys. Renames need a minor version note here.
 
+### Changed keys
+
+- `common` → `gatewayCompatibility`: the notice compares gateway release lines ([ADR 0009](../../../docs/adrs/0009-console-release-policy.md)). `unsupported.title` and `unsupported.body` have new text, and `unsupported.body` now takes `{{version}}` and `{{line}}` (it took `{{version}}` and `{{supported}}`). `versionRange`, `untested.title`, `untested.body` and `untested.dismiss` are removed; an override of any of them is no longer read.
+
 ## Downstream hosts
 
 The npm package this barrel was published in, as `openshell-dashboard/i18n`, is retired ([ADR 0008](../../../docs/adrs/0008-retire-the-npm-package.md)), so a host can no longer install it. The override path is kept, and the example below imports the barrel from source, as code in this repository (or a fork of it) would.
