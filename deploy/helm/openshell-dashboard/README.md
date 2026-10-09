@@ -43,6 +43,8 @@ helm upgrade --install openshell-dashboard . \
 
 Follow Helm NOTES after installation. Logout returns to `/oauth2/sign_in` to avoid showing a stale dashboard; `authProxy.whitelistDomains` must include the IdP host. For another IdP, change both `LOGOUT_URL` and allowed redirect domain.
 
+For providers that support server-side logout, set `oidc.backendLogoutURL` to an IdP endpoint reachable from the oauth2-proxy pod, for example `https://keycloak.apps.example.com/realms/openshell/protocol/openid-connect/logout?id_token_hint={id_token}`. oauth2-proxy replaces `{id_token}` with the session ID token and calls the URL with GET before clearing its cookie. Leave it empty to disable the backend call. `dashboard.logoutURL` remains the browser-facing sign-out URL; its `rd` redirect is separate and still handles browser navigation back to `/oauth2/sign_in`. Do not use `/oauth2/sign_out` as the backend URL.
+
 ## Configuration
 
 - **OIDC:** `oidc.provider=oidc` supports compatible issuers; use `oidc.allowedGroups` to restrict groups. For Keycloak realm/client role filtering use `oidc.provider=keycloak-oidc` and `oidc.allowedRoles` (any listed role). `oidc.scope` (default `openid email profile`) and `oidc.codeChallengeMethod` are optional. `oidc.clientIdSecretKey` overrides `oidc.clientId` using the existing Secret; set `oidc.caConfigMapName` only for a private issuer CA (also configure the gateway). Keep `authProxy.cookie.refresh` below access-token lifetime.
@@ -83,7 +85,7 @@ Follow Helm NOTES after installation. Logout returns to `/oauth2/sign_in` to avo
 | dashboard.image.registry | string | `""` | Dashboard image registry; empty uses global.image.registry. |
 | dashboard.image.repository | string | `"gkrumbach07/openshell-dashboard"` | Dashboard image repository. |
 | dashboard.image.tag | string | `""` | Dashboard image tag; empty uses global.image.tag then Chart.appVersion. |
-| dashboard.logoutURL | string | `"/oauth2/sign_out"` | Sign-out endpoint. For Keycloak, rd is the encoded IdP end-session URL; its post_logout_redirect_uri should be the proxy /oauth2/sign_in page (register it with the client). |
+| dashboard.logoutURL | string | `"/oauth2/sign_out"` | Browser-facing sign-out URL. For Keycloak, rd is the encoded IdP end-session URL; its post_logout_redirect_uri should be the proxy /oauth2/sign_in page (register it with the client). |
 | dashboard.port | int | `8080` | Dashboard container port (loopback only; never exposed via Service). |
 | fullnameOverride | string | `""` | Full resource name override. |
 | gateway.caKey | string | `"ca.crt"` | CA key in the Secret. |
@@ -118,6 +120,7 @@ Follow Helm NOTES after installation. Logout returns to `/oauth2/sign_in` to avo
 | oidc.allowedGroups | list | `[]` | Allowed groups for generic OIDC or other providers; empty allows any authenticated user. |
 | oidc.allowedRoles | list | `[]` | Allowed Keycloak roles (realm role or client:role); requires provider=keycloak-oidc. Multiple roles are alternatives. |
 | oidc.audience | string | `"openshell-api"` | Expected gateway API audience. Set to the API client ID for Keycloak client roles; informational only. |
+| oidc.backendLogoutURL | string | `""` | Optional IdP logout URL called by oauth2-proxy from the pod on sign-out (HTTP GET); {id_token} is replaced with the session ID token. Empty disables backend logout. Separate from dashboard.logoutURL. |
 | oidc.caConfigMapName | string | `""` | ConfigMap with ca.crt to trust private issuer TLS (also set on gateway). |
 | oidc.clientId | string | `"openshell-dashboard"` | OAuth2-proxy OIDC client ID. |
 | oidc.clientIdSecretKey | string | `""` | Optional key in oidc.existingSecret holding client ID; when set, takes precedence over oidc.clientId. |

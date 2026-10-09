@@ -27,7 +27,7 @@ dashboard:
     pullPolicy: null
   # -- Dashboard container port (loopback only; never exposed via Service).
   port: 8080
-  # -- Sign-out endpoint. For Keycloak, rd is the encoded IdP end-session URL; its post_logout_redirect_uri should be the proxy /oauth2/sign_in page (register it with the client).
+  # -- Browser-facing sign-out URL.
   logoutURL: /oauth2/sign_out
 
 authProxy:
@@ -149,6 +149,8 @@ oidc:
   existingSecret: openshell-dashboard-oidc
   # -- Full public callback URL; required when host is dynamically allocated. Empty derives from Route/HTTPRoute host.
   redirectURL: ""
+  # -- Optional IdP logout URL called by oauth2-proxy from the pod on sign-out (HTTP GET); {id_token} is replaced with the session ID token. Empty disables backend logout. Separate from dashboard.logoutURL.
+  backendLogoutURL: ""
   # -- OAuth2 scopes; empty uses the provider default (openid email profile for generic OIDC).
   scope: ""
   # -- PKCE challenge method (e.g. S256); empty disables PKCE for providers that do not support it.

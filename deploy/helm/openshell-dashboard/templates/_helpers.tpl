@@ -79,7 +79,7 @@ Sets the gateway URL
 {{- end -}}
 
 {{/*
-Sets the dashboard oidc redirect URL 
+Sets the dashboard OIDC redirect URL
 */}}
 {{- define "openshell-dashboard.redirectURL" -}}
 {{- if .Values.oidc.redirectURL -}}
@@ -88,6 +88,15 @@ Sets the dashboard oidc redirect URL
 {{- printf "https://%s/oauth2/callback" .Values.openshiftRoute.host -}}
 {{- else if .Values.httpRoute.enabled -}}
 {{- printf "https://%s/oauth2/callback" (first .Values.httpRoute.hostnames) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Sets the optional proxy-to-provider logout URL
+*/}}
+{{- define "openshell-dashboard.backendLogoutURL" -}}
+{{- with .Values.oidc.backendLogoutURL -}}
+{{- . -}}
 {{- end -}}
 {{- end -}}
 
