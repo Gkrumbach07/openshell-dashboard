@@ -19,6 +19,12 @@ import (
 // SDK carries a host, a port and a protocol. ProviderProfileFromSDK therefore
 // yields endpoints that are known to be incomplete, and ProviderProfileToSDK
 // refuses an endpoint it could only send in part.
+//
+// The one other field the SDK type has no place for is a credential's
+// token_grant_owners (OpenShell 0.1.3). The gateway derives it and ignores a
+// value a profile is written with, so a profile read through the SDK comes
+// without it and ProviderProfileToSDK leaves it out instead of refusing:
+// nothing the gateway would have stored is lost.
 
 // ErrEndpointNotExpressible is what ProviderProfileToSDK returns for an
 // endpoint that holds more than the SDK's NetworkEndpoint can carry.
@@ -95,6 +101,13 @@ func ProviderProfileFromSDK(profile *openshell.ProviderProfile) *pb.ProviderProf
 	}
 	for index := range profile.Credentials {
 		out.Credentials = append(out.Credentials, sdkCredentialToProto(&profile.Credentials[index]))
+	}
+	for _, file := range profile.Files {
+		out.Files = append(out.Files, &pb.ProviderProfileFile{
+			Path:    file.Path,
+			Content: file.Content,
+			EnvVar:  file.EnvVar,
+		})
 	}
 	for _, endpoint := range profile.Endpoints {
 		out.Endpoints = append(out.Endpoints, &sbv1.NetworkEndpoint{
@@ -202,6 +215,13 @@ func ProviderProfileToSDK(profile *pb.ProviderProfile) (openshell.ProviderProfil
 	}
 	for _, credential := range profile.GetCredentials() {
 		out.Credentials = append(out.Credentials, sdkCredentialFromProto(credential))
+	}
+	for _, file := range profile.GetFiles() {
+		out.Files = append(out.Files, types.ProfileFile{
+			Path:    file.GetPath(),
+			Content: file.GetContent(),
+			EnvVar:  file.GetEnvVar(),
+		})
 	}
 	for index, endpoint := range profile.GetEndpoints() {
 		narrow := &sbv1.NetworkEndpoint{

@@ -17,6 +17,11 @@ package models
 // The same goes for the incremental merge operations at the end of the file:
 // the browser sends them as protojson of openshell.v1.PolicyMergeOperation and
 // the SDK takes its own typed form, so they are converted in one direction.
+//
+// One field is not carried, because the SDK's types have no place for it:
+// NetworkEndpoint.token_grant_owner (OpenShell 0.1.3), which the gateway
+// derives and ignores when a user writes it. The tests name it in
+// policyFieldsTheSDKCannotCarry.
 
 import (
 	"encoding/json"

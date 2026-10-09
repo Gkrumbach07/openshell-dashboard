@@ -21,9 +21,9 @@ A dashboard build works with a **range** of OpenShell gateway releases, never wi
 | | |
 |---|---|
 | Oldest supported gateway | `0.1.0` |
-| Newest tested gateway | `0.1.2` |
-| Declared as | `>=0.1.0 <=0.1.2` |
-| OpenShell Go SDK | `v0.0.0-20260928030816-6648bd0c290e` |
+| Newest tested gateway | `0.1.3` |
+| Declared as | `>=0.1.0 <=0.1.3` |
+| OpenShell Go SDK | `v0.0.0-20261009050449-e1f3c82caa3e` |
 <!-- gateway-range:end -->
 
 A gateway newer than the newest tested one is *untested by this build*, not known to be broken. The daily [compat sweep](#two-jobs-two-questions) looks ahead, and raising the ceiling is a deliberate change.

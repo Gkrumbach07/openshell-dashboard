@@ -146,15 +146,39 @@ func TestParseSDKPolicyRejectsUnknownField(t *testing.T) {
 	}
 }
 
+// policyFieldsTheSDKCannotCarry names, by their full proto name, the fields of
+// the policy tree that populateMessage leaves unset. It is the one place a
+// field is excused from the round trips in this file and in policywire_test.go.
+// Every field that is not listed is populated, so one upstream adds still
+// fails those tests by name until policyproto.go carries it.
+//
+// token_grant_owner (NetworkEndpoint field 27, new in OpenShell 0.1.3) is the
+// gateway's own note of which provider, or global policy, may obtain a token
+// grant for the endpoint. The gateway derives it and ignores a value a user
+// writes. The SDK's domain type, types.PolicyNetworkEndpoint, has no field for
+// it as of v0.1.3, and the SDK's own converter leaves it out by name, so a
+// policy cannot bring it through the SDK in either direction and the port in
+// policyproto.go has nowhere to put it. The entry goes when the SDK type gains
+// the field and the port copies it:
+// TestPolicyFieldsTheSDKCannotCarryAreStillNotCarried fails if it is still
+// listed then.
+var policyFieldsTheSDKCannotCarry = map[protoreflect.FullName]bool{
+	"openshell.sandbox.v1.NetworkEndpoint.token_grant_owner": true,
+}
+
 // populateMessage sets every field of msg — scalars, enums, lists, maps and
 // nested messages, recursively — to a non-zero value. It walks the proto
 // descriptor, so a field upstream adds to the policy tree is populated here
-// without anyone remembering to extend a fixture.
+// without anyone remembering to extend a fixture. The only fields it skips
+// are the ones policyFieldsTheSDKCannotCarry names.
 func populateMessage(t *testing.T, msg protoreflect.Message) {
 	t.Helper()
 	fields := msg.Descriptor().Fields()
 	for i := 0; i < fields.Len(); i++ {
 		fd := fields.Get(i)
+		if policyFieldsTheSDKCannotCarry[fd.FullName()] {
+			continue
+		}
 		switch {
 		case fd.IsMap():
 			m := msg.Mutable(fd).Map()
@@ -348,5 +372,42 @@ func TestNetworkPolicyRuleRoundTripEveryProtoField(t *testing.T) {
 	}
 	if !proto.Equal(full, back) {
 		t.Fatalf("the rule round trip through the BFF is not the identity.\nsent: %s\ngot:  %s", raw, out)
+	}
+}
+
+// A field is excused from the round trips above only for as long as it has
+// nowhere to go. This sets each excused field and nothing else, and expects it
+// lost. When the SDK's endpoint type gains a place for one and policyproto.go
+// copies it, this fails, and the entry is to be removed so that the round
+// trips cover the field like any other.
+func TestPolicyFieldsTheSDKCannotCarryAreStillNotCarried(t *testing.T) {
+	for name := range policyFieldsTheSDKCannotCarry {
+		full := &sbv1.NetworkPolicyRule{Endpoints: []*sbv1.NetworkEndpoint{{}}}
+		endpoint := full.GetEndpoints()[0].ProtoReflect()
+		fd := endpoint.Descriptor().Fields().ByName(name.Name())
+		if fd == nil || fd.FullName() != name {
+			t.Fatalf("%s is not a field of %s, the one message this test knows how to fill",
+				name, endpoint.Descriptor().FullName())
+		}
+		endpoint.Set(fd, populatedScalar(t, fd))
+		raw, err := protojson.Marshal(full)
+		if err != nil {
+			t.Fatalf("marshal the rule: %v", err)
+		}
+
+		rule, err := ParseSDKNetworkPolicyRule(raw)
+		if err != nil {
+			t.Fatalf("ParseSDKNetworkPolicyRule: %v\n%s", err, raw)
+		}
+		back := &sbv1.NetworkPolicyRule{}
+		if err := protojson.Unmarshal(MarshalSDKNetworkPolicyRule(rule), back); err != nil {
+			t.Fatalf("unmarshal the round-tripped rule: %v", err)
+		}
+		if len(back.GetEndpoints()) != 1 {
+			t.Fatalf("the rule came back with %d endpoint(s), want 1", len(back.GetEndpoints()))
+		}
+		if back.GetEndpoints()[0].ProtoReflect().Has(fd) {
+			t.Errorf("%s survives the round trip now: remove it from policyFieldsTheSDKCannotCarry", name)
+		}
 	}
 }

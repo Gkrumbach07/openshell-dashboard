@@ -112,6 +112,18 @@ type ProfileDiscovery struct {
 	Credentials []string `json:"credentials,omitempty"`
 }
 
+// ProfileFile mirrors openshell.v1.ProviderProfileFile: a file that a sandbox
+// with the provider attached finds under /run/openshell/providers/<provider>/.
+// Content is a template in which {{config.KEY}} stands for a value of the
+// provider's config, and EnvVar names an environment variable that is given
+// the file's path. Upstream added the message in OpenShell 0.1.3 and marks it
+// experimental: it may change or be removed.
+type ProfileFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	EnvVar  string `json:"envVar,omitempty"`
+}
+
 // ProfileEndpointInput is an endpoint as the profile form wrote it before
 // NetworkEndpoints existed: a host and a port, and since then a protocol.
 // Anything more goes in ProviderProfileInput.NetworkEndpoints.
@@ -163,7 +175,8 @@ func (e *ProfileEndpointInput) UnmarshalJSON(data []byte) error {
 //
 // Source and Scope are set by the gateway and ignored when written; they are
 // accepted so that a profile that was read, or exported to a file, can be sent
-// back unchanged. ImportSource is not part of the profile: it is
+// back unchanged. The same goes for a credential's TokenGrantOwners (see
+// ProfileCredential). ImportSource is not part of the profile: it is
 // ProviderProfileImportItem.source, a label the gateway repeats in the
 // diagnostics it returns for this profile. The CLI sends the file path.
 type ProviderProfileInput struct {
@@ -177,6 +190,7 @@ type ProviderProfileInput struct {
 	Scope            string                 `json:"scope,omitempty"`
 	ImportSource     string                 `json:"importSource,omitempty"`
 	Credentials      []ProfileCredential    `json:"credentials,omitempty"`
+	Files            []ProfileFile          `json:"files,omitempty"`
 	Endpoints        []ProfileEndpointInput `json:"endpoints,omitempty"`
 	NetworkEndpoints []json.RawMessage      `json:"networkEndpoints,omitempty"`
 	Binaries         []ProfileBinary        `json:"binaries,omitempty"`
@@ -341,6 +355,13 @@ func profileWithoutEndpoints(profile *pb.ProviderProfile) ProviderProfile {
 	for _, credential := range profile.GetCredentials() {
 		out.Credentials = append(out.Credentials, profileCredentialFromProto(credential))
 	}
+	for _, file := range profile.GetFiles() {
+		out.Files = append(out.Files, ProfileFile{
+			Path:    file.GetPath(),
+			Content: file.GetContent(),
+			EnvVar:  file.GetEnvVar(),
+		})
+	}
 	for _, binary := range profile.GetBinaries() {
 		out.Binaries = append(out.Binaries, ProfileBinary{Path: binary.GetPath()})
 	}
@@ -371,16 +392,17 @@ func appendEndpointSummary(summaries []string, endpoint *sbv1.NetworkEndpoint) [
 
 func profileCredentialFromProto(credential *pb.ProviderProfileCredential) ProfileCredential {
 	return ProfileCredential{
-		Name:         credential.GetName(),
-		Description:  credential.GetDescription(),
-		EnvVars:      credential.GetEnvVars(),
-		Required:     credential.GetRequired(),
-		AuthStyle:    credential.GetAuthStyle(),
-		HeaderName:   credential.GetHeaderName(),
-		QueryParam:   credential.GetQueryParam(),
-		PathTemplate: credential.GetPathTemplate(),
-		Refresh:      profileRefreshFromProto(credential.GetRefresh()),
-		TokenGrant:   profileTokenGrantFromProto(credential.GetTokenGrant()),
+		Name:             credential.GetName(),
+		Description:      credential.GetDescription(),
+		EnvVars:          credential.GetEnvVars(),
+		Required:         credential.GetRequired(),
+		AuthStyle:        credential.GetAuthStyle(),
+		HeaderName:       credential.GetHeaderName(),
+		QueryParam:       credential.GetQueryParam(),
+		PathTemplate:     credential.GetPathTemplate(),
+		Refresh:          profileRefreshFromProto(credential.GetRefresh()),
+		TokenGrant:       profileTokenGrantFromProto(credential.GetTokenGrant()),
+		TokenGrantOwners: credential.GetTokenGrantOwners(),
 	}
 }
 
@@ -480,6 +502,13 @@ func (in *ProviderProfileInput) ToProto() (*pb.ProviderProfile, error) {
 		}
 		out.Credentials = append(out.Credentials, credential)
 	}
+	for _, file := range in.Files {
+		out.Files = append(out.Files, &pb.ProviderProfileFile{
+			Path:    file.Path,
+			Content: file.Content,
+			EnvVar:  file.EnvVar,
+		})
+	}
 	endpoints, err := in.endpointsToProto()
 	if err != nil {
 		return nil, err
@@ -547,16 +576,17 @@ func profileCredentialToProto(credential *ProfileCredential) (*pb.ProviderProfil
 		return nil, fmt.Errorf("tokenGrant.%w", err)
 	}
 	return &pb.ProviderProfileCredential{
-		Name:         credential.Name,
-		Description:  credential.Description,
-		EnvVars:      credential.EnvVars,
-		Required:     credential.Required,
-		AuthStyle:    credential.AuthStyle,
-		HeaderName:   credential.HeaderName,
-		QueryParam:   credential.QueryParam,
-		PathTemplate: credential.PathTemplate,
-		Refresh:      refresh,
-		TokenGrant:   grant,
+		Name:             credential.Name,
+		Description:      credential.Description,
+		EnvVars:          credential.EnvVars,
+		Required:         credential.Required,
+		AuthStyle:        credential.AuthStyle,
+		HeaderName:       credential.HeaderName,
+		QueryParam:       credential.QueryParam,
+		PathTemplate:     credential.PathTemplate,
+		Refresh:          refresh,
+		TokenGrant:       grant,
+		TokenGrantOwners: credential.TokenGrantOwners,
 	}, nil
 }
 

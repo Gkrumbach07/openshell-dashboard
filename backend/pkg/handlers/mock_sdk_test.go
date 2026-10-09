@@ -587,7 +587,7 @@ type mockSDKServices struct {
 	deleteFn func(ctx context.Context, workspace, sandboxName, serviceName string) error
 }
 
-func (m *mockSDKServices) Expose(ctx context.Context, workspace, sandboxName, serviceName string, targetPort uint32, domain bool) (*openshell.ServiceEndpoint, error) {
+func (m *mockSDKServices) Expose(ctx context.Context, workspace, sandboxName, serviceName string, targetPort uint32, domain bool, _ ...openshell.ExposeServiceOptions) (*openshell.ServiceEndpoint, error) {
 	if m.exposeFn != nil {
 		return m.exposeFn(ctx, workspace, sandboxName, serviceName, targetPort, domain)
 	}

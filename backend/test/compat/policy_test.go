@@ -80,7 +80,7 @@ func TestSandboxPolicy(t *testing.T) {
 	requireSandboxes(t)
 	ws := newWorkspace(t)
 	name := randName("pl")
-	created := createSandbox(t, ws, name, nil)
+	createSandbox(t, ws, name, nil)
 	waitForPhase(t, ws, name, "READY")
 	policyPath := sandboxPath(ws, name) + "/policy"
 
@@ -147,12 +147,18 @@ func TestSandboxPolicy(t *testing.T) {
 	})
 
 	t.Run("stale resource version is a conflict", func(t *testing.T) {
-		// The version the create call returned is one a client could really
-		// still be holding: the gateway has bumped it several times since.
-		stale := created.Metadata.ResourceVersion
-		if current := getSandbox(t, ws, name).Metadata.ResourceVersion; current == stale {
-			t.Fatalf("sandbox resourceVersion is still %d, so there is no stale version to send", stale)
+		// The version before the one the sandbox is at now: a version a client
+		// could really still be holding, and one that is certainly stale. The
+		// version the create call returned used to stand in for it and no
+		// longer can. Since OpenShell 0.1.3 a create can answer with the
+		// sandbox as the compute driver's first report left it, and that
+		// version may still be the current one here.
+		current := getSandbox(t, ws, name).Metadata.ResourceVersion
+		if current < 2 {
+			// Zero is how a request says it expects no version in particular.
+			t.Fatalf("sandbox resourceVersion is %d, so there is no stale version to send", current)
 		}
+		stale := current - 1
 		wantError(t, http.MethodPut, policyPath, map[string]any{
 			"policy":                  policyWith(map[string]any{"ex": networkRule("ex", "example.com")}, nil),
 			"expectedResourceVersion": stale,
