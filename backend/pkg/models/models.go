@@ -439,7 +439,8 @@ type GatewayInfo struct { //nolint:govet // fieldalignment: gateway fields first
 // reads either response the same way. What differs is who may ask. GatewayInfo
 // comes from GetGatewayInfo, which the gateway answers only for platform
 // admins; this comes from the gateway's health check, which it answers for
-// anyone, so every signed-in user can learn that the gateway is out of range.
+// anyone, so every signed-in user can learn that the gateway is on another
+// release line.
 //
 // Healthy is what the same health check says about the gateway itself, for
 // the same audience: GatewayInfo.Status is the admin-only way to read it. It

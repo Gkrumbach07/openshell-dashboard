@@ -35,8 +35,7 @@ const bffForUserWithoutAdminRole = (url: string) => {
         gatewayVersion: '0.0.116',
         compatibility: {
           status: 'unsupported',
-          supportedMin: '0.1.0',
-          supportedMax: '0.1.2',
+          supportedLine: '0.1',
         },
       }),
     );
@@ -89,12 +88,11 @@ describe('GatewayCompatibilityAlert for a user who is not a platform admin', () 
         "role 'openshell-admin' required",
       ),
     );
-    // ...and the notice is there all the same, with the version and range.
+    // ...and the notice is there all the same, with the line and the version.
     const alert = await screen.findByTestId('gateway-compatibility-alert');
     expect(alert).toHaveAttribute('data-status', 'unsupported');
-    expect(alert).toHaveTextContent('The gateway reports version 0.0.116.');
     expect(alert).toHaveTextContent(
-      'Supported gateway versions: 0.1.0 to 0.1.2.',
+      'This dashboard is built for OpenShell gateway 0.1.x. This gateway reports 0.0.116.',
     );
   });
 

@@ -27,11 +27,11 @@
 // of TestGlobalSettings, TestGlobalPolicy and TestSandboxSettings, and all of
 // TestSandboxSettingManagedGlobally), a compute driver other than the compat
 // stack's Docker (TestRuntimeClassReachesTheDriver), a delete the gateway only
-// accepted, or a BFF started without a supported gateway range
-// (TestGatewayCompatibility, which CI always gives one). On the disposable
-// gateway CI uses, any skip, or any failure, is news. The comment does not
-// state how many tests there are: a count is wrong as soon as another change
-// adds a test.
+// accepted, or a BFF started with a gateway release line it could not read
+// (TestGatewayCompatibility; CI sets none, so the built-in line is used). On
+// the disposable gateway CI uses, any skip, or any failure, is news. The
+// comment does not state how many tests there are: a count is wrong as soon
+// as another change adds a test.
 //
 // # Coverage map
 //

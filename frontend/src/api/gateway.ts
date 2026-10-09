@@ -18,9 +18,9 @@ export const useGatewayInfo = () =>
 // The dashboard's verdict on the gateway's version, for every signed-in user.
 //
 // GET /gateway carries the same verdict, but the gateway refuses that call to
-// anyone who is not a platform admin, and a gateway that is too old breaks
-// every user's pages. This route is answered from the gateway's health check,
-// which needs no role.
+// anyone who is not a platform admin, and a gateway on another release line
+// breaks every user's pages. This route is answered from the gateway's health
+// check, which needs no role.
 export const getGatewayCompatibility = (): Promise<GatewayCompatibilityInfo> =>
   get<GatewayCompatibilityInfo>('/api/v1/gateway/compatibility');
 

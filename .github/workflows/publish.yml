@@ -13,11 +13,12 @@
 # see scripts/release/sweep-bump.mjs.
 #
 # One version, three artifacts. Two of them say which OpenShell gateways the
-# release supports (#66, ADR 0005):
+# release supports (#66, ADR 0009):
 #
 #   GitHub release   semantic-release creates it; a section in the notes
 #   container image  the image CI already built for this commit gets the tags
-#                    X.Y.Z and X.Y; it carries the range as env vars and labels
+#                    X.Y.Z and X.Y; it carries the gateway release line as a
+#                    label, and the BFF inside has it compiled in
 #
 # The third is the Helm chart, packaged at the same version. Nothing is
 # published to npm: that package is retired (ADR 0008).

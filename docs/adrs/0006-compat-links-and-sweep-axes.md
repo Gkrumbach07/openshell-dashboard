@@ -259,6 +259,11 @@ What stands from ADR 0005: declare a window and never claim `latest`, prove
 compatibility rather than assert it, pin by digest, keep the pins
 machine-readable, and report to one issue that is rewritten in place.
 
+## Amendments
+
+- [ADR 0007](0007-releases-are-cut-by-hand.md) — decision 9: automated pull requests are still `fix:` commits, but a release is cut because of where the commit came from, not because of its title.
+- [ADR 0009](0009-console-release-policy.md) — replaces decision 2 (what a build supports is the minor release line of the newest required lane, not a range), and decisions 5 and 6 (moving to a gateway release is one change, not two sweep axes with one-axis pull requests). The sweep is not rebuilt yet and keeps working as described here until it is. Decision 1 holds for what may be released; the rest of the line is claimed from its version number.
+
 ## References
 
 - [ADR 0005](0005-gateway-version-compatibility.md) — the decision this amends

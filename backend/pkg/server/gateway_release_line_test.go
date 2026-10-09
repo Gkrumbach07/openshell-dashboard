@@ -40,22 +40,29 @@ func getGateway(t *testing.T, reported string, configure func(*App)) map[string]
 	return body
 }
 
-// SetGatewaySupport is the only way a range reaches the route, so prove the
-// wiring end to end rather than only the handler in isolation.
-func TestSetGatewaySupport_ReachesGatewayRoute(t *testing.T) {
-	support, err := models.ParseGatewaySupport("0.1.0", "0.1.2")
+// otherLine is a release line for a test to hand an App: one that is certainly
+// not the line compiled into the build, whatever that becomes, so that a test
+// passing with it proves the override reached the route.
+func otherLine(t *testing.T) models.GatewayReleaseLine {
+	t.Helper()
+	line, err := models.ParseGatewayReleaseLine("9.9")
 	if err != nil {
-		t.Fatalf("ParseGatewaySupport: %v", err)
+		t.Fatalf("ParseGatewayReleaseLine: %v", err)
 	}
+	return line
+}
 
-	body := getGateway(t, "0.0.116", func(app *App) { app.SetGatewaySupport(support) })
+// SetGatewayReleaseLine is the only way an override reaches the route, so
+// prove the wiring end to end rather than only the handler in isolation.
+func TestSetGatewayReleaseLine_ReachesGatewayRoute(t *testing.T) {
+	body := getGateway(t, "0.0.116", func(app *App) { app.SetGatewayReleaseLine(otherLine(t)) })
 
 	compatibility, ok := body["compatibility"].(map[string]any)
 	if !ok {
 		t.Fatalf("compatibility missing from %v", body)
 	}
-	if compatibility["status"] != "unsupported" || compatibility["supportedMin"] != "0.1.0" || compatibility["supportedMax"] != "0.1.2" {
-		t.Errorf("compatibility = %v, want unsupported against 0.1.0..0.1.2", compatibility)
+	if len(compatibility) != 2 || compatibility["status"] != "unsupported" || compatibility["supportedLine"] != "9.9" {
+		t.Errorf("compatibility = %v, want unsupported on line 9.9 and nothing else", compatibility)
 	}
 	if body["gatewayVersion"] != "0.0.116" {
 		t.Errorf("gatewayVersion = %v, want 0.0.116", body["gatewayVersion"])
@@ -85,16 +92,12 @@ func (refusedGatewayInfo) GetGatewayInfo(context.Context) (*openshell.GatewayInf
 // gateway-info call, and the verdict must reach them anyway. Driven through
 // the real router with auth ON, the way a deployment behind a proxy runs.
 func TestGatewayCompatibilityRoute_ServesUsersWithoutTheAdminRole(t *testing.T) {
-	support, err := models.ParseGatewaySupport("0.1.0", "0.1.2")
-	if err != nil {
-		t.Fatalf("ParseGatewaySupport: %v", err)
-	}
 	sdk := adminOnlyGatewayInfo{fake.NewClient(fake.WithHealthResult(&openshell.HealthResult{
 		Healthy: true,
 		Version: "0.0.116",
 	}))}
 	app := NewApp(sdk, nil, auth.New(auth.Config{}), "", models.AuthConfigResponse{})
-	app.SetGatewaySupport(support)
+	app.SetGatewayReleaseLine(otherLine(t))
 	router := app.Routes()
 
 	get := func(path, token string) *httptest.ResponseRecorder {
@@ -121,17 +124,15 @@ func TestGatewayCompatibilityRoute_ServesUsersWithoutTheAdminRole(t *testing.T) 
 		Healthy        *bool  `json:"healthy"`
 		GatewayVersion string `json:"gatewayVersion"`
 		Compatibility  struct {
-			Status       string `json:"status"`
-			SupportedMin string `json:"supportedMin"`
-			SupportedMax string `json:"supportedMax"`
+			Status        string `json:"status"`
+			SupportedLine string `json:"supportedLine"`
 		} `json:"compatibility"`
 	}
 	if err := json.Unmarshal(verdict.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v; body: %s", err, verdict.Body.String())
 	}
-	if body.GatewayVersion != "0.0.116" || body.Compatibility.Status != "unsupported" ||
-		body.Compatibility.SupportedMin != "0.1.0" || body.Compatibility.SupportedMax != "0.1.2" {
-		t.Errorf("body = %s, want gateway 0.0.116 unsupported against 0.1.0..0.1.2", verdict.Body.String())
+	if body.GatewayVersion != "0.0.116" || body.Compatibility.Status != "unsupported" || body.Compatibility.SupportedLine != "9.9" {
+		t.Errorf("body = %s, want gateway 0.0.116 unsupported on line 9.9", verdict.Body.String())
 	}
 	// And so does the gateway's health, which GET /gateway would have told
 	// an admin.
@@ -146,10 +147,12 @@ func TestGatewayCompatibilityRoute_ServesUsersWithoutTheAdminRole(t *testing.T) 
 	}
 }
 
-// An App nobody gave a range to answers the verdict route too, with "unknown"
-// and no range — the same answer GET /gateway gives.
-func TestGatewayCompatibilityRoute_WithoutGatewaySupportReportsUnknown(t *testing.T) {
-	sdk := fake.NewClient(fake.WithHealthResult(&openshell.HealthResult{Healthy: true, Version: "0.0.116"}))
+// An App nobody gave a line to — every existing caller of NewApp, and a BFF
+// started with no environment — judges gateways against the line compiled
+// into the build. The verdict route answers with it...
+func TestGatewayCompatibilityRoute_UsesTheBuiltInLine(t *testing.T) {
+	builtIn := models.BuiltInGatewayReleaseLine
+	sdk := fake.NewClient(fake.WithHealthResult(&openshell.HealthResult{Healthy: true, Version: builtIn + ".0"}))
 	app := NewApp(sdk, nil, auth.New(auth.Config{Disabled: true}), "", models.AuthConfigResponse{AuthDisabled: true})
 
 	recorder := httptest.NewRecorder()
@@ -157,16 +160,30 @@ func TestGatewayCompatibilityRoute_WithoutGatewaySupportReportsUnknown(t *testin
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("GET /api/v1/gateway/compatibility = %d; body: %s", recorder.Code, recorder.Body.String())
 	}
-	const want = `{"gatewayVersion":"0.0.116","healthy":true,"compatibility":{"status":"unknown"}}`
+	want := `{"gatewayVersion":"` + builtIn + `.0","healthy":true,"compatibility":{"status":"supported","supportedLine":"` + builtIn + `"}}`
 	if got := strings.TrimSpace(recorder.Body.String()); got != want {
 		t.Errorf("body = %s, want %s", got, want)
 	}
 }
 
-// An App nobody gave a range to — every existing caller of NewApp — reports
-// "unknown" and names no range. It must never invent one.
-func TestNewApp_WithoutGatewaySupportReportsUnknown(t *testing.T) {
-	body := getGateway(t, "0.0.116", nil)
+// ...and GET /gateway gives the same answer.
+func TestNewApp_UsesTheBuiltInLine(t *testing.T) {
+	builtIn := models.BuiltInGatewayReleaseLine
+	body := getGateway(t, builtIn+".0", nil)
+
+	compatibility, ok := body["compatibility"].(map[string]any)
+	if !ok {
+		t.Fatalf("compatibility missing from %v", body)
+	}
+	if len(compatibility) != 2 || compatibility["status"] != "supported" || compatibility["supportedLine"] != builtIn {
+		t.Errorf("compatibility = %v, want supported on line %s and nothing else", compatibility, builtIn)
+	}
+}
+
+// An App whose line was replaced by one that could not be read reports
+// "unknown" and names no line. It must never fall back to another.
+func TestSetGatewayReleaseLine_ZeroValueReportsUnknown(t *testing.T) {
+	body := getGateway(t, "0.0.116", func(app *App) { app.SetGatewayReleaseLine(models.GatewayReleaseLine{}) })
 
 	compatibility, ok := body["compatibility"].(map[string]any)
 	if !ok {

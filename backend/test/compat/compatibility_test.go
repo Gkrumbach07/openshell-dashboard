@@ -11,9 +11,8 @@ import (
 // compatibilityVerdict is the dashboard's verdict as both gateway routes
 // serialize it.
 type compatibilityVerdict struct {
-	Status       string `json:"status"`
-	SupportedMin string `json:"supportedMin"`
-	SupportedMax string `json:"supportedMax"`
+	Status        string `json:"status"`
+	SupportedLine string `json:"supportedLine"`
 }
 
 // gatewayCompatibility reads GET /api/v1/gateway/compatibility, the route the
@@ -39,58 +38,57 @@ func gatewayCompatibility(t *testing.T) (version string, verdict compatibilityVe
 // all — a format change there would silently turn every verdict into
 // "unknown" and the notice in the UI would never appear.
 //
-// It needs the BFF under test to have been started with a range:
-//
-//	GATEWAY_SUPPORTED_MIN=0.1.0 GATEWAY_SUPPORTED_MAX=0.1.2 ./bin/server
-//
-// and skips when it was not, because a BFF without a range has no verdict to
-// give. deploy/ci/e2e-stack.sh passes its environment through to the BFF it
-// starts, so the same two variables in front of `e2e-stack.sh run` are enough.
+// The BFF under test needs nothing set for this: the release line it judges
+// against is compiled in. The test skips only when the BFF was started with a
+// GATEWAY_RELEASE_LINE it could not read, because that BFF has no verdict to
+// give.
 //
 // Set COMPAT_EXPECT_COMPATIBILITY to pin the expected verdict for the gateway
-// under test: "supported" for a lane inside the range, "unsupported" for a
-// gateway below it (0.0.116 against 0.1.0..0.1.2), "untested" for one above it
-// (upstream HEAD). Run it alone with -run 'TestGatewayCompatibility$' against
-// a gateway outside the range, where the rest of this suite is expected to
-// fail: the health check sends an empty request, so the field renumbering that
-// breaks workspace-scoped calls on an older gateway does not reach it.
+// under test: "supported" for a lane on the BFF's line, "unsupported" for a
+// gateway on another (0.0.116 against line 0.1). To see "unsupported" from a
+// gateway of the BFF's own line, start the BFF with another line
+// (GATEWAY_RELEASE_LINE=9.9); deploy/ci/e2e-stack.sh passes its environment
+// through to the BFF it starts. Run it alone with
+// -run 'TestGatewayCompatibility$' against a gateway on another line, where
+// the rest of this suite is expected to fail: the health check sends an empty
+// request, so the field renumbering that breaks workspace-scoped calls on an
+// older gateway does not reach it.
 func TestGatewayCompatibility(t *testing.T) {
 	want := os.Getenv("COMPAT_EXPECT_COMPATIBILITY")
 	reported, got := gatewayCompatibility(t)
-	t.Logf("gateway reports %q; BFF verdict %q against range %q..%q",
-		reported, got.Status, got.SupportedMin, got.SupportedMax)
+	t.Logf("gateway reports %q; BFF verdict %q on release line %q", reported, got.Status, got.SupportedLine)
 
 	switch got.Status {
-	case "unsupported", "supported", "untested", "unknown":
+	case "unsupported", "supported", "unknown":
 	default:
-		t.Fatalf("compatibility.status = %q, not one of unsupported|supported|untested|unknown", got.Status)
+		t.Fatalf("compatibility.status = %q, not one of unsupported|supported|unknown", got.Status)
 	}
 
-	if got.SupportedMin == "" && got.SupportedMax == "" {
+	if got.SupportedLine == "" {
 		if got.Status != "unknown" {
-			t.Errorf("compatibility.status = %q with no range configured, want unknown — the BFF "+
-				"must not guess a range", got.Status)
+			t.Errorf("compatibility.status = %q with no release line, want unknown — the BFF "+
+				"must not judge a gateway against a line it does not name", got.Status)
 		}
 		// An expectation with nothing to check it against is a wiring mistake,
 		// not a reason to skip quietly.
 		if want != "" && want != "unknown" {
-			t.Fatalf("COMPAT_EXPECT_COMPATIBILITY=%q, but the BFF under test has no range — start it "+
-				"with GATEWAY_SUPPORTED_MIN and GATEWAY_SUPPORTED_MAX", want)
+			t.Fatalf("COMPAT_EXPECT_COMPATIBILITY=%q, but the BFF under test names no release line — "+
+				"it was started with a GATEWAY_RELEASE_LINE it could not read; unset it or write major.minor", want)
 		}
-		t.Skip("the BFF was started without GATEWAY_SUPPORTED_MIN / GATEWAY_SUPPORTED_MAX; no verdict to check")
+		t.Skip("the BFF was started with a GATEWAY_RELEASE_LINE it could not read; no verdict to check")
 	}
 
-	// "unknown" with a range is a legitimate answer only when it was asked
+	// "unknown" with a line is a legitimate answer only when it was asked
 	// for: a gateway built without a version stamp reports 0.0.0, which the
 	// BFF refuses to place. Any other gateway must get a real verdict.
 	if got.Status == "unknown" && want != "unknown" {
-		t.Errorf("the BFF has a range (%s..%s) but could not place gateway version %q in it — "+
+		t.Errorf("the BFF is for release line %s but could not place gateway version %q — "+
 			"the gateway's version format is not one the BFF parses, or the gateway does not "+
-			"know its own version", got.SupportedMin, got.SupportedMax, reported)
+			"know its own version", got.SupportedLine, reported)
 	}
 	if want != "" && got.Status != want {
-		t.Errorf("compatibility.status = %q for gateway %q against %s..%s, want %q (COMPAT_EXPECT_COMPATIBILITY)",
-			got.Status, reported, got.SupportedMin, got.SupportedMax, want)
+		t.Errorf("compatibility.status = %q for gateway %q on release line %s, want %q (COMPAT_EXPECT_COMPATIBILITY)",
+			got.Status, reported, got.SupportedLine, want)
 	}
 }
 
@@ -143,8 +141,8 @@ func TestGatewayCompatibilityHealth(t *testing.T) {
 // The verdict is computed from the health check because the gateway answers it
 // for every caller, where GetGatewayInfo is for platform admins only. If the
 // two ever disagreed, a user would be shown a verdict about a version the
-// Gateway page and the About dialog do not display. It needs no range, so it
-// runs in every lane.
+// Gateway page and the About dialog do not display. It does not depend on the
+// verdict, so it runs in every lane.
 func TestGatewayCompatibilityVersionSource(t *testing.T) {
 	var info struct {
 		Compatibility  *compatibilityVerdict `json:"compatibility"`

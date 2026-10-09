@@ -54,8 +54,7 @@ func main() {
 		userHeader        = flag.String("auth-user-header", envOr("AUTH_USER_HEADER", "x-auth-request-user"), "header injected by auth proxy containing the username (env AUTH_USER_HEADER)")
 		adminRole         = flag.String("admin-role", envOr("ADMIN_ROLE", "admin"), "role name that grants platform admin access (env ADMIN_ROLE)")
 		logoutURL         = flag.String("logout-url", envOr("LOGOUT_URL", "/oauth2/sign_out"), "auth proxy sign-out URL to redirect to on logout (env LOGOUT_URL)")
-		supportedMin      = flag.String("gateway-supported-min", envOr("GATEWAY_SUPPORTED_MIN", ""), "oldest gateway release this build supports, x.y.z; set together with -gateway-supported-max (env GATEWAY_SUPPORTED_MIN)")
-		supportedMax      = flag.String("gateway-supported-max", envOr("GATEWAY_SUPPORTED_MAX", ""), "newest gateway release this build was tested against, x.y.z; set together with -gateway-supported-min (env GATEWAY_SUPPORTED_MAX)")
+		releaseLine       = flag.String("gateway-release-line", envOr("GATEWAY_RELEASE_LINE", models.BuiltInGatewayReleaseLine), "gateway release line this build is for, major.minor; the default is compiled in, override it only for tests and local development (env GATEWAY_RELEASE_LINE)")
 	)
 	flag.Parse()
 
@@ -103,10 +102,10 @@ func main() {
 	}
 	defer clients.Close()
 
-	support := gatewaySupport(*supportedMin, *supportedMax)
+	line := gatewayReleaseLine(*releaseLine)
 
 	app := server.NewApp(clients.sdk, clients.raw, authMiddleware, *staticDir, authCfg)
-	app.SetGatewaySupport(support)
+	app.SetGatewayReleaseLine(line)
 	app.SetProviderCredentialKeys(clients.raw)
 	app.SetProviderProfiles(clients.raw)
 
@@ -117,7 +116,7 @@ func main() {
 		"gateway", *gatewayURL,
 		"static", *staticDir,
 		"authDisabled", *authDisabled,
-		"gatewaySupported", support.String(),
+		"gatewayReleaseLine", line.String(),
 	)
 
 	server := newInboundServer(addr, app.Routes())

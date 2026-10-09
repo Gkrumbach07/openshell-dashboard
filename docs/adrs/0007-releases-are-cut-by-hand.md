@@ -98,3 +98,7 @@ smaller change and makes the choice explicit.
 **No automatic release at all.** Simpler, but a raised ceiling would then reach
 versioned artifacts only when someone remembered, and until then a released
 dashboard would keep telling users of the new gateway that it is untested.
+
+## Amendments
+
+- [ADR 0009](0009-console-release-policy.md) — replaces decision 2: the release type follows from the gateway's releases (a minor when the gateway starts a minor release line, a patch otherwise) and is not a person's choice. The release workflow still asks for a type until that is built.

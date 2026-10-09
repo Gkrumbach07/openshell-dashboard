@@ -83,7 +83,7 @@ push to main
    │
    ▼
 ci.yml ── build ──► push-manifest ─────────────► image :sha-<7>
-   │                     └── image-range   (reads it back: does it declare the range?)
+   │                     └── image-range   (reads it back: does it declare its line?)
    │
    ├── check-frontend, check-backend, e2e
    ├── compat (every required gateway lane)
@@ -152,36 +152,53 @@ by a single `BREAKING CHANGE:` footer nobody meant as a milestone.
 
 ## What every release declares
 
-The GitHub release and the container image each state the range of OpenShell
-gateways the release supports and the Go SDK it was built against (#66,
-ADR 0005). The Helm chart states nothing of its own; by default it deploys the
-image of the same version. The range is the lowest and the
-highest version among the **required** lanes in
+The GitHub release and the container image each state the OpenShell gateway
+release line the release is for and the Go SDK it was built against (#66,
+[ADR 0009](adrs/0009-console-release-policy.md)). The Helm chart states nothing
+of its own; by default it deploys the image of the same version. The line is
+the major and minor number of the newest **required** lane in
 [`deploy/ci/gateway-pins.json`](../deploy/ci/gateway-pins.json) at the released
-commit. One script derives it, [`scripts/gateway-range.mjs`](../scripts/gateway-range.mjs),
-and everything else calls that script:
+commit, written `0.1` and shown as `0.1.x`: every gateway release that starts
+with those two numbers. One script derives it,
+[`scripts/gateway-range.mjs`](../scripts/gateway-range.mjs), and everything
+else calls that script:
 
 | Artifact | What it carries | Written by |
 |---|---|---|
-| GitHub release | a *Supported OpenShell gateways* section, which also calls out a range that changed since the previous release | `generateNotes` in `scripts/release/gateway-range-plugin.mjs` |
-| Container image | env `GATEWAY_SUPPORTED_MIN` / `GATEWAY_SUPPORTED_MAX`, and labels `io.github.gkrumbach07.openshell-dashboard.gateway.min`, `.gateway.max`, `.sdk` | build args in `ci.yml`'s `build` job, consumed by `deploy/Dockerfile`; `image-range` reads the pushed image back and fails if they are missing |
+| GitHub release | a *Supported OpenShell gateways* section: the line, the releases it was tested on and the SDK. It also calls out a line that changed since the previous release | `generateNotes` in `scripts/release/gateway-range-plugin.mjs` |
+| Container image | labels `io.github.gkrumbach07.openshell-dashboard.gateway.line` and `.sdk` | build args in `ci.yml`'s `build` job, consumed by `deploy/Dockerfile`; `image-range` reads the pushed image back and fails if they are missing |
 | README | the table under *Compatibility* | `scripts/readme-gateway-range.mjs --write`, run by whatever moves the pins (the compat sweep's pull requests do it themselves) and checked in CI |
 
-The only thing that has to agree with the pins file is `backend/go.mod`: the
-`sdk` field must equal the SDK version there, and
-`node scripts/gateway-range.mjs --check` fails when it does not. The SDK and the
-gateway lanes are otherwise independent and move in separate pull requests
-([ADR 0006](adrs/0006-compat-links-and-sweep-axes.md)).
+The BFF in the image does not read the labels. The line it compares a gateway
+with is compiled into the binary (`BuiltInGatewayReleaseLine` in
+[`backend/pkg/models/gateway_release_line.go`](../backend/pkg/models/gateway_release_line.go)),
+so an image built by another Dockerfile, or with no build args, still shows the
+compatibility notice.
 
-**Releases up to and including `1.1.1` have none of this.** They were cut by
-the previous pipeline: no *Supported OpenShell gateways* section,
-no range on the image, and no `X.Y.Z` or `X.Y` image tag. Nothing here
-adds them after the fact. The first release cut by this pipeline is the first
-one that carries them.
+Two things have to agree with the pins file, and
+`node scripts/gateway-range.mjs --check` fails when either does not:
 
-The version number does not describe the gateway a deployment needs. A release
-that moves the range can break a running installation while looking like a
-patch, which is why the release notes say so explicitly when it happens.
+- `backend/go.mod`: the `sdk` field must equal the SDK version there. The SDK
+  and the gateway lanes are otherwise independent and move in separate pull
+  requests ([ADR 0006](adrs/0006-compat-links-and-sweep-axes.md)).
+- the line compiled into the BFF: it must be the line of the newest required
+  lane. A lane that moves to a newer patch of the same line changes nothing
+  here. A lane that moves to a new minor changes the constant in the same pull
+  request.
+
+**Release `1.2.0` declares a range of gateway versions instead of a line.** It
+was cut before ADR 0009: its notes state a range, and its image carries env
+`GATEWAY_SUPPORTED_MIN` / `GATEWAY_SUPPORTED_MAX` and labels `.gateway.min` /
+`.gateway.max`. **Releases up to and including `1.1.1` have none of this.** They
+were cut by the previous pipeline: no *Supported OpenShell gateways* section,
+nothing on the image, and no `X.Y.Z` or `X.Y` image tag. Nothing here changes a
+release after the fact.
+
+The dashboard's own version number does not yet describe the gateway a
+deployment needs: `1.x` is for gateway `0.1.x`. ADR 0009 decides that the two
+will share a minor release line; until that is implemented, the release notes
+and the image label are where the line is stated, and the notes say so
+explicitly when a release moves to another line.
 
 ## When something fails
 
@@ -233,7 +250,7 @@ released until its own run is re-run.
 None of this needs a registry, a token or a docker daemon:
 
 ```bash
-node scripts/gateway-range.mjs --check          # the range, and that its SDK is the one in go.mod
+node scripts/gateway-range.mjs --check          # the gateway release line, and that the line in the BFF and the SDK in go.mod match the pins
 node scripts/readme-gateway-range.mjs --check   # the README states it
 node --test "scripts/**/*.test.mjs"             # release type, the sweep-bump check, notes, release detection, the tip check, retag and image check (against a stand-in docker)
 

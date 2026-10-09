@@ -1,38 +1,35 @@
 #!/usr/bin/env node
-// Checks that an image in the registry really declares the supported gateway
-// range, on every platform it was built for.
+// Checks that an image in the registry really declares the gateway release
+// line it is for and the SDK it was built against, on every platform it was
+// built for.
 //
 //   node scripts/check-image-range.mjs quay.io/gkrumbach07/openshell-dashboard:sha-0a1b2c3
 //
-// The range reaches the image as build args: ci.yml passes them, and
-// deploy/Dockerfile turns them into two env vars and three labels. A build arg
-// that is misspelt on either side is not an error — the Dockerfile's default is
-// the empty string, on purpose, so that a plain `docker build` works — which
-// means the image would be published claiming nothing and no step would fail.
-// This reads the pushed image's config back and compares it with what
-// gateway-range.mjs derives. It only talks to the registry; it does not pull or
-// run the image.
+// Both reach the image as build args: ci.yml passes them, and deploy/Dockerfile
+// turns them into two labels. A build arg that is misspelt on either side is
+// not an error — the Dockerfile's default is the empty string, on purpose, so
+// that a plain `docker build` works — which means the image would be published
+// with empty labels and no step would fail. This reads the pushed image's
+// config back and compares it with what gateway-range.mjs derives. It only
+// talks to the registry; it does not pull or run the image.
+//
+// The labels are for someone holding an image reference. The BFF inside does
+// not read them: its line is compiled in, and `gateway-range.mjs --check`
+// holds that constant to the same pins.
 import { execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { readGatewayRange } from './gateway-range.mjs';
+import { readGatewayLine } from './gateway-range.mjs';
 
 // Must match the LABEL keys in deploy/Dockerfile.
 export const LABEL_PREFIX = 'io.github.gkrumbach07.openshell-dashboard';
 
-/** What deploy/Dockerfile should have baked in for this range. */
-export function expectedDeclaration(range) {
+/** The labels deploy/Dockerfile should have baked in for this build. */
+export function expectedLabels(declared) {
   return {
-    env: {
-      GATEWAY_SUPPORTED_MIN: range.floor,
-      GATEWAY_SUPPORTED_MAX: range.ceiling,
-    },
-    labels: {
-      [`${LABEL_PREFIX}.gateway.min`]: range.floor,
-      [`${LABEL_PREFIX}.gateway.max`]: range.ceiling,
-      [`${LABEL_PREFIX}.sdk`]: range.sdk,
-    },
+    [`${LABEL_PREFIX}.gateway.line`]: declared.line,
+    [`${LABEL_PREFIX}.sdk`]: declared.sdk,
   };
 }
 
@@ -51,23 +48,15 @@ export function platformConfigs(inspected) {
 }
 
 /** Every way the image fails to say what it should. Empty means it is right. */
-export function declarationProblems(inspected, range) {
+export function declarationProblems(inspected, declared) {
   const configs = platformConfigs(inspected);
   if (configs.length === 0) {
     return ['the registry returned no image config to check'];
   }
-  const want = expectedDeclaration(range);
+  const want = expectedLabels(declared);
   const problems = [];
   for (const [platform, config] of configs) {
-    const env = Object.fromEntries(
-      (config.Env ?? []).map((entry) => [entry.slice(0, entry.indexOf('=')), entry.slice(entry.indexOf('=') + 1)]),
-    );
-    for (const [name, value] of Object.entries(want.env)) {
-      if (env[name] !== value) {
-        problems.push(`${platform}: env ${name} is ${JSON.stringify(env[name])}, expected ${JSON.stringify(value)}`);
-      }
-    }
-    for (const [name, value] of Object.entries(want.labels)) {
+    for (const [name, value] of Object.entries(want)) {
       const actual = config.Labels?.[name];
       if (actual !== value) {
         problems.push(`${platform}: label ${name} is ${JSON.stringify(actual)}, expected ${JSON.stringify(value)}`);
@@ -82,23 +71,23 @@ function main() {
   if (!ref) {
     throw new Error('usage: check-image-range.mjs IMAGE_REFERENCE');
   }
-  const range = readGatewayRange();
+  const declared = readGatewayLine();
   const inspected = JSON.parse(
     execFileSync('docker', ['buildx', 'imagetools', 'inspect', ref, '--format', '{{json .Image}}'], {
       encoding: 'utf8',
     }),
   );
-  const problems = declarationProblems(inspected, range);
+  const problems = declarationProblems(inspected, declared);
   if (problems.length > 0) {
     throw new Error(
-      `${ref} does not declare the supported gateway range (${range.range}, SDK ${range.sdk}):\n  ` +
+      `${ref} does not declare its gateway release line (${declared.line}) and SDK (${declared.sdk}):\n  ` +
         `${problems.join('\n  ')}\n` +
         'Check the build-args in the build job of ci.yml against the ARG names in deploy/Dockerfile.',
     );
   }
   const platforms = platformConfigs(inspected).map(([platform]) => platform);
   process.stdout.write(
-    `${ref} declares gateways ${range.floor} to ${range.ceiling} and SDK ${range.sdk} on ${platforms.join(', ')}\n`,
+    `${ref} declares gateway release line ${declared.line} and SDK ${declared.sdk} on ${platforms.join(', ')}\n`,
   );
 }
 

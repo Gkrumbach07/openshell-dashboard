@@ -78,7 +78,7 @@ const mockVerdict = (
     data: { gatewayVersion, compatibility },
   });
 
-const range = { supportedMin: '0.1.0', supportedMax: '0.1.2' };
+const line = { supportedLine: '0.1' };
 
 const renderShell = (route: string, page: React.ReactNode) =>
   render(
@@ -101,7 +101,7 @@ describe('AppLayout role badge', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     refuseGatewayInfo();
-    mockVerdict('0.1.2', { status: 'supported', ...range });
+    mockVerdict('0.1.2', { status: 'supported', ...line });
     mockUser();
   });
 
@@ -148,7 +148,7 @@ describe('AppLayout platform-admin gating', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     refuseGatewayInfo();
-    mockVerdict('0.1.2', { status: 'supported', ...range });
+    mockVerdict('0.1.2', { status: 'supported', ...line });
     mockUser({ roles: ['user'] });
   });
 
@@ -202,7 +202,7 @@ describe('AppLayout gateway compatibility notice', () => {
   it.each(['/workspaces', '/workspaces/default/sandboxes/agent', '/gateway'])(
     'shows the notice above the page on %s when the gateway is unsupported',
     (route) => {
-      mockVerdict('0.0.116', { status: 'unsupported', ...range });
+      mockVerdict('0.0.116', { status: 'unsupported', ...line });
       renderShell(route, page);
 
       const alert = screen.getByTestId('gateway-compatibility-alert');
@@ -218,19 +218,19 @@ describe('AppLayout gateway compatibility notice', () => {
   );
 
   it('shows it to a user whose gateway-info request is refused', () => {
-    mockVerdict('0.0.116', { status: 'unsupported', ...range });
+    mockVerdict('0.0.116', { status: 'unsupported', ...line });
     renderShell('/workspaces', page);
 
     // The shell did ask for gateway info, and got nothing...
     expect(mockUseGatewayInfo).toHaveBeenCalled();
     // ...and the notice is there anyway, naming the version.
     expect(screen.getByTestId('gateway-compatibility-alert')).toHaveTextContent(
-      'The gateway reports version 0.0.116.',
+      'This gateway reports 0.0.116.',
     );
   });
 
   it('adds nothing visible to the page when the gateway is supported', () => {
-    mockVerdict('0.1.2', { status: 'supported', ...range });
+    mockVerdict('0.1.2', { status: 'supported', ...line });
     renderShell('/workspaces', page);
 
     expect(
@@ -246,25 +246,19 @@ describe('AppLayout gateway compatibility notice', () => {
     expect(region.nextElementSibling).toBe(screen.getByTestId('routed-page'));
   });
 
-  it.each([
-    ['unsupported', '0.0.116'],
-    ['untested', '0.1.3'],
-  ] as const)(
-    'does not put a heading above the page h1 for the %s notice',
-    (status, version) => {
-      mockVerdict(version, { status, ...range });
-      renderShell('/workspaces', page);
+  it('does not put a heading above the page h1 for the notice', () => {
+    mockVerdict('0.2.0', { status: 'unsupported', ...line });
+    renderShell('/workspaces', page);
 
-      const main = screen.getByRole('main');
-      const alert = screen.getByTestId('gateway-compatibility-alert');
-      expect(within(alert).queryByRole('heading')).not.toBeInTheDocument();
-      // The first heading a screen reader user meets in main is the page's.
-      const headings = within(main).getAllByRole('heading');
-      expect(headings[0]).toBe(
-        screen.getByRole('heading', { level: 1, name: 'Workspaces' }),
-      );
-    },
-  );
+    const main = screen.getByRole('main');
+    const alert = screen.getByTestId('gateway-compatibility-alert');
+    expect(within(alert).queryByRole('heading')).not.toBeInTheDocument();
+    // The first heading a screen reader user meets in main is the page's.
+    const headings = within(main).getAllByRole('heading');
+    expect(headings[0]).toBe(
+      screen.getByRole('heading', { level: 1, name: 'Workspaces' }),
+    );
+  });
 
   it('has its live region in the page before the verdict arrives', () => {
     mockUseGatewayCompatibility.mockReturnValue({
@@ -285,7 +279,7 @@ describe('AppLayout gateway compatibility notice', () => {
   // live region. That is what keeps a screen reader from reading it out again
   // on every page.
   it('is not announced again when the user navigates', () => {
-    mockVerdict('0.0.116', { status: 'unsupported', ...range });
+    mockVerdict('0.0.116', { status: 'unsupported', ...line });
     renderShell(
       '/workspaces',
       <Routes>
