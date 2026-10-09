@@ -39,9 +39,9 @@ helm upgrade --install openshell-dashboard . \
   --set-string "authProxy.whitelistDomains[0]=$KEYCLOAK_HOST"
 ```
 
-Follow Helm NOTES after installation. Logout returns to `/oauth2/sign_in` to avoid showing a stale dashboard; `authProxy.whitelistDomains` must include the IdP host.
+Follow Helm NOTES after installation. The dashboard calls `/oauth2/sign_out`, waits for oauth2-proxy to clear its cookie, then navigates to `/oauth2/sign_in`. The example `authProxy.whitelistDomains` entry keeps oauth2-proxy's sign-in page visible instead of immediately starting another OIDC login.
 
-For providers that support server-side logout, set `oidc.backendLogoutURL` to an IdP endpoint reachable from the oauth2-proxy pod, for example `https://keycloak.apps.example.com/realms/openshell/protocol/openid-connect/logout?id_token_hint={id_token}`. oauth2-proxy replaces `{id_token}` with the session ID token and calls the URL with GET before clearing its cookie. Leave it empty to disable the backend call. `dashboard.logoutURL` remains the browser-facing sign-out URL. Do not use `/oauth2/sign_out` as the backend URL
+For providers that support server-side logout, set `oidc.backendLogoutURL` to an IdP endpoint reachable from the oauth2-proxy pod, for example `https://keycloak.apps.example.com/realms/openshell/protocol/openid-connect/logout?id_token_hint={id_token}`. oauth2-proxy replaces `{id_token}` with the session ID token and calls the URL with GET before clearing its cookie. Leave it empty to disable the backend call. Keep `dashboard.logoutURL` as `/oauth2/sign_out` for the dashboard's sign-in navigation. No Keycloak post-logout redirect URI is needed. Do not use `/oauth2/sign_out` as the backend URL.
 
 ## Configuration
 

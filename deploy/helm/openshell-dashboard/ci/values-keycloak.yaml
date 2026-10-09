@@ -8,8 +8,7 @@
 # Resolve adds openshell-api to the access token aud when a role is present.
 # No custom audience mapper is needed. The gateway must use the same audience,
 # rolesClaim, adminRole, and userRole. Register the dashboard callback URL in
-# Valid redirect URIs and https://<dashboard-host>/oauth2/sign_in in Valid post
-# logout redirect URIs for the dashboard client.
+# Valid redirect URIs for the dashboard client.
 oidc:
   provider: keycloak-oidc
   issuer: https://keycloak.apps.example.com/realms/openshell
