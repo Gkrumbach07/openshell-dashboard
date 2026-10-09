@@ -26,7 +26,8 @@ import (
 // storedProfile is a profile as a gateway holds it, with everything on it the
 // dashboard used to drop: where the credential goes in a request, how it is
 // refreshed and granted, the binaries, discovery, annotations, and an endpoint
-// that says what it allows.
+// that says what it allows. It also has what OpenShell 0.1.3 added: files, and
+// the owners the gateway derives for a token grant.
 func storedProfile() *pb.ProviderProfile {
 	return &pb.ProviderProfile{
 		Id:               "github",
@@ -79,7 +80,12 @@ func storedProfile() *pb.ProviderProfile {
 						{Host: "api.github.com", Port: 443, Path: "/graphql", Audience: "api://graphql", Scopes: []string{"gql"}},
 					},
 				},
+				TokenGrantOwners: []string{"gateway-derived-owner"},
 			},
+		},
+		Files: []*pb.ProviderProfileFile{
+			{Path: "hosts.yml", Content: "host: {{config.host}}\n", EnvVar: "GH_CONFIG_FILE"},
+			{Path: "notice.txt", Content: "managed by the platform team\n"},
 		},
 		Endpoints: []*sbv1.NetworkEndpoint{
 			{
@@ -359,8 +365,13 @@ const storedProfileJSON = `{
         "audienceOverrides": [
           {"host": "api.github.com", "port": 443, "path": "/graphql", "audience": "api://graphql", "scopes": ["gql"]}
         ]
-      }
+      },
+      "tokenGrantOwners": ["gateway-derived-owner"]
     }
+  ],
+  "files": [
+    {"path": "hosts.yml", "content": "host: {{config.host}}\n", "envVar": "GH_CONFIG_FILE"},
+    {"path": "notice.txt", "content": "managed by the platform team\n"}
   ],
   "networkEndpoints": [
     {

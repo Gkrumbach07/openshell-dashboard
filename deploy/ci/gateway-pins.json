@@ -27,16 +27,16 @@
     "included: those PRs rewrite all of it, so CI requires the exact form they",
     "write. After a hand edit, `... sweep.py format-pins` puts it back."
   ],
-  "sdk": "v0.0.0-20260928030816-6648bd0c290e",
+  "sdk": "v0.0.0-20261009050449-e1f3c82caa3e",
   "sandbox_image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest@sha256:aeef1c63f00e2913ea002ccb3aaf925f338b5c5d70e63576f0d95c16a138044e",
   "lanes": [
     {
-      "version": "0.1.2",
-      "label": "0.1.2, newest tested",
+      "version": "0.1.3",
+      "label": "0.1.3, newest tested",
       "required": true,
       "config_schema": "v2",
-      "gateway_image": "ghcr.io/nvidia/openshell/gateway:0.1.2@sha256:2fe4dad9118e14ab80a8258b545ea6e6cd74c3469e24ad4e6610f964d98913a2",
-      "supervisor_image": "ghcr.io/nvidia/openshell/supervisor:0.1.2@sha256:d7b5264bb6bc56f4796e6fa3617b8e4a8d785be0b7293542efd8cc250b0fb67a"
+      "gateway_image": "ghcr.io/nvidia/openshell/gateway:0.1.3@sha256:ea14aa4db0980fab4769fb6b5509ac42ae3dc8495e645b1ba1fe1ada49892fa6",
+      "supervisor_image": "ghcr.io/nvidia/openshell/supervisor:0.1.3@sha256:4ab2b970cdb02c7518ba4ccbbadb4861ae9a8d0b8770e5b160697f0453b0a8e4"
     },
     {
       "version": "0.1.0",

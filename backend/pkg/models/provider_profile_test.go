@@ -639,6 +639,25 @@ func TestProviderProfileToSDKRefusesToNarrowAnEndpoint(t *testing.T) {
 	}
 }
 
+// The owners the gateway derives for a token grant have no place in the SDK's
+// type. The gateway ignores them when a profile is written, so a profile that
+// was read with them is still written through the SDK, without them, and is
+// not refused the way a narrowed endpoint is.
+func TestProviderProfileToSDKLeavesOutTokenGrantOwners(t *testing.T) {
+	got, err := ProviderProfileToSDK(&pb.ProviderProfile{
+		Id: "p",
+		Credentials: []*pb.ProviderProfileCredential{
+			{Name: "token", TokenGrantOwners: []string{"gateway-derived-owner"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProviderProfileToSDK: %v", err)
+	}
+	if want := []openshell.ProfileCredential{{Name: "token"}}; !reflect.DeepEqual(got.Credentials, want) {
+		t.Errorf("credentials = %+v, want %+v", got.Credentials, want)
+	}
+}
+
 func TestProviderProfileFromSDKNil(t *testing.T) {
 	if got := ProviderProfileFromSDK(nil); got != nil {
 		t.Errorf("ProviderProfileFromSDK(nil) = %v, want nil", got)

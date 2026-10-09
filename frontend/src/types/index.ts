@@ -555,6 +555,10 @@ export type ProfileCredential = {
   pathTemplate?: string;
   refresh?: ProfileCredentialRefresh;
   tokenGrant?: ProfileTokenGrant;
+  // Set by the gateway (OpenShell 0.1.3 and newer): the endpoints it lets
+  // obtain the credential's token grant. Ignored when written, and kept so
+  // that a profile that was read can be sent back as it is.
+  tokenGrantOwners?: string[];
 };
 
 // openshell.sandbox.v1.McpOptions (protojson camelCase).
@@ -613,12 +617,24 @@ export type ProfileDiscovery = {
   credentials?: string[];
 };
 
+// openshell.v1.ProviderProfileFile: a file that a sandbox with the provider
+// attached finds under /run/openshell/providers/<provider>/. `content` is a
+// template in which {{config.KEY}} stands for a value of the provider's
+// config, and `envVar` names an environment variable that is given the file's
+// path. Upstream added it in OpenShell 0.1.3 and marks it experimental.
+export type ProfileFile = {
+  path: string;
+  content: string;
+  envVar?: string;
+};
+
 export type ProviderProfile = {
   id: string;
   displayName: string;
   description?: string;
   category: ProviderProfileCategory;
   credentials: ProfileCredential[];
+  files?: ProfileFile[];
   // host:port summaries of the profile's network endpoints.
   endpoints?: string[];
   // The endpoints whole. Absent, while `endpoints` is not, when the backend
@@ -654,6 +670,7 @@ export type ImportProfileRequest = {
   description?: string;
   category: ProviderProfileCategory;
   credentials?: ProfileCredentialInput[];
+  files?: ProfileFile[];
   // The host-and-port form the profile form writes. A request sends this or
   // networkEndpoints, not both.
   endpoints?: ProfileEndpoint[];

@@ -301,17 +301,23 @@ type CredentialRefreshStatus struct {
 // credential *schema* (no secret values), used to drive the Add Provider form.
 // It is the same shape read and written. The nested types are in
 // provider_profile.go.
+//
+// TokenGrantOwners is set by the gateway (OpenShell 0.1.3 and newer): the
+// endpoints it lets obtain the credential's token grant. It is ignored when
+// written and accepted so that a profile that was read can be sent back
+// unchanged.
 type ProfileCredential struct {
-	Refresh      *ProfileCredentialRefresh `json:"refresh,omitempty"`
-	TokenGrant   *ProfileTokenGrant        `json:"tokenGrant,omitempty"`
-	Name         string                    `json:"name"`
-	Description  string                    `json:"description,omitempty"`
-	AuthStyle    string                    `json:"authStyle,omitempty"`
-	HeaderName   string                    `json:"headerName,omitempty"`
-	QueryParam   string                    `json:"queryParam,omitempty"`
-	PathTemplate string                    `json:"pathTemplate,omitempty"`
-	EnvVars      []string                  `json:"envVars,omitempty"`
-	Required     bool                      `json:"required"`
+	Refresh          *ProfileCredentialRefresh `json:"refresh,omitempty"`
+	TokenGrant       *ProfileTokenGrant        `json:"tokenGrant,omitempty"`
+	Name             string                    `json:"name"`
+	Description      string                    `json:"description,omitempty"`
+	AuthStyle        string                    `json:"authStyle,omitempty"`
+	HeaderName       string                    `json:"headerName,omitempty"`
+	QueryParam       string                    `json:"queryParam,omitempty"`
+	PathTemplate     string                    `json:"pathTemplate,omitempty"`
+	EnvVars          []string                  `json:"envVars,omitempty"`
+	TokenGrantOwners []string                  `json:"tokenGrantOwners,omitempty"`
+	Required         bool                      `json:"required"`
 }
 
 // ProviderProfile mirrors openshell.v1.ProviderProfile as the gateway returns
@@ -335,6 +341,7 @@ type ProviderProfile struct {
 	Source           string              `json:"source,omitempty"`
 	Scope            string              `json:"scope,omitempty"`
 	Credentials      []ProfileCredential `json:"credentials"`
+	Files            []ProfileFile       `json:"files,omitempty"`
 	Endpoints        []string            `json:"endpoints,omitempty"`
 	NetworkEndpoints []json.RawMessage   `json:"networkEndpoints,omitempty"`
 	Binaries         []ProfileBinary     `json:"binaries,omitempty"`

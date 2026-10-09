@@ -14,6 +14,7 @@ import type {
   ProfileCredential,
   ProfileCredentialRefresh,
   ProfileDiagnostic,
+  ProfileFile,
   ProfileGraphqlOperation,
   ProfileL7Match,
   ProfileMcpOptions,
@@ -32,9 +33,10 @@ import type {
 // takes and returns, and maps one to the other.
 //
 // The schema is upstream's, read from the serde definition of
-// ProviderTypeProfile in crates/openshell-providers/src/profiles.rs at v0.1.2:
-// the field names, which fields may be left out and what they default to, and
-// the fields that are not plain data. Those are ported here by hand:
+// ProviderTypeProfile in crates/openshell-providers/src/profiles.rs at v0.1.2,
+// with `files`, the one field v0.1.3 added to it: the field names, which
+// fields may be left out and what they default to, and the fields that are not
+// plain data. Those are ported here by hand:
 //
 //   - category, refresh strategy and token grant type are names matched
 //     without regard to case, with "-" read as "_".
@@ -58,6 +60,12 @@ import type {
 // which one an endpoint gets when it names none. The CLI fills that default in
 // before it sends; here the endpoint is sent as written and the gateway fills
 // in its own.
+//
+// A file does not carry what the gateway works out for itself and upstream's
+// file has no field for: since v0.1.3, the `token_grant_owners` of a
+// credential and the `token_grant_owner` of an endpoint. The gateway ignores
+// what a profile is written with for both, so a profile that is exported and
+// imported again loses nothing the gateway would have kept.
 //
 // Unlike upstream, a field the schema does not have is reported, as a warning:
 // serde skips unknown fields silently, and a misspelt `enforcment` is a profile
@@ -813,6 +821,26 @@ const readCredential = (
   return credential;
 };
 
+// A file the provider serves to its sandboxes: its name, the template of its
+// content and, when it has one, the environment variable that is given its
+// path. The content is kept as it is written, an empty one included.
+const readProviderFile = (
+  value: unknown,
+  path: string,
+  unknown: string[],
+): ProfileFile => {
+  const mapping = Mapping.of(value, path, unknown);
+  const file: ProfileFile = {
+    path: mapping.string('path'),
+    content: mapping.string('content'),
+    ...compact<Partial<ProfileFile>>({
+      envVar: mapping.string('env_var', ''),
+    }),
+  };
+  mapping.done();
+  return file;
+};
+
 // A binary is its path, written bare or as `path:` in a mapping that holds
 // nothing else.
 const readBinary = (value: unknown, path: string): ProfileBinary => {
@@ -870,6 +898,9 @@ export const profileFromDocument = (
       description: mapping.string('description', ''),
       credentials: mapping.list('credentials', (value, path) =>
         readCredential(value, path, unknown),
+      ),
+      files: mapping.list('files', (value, path) =>
+        readProviderFile(value, path, unknown),
       ),
       networkEndpoints: mapping.list('endpoints', (value, path) =>
         readEndpoint(value, path, unknown),
@@ -990,6 +1021,7 @@ export type ExportableProfile = Pick<
   | 'description'
   | 'category'
   | 'credentials'
+  | 'files'
   | 'networkEndpoints'
   | 'binaries'
   | 'discovery'
@@ -1232,6 +1264,12 @@ const writeCredential = (credential: ProfileCredential): Doc => {
   return doc;
 };
 
+const writeProviderFile = (file: ProfileFile): Doc => {
+  const doc: Doc = { path: file.path, content: file.content };
+  put(doc, 'env_var', file.envVar ?? '');
+  return doc;
+};
+
 // profileToDocument converts a profile to the document a profile file holds,
 // with the fields in the order upstream writes them and the same ones left
 // out when they hold nothing.
@@ -1243,6 +1281,7 @@ export const profileToDocument = (profile: ExportableProfile): Doc => {
   doc.description = profile.description ?? '';
   doc.category = profileCategoryName(profile.category);
   doc.credentials = (profile.credentials ?? []).map(writeCredential);
+  put(doc, 'files', (profile.files ?? []).map(writeProviderFile));
   doc.endpoints = (profile.networkEndpoints ?? []).map(writeEndpoint);
   doc.binaries = (profile.binaries ?? []).map((binary) => binary.path);
   doc.inference_capable = profile.inferenceCapable;

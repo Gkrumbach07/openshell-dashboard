@@ -98,11 +98,19 @@ describe('upstream provider profiles', () => {
     .filter((name) => name.endsWith('.yaml'))
     .map((name) => `providers/${name}`);
 
-  it('has the sixteen profiles upstream publishes at v0.1.2', () => {
-    expect(published).toHaveLength(16);
+  // With them, the two other files that are a profile as they are: the field
+  // map of the documentation, and the example that sets `files`.
+  const wholeProfileFiles = [
+    ...published,
+    'docs/profile-schema.yaml',
+    'examples/provider-managed-files/acme-config.yaml',
+  ];
+
+  it('has the seventeen profiles upstream publishes at v0.1.3', () => {
+    expect(published).toHaveLength(17);
   });
 
-  it.each([...published, 'docs/profile-schema.yaml'])(
+  it.each(wholeProfileFiles)(
     '%s is read whole and written back whole',
     (path) => {
       const text = fixture(path);
@@ -319,7 +327,7 @@ describe('upstream provider profiles', () => {
     );
   });
 
-  // `tls: none` is not a TLS mode v0.1.2 has. It is sent on as the value no
+  // `tls: none` is not a TLS mode v0.1.3 has. It is sent on as the value no
   // mode has, for the gateway to refuse, which is what the CLI does with it;
   // it is not read as "no TLS setting".
   it.each([
@@ -684,6 +692,109 @@ describe('matchers, binaries and rules', () => {
 
   it('keeps a rule that allows nothing in particular', () => {
     expect(withEndpoint('    rules:\n      - {}\n')?.rules).toEqual([{}]);
+  });
+});
+
+// Files a provider serves to its sandboxes, which upstream added in v0.1.3
+// and marks experimental. The dashboard has no form for them; what matters
+// here is that a profile that has them keeps them on its way out to a file and
+// back in.
+describe('provider files', () => {
+  it('reads the files of examples/provider-managed-files/acme-config.yaml', () => {
+    const profile = read(
+      fixture('examples/provider-managed-files/acme-config.yaml'),
+    );
+    expect(profile.files).toEqual([
+      {
+        path: 'client.toml',
+        envVar: 'ACME_CONFIG_FILE',
+        content:
+          'endpoint = "{{config.endpoint}}"\nproject = "{{config.project}}"\n',
+      },
+    ]);
+  });
+
+  it('reads a file that names no environment variable', () => {
+    expect(
+      read(`${MINIMAL}files:\n  - path: notice.txt\n    content: ""\n`).files,
+    ).toEqual([{ path: 'notice.txt', content: '' }]);
+  });
+
+  it('leaves a profile without files without the field', () => {
+    expect(read(MINIMAL)).not.toHaveProperty('files');
+    expect(profileToDocument(read(MINIMAL))).not.toHaveProperty('files');
+  });
+
+  // Where upstream writes them: after the credentials and before the
+  // endpoints, with env_var only when it is set.
+  it('writes them where upstream does', () => {
+    const written = profileToDocument({
+      ...read(MINIMAL),
+      files: [
+        { path: 'client.toml', content: 'a = 1\n', envVar: 'CLIENT_CONFIG' },
+        { path: 'notice.txt', content: '' },
+      ],
+    });
+    expect(written.files).toEqual([
+      { path: 'client.toml', content: 'a = 1\n', env_var: 'CLIENT_CONFIG' },
+      { path: 'notice.txt', content: '' },
+    ]);
+    const keys = Object.keys(written);
+    expect(keys.indexOf('files')).toBe(keys.indexOf('credentials') + 1);
+    expect(keys.indexOf('files')).toBe(keys.indexOf('endpoints') - 1);
+  });
+
+  it.each([
+    [`${MINIMAL}files:\n  - content: x\n`, 'files[0]: missing field `path`'],
+    [
+      `${MINIMAL}files:\n  - path: a.txt\n`,
+      'files[0]: missing field `content`',
+    ],
+    [
+      `${MINIMAL}files:\n  - a.txt\n`,
+      'files[0]: invalid type: string `a.txt`, expected a mapping',
+    ],
+    [
+      `${MINIMAL}files:\n  path: a.txt\n`,
+      'files: invalid type: a mapping, expected a list',
+    ],
+  ])('refuses %j', (text, message) => {
+    expect(refusal(text)).toBe(
+      `failed to parse provider profile YAML: ${message}`,
+    );
+  });
+
+  // The gateway works these out and ignores them when a profile is written,
+  // and upstream's file has no field for them. A profile read from the
+  // gateway is written without them, as `openshell provider profile export`
+  // writes it.
+  it('does not write the token grant owners the gateway derives', () => {
+    const written = profileToDocument({
+      ...read(MINIMAL),
+      credentials: [
+        {
+          name: 'access_token',
+          required: true,
+          tokenGrant: {
+            grantType: 'CLIENT_CREDENTIALS',
+            tokenEndpoint: 'https://login.example.com/token',
+          },
+          tokenGrantOwners: ['gateway-derived-owner'],
+        },
+      ],
+    });
+    expect(written.credentials).toEqual([
+      {
+        name: 'access_token',
+        description: '',
+        env_vars: [],
+        required: true,
+        auth_style: '',
+        header_name: '',
+        query_param: '',
+        token_grant: { token_endpoint: 'https://login.example.com/token' },
+      },
+    ]);
   });
 });
 
