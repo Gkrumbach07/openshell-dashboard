@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Did this commit reach main by merging `next`?
 //
-// Releases are cut by hand (see release-type-plugin.mjs), with one exception:
+// A release is started by a person (docs/releasing.md), with one exception:
 // the move to a new OpenShell release. That move is prepared on the `next`
 // branch by the Follow upstream workflow and reaches main as the pull request
 // from `next` (ADR 0009, decisions 7 and 8). Its whole purpose is to change

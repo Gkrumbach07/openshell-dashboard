@@ -31,16 +31,18 @@ A release of that line that is not listed under *Tested on* is supported all the
 
 ### Which dashboard for which gateway
 
+A dashboard release is numbered after the gateway release line it is for: dashboard `X.Y.Z` is for gateway `X.Y.x`. The third number counts the dashboard's own releases on that line and has nothing to do with the gateway's patch number. Nobody chooses a version; it is worked out from the gateway release the branch is built on ([docs/releasing.md](docs/releasing.md#what-decides-the-version)).
+
 | Your gateway | Dashboard | Container image |
 |---|---|---|
-| on the line above | **1.x**, the current line, released from `main` | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>`; for `1.1.0` and earlier, the [commit tag](#container-image) |
-| `0.0.116` | **0.2.x**: `v0.2.0` today; a 0.2.x maintenance line is being set up | `quay.io/gkrumbach07/openshell-dashboard:sha-701454a` |
+| on the line above | a release whose first two numbers are that line, cut from `main`. `1.0.0` to `1.2.0` are for gateway `0.1.x` too; they are from before releases were numbered this way | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>`; for `1.1.0` and earlier, the [commit tag](#container-image) |
+| `0.0.116` | `0.2.0`, also from before; a maintenance line for it is being set up on the `0.2.x` branch | `quay.io/gkrumbach07/openshell-dashboard:sha-701454a` |
 
 **Do not use dashboard `0.3.0`.** It works correctly with none of these gateways. Against `0.1.0` and newer it fails. Against `0.0.116` it does something worse than fail: it silently ignores the workspace. A sandbox created in workspace `team-a` lands in `default`, every workspace page lists the contents of `default`, and nothing reports an error. Its SDK sends the workspace in a field that gateway `0.0.116` does not have, and a protobuf field the receiver does not know is ignored without complaint.
 
 No build spans `0.0.116` and `0.1.x`. 1.x against `0.0.116` fails every workspace-scoped call with `workspace '\n\adefault' not found`. `0.2.0` against `0.1.0` or newer fails with `workspace_scope is required` or a bare `internal error`. Gateway `0.0.116` also has no sandbox-template RPCs (it answers them with gRPC `UNIMPLEMENTED`), so sandbox templates do not work against it with any dashboard.
 
-**1.x is not a stability claim.** The version numbers were assigned automatically from commit messages; nobody decided that a 1.0 milestone had been reached (see [#78](https://github.com/Gkrumbach07/openshell-dashboard/issues/78)).
+**The releases cut before this numbering do not follow it.** `0.1.3`, `0.2.0`, `0.3.0` and `1.0.0` to `1.2.0` got their numbers automatically from commit messages, so those numbers say nothing about a gateway, and 1.x is not a stability claim: nobody decided that a 1.0 milestone had been reached (see [#78](https://github.com/Gkrumbach07/openshell-dashboard/issues/78)). `1.x` is for gateway `0.1.x`. `0.1.3` and `0.2.0` are not for a gateway `0.1.x` or `0.2.x`: both are built on the SDK for gateway `0.0.116`. For these releases the table above is the only statement there is.
 
 ### How the line is established
 
@@ -62,6 +64,7 @@ Every release cut after `1.2.0` declares the line it was cut for, so you do not 
 
 | Artifact | Where | How to read it |
 |---|---|---|
+| The version | its first two numbers are the line | `0.1.4` is for gateway `0.1.x` |
 | GitHub release | a *Supported OpenShell gateways* section in the release notes | the [releases page](https://github.com/Gkrumbach07/openshell-dashboard/releases) |
 | Container image | labels `io.github.gkrumbach07.openshell-dashboard.gateway.line` and `.sdk` | `skopeo inspect docker://quay.io/gkrumbach07/openshell-dashboard:<tag>` |
 
@@ -408,7 +411,8 @@ What needs a person:
 
 - **Merging `next`**, with *Rebase and merge*, once it is ready. Nothing is
   merged automatically unless the repository variable `UPSTREAM_AUTOMERGE` is
-  `true`. The merge is followed by an automatic patch release
+  `true`. The merge is followed by an automatic release: the dashboard's next
+  patch, or `X.Y.0` when the move starts a new gateway minor
   ([docs/releasing.md](docs/releasing.md)).
 - **A conflict.** The workflow regenerates `backend/go.sum` and
   `frontend/package-lock.json` by itself. For anything else it leaves `next`
@@ -438,8 +442,8 @@ CI publishes `quay.io/gkrumbach07/openshell-dashboard` (linux/amd64 and linux/ar
 | Tag | Points at | Moves when |
 |---|---|---|
 | `X.Y.Z` | the image built for the commit released as `vX.Y.Z` | never: it is written once, and the retag refuses to point it anywhere else |
-| `X.Y` | the newest `X.Y.z` release | a patch release is cut |
-| `latest` | the newest commit on `main` that passed **every** CI job, including the compat suite against the pinned gateway, while it was the tip of `main` | CI goes green on the tip of `main`; it only moves forward, so re-running an older run does not pull it back |
+| `X.Y` | the newest `X.Y.z` release: the newest dashboard for gateway `X.Y.x` | a release of that line is cut, from `main` or from `release/X.Y`. No other release moves it |
+| `latest` | the newest commit on `main` that passed **every** CI job, including the compat suite against the pinned gateway, while it was the tip of `main` | CI goes green on the tip of `main`; it only moves forward, so re-running an older run does not pull it back. A release does not move it |
 | `sha-<7>` | the image built for that commit, whether or not its checks passed | only when CI is re-run in full for that commit, which builds it again |
 | `pr-<n>` | the latest build of that pull request | the PR is updated |
 
@@ -452,7 +456,9 @@ Version tags are created automatically starting with the first release cut after
 | `0.3.0` | `sha-978bcb5` ([do not use](#which-dashboard-for-which-gateway)) |
 | `0.2.0` | `sha-701454a` |
 
-For a deployment, pin `X.Y.Z` (or the commit tag, for a release in the table above) and check it against your gateway in [Compatibility](#compatibility). How releases are cut is in [docs/releasing.md](docs/releasing.md).
+For a deployment, pin `X.Y.Z` (or the commit tag, for a release in the table above) and check it against your gateway in [Compatibility](#compatibility). How releases are cut and numbered is in [docs/releasing.md](docs/releasing.md).
+
+A running dashboard does not show a version number, because its image is built before a release is cut and only given more tags afterwards. **Help → About** shows the gateway release line the build is for and, for an image CI built, the first seven characters of the commit it is built from: the same ones as in its `sha-<7>` tag.
 
 To build it yourself:
 
@@ -464,7 +470,7 @@ podman run -p 8080:8080 \
   openshell-dashboard:latest
 ```
 
-A plain build like this passes no build args, so the image's `gateway.line` and `sdk` labels are empty; CI fills them in from `node scripts/gateway-range.mjs`. The BFF inside does not depend on them: its gateway release line is compiled in, so the compatibility notice works in this image as in a published one.
+A plain build like this passes no build args, so the image's `gateway.line` and `sdk` labels are empty and the About dialog shows no commit; CI fills the labels in from `node scripts/gateway-range.mjs` and passes the commit it builds as `DASHBOARD_COMMIT`. The BFF inside does not depend on any of them: its gateway release line is compiled in, so the compatibility notice and the line in the About dialog work in this image as in a published one.
 
 For local OIDC testing without containers, use `./scripts/dev-env.sh start` instead (see above).
 

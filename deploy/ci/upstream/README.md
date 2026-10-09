@@ -131,8 +131,10 @@ matches a fork's branch of the same name; `publish.py` picks ours.
 | Setting *Allow GitHub Actions to create and approve pull requests* (needed only with the default token) | The pull request cannot be opened. The run fails with a message that says so, and a `next` it had just created is deleted again |
 | Variable `UPSTREAM_AUTOMERGE` = `true` | Nothing is merged automatically. With it, a ready `next` pull request on a stable release is set to merge by rebase once its required checks pass. The workflow only asks GitHub to turn auto-merge on and never merges a pull request itself, so this also needs *Allow auto-merge* and at least one required check on `main`: with nothing required there is nothing to wait for, and GitHub refuses |
 
-Merging `next` into `main` cuts a patch release by itself once CI has passed
-on `main` (`scripts/release/next-merge.mjs`, [docs/releasing.md](../../../docs/releasing.md)).
+Merging `next` into `main` cuts a release by itself once CI has passed on
+`main` (`scripts/release/next-merge.mjs`, [docs/releasing.md](../../../docs/releasing.md)).
+Its version is worked out from the pin: the console's next patch, or `X.Y.0`
+when the move starts a new gateway minor.
 
 A manual run is a dry run unless its box is cleared, and a run from any branch
 but `main` is always one: it prints what it would push, open and edit.
@@ -154,11 +156,10 @@ but `main` is always one: it prints what it would push, open and edit.
 
 ## Not done
 
-- **The version of the release that follows a move is always a patch.** For a
-  move to a new gateway minor it should be a minor (ADR 0009, decision 2). The
-  pull request says so when it applies.
 - **`release/<line>` is created, not maintained.** A commit that reaches `main`
-  between its creation and the merge of `next` is not on it.
+  between its creation and the merge of `next` is not on it. If a release was
+  cut from `main` in that time, the release branch has to be brought up to it
+  before a release can be cut from the branch (docs/releasing.md).
 - **A silent drop is still invisible.** The compatibility suite proves what it
   varies. A release that silently drops a request field the suite does not
   vary would pass both checks; the field-by-field diff of the request messages

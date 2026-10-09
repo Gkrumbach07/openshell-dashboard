@@ -8,7 +8,7 @@
 # statement about that same image, made later by something that knows more:
 #
 #   latest        ci.yml, once the whole pipeline has passed on the tip of main
-#   X.Y.Z, X.Y    publish.yml, once semantic-release has cut vX.Y.Z there
+#   X.Y.Z, X.Y    publish.yml, once a release vX.Y.Z has been cut at that commit
 #
 # Rebuilding for either would put a new image, built later, under a tag that
 # claims to be the one from that commit. So both resolve the sha- tag to its
