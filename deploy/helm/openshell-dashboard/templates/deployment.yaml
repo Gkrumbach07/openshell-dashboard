@@ -1,0 +1,290 @@
+{{/* SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+SPDX-License-Identifier: Apache-2.0 */}}
+{{- include "openshell-dashboard.validateValues" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openshell-dashboard.fullname" . }}
+  labels:
+    {{- include "openshell-dashboard.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "openshell-dashboard.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "openshell-dashboard.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "openshell-dashboard.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.podLifecycle.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: dashboard
+          image: {{ include "openshell-dashboard.image" (dict "root" . "image" .Values.dashboard.image) | quote }}
+          imagePullPolicy: {{ .Values.dashboard.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: PORT
+              value: {{ .Values.dashboard.port | quote }}
+            - name: LISTEN_ADDRESS
+              value: "127.0.0.1"
+            - name: AUTH_DISABLED
+              value: "false"
+            - name: AUTH_USER_HEADER
+              value: x-forwarded-user
+            - name: AUTH_TOKEN_HEADER
+              value: x-forwarded-access-token
+            {{- if .Values.oidc.adminRole }}
+            - name: ADMIN_ROLE
+              value: {{ .Values.oidc.adminRole | quote }}
+            {{- end }}
+            - name: LOGOUT_URL
+              value: {{ .Values.dashboard.logoutURL | quote }}
+            - name: OPENSHELL_GATEWAY_URL
+              value: {{ include "openshell-dashboard.gatewayURL" . | quote }}
+            {{- if .Values.gateway.caSecretName }}
+            - name: GATEWAY_CA_CERT
+              value: /etc/openshell/gateway/ca.crt
+            {{- end }}
+            {{- if .Values.gateway.clientCertSecretName }}
+            - name: GATEWAY_CLIENT_CERT
+              value: /etc/openshell/client/tls.crt
+            - name: GATEWAY_CLIENT_KEY
+              value: /etc/openshell/client/tls.key
+            {{- end }}
+          startupProbe:
+            exec:
+              command: {{ .Values.probes.startup.dashboardCommand | toJson }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: {{ .Values.probes.liveness.dashboardCommand | toJson }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: 3
+          readinessProbe:
+            exec:
+              command: {{ .Values.probes.readiness.dashboardCommand | toJson }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: 3
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or .Values.gateway.caSecretName .Values.gateway.clientCertSecretName }}
+          volumeMounts:
+            {{- if .Values.gateway.caSecretName }}
+            - name: gateway-ca
+              mountPath: /etc/openshell/gateway
+              readOnly: true
+            {{- end }}
+            {{- if .Values.gateway.clientCertSecretName }}
+            - name: gateway-client
+              mountPath: /etc/openshell/client
+              readOnly: true
+            {{- end }}
+          {{- end }}
+        - name: oauth2-proxy
+          image: {{ include "openshell-dashboard.image" (dict "root" . "image" .Values.authProxy.image) | quote }}
+          imagePullPolicy: {{ .Values.authProxy.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          args:
+            - --provider={{ .Values.oidc.provider }}
+            - --oidc-issuer-url={{ .Values.oidc.issuer }}
+            {{- if not .Values.oidc.clientIdSecretKey }}
+            - --client-id={{ .Values.oidc.clientId }}
+            {{- end }}
+            - "--upstream=http://127.0.0.1:{{ .Values.dashboard.port | default 8080 }}/"
+            {{- if .Values.authProxy.tls.secretName }}
+            - --http-address=127.0.0.1:4181
+            - "--https-address=0.0.0.0:{{ .Values.authProxy.port | default 4180 }}"
+            - --tls-cert-file=/etc/openshell/proxy/tls.crt
+            - --tls-key-file=/etc/openshell/proxy/tls.key
+            {{- else }}
+            - "--http-address=0.0.0.0:{{ .Values.authProxy.port }}"
+            {{- end }}
+            {{- with (include "openshell-dashboard.redirectURL" .) }}
+            - --redirect-url={{ . }}
+            {{- end }}
+            {{- with .Values.oidc.scope }}
+            - {{ printf "--scope=%s" . | quote }}
+            {{- end }}
+            {{- with .Values.oidc.codeChallengeMethod }}
+            - --code-challenge-method={{ . }}
+            {{- end }}
+            {{- range .Values.oidc.allowedGroups }}
+            - {{ printf "--allowed-group=%s" . | quote }}
+            {{- end }}
+            {{- range .Values.oidc.allowedRoles }}
+            - {{ printf "--allowed-role=%s" . | quote }}
+            {{- end }}
+            {{- if .Values.oidc.caConfigMapName }}
+            - --provider-ca-file=/etc/openshell/oidc/ca.crt
+            - --use-system-trust-store=true
+            {{- end }}
+            - --pass-access-token=true
+            - --pass-authorization-header=false
+            - --pass-basic-auth=false
+            - --pass-user-headers=true
+            - --skip-auth-strip-headers=true
+            - --skip-jwt-bearer-tokens=false
+            - --pass-host-header=true
+            - --proxy-websockets=true
+            {{- if .Values.authProxy.forceHTTPS }}
+            - --force-https=true
+            {{- end }}
+            - --email-domain=*
+            - --cookie-secure=true
+            - --cookie-httponly=true
+            - --cookie-name={{ .Values.authProxy.cookie.name }}
+            {{- with .Values.authProxy.cookie.sameSite }}
+            - --cookie-samesite={{ . }}
+            {{- end }}
+            {{- with .Values.authProxy.cookie.refresh }}
+            - --cookie-refresh={{ . }}
+            {{- end }}
+            {{- with .Values.authProxy.upstreamTimeout }}
+            - --upstream-timeout={{ . }}
+            {{- end }}
+            {{- range .Values.authProxy.apiRoutes }}
+            - {{ printf "--api-route=%s" . | quote }}
+            {{- end }}
+            {{- range .Values.authProxy.whitelistDomains }}
+            - {{ printf "--whitelist-domain=%s" . | quote }}
+            {{- end }}
+            {{- if not .Values.authProxy.whitelistDomains }}
+            - --skip-provider-button=true
+            {{- end }}
+            {{- range .Values.authProxy.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            {{- if .Values.oidc.clientIdSecretKey }}
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.oidc.existingSecret }}
+                  key: {{ .Values.oidc.clientIdSecretKey }}
+            {{- end }}
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.oidc.existingSecret }}
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.oidc.existingSecret }}
+                  key: cookie-secret
+          ports:
+            - name: proxy
+              containerPort: {{ .Values.authProxy.port }}
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /ping
+              port: proxy
+              scheme: {{ ternary "HTTPS" "HTTP" (not (empty .Values.authProxy.tls.secretName)) }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: proxy
+              scheme: {{ ternary "HTTPS" "HTTP" (not (empty .Values.authProxy.tls.secretName)) }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: proxy
+              scheme: {{ ternary "HTTPS" "HTTP" (not (empty .Values.authProxy.tls.secretName)) }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          {{- with .Values.authProxy.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or .Values.oidc.caConfigMapName .Values.authProxy.tls.secretName }}
+          volumeMounts:
+            {{- if .Values.oidc.caConfigMapName }}
+            - name: oidc-ca
+              mountPath: /etc/openshell/oidc
+              readOnly: true
+            {{- end }}
+            {{- if .Values.authProxy.tls.secretName }}
+            - name: proxy-tls
+              mountPath: /etc/openshell/proxy
+              readOnly: true
+            {{- end }}
+          {{- end }}
+      {{- if or .Values.gateway.caSecretName .Values.gateway.clientCertSecretName .Values.oidc.caConfigMapName .Values.authProxy.tls.secretName }}
+      volumes:
+        {{- if .Values.gateway.caSecretName }}
+        - name: gateway-ca
+          secret:
+            secretName: {{ .Values.gateway.caSecretName }}
+            items:
+              - key: {{ .Values.gateway.caKey }}
+                path: ca.crt
+        {{- end }}
+        {{- if .Values.gateway.clientCertSecretName }}
+        - name: gateway-client
+          secret:
+            secretName: {{ .Values.gateway.clientCertSecretName }}
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        {{- end }}
+        {{- if .Values.oidc.caConfigMapName }}
+        - name: oidc-ca
+          configMap:
+            name: {{ .Values.oidc.caConfigMapName }}
+            items:
+              - key: ca.crt
+                path: ca.crt
+        {{- end }}
+        {{- if .Values.authProxy.tls.secretName }}
+        - name: proxy-tls
+          secret:
+            secretName: {{ .Values.authProxy.tls.secretName }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

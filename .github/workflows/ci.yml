@@ -11,6 +11,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.1"
+      - name: Render and lint all chart overlays
+        run: make helm-lint
+      - name: Package chart
+        run: helm package deploy/helm/openshell-dashboard --version 0.0.0-dev --app-version sha-test --destination "$RUNNER_TEMP"
+      - name: Helm unit tests
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.0.3
+          make helm-test
+      - uses: jdx/mise-action@v4
+      - name: Generated chart README is current
+        run: |
+          make helm-docs
+          git diff --exit-code -- deploy/helm/openshell-dashboard/README.md
+
   check-frontend:
     runs-on: ubuntu-latest
     steps:
@@ -25,8 +49,8 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
       - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
         run: cd frontend && npm ci
@@ -73,8 +97,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
       - run: cd frontend && npm ci
       - uses: cypress-io/github-action@v6
@@ -82,7 +106,7 @@ jobs:
           working-directory: frontend
           build: npm run build
           start: npm start
-          wait-on: 'http://localhost:3000'
+          wait-on: "http://localhost:3000"
           browser: chrome
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -253,7 +277,6 @@ jobs:
         if: always()
         run: deploy/ci/e2e-stack.sh down
 
-
   build:
     runs-on: ${{ matrix.runner }}
     env:
@@ -269,7 +292,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
       # The image states which gateways it supports, as two env vars the BFF
       # can read and as labels. The values come from the same script that
       # writes the release notes and stamps the npm package, which derives them
@@ -380,7 +403,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
       - uses: docker/setup-buildx-action@v3
       - name: The pushed image declares the supported gateway range
         run: node scripts/check-image-range.mjs "quay.io/gkrumbach07/openshell-dashboard:sha-${GITHUB_SHA::7}"
@@ -407,7 +430,17 @@ jobs:
   promote-latest:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    needs: [push-manifest, image-range, check-frontend, check-backend, e2e, compat, release-tooling]
+    needs:
+      [
+        push-manifest,
+        image-range,
+        helm,
+        check-frontend,
+        check-backend,
+        e2e,
+        compat,
+        release-tooling,
+      ]
     steps:
       - uses: actions/checkout@v4
       - name: Is this commit still the tip of main?
@@ -427,6 +460,37 @@ jobs:
       - name: Point latest at this commit's image
         if: steps.tip.outputs.is_tip == 'true'
         run: scripts/retag-image.sh quay.io/gkrumbach07/openshell-dashboard "sha-${GITHUB_SHA::7}" latest
+
+  # Dev charts are deliberately floating. Stable chart versions are published
+  # only from publish.yml after the versioned container image has been tagged.
+  publish-dev-chart:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [promote-latest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+      - name: Is this commit still the tip of main?
+        id: tip
+        run: |
+          set -euo pipefail
+          scripts/branch-tip.sh origin main "$GITHUB_SHA" | tee -a "$GITHUB_OUTPUT"
+      - name: Publish floating development chart
+        if: steps.tip.outputs.is_tip == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<< "$GH_TOKEN"
+          helm package deploy/helm/openshell-dashboard --version 0.0.0-dev \
+            --app-version "sha-${GITHUB_SHA::7}" --destination "$RUNNER_TEMP"
+          helm push "$RUNNER_TEMP/openshell-dashboard-0.0.0-dev.tgz" \
+            "oci://ghcr.io/${GITHUB_REPOSITORY,,}/helm-chart"
 
   # The release pipeline (publish.yml, release.config.cjs, scripts/release/)
   # runs for real only on main, after a merge. This job is where a mistake in it
@@ -449,7 +513,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
       - name: Supported gateway range
         run: node scripts/gateway-range.mjs --check
       - name: README states the supported gateway range

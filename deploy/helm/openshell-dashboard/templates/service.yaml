@@ -1,0 +1,17 @@
+{{/* SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+SPDX-License-Identifier: Apache-2.0 */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openshell-dashboard.fullname" . }}
+  labels:
+    {{- include "openshell-dashboard.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: proxy
+      port: {{ .Values.service.port }}
+      targetPort: proxy
+      protocol: TCP
+  selector:
+    {{- include "openshell-dashboard.selectorLabels" . | nindent 4 }}

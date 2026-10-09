@@ -1,0 +1,263 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+suite: gateway trust and ingress
+templates:
+  - templates/deployment.yaml
+  - templates/route.yaml
+  - templates/httproute.yaml
+  - templates/gateway.yaml
+  - templates/networkpolicy.yaml
+release:
+  name: openshell-dashboard
+  namespace: my-namespace
+set:
+  oidc.issuer: https://idp.example.com/realms/openshell
+tests:
+  - it: uses the upstream gateway Service DNS and client CA Secret
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSHELL_GATEWAY_URL
+            value: grpcs://openshell.my-namespace.svc.cluster.local:8080
+      - equal:
+          path: spec.template.spec.volumes[0].secret.secretName
+          value: openshell-client-tls
+      - equal:
+          path: spec.template.spec.volumes[0].secret.items[0].key
+          value: ca.crt
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == 'GATEWAY_CLIENT_CERT')]
+  - it: enables client mTLS only on request
+    template: templates/deployment.yaml
+    set:
+      gateway.clientCertSecretName: openshell-client-tls
+      oidc.allowedGroups: [operators]
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GATEWAY_CLIENT_CERT
+            value: /etc/openshell/client/tls.crt
+  - it: rejects shared client certificates without a user allow-list
+    template: templates/deployment.yaml
+    set:
+      gateway.clientCertSecretName: openshell-client-tls
+    asserts:
+      - failedTemplate:
+          errorMessage: gateway.clientCertSecretName requires oidc.allowedGroups or oidc.allowedRoles to restrict shared certificate access
+  - it: accepts grpcs gateway URL and forwards it to the BFF
+    template: templates/deployment.yaml
+    set:
+      gateway.url: grpcs://openshell.my-namespace.svc.cluster.local:8080
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSHELL_GATEWAY_URL
+            value: grpcs://openshell.my-namespace.svc.cluster.local:8080
+  - it: rejects grpcs gateway without a CA Secret
+    template: templates/deployment.yaml
+    set:
+      gateway.caSecretName: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: TLS gateway.url requires gateway.caSecretName
+  - it: accepts plaintext grpc gateway without a CA Secret
+    template: templates/deployment.yaml
+    set:
+      gateway.url: grpc://openshell.my-namespace.svc.cluster.local:8080
+      gateway.caSecretName: ""
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSHELL_GATEWAY_URL
+            value: grpc://openshell.my-namespace.svc.cluster.local:8080
+      - notExists:
+          path: spec.template.spec.volumes
+  - it: derives plaintext gateway URL from the release namespace
+    template: templates/deployment.yaml
+    set:
+      gateway.tls.enabled: false
+      gateway.caSecretName: ""
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSHELL_GATEWAY_URL
+            value: grpc://openshell.my-namespace.svc.cluster.local:8080
+  - it: refuses CA on plaintext grpc gateway
+    template: templates/deployment.yaml
+    set:
+      gateway.url: grpc://openshell.my-namespace.svc.cluster.local:8080
+    asserts:
+      - failedTemplate:
+          errorMessage: plaintext gateway.url requires gateway.caSecretName and gateway.clientCertSecretName to be empty
+  - it: rejects CA configuration on plaintext gateway
+    template: templates/deployment.yaml
+    set:
+      gateway.url: http://openshell.my-namespace.svc.cluster.local:8080
+    asserts:
+      - failedTemplate:
+          errorMessage: plaintext gateway.url requires gateway.caSecretName and gateway.clientCertSecretName to be empty
+  - it: refuses forced HTTPS without a proxy HTTPS listener
+    template: templates/deployment.yaml
+    set:
+      authProxy.forceHTTPS: true
+    asserts:
+      - failedTemplate:
+          errorMessage: authProxy.forceHTTPS requires authProxy.tls.secretName; use ingress TLS without forceHTTPS for edge termination
+  - it: sets Route edge TLS and WebSocket timeouts
+    template: templates/route.yaml
+    set:
+      openshiftRoute.enabled: true
+      openshiftRoute.host: dashboard.example.com
+    asserts:
+      - equal:
+          path: spec.tls.termination
+          value: edge
+      - equal:
+          path: spec.port.targetPort
+          value: proxy
+      - equal:
+          path: metadata.annotations["haproxy.router.openshift.io/timeout-tunnel"]
+          value: 1h
+  - it: rejects passthrough Route
+    template: templates/deployment.yaml
+    set:
+      openshiftRoute.enabled: true
+      openshiftRoute.host: dashboard.example.com
+      openshiftRoute.termination: passthrough
+    asserts:
+      - failedTemplate:
+          errorMessage: openshiftRoute.termination must be edge or reencrypt (not passthrough)
+  - it: rejects reencrypt without proxy TLS
+    template: templates/deployment.yaml
+    set:
+      openshiftRoute.termination: reencrypt
+    asserts:
+      - failedTemplate:
+          errorMessage: reencrypt requires authProxy.tls.secretName and openshiftRoute.destinationCACertificate
+  - it: reencrypt Route uses HTTPS on proxy port
+    template: templates/deployment.yaml
+    set:
+      authProxy.tls.secretName: dashboard-proxy-tls
+      openshiftRoute.enabled: true
+      openshiftRoute.host: dashboard.example.com
+      openshiftRoute.termination: reencrypt
+      openshiftRoute.destinationCACertificate: test-ca
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --https-address=0.0.0.0:4180
+      - equal:
+          path: spec.template.spec.containers[1].readinessProbe.httpGet.scheme
+          value: HTTPS
+      - equal:
+          path: spec.template.spec.volumes[1].secret.secretName
+          value: dashboard-proxy-tls
+  - it: allows forced HTTPS when proxy serves HTTPS itself
+    template: templates/deployment.yaml
+    set:
+      authProxy.forceHTTPS: true
+      authProxy.tls.secretName: dashboard-proxy-tls
+      openshiftRoute.enabled: true
+      openshiftRoute.host: dashboard.example.com
+      openshiftRoute.termination: reencrypt
+      openshiftRoute.destinationCACertificate: test-ca
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --force-https=true
+  - it: uses HTTPRoute to proxy Service and selects gateway data-plane namespace
+    template: templates/httproute.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.name: ingress
+      httpRoute.gateway.namespace: envoy-gateway-system
+    asserts:
+      - isKind:
+          of: HTTPRoute
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 4180
+      - equal:
+          path: spec.parentRefs[0].namespace
+          value: envoy-gateway-system
+      - notExists:
+          path: spec.parentRefs[0].sectionName
+  - it: accepts an existing Gateway's custom listener name
+    template: templates/httproute.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.sectionName: dashboard-listener
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].sectionName
+          value: dashboard-listener
+  - it: restricts HTTPRoute traffic to gateway data-plane namespace
+    template: templates/networkpolicy.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.namespace: envoy-gateway-system
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: envoy-gateway-system
+  - it: permits data-plane namespace override independent of Gateway resource namespace
+    template: templates/networkpolicy.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.namespace: openshell
+      networkPolicy.ingressNamespace: envoy-gateway-system
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: envoy-gateway-system
+  - it: creates HTTPS Gateway when TLS Secret is supplied
+    template: templates/gateway.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.create: true
+      httpRoute.gateway.listener.tls.certificateRefs:
+        - name: dashboard-tls
+    asserts:
+      - isKind:
+          of: Gateway
+      - equal:
+          path: spec.listeners[0].protocol
+          value: HTTPS
+      - equal:
+          path: spec.listeners[0].tls.certificateRefs[0].name
+          value: dashboard-tls
+      - equal:
+          path: spec.listeners[0].name
+          value: https
+  - it: attaches to the HTTPS listener when Gateway is chart-created
+    template: templates/httproute.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.create: true
+      httpRoute.gateway.listener.tls.certificateRefs:
+        - name: dashboard-tls
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].sectionName
+          value: https
+  - it: rejects HTTPS Gateway without certificate
+    template: templates/deployment.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.create: true
+    asserts:
+      - failedTemplate:
+          errorMessage: httpRoute.gateway.listener.tls.certificateRefs is required for an HTTPS Gateway

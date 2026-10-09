@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+suite: images, SCC and scaling
+templates:
+  - templates/deployment.yaml
+  - templates/hpa.yaml
+release:
+  name: openshell-dashboard
+  namespace: my-namespace
+set:
+  oidc.issuer: https://idp.example.com/realms/openshell
+tests:
+  - it: image digest and component registry override tags and global registry
+    template: templates/deployment.yaml
+    set:
+      dashboard.image.registry: registry.redhat.io
+      dashboard.image.repository: rhoai/openshell-dashboard
+      dashboard.image.tag: ignored
+      dashboard.image.digest: sha256:abcdef
+      authProxy.image.registry: registry.redhat.io
+      authProxy.image.repository: rhoai/oauth2-proxy
+      authProxy.image.digest: sha256:123456
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.redhat.io/rhoai/openshell-dashboard@sha256:abcdef
+      - equal:
+          path: spec.template.spec.containers[1].image
+          value: registry.redhat.io/rhoai/oauth2-proxy@sha256:123456
+  - it: global tag overrides chart appVersion when component tag is empty
+    template: templates/deployment.yaml
+    set:
+      global.image.tag: test
+      authProxy.image.tag: ""
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: quay.io/gkrumbach07/openshell-dashboard:test
+      - equal:
+          path: spec.template.spec.containers[1].image
+          value: quay.io/oauth2-proxy/oauth2-proxy:test
+  - it: converts YAML numeric image tags to strings
+    template: templates/deployment.yaml
+    set:
+      dashboard.image.tag: 1.2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: quay.io/gkrumbach07/openshell-dashboard:1.2
+  - it: OpenShift SCC leaves UID and group to the namespace
+    template: templates/deployment.yaml
+    set:
+      podSecurityContext: null
+      securityContext.runAsUser: null
+    asserts:
+      - notExists:
+          path: spec.template.spec.securityContext
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.runAsNonRoot
+          value: true
+  - it: HPA owns replicas when enabled
+    template: templates/hpa.yaml
+    set:
+      autoscaling.enabled: true
+      resources.requests.cpu: 100m
+      authProxy.resources.requests.cpu: 100m
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+      - equal:
+          path: spec.scaleTargetRef.kind
+          value: Deployment
+  - it: omits Deployment replicas when HPA is enabled
+    template: templates/deployment.yaml
+    set:
+      autoscaling.enabled: true
+      resources.requests.cpu: 100m
+      authProxy.resources.requests.cpu: 100m
+    asserts:
+      - notExists:
+          path: spec.replicas
+  - it: refuses HPA with no CPU requests on proxy
+    template: templates/deployment.yaml
+    set:
+      autoscaling.enabled: true
+      resources.requests.cpu: 100m
+    asserts:
+      - failedTemplate:
+          errorMessage: autoscaling CPU target requires authProxy.resources.requests.cpu or authProxy.resources.limits.cpu

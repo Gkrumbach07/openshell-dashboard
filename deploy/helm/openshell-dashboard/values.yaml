@@ -1,0 +1,258 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# -- Number of stateless dashboard pods (ignored when autoscaling is enabled).
+replicaCount: 1
+
+global:
+  image:
+    # -- Shared image registry; per-component registry overrides it.
+    registry: quay.io
+    # -- Shared image tag; defaults to Chart.appVersion when empty.
+    tag: ""
+    # -- Shared image pull policy.
+    pullPolicy: IfNotPresent
+
+dashboard:
+  image:
+    # -- Dashboard image registry; empty uses global.image.registry.
+    registry: ""
+    # -- Dashboard image repository.
+    repository: gkrumbach07/openshell-dashboard
+    # -- Dashboard image tag; empty uses global.image.tag then Chart.appVersion.
+    tag: ""
+    # -- Dashboard image digest; takes precedence over tag.
+    digest: ""
+    # -- Dashboard pull policy; null uses global.image.pullPolicy.
+    pullPolicy: null
+  # -- Dashboard container port (loopback only; never exposed via Service).
+  port: 8080
+  # -- Sign-out endpoint exposed by oauth2-proxy.
+  logoutURL: /oauth2/sign_out
+
+authProxy:
+  image:
+    # -- oauth2-proxy registry; empty uses global.image.registry.
+    registry: ""
+    # -- oauth2-proxy repository. Replace with approved downstream image if needed.
+    repository: oauth2-proxy/oauth2-proxy
+    # -- Proxy image tag; pinned until proxy version is tied to chart releases.
+    tag: v7.15.2
+    # -- Proxy image digest; takes precedence over tag.
+    digest: ""
+    # -- Proxy pull policy; null uses global.image.pullPolicy.
+    pullPolicy: null
+  # -- Port on which oauth2-proxy listens.
+  port: 4180
+  # -- Force HTTP requests to HTTPS at the proxy. Requires authProxy.tls.secretName; leave false behind TLS-terminating ingress.
+  forceHTTPS: false
+  cookie:
+    # -- Session cookie name; use a distinct name when dashboards share a hostname.
+    name: _oauth2_proxy
+    # -- Session cookie SameSite attribute (lax, strict, none, or empty to omit).
+    sameSite: lax
+    # -- Interval for refreshing the access token; set below the issuer's access-token lifetime. Empty disables refresh.
+    refresh: 2m
+  # -- Resource requests/limits for oauth2-proxy.
+  resources: {}
+  tls:
+    # -- Secret with tls.crt/tls.key for HTTPS proxy backend (required for Route reencrypt).
+    secretName: ""
+  # -- Maximum amount of time the proxy will wait for a response from the upstream.
+  upstreamTimeout: 120s
+  # -- API path patterns that return HTTP 401 instead of redirecting to the identity provider on an expired session.
+  apiRoutes: ["^/api/"]
+  # -- Allowed redirect domains (including IdP sign-out redirects); prefix with . or *. to allow subdomains.
+  whitelistDomains: []
+  # -- Additional oauth2-proxy flags, appended after chart-generated arguments.
+  extraArgs: []
+
+# -- Image pull secrets for the dashboard pod.
+imagePullSecrets: []
+# -- Resource name override; pod identity label remains openshell-dashboard.
+nameOverride: "openshell-dashboard"
+# -- Full resource name override.
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Create a dedicated ServiceAccount.
+  create: true
+  # -- Annotations on generated ServiceAccount.
+  annotations: {}
+  # -- Existing ServiceAccount name if create=false.
+  name: ""
+
+# -- Extra pod annotations.
+podAnnotations: {}
+# -- Extra pod labels; cannot override identity/instance selector labels.
+podLabels: {}
+
+# Set null on OpenShift restricted-v2 to let SCC assign namespace-specific group.
+podSecurityContext:
+  # -- Pod fsGroup for vanilla Kubernetes; OpenShift overlay sets podSecurityContext to null.
+  fsGroup: 1000
+
+securityContext:
+  # -- Require non-root containers.
+  runAsNonRoot: true
+  # -- UID for both containers; set null for OpenShift restricted-v2 SCC.
+  runAsUser: 1000
+  # -- Disallow privilege escalation.
+  allowPrivilegeEscalation: false
+  capabilities:
+    # -- Drop all Linux capabilities.
+    drop: [ALL]
+
+service:
+  # -- Service type. Only oauth2-proxy is served.
+  type: ClusterIP
+  # -- Service port mapped to authProxy.port.
+  port: 4180
+
+gateway:
+  # -- Gateway gRPC URL (grpcs:// or https:// for TLS; grpc:// or http:// for plaintext). Empty derives scheme from gateway.tls.enabled and uses <serviceName>.<namespace>.svc.cluster.local:8080.
+  url: ""
+  tls:
+    # -- Use grpcs:// for the derived gateway URL; disable only with gateway.caSecretName empty.
+    enabled: true
+  # -- Upstream gateway Service fullname (default upstream helm install openshell).
+  serviceName: openshell
+  # -- TLS CA Secret in the release namespace. Empty only with a plaintext grpc:// or http:// gateway URL.
+  caSecretName: openshell-client-tls
+  # -- CA key in the Secret.
+  caKey: ca.crt
+  # -- Optional client cert Secret (tls.crt/tls.key), for mTLS-only gateways.
+  # With OIDC, the forwarded bearer token alone suffices.
+  clientCertSecretName: ""
+  preflight:
+    # -- Check gateway Service exists via lookup (requires live cluster; disable for offline rendering).
+    enabled: false
+
+oidc:
+  # -- oauth2-proxy provider (oidc for generic OIDC, keycloak-oidc for Keycloak role filtering).
+  provider: oidc
+  # -- OIDC issuer URL (e.g. https://keycloak.example.com/realms/openshell)
+  issuer: ""
+  # -- Expected audience claim for the API resource server. IdP must add it to token aud. Purely informational.
+  audience: openshell-api
+  # -- Same roles claim path as gateway server.oidc.rolesClaim (documented for installer parity and purely informaitonal).
+  rolesClaim: ""
+  # -- Role name for admin access. Must be the same as the openshell gateway admin name. Defaults to "admin"
+  adminRole: ""
+  # -- ConfigMap with ca.crt to trust private issuer TLS (also set on gateway).
+  caConfigMapName: ""
+  # -- OAuth2-proxy OIDC client ID.
+  clientId: openshell-dashboard
+  # -- Optional key in oidc.existingSecret holding client ID; when set, takes precedence over oidc.clientId.
+  clientIdSecretKey: ""
+  # -- Existing Secret containing keys client-secret and cookie-secret.
+  existingSecret: openshell-dashboard-oidc
+  # -- Full public callback URL; required when host is dynamically allocated. Empty derives from Route/HTTPRoute host.
+  redirectURL: ""
+  # -- OAuth2 scopes; empty uses the provider default (openid email profile for generic OIDC).
+  scope: ""
+  # -- PKCE challenge method (e.g. S256); empty disables PKCE for providers that do not support it.
+  codeChallengeMethod: ""
+  # -- Allowed groups for generic OIDC or other providers; empty allows any authenticated user.
+  allowedGroups: []
+  # -- Allowed Keycloak roles (realm role or client:role); requires provider=keycloak-oidc. Multiple roles are alternatives.
+  allowedRoles: []
+
+probes:
+  startup:
+    # -- Dashboard exec command; default calls the BFF's loopback self-check. Override for images with another binary path.
+    dashboardCommand: [/usr/local/bin/openshell-dashboard, --healthcheck]
+    # -- Startup probe failure threshold (dashboard and proxy).
+    failureThreshold: 30
+    # -- Startup probe period in seconds.
+    periodSeconds: 2
+  liveness:
+    # -- Dashboard exec command for liveness.
+    dashboardCommand: [/usr/local/bin/openshell-dashboard, --healthcheck]
+    # -- Liveness probe period in seconds.
+    periodSeconds: 10
+    # -- Liveness probe failure threshold.
+    failureThreshold: 3
+  readiness:
+    # -- Dashboard exec command for readiness.
+    dashboardCommand: [/usr/local/bin/openshell-dashboard, --healthcheck]
+    # -- Readiness probe period in seconds.
+    periodSeconds: 5
+    # -- Readiness probe failure threshold.
+    failureThreshold: 3
+
+podLifecycle:
+  # -- Pod termination grace period in seconds.
+  terminationGracePeriodSeconds: 30
+
+# -- Dashboard resource requests/limits.
+resources: {}
+# -- Node selector.
+nodeSelector: {}
+# -- Tolerations.
+tolerations: []
+# -- Affinity.
+affinity: {}
+
+autoscaling:
+  # -- Create autoscaling/v2 HPA (CPU/memory metrics need requests or limits on both containers).
+  enabled: false
+  # -- Minimum replicas.
+  minReplicas: 1
+  # -- Maximum replicas.
+  maxReplicas: 4
+  # -- CPU target utilization (null to disable).
+  targetCPUUtilizationPercentage: 80
+  # -- Memory target utilization (null to disable).
+  targetMemoryUtilizationPercentage: null
+
+networkPolicy:
+  # -- Restrict ingress to the proxy port from the ingress controller namespace.
+  enabled: true
+  # -- Namespace of ingress data-plane pods. Empty uses openshift-ingress for Routes or httpRoute.gateway.namespace for HTTPRoute.
+  ingressNamespace: ""
+  # -- Optional ingress peers replacing the default namespace selector (e.g. host-network routers or Gateway data-plane pods).
+  ingressFrom: []
+
+openshiftRoute:
+  # -- Create an edge/reencrypt OpenShift Route (never passthrough).
+  enabled: false
+  # -- Public Route hostname; required unless oidc.redirectURL is set explicitly.
+  host: ""
+  # -- TLS termination at router: edge or reencrypt. Reencrypt requires proxy TLS and destination CA below.
+  termination: edge
+  # -- CA PEM for reencrypt backend validation (requires a separate TLS-enabled proxy configuration).
+  destinationCACertificate: ""
+  # -- Route annotations; upstream e2e timeout values cover long-lived terminal WebSockets.
+  annotations:
+    haproxy.router.openshift.io/timeout: 300s
+    haproxy.router.openshift.io/timeout-tunnel: 1h
+
+httpRoute:
+  # -- Create a Gateway API HTTPRoute to the proxy Service.
+  enabled: false
+  # -- Public hostnames; first hostname supplies callback URL if redirectURL is empty.
+  hostnames: []
+  # -- HTTPRoute annotations.
+  annotations: {}
+  gateway:
+    # -- Create a Gateway in the release namespace; else use an existing one.
+    create: false
+    # -- GatewayClass for created Gateway.
+    className: eg
+    # -- Gateway resource name; empty uses dashboard fullname.
+    name: ""
+    # -- Existing Gateway namespace; empty uses release namespace.
+    namespace: ""
+    # -- Listener name when attaching to an existing Gateway; omitted by default unless this chart creates it.
+    sectionName: ""
+    listener:
+      # -- Listener port.
+      port: 443
+      # -- Listener protocol: HTTPS (recommended) or HTTP behind a separate trusted TLS terminator.
+      protocol: HTTPS
+      # -- Allowed route namespaces: Same or All.
+      allowedRoutes: Same
+      tls:
+        # -- TLS Secret refs in Gateway namespace, required when creating HTTPS Gateway.
+        certificateRefs: []

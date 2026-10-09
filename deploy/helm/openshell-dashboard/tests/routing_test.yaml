@@ -1,0 +1,197 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+suite: optional routes and callbacks
+templates:
+  - templates/route.yaml
+  - templates/httproute.yaml
+  - templates/gateway.yaml
+  - templates/deployment.yaml
+  - templates/networkpolicy.yaml
+release:
+  name: openshell-dashboard
+  namespace: tenant-a
+set:
+  oidc.issuer: https://idp.example.com/realms/openshell
+tests:
+  - it: omits the OpenShift Route by default
+    template: templates/route.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: omits the HTTPRoute by default
+    template: templates/httproute.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: omits a managed Gateway by default
+    template: templates/gateway.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: derives OIDC callback from the OpenShift Route host
+    template: templates/deployment.yaml
+    set:
+      openshiftRoute.enabled: true
+      openshiftRoute.host: dashboard.example.com
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --redirect-url=https://dashboard.example.com/oauth2/callback
+  - it: redirects HTTP to HTTPS at the OpenShift edge
+    template: templates/route.yaml
+    set:
+      openshiftRoute.enabled: true
+      openshiftRoute.host: dashboard.example.com
+      openshiftRoute.annotations:
+        example.com/owner: platform
+    asserts:
+      - equal:
+          path: spec.host
+          value: dashboard.example.com
+      - equal:
+          path: spec.to.name
+          value: openshell-dashboard
+      - equal:
+          path: spec.tls.insecureEdgeTerminationPolicy
+          value: Redirect
+      - notExists:
+          path: spec.tls.destinationCACertificate
+      - equal:
+          path: metadata.annotations["example.com/owner"]
+          value: platform
+  - it: renders reencrypt Route backend CA certificate
+    template: templates/route.yaml
+    set:
+      openshiftRoute.enabled: true
+      openshiftRoute.host: dashboard.example.com
+      openshiftRoute.termination: reencrypt
+      openshiftRoute.destinationCACertificate: test-ca
+      authProxy.tls.secretName: dashboard-proxy-tls
+    asserts:
+      - equal:
+          path: spec.tls.termination
+          value: reencrypt
+      - matchRegex:
+          path: spec.tls.destinationCACertificate
+          pattern: test-ca
+  - it: supports a Route without a fixed host when the callback is explicit
+    template: templates/route.yaml
+    set:
+      openshiftRoute.enabled: true
+      oidc.redirectURL: https://dashboard.example.com/oauth2/callback
+    asserts:
+      - notExists:
+          path: spec.host
+  - it: derives callback from first HTTPRoute hostname
+    template: templates/deployment.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [first.example.com, second.example.com]
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --redirect-url=https://first.example.com/oauth2/callback
+  - it: connects HTTPRoute to existing Gateway and configured Service port
+    template: templates/httproute.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.name: shared-gateway
+      httpRoute.gateway.namespace: ingress-system
+      httpRoute.annotations:
+        example.com/owner: platform
+      service.port: 9443
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].name
+          value: shared-gateway
+      - equal:
+          path: spec.parentRefs[0].namespace
+          value: ingress-system
+      - notExists:
+          path: spec.parentRefs[0].sectionName
+      - equal:
+          path: spec.hostnames
+          value: [dashboard.example.com]
+      - equal:
+          path: spec.rules[0].matches[0].path.type
+          value: PathPrefix
+      - equal:
+          path: spec.rules[0].matches[0].path.value
+          value: /
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 9443
+      - equal:
+          path: metadata.annotations["example.com/owner"]
+          value: platform
+  - it: allows an HTTPRoute without hostnames when callback is explicit
+    template: templates/httproute.yaml
+    set:
+      httpRoute.enabled: true
+      oidc.redirectURL: https://dashboard.example.com/oauth2/callback
+    asserts:
+      - notExists:
+          path: spec.hostnames
+  - it: explicit callback takes precedence over Route or HTTPRoute hosts
+    template: templates/deployment.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      oidc.redirectURL: https://login.example.org/oauth2/callback
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --redirect-url=https://login.example.org/oauth2/callback
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --redirect-url=https://dashboard.example.com/oauth2/callback
+  - it: creates an HTTP Gateway with no TLS certificate refs
+    template: templates/gateway.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.create: true
+      httpRoute.gateway.name: dashboard-gateway
+      httpRoute.gateway.className: custom-class
+      httpRoute.gateway.listener.protocol: HTTP
+      httpRoute.gateway.listener.port: 8081
+      httpRoute.gateway.listener.allowedRoutes: All
+    asserts:
+      - equal:
+          path: metadata.name
+          value: dashboard-gateway
+      - equal:
+          path: spec.gatewayClassName
+          value: custom-class
+      - equal:
+          path: spec.listeners[0].name
+          value: http
+      - equal:
+          path: spec.listeners[0].port
+          value: 8081
+      - equal:
+          path: spec.listeners[0].allowedRoutes.namespaces.from
+          value: All
+      - notExists:
+          path: spec.listeners[0].tls
+  - it: attaches HTTPRoute to created HTTP listener
+    template: templates/httproute.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      httpRoute.gateway.create: true
+      httpRoute.gateway.listener.protocol: HTTP
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].sectionName
+          value: http
+  - it: uses release namespace for HTTPRoute NetworkPolicy by default
+    template: templates/networkpolicy.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: tenant-a

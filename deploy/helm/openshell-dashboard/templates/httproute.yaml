@@ -1,0 +1,33 @@
+{{/* SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+SPDX-License-Identifier: Apache-2.0 */}}
+{{- if .Values.httpRoute.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "openshell-dashboard.fullname" . }}
+  labels:
+    {{- include "openshell-dashboard.labels" . | nindent 4 }}
+  {{- with .Values.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - name: {{ .Values.httpRoute.gateway.name | default (include "openshell-dashboard.fullname" .) }}
+      namespace: {{ .Values.httpRoute.gateway.namespace | default .Release.Namespace }}
+      {{- if or .Values.httpRoute.gateway.create .Values.httpRoute.gateway.sectionName }}
+      sectionName: {{ .Values.httpRoute.gateway.sectionName | default (ternary "https" "http" (eq .Values.httpRoute.gateway.listener.protocol "HTTPS")) }}
+      {{- end }}
+  {{- with .Values.httpRoute.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "openshell-dashboard.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}

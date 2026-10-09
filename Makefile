@@ -2,7 +2,11 @@
 -include scripts/.env.dev
 export OPENSHELL_DIR OPENSHELL_GATEWAY_URL GATEWAY_CA_CERT OIDC_ISSUER OIDC_CLIENT_ID
 
-.PHONY: setup dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean
+IMAGE_NAME ?= openshell-dashboard
+TAG ?= latest
+PLATFORMS ?= linux/amd64,linux/arm64
+
+.PHONY: setup dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean buildx
 
 setup: ## Install frontend deps and Go deps
 	cd frontend && npm install
@@ -46,6 +50,13 @@ dev-frontend:
 build: ## Build the container image (BFF + static frontend)
 	docker build -t openshell-dashboard:latest -f deploy/Dockerfile .
 
+buildx:
+	docker buildx build \
+		--platform ${PLATFORMS} \
+		-t ${IMAGE_NAME}:${TAG} \
+		-f deploy/Dockerfile \
+		--load .
+
 build-frontend:
 	cd frontend && npm run build
 
@@ -73,6 +84,35 @@ compat-up: ## Bring up just the gateway stack (leaves it running)
 
 compat-down: ## Tear down the gateway stack
 	deploy/ci/e2e-stack.sh down
+
+.PHONY: helm-lint helm-test helm-docs
+helm-lint: ## Lint and render Helm charts and their example values
+	@set -eu; \
+	for chart_file in deploy/helm/*/Chart.yaml; do \
+		[ -f "$$chart_file" ] || continue; \
+		chart=$${chart_file%/Chart.yaml}; \
+		set --; \
+		if [ "$$chart" = deploy/helm/openshell-dashboard ]; then \
+			set -- --set-string oidc.issuer=https://idp.example.com/realms/openshell; \
+		fi; \
+		helm lint "$$chart" "$$@"; \
+		helm template lint "$$chart" "$$@" >/dev/null; \
+		for values in "$$chart"/ci/values-*.yaml; do \
+			[ -f "$$values" ] || continue; \
+			helm lint "$$chart" -f "$$values" "$$@"; \
+			helm template lint "$$chart" -f "$$values" "$$@" >/dev/null; \
+		done; \
+	done
+
+helm-test: ## Run unit tests for every Helm chart
+	@set -eu; \
+	for chart_file in deploy/helm/*/Chart.yaml; do \
+		[ -f "$$chart_file" ] || continue; \
+		helm unittest "$${chart_file%/Chart.yaml}"; \
+	done
+
+helm-docs: ## Generate documentation for every Helm chart via mise
+	mise run helm:docs --chart-search-root deploy/helm
 
 lint: ## eslint + golangci-lint + prettier check
 	cd frontend && npm run lint

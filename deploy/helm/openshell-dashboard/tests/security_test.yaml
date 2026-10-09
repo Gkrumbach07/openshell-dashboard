@@ -1,0 +1,284 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+suite: dashboard isolation and auth
+templates:
+  - templates/deployment.yaml
+  - templates/service.yaml
+  - templates/networkpolicy.yaml
+release:
+  name: openshell
+  namespace: my-namespace
+set:
+  oidc.issuer: https://idp.example.com/realms/openshell
+tests:
+  - it: keeps identity distinct even when installed with gateway release name
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: openshell-dashboard
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/name"]
+          value: openshell-dashboard
+  - it: exposes only proxy port via Service
+    template: templates/service.yaml
+    asserts:
+      - equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: openshell-dashboard
+      - equal:
+          path: spec.ports[0].targetPort
+          value: proxy
+      - lengthEqual:
+          path: spec.ports
+          count: 1
+  - it: binds dashboard to loopback and forwards access token, not ID token
+    template: templates/deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].ports
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LISTEN_ADDRESS
+            value: 127.0.0.1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AUTH_USER_HEADER
+            value: x-forwarded-user
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AUTH_DISABLED
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --pass-access-token=true
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --pass-authorization-header=false
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --skip-auth-strip-headers=true
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --proxy-websockets=true
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --force-https=true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LOGOUT_URL
+            value: /oauth2/sign_out
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cookie-samesite=lax
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cookie-refresh=2m
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --upstream-timeout=120s
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --api-route=^/api/
+  - it: checks BFF with its binary and proxy with HTTP ping
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.exec.command
+          value: [/usr/local/bin/openshell-dashboard, --healthcheck]
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.exec.command
+          value: [/usr/local/bin/openshell-dashboard, --healthcheck]
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.exec.command
+          value: [/usr/local/bin/openshell-dashboard, --healthcheck]
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 3
+      - equal:
+          path: spec.template.spec.containers[1].startupProbe.httpGet.path
+          value: /ping
+      - equal:
+          path: spec.template.spec.containers[1].livenessProbe.httpGet.path
+          value: /ping
+      - equal:
+          path: spec.template.spec.containers[1].readinessProbe.httpGet.path
+          value: /ping
+  - it: allows overriding each dashboard probe command
+    template: templates/deployment.yaml
+    set:
+      probes.startup.dashboardCommand: [/opt/dashboard/check, startup]
+      probes.liveness.dashboardCommand: [/opt/dashboard/check, live]
+      probes.readiness.dashboardCommand: [/opt/dashboard/check, ready]
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.exec.command
+          value: [/opt/dashboard/check, startup]
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.exec.command
+          value: [/opt/dashboard/check, live]
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.exec.command
+          value: [/opt/dashboard/check, ready]
+  - it: renders each API route and redirect domain as a separate proxy argument
+    template: templates/deployment.yaml
+    set:
+      authProxy.cookie.refresh: 3m
+      authProxy.upstreamTimeout: 90s
+      authProxy.apiRoutes: ["^/api/", "^/metrics$"]
+      authProxy.whitelistDomains: ["keycloak.example.com", ".example.org"]
+      authProxy.extraArgs: ["--insecure-oidc-allow-unverified-email=true", "--cookie-expire=8h"]
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cookie-refresh=3m
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --upstream-timeout=90s
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --api-route=^/api/
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --api-route=^/metrics$
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --whitelist-domain=keycloak.example.com
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --whitelist-domain=.example.org
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --insecure-oidc-allow-unverified-email=true
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cookie-expire=8h
+      - equal:
+          path: spec.template.spec.containers[1].args[-1]
+          value: --cookie-expire=8h
+  - it: omits optional proxy arguments when cleared
+    template: templates/deployment.yaml
+    set:
+      authProxy.cookie.refresh: ""
+      authProxy.upstreamTimeout: ""
+      authProxy.apiRoutes: []
+      authProxy.whitelistDomains: []
+      authProxy.extraArgs: []
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --cookie-refresh=2m
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --upstream-timeout=120s
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --api-route=^/api/
+  - it: keeps generic OIDC provider usable with group restrictions
+    template: templates/deployment.yaml
+    set:
+      oidc.allowedGroups: [operators]
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --provider=oidc
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --allowed-group=operators
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --allowed-role=operators
+  - it: configures Keycloak role gate and per-dashboard login settings
+    template: templates/deployment.yaml
+    set:
+      oidc.provider: keycloak-oidc
+      oidc.allowedRoles: [openshell-api-a:users-a, openshell-api-a:administrators-a]
+      oidc.scope: openid profile email
+      oidc.codeChallengeMethod: S256
+      oidc.clientIdSecretKey: client-id
+      oidc.existingSecret: dashboard-a-oidc
+      authProxy.cookie.name: _openshell_a
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --provider=keycloak-oidc
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --allowed-role=openshell-api-a:users-a
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --allowed-role=openshell-api-a:administrators-a
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --scope=openid profile email
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --code-challenge-method=S256
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cookie-name=_openshell_a
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --client-id=openshell-dashboard
+      - contains:
+          path: spec.template.spec.containers[1].env
+          content:
+            name: OAUTH2_PROXY_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: dashboard-a-oidc
+                key: client-id
+  - it: rejects Keycloak roles for generic OIDC, where they would be ignored
+    template: templates/deployment.yaml
+    set:
+      oidc.allowedRoles: [openshell-api-a:users-a]
+    asserts:
+      - failedTemplate:
+          errorMessage: oidc.allowedRoles requires oidc.provider=keycloak-oidc
+  - it: only permits controller namespace to proxy port
+    template: templates/networkpolicy.yaml
+    asserts:
+      - equal:
+          path: spec.podSelector.matchLabels["app.kubernetes.io/name"]
+          value: openshell-dashboard
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 4180
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: openshift-ingress
+      - lengthEqual:
+          path: spec.ingress
+          count: 1
+      - lengthEqual:
+          path: spec.ingress[0].from
+          count: 1
+      - lengthEqual:
+          path: spec.ingress[0].ports
+          count: 1
+  - it: supports explicit ingress peers without admitting the release namespace
+    template: templates/networkpolicy.yaml
+    set:
+      networkPolicy.ingressFrom:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway-data-plane
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: gateway-data-plane
+      - lengthEqual:
+          path: spec.ingress[0].from
+          count: 1
+  - it: rejects pod labels that would match gateway selectors
+    template: templates/deployment.yaml
+    set:
+      podLabels:
+        app.kubernetes.io/name: openshell
+    asserts:
+      - failedTemplate:
+          errorMessage: podLabels cannot override app.kubernetes.io/name or app.kubernetes.io/instance

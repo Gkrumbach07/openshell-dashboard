@@ -1,0 +1,31 @@
+{{/* SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+SPDX-License-Identifier: Apache-2.0 */}}
+{{- if .Values.openshiftRoute.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "openshell-dashboard.fullname" . }}
+  labels:
+    {{- include "openshell-dashboard.labels" . | nindent 4 }}
+  {{- with .Values.openshiftRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.openshiftRoute.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "openshell-dashboard.fullname" . }}
+  port:
+    targetPort: proxy
+  tls:
+    termination: {{ .Values.openshiftRoute.termination }}
+    insecureEdgeTerminationPolicy: Redirect
+    {{- if eq .Values.openshiftRoute.termination "reencrypt" }}
+    destinationCACertificate: |
+      {{- .Values.openshiftRoute.destinationCACertificate | nindent 6 }}
+    {{- end }}
+  wildcardPolicy: None
+{{- end }}

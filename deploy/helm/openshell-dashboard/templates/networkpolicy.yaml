@@ -1,0 +1,27 @@
+{{/* SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+SPDX-License-Identifier: Apache-2.0 */}}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "openshell-dashboard.fullname" . }}
+  labels:
+    {{- include "openshell-dashboard.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "openshell-dashboard.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- if .Values.networkPolicy.ingressFrom }}
+        {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
+        {{- else }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace | default (ternary (.Values.httpRoute.gateway.namespace | default .Release.Namespace) "openshift-ingress" .Values.httpRoute.enabled) }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.authProxy.port }}
+{{- end }}
