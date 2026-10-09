@@ -170,7 +170,7 @@ Env vars (some also available as CLI flags):
 | `AUTH_USER_HEADER` | `-auth-user-header` | `x-auth-request-user` | User header name |
 | `ADMIN_ROLE` | `-admin-role` | `admin` | OIDC role claim for admin (display gating only — gateway enforces) |
 | `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out` | Proxy sign-out path the frontend redirects to on logout |
-| `GATEWAY_RELEASE_LINE` | `-gateway-release-line` | compiled in | Gateway release line this build is for, written `major.minor` (`0.1`). A gateway whose version starts with those two numbers is `supported` (any patch, pre-release, dev build or downstream rebuild), any other line is `unsupported`, and a gateway with no usable version is `unknown`. The default is `models.BuiltInGatewayReleaseLine` in `backend/pkg/models/gateway_release_line.go`, the line of the newest required lane in `deploy/ci/gateway-pins.json`; `node scripts/gateway-range.mjs --check` fails in CI when the two disagree. Override it only for tests and local development: no image or chart sets it, and a value that is not a line turns the status into `unknown`. The verdict is served by `GET /gateway/compatibility` to every signed-in user (version read from the gateway's unauthenticated health check) and also rides on `GET /gateway`, which the gateway answers for platform admins only. Informational only — the BFF never blocks on it (ADR 0009) |
+| `GATEWAY_RELEASE_LINE` | `-gateway-release-line` | compiled in | Gateway release line this build is for, written `major.minor` (`0.1`). A gateway whose version starts with those two numbers is `supported` (any patch, pre-release, dev build or downstream rebuild), any other line is `unsupported`, and a gateway with no usable version is `unknown`. The default is `models.BuiltInGatewayReleaseLine` in `backend/pkg/models/gateway_release_line.go`, the line of the release `deploy/ci/gateway-pins.json` names; `node scripts/gateway-range.mjs --check` fails in CI when the two disagree. Override it only for tests and local development: no image or chart sets it, and a value that is not a line turns the status into `unknown`. The verdict is served by `GET /gateway/compatibility` to every signed-in user (version read from the gateway's unauthenticated health check) and also rides on `GET /gateway`, which the gateway answers for platform admins only. Informational only — the BFF never blocks on it (ADR 0009) |
 | `FEATURE_*` | | varies | Feature flags: `FEATURE_TERMINAL`, `FEATURE_FILE_TRANSFER`, `FEATURE_SETTINGS`, `FEATURE_GLOBAL_POLICY`, `FEATURE_CREDENTIAL_REFRESH`, `FEATURE_SERVICES`, `FEATURE_DRAFT_POLICY` |
 
 ## Error handling
@@ -197,48 +197,51 @@ can return is declared there so the frontend has one authoritative list.
 
 ## SDK updates
 
-The SDK pin is the commit of an upstream **release tag** and it moves in a PR
-of its own. Never `go get ...@latest`, a branch or a pre-release tag: `@latest`
-is whatever upstream HEAD is that minute, and nothing was tested against it
-(ADR 0006; hard facts 17 and 20 in `openshell-api.md`).
+The SDK is pinned to the commit of an upstream **release tag**, and it moves
+together with the gateway the branch pins: one upstream release, one commit
+(ADR 0009, decision 7; hard facts 17 and 20 in `openshell-api.md`). Never
+`go get ...@latest` or a branch: `@latest` is whatever upstream HEAD is that
+minute, and nothing was tested against it.
 
-You normally do not do this by hand. The daily compat sweep tries the newest
-release's SDK against every required gateway lane and proposes the PR when it
-passes (`fix(sdk): move to the OpenShell SDK at vX`, on the branch
-`compat-sweep/sdk`). When it reports a **source migration** instead — the BFF
-no longer builds against the new SDK — that is the one case for doing it
-yourself:
+You do not do this by hand, and not in a pull request of your own. The Follow
+upstream workflow (`.github/workflows/follow-upstream.yml`) reads upstream's
+tags every hour and makes the move on the `next` branch, as the first commit
+after `main`: the pins file, `go.mod`, `go.sum`, the built-in release line when
+the minor changes, and the README's generated block. `next` pins the newest
+pre-release until upstream cuts the stable release, then that; merging `next`
+is how `main` moves. See `deploy/ci/upstream/README.md`.
+
+What is left for a person is the work the move makes necessary:
+
+- **The BFF no longer builds, vets or passes its tests against the new SDK**
+  (CI on the `next` pull request is red in `check-backend`). That is a source
+  migration: fix the call sites and the test doubles in `mock_sdk_test.go` in
+  a pull request **into `next`**, not `main`. It cannot land on `main`, where
+  the SDK is still the old one.
+- **The compat suite fails on `next`** (`compat` is red there). The console on
+  the new SDK does not work with the new gateway: fix it on `next` too.
+- **Check A's issue is open** (label `compat-migrate`). The console as `main`
+  builds it fails against the upcoming gateway. On `main`'s own release line
+  that is upstream breaking a Stable interface; the issue says what to do.
+
+To look at a move before the workflow has made it, or to reproduce one:
 
 ```bash
-# The commit a release tag points at (take the ^{} line when the tag has one).
-git ls-remote --tags https://github.com/NVIDIA/OpenShell.git 'v0.1.*'
+python3 deploy/ci/upstream/follow.py plan --out /tmp/plan.json   # the target, its tag's commit and its image digests
 
 cd backend
-go get github.com/NVIDIA/OpenShell/sdk/go@<release-tag-commit>
+go get github.com/NVIDIA/OpenShell/sdk/go@<the tag's commit>
 go mod tidy
 go build ./... && go vet ./... && go test ./...   # the source link: SDK <-> BFF
 ```
 
-Then, in the same PR:
-
-- Write the new version into the `sdk` field of `deploy/ci/gateway-pins.json`.
-  It is the go.mod pin recorded a second time and CI fails when they differ
-  (`python3 deploy/ci/sweep/sweep.py validate-pins --go-mod backend/go.mod`).
-- Fix the call sites and the test doubles in `mock_sdk_test.go`, and commit
-  them with the pin: a commit that moves the SDK without them does not build.
-- Do **not** move a gateway lane. The required compat lanes prove the wire
-  link (gateway <-> SDK) against every gateway we pin; a moved lane would
-  hide which link changed.
-- Use a `fix:` commit. The published BFF is built against the SDK, so the
-  move has to be released.
-
-If the new SDK fails the oldest required lane, moving to it breaks a gateway
-of the release line this build is for (ADR 0009). That is not a dependency
-bump. Stop and raise it. The one case where the SDK and the lanes do move in a single PR is
-a wire break no build spans — the new SDK fails every required lane and the
-pinned SDK fails every new gateway — and that PR is a person's decision,
-recorded as such (ADR 0006, decision 6). It is never a routine update and the
-sweep never opens it.
+Do not commit that to a branch of your own. If the pins do have to be changed
+by hand (a release branch, or the workflow is broken), all of it moves in one
+commit and CI holds the pieces together:
+`python3 deploy/ci/upstream/follow.py validate-pins --go-mod backend/go.mod`,
+`node scripts/gateway-range.mjs --check` and
+`node scripts/readme-gateway-range.mjs --write`. Only `next` may pin a
+pre-release; the `pins a stable release` check refuses one anywhere else.
 
 There is no local proto regeneration flow anymore. If you need to inspect an
 RPC or type shape, read the vendored SDK package (`openshell/v1`, `types/*`) or

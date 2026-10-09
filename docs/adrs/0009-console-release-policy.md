@@ -244,6 +244,57 @@ Whether a release is started by a person is not changed by this ADR. What
 stands besides: a release is cut from a commit whose CI run passed, and a
 merged move to a new gateway patch release is released as a patch.
 
+## Amendments
+
+- **2026-10-09: decisions 6, 7 and 8 are implemented, and the compat sweep is
+  retired.** Two of the items "Implemented in steps" lists as not built are
+  built now ("The compat sweep is unchanged" and "There is no `next` branch
+  and no `release/<major>.<minor>` branch"), and what that section and
+  "Consequences" say about lanes and the sweep describes the state before
+  this.
+
+  - *One gateway per branch (decision 6).* `deploy/ci/gateway-pins.json` names
+    one upstream release: `release`, its gateway and supervisor images by
+    digest, and `sdk`. It no longer lists lanes. `ci.yml` runs the
+    compatibility suite against that gateway on pushes to `main` and
+    `release/**` and on pull requests into `main`, `next` and `release/**`.
+    The built-in line is the line of that release. The second release `main`
+    used to run, 0.1.0, is no longer run: the rest of the line rests on
+    decision 10 alone.
+  - *Release pickup (decision 7).* `.github/workflows/follow-upstream.yml`
+    reads upstream's tags every hour. Its target is the newest stable release
+    above the one `main` pins, or failing that the newest pre-release that
+    leads up to one. Several stable releases waiting are not walked through.
+    Moving to the target is one commit: the images, the SDK at the tag's
+    commit, the built-in line when the minor changes, and the README's
+    generated block.
+  - *Pre-releases (decision 8).* The same workflow keeps the `next` branch in
+    one shape (`main`, that one commit, then people's commits) and keeps its
+    pull request into `main` open: a draft while the target is a pre-release,
+    ready for review once it is a stable release. It runs check A, the BFF as
+    `main` builds it against the target's gateway, and keeps one issue for a
+    failure. Check B is CI on the `next` pull request. A CI check of its own,
+    `pins a stable release`, keeps a pre-release out of `main` and
+    `release/**`, so that a `next` that is not released upstream yet is not
+    read as a compatibility failure.
+  - *What replaced the sweep.* `compat-sweep.yml`, its gateway axis and SDK
+    axis, the `compat-sweep/*` branches and the one-axis guard are removed;
+    `deploy/ci/sweep/` became `deploy/ci/upstream/`. Upstream HEAD is no longer
+    probed: pre-releases are. The consequence above, "The sweep cannot move the
+    console to a new gateway minor on its own", no longer applies, because the
+    pin move changes the built-in line in the same commit. A move to a new
+    minor still cannot merge until the compatibility suite passes on it.
+  - *The automatic release* is the merge of `next`
+    (`scripts/release/next-merge.mjs`). It is still cut as a patch.
+  - *`release/<major>.<minor>`* is created from `main` by the workflow when the
+    target is a stable release on a new minor. It is created, not kept up to
+    date, and nothing cuts a release from it yet.
+
+  Still not built: the console's version sharing the gateway's line, and the
+  release type following from what the release is (decisions 1 to 4). A move
+  to a new gateway minor is therefore still released as a patch, and the
+  `next` pull request says so when it applies.
+
 ## References
 
 - [RFC 0014](https://github.com/NVIDIA/OpenShell/tree/main/rfc/0014-release-stability) — OpenShell's proposed release and stability policy, whose terms and whose rule on Stable interfaces this ADR uses

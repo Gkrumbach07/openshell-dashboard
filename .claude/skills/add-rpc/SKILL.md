@@ -27,13 +27,13 @@ Start with `openshell/v1/` and `types/` in the pinned module version. Note:
 - Whether the public SDK is actually missing what you need; if so, document the gap before adding any escape hatch
 
 If the capability exists upstream but not in the **pinned** SDK, do not run
-`go get ...@latest` to reach it. Moving the SDK is a separate PR with its own
-proof (see "SDK updates" in `.claude/rules/bff-go.md` and ADR 0006): the pin
-only ever moves to the commit of an upstream release tag, and only after the
-compat suite passes against every gateway we support. Land that first, then
-add the endpoint. Also check that the gateways in the supported range
-(`python3 deploy/ci/sweep/sweep.py range`) actually serve the RPC — an older
-gateway answers gRPC `UNIMPLEMENTED` for one it predates.
+`go get ...@latest` to reach it. The SDK moves with the gateway, to the commit
+of an upstream release tag, and the Follow upstream workflow makes that move
+on the `next` branch (see "SDK updates" in `.claude/rules/bff-go.md` and ADR
+0009). If the capability is in the upcoming release, the endpoint is work for
+`next`: branch from it and open the pull request into it. Also check that the
+gateway this branch pins (`node scripts/gateway-range.mjs`) actually serves
+the RPC — an older gateway answers gRPC `UNIMPLEMENTED` for one it predates.
 
 ### 2. Update models / request parsing
 
