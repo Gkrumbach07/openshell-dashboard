@@ -5,22 +5,25 @@
 // The README is where people look first, and a statement written there by hand
 // goes stale the day the pins move — at which point it contradicts the release
 // notes and the image, which are both derived. So the few lines that restate
-// the line, the releases it is tested on and the SDK sit between two marker
+// the line, the release it is tested on and the SDK sit between two marker
 // comments and are generated, and CI fails when they are out of date.
 //
 //   node scripts/readme-gateway-range.mjs --write   regenerate the block
 //   node scripts/readme-gateway-range.mjs --check   exit 1 when it is stale (CI)
 //
-// Whatever moves the pins runs --write in the same change. That includes the
-// compat sweep's automated pull requests: one moves the newest lane and the
-// other the SDK, the block restates both, and a pull request that left it stale
-// could never pass --check. --write changes nothing outside the markers and is
-// a no-op when the block is already right, so it is safe to run every time.
+// Whatever moves the pins runs --write in the same change. The Follow upstream
+// workflow does, when it moves `next` to a new upstream release: the block
+// restates the release and the SDK, and a branch that left it stale could
+// never pass --check. It runs this copy of the script, from the commit the
+// workflow runs at, against the tree it is changing, which is what --readme
+// and --pins are for (deploy/ci/upstream/pinmove.py). --write changes nothing
+// outside the markers and is a no-op when the block is already right, so it
+// is safe to run every time.
 //
 // Only the part between the markers is generated. The prose around it —
 // including the hand-written facts about older dashboard releases — is never
-// touched. The markers still say "gateway-range": the compat sweep finds the
-// block by them (deploy/ci/sweep/guard.py).
+// touched. The markers still say "gateway-range", from when a build declared a
+// range of gateway versions.
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,7 +44,7 @@ export function renderBlock(declared) {
     '| | |',
     '|---|---|',
     `| Supported gateways | \`${formatLine(declared.line)}\` |`,
-    `| Tested on | ${declared.tested.map((release) => `\`${release}\``).join(', ')} |`,
+    `| Tested on | \`${declared.release}\` |`,
     `| OpenShell Go SDK | \`${declared.sdk}\` |`,
     END,
   ].join('\n');

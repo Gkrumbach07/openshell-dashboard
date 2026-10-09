@@ -57,11 +57,13 @@ test-backend:
 test-frontend:
 	cd frontend && npm test -- --passWithNoTests
 
-OPENSHELL_VERSION ?= latest
+# Left unset, the compat targets run the gateway this branch pins
+# (deploy/ci/gateway-pins.json), by digest: the one CI runs. Set it to try
+# another release by its tag.
 export OPENSHELL_VERSION
 
 .PHONY: compat compat-up compat-down
-compat: ## Gateway compat suite vs a real gateway (OPENSHELL_VERSION=0.1.2 make compat)
+compat: ## Gateway compat suite vs the pinned gateway (another: OPENSHELL_VERSION=0.1.2 make compat)
 	deploy/ci/e2e-stack.sh run
 
 compat-up: ## Bring up just the gateway stack (leaves it running)

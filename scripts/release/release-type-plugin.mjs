@@ -10,7 +10,7 @@
 //
 // Here the kind of release comes from RELEASE_TYPE, which publish.yml sets from
 // the choice the person made when they started the workflow (or to `patch` for
-// a merged compat-sweep bump, the one release that is still automatic). The
+// the merge of `next`, the one release that is still automatic). The
 // commits are still read, but only to say what they would have suggested, so a
 // choice that disagrees with them is made knowingly.
 //

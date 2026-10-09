@@ -40,7 +40,7 @@ EXPOSE 8080
 # local development.
 #
 # CI passes them from `node scripts/gateway-range.mjs`, which derives them from
-# the required compat lanes in deploy/ci/gateway-pins.json — the same source as
+# the release deploy/ci/gateway-pins.json names — the same source as
 # the release notes, so the two cannot disagree. A plain `docker build` without
 # them still works and leaves both labels empty. Because empty is allowed,
 # ci.yml's image-range job reads the pushed image back and fails if CI's own

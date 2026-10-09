@@ -23,7 +23,7 @@ The build reaches the gateway through one pinned Go SDK. It is [tested against r
 | | |
 |---|---|
 | Supported gateways | `0.1.x` |
-| Tested on | `0.1.0`, `0.1.3` |
+| Tested on | `0.1.3` |
 | OpenShell Go SDK | `v0.0.0-20261009050449-e1f3c82caa3e` |
 <!-- gateway-range:end -->
 
