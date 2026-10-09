@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+suite: Keycloak guide configuration
+templates:
+  - templates/deployment.yaml
+values:
+  - ../ci/values-keycloak.yaml
+release:
+  name: openshell-dashboard
+  namespace: my-namespace
+tests:
+  - it: gates users on API client roles and matches the gateway admin role
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].image
+          value: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --provider=keycloak-oidc
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --allowed-role=openshell-api:openshell-admin
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --allowed-role=openshell-api:openshell-user
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ADMIN_ROLE
+            value: openshell-admin
+  - it: can end the IdP session using the configured logout redirect
+    template: templates/deployment.yaml
+    set:
+      dashboard.logoutURL: /oauth2/sign_out?rd=https%3A%2F%2Fkeycloak.example.com%2Frealms%2Fopenshell%2Fprotocol%2Fopenid-connect%2Flogout
+      authProxy.whitelistDomains: [keycloak.example.com]
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LOGOUT_URL
+            value: /oauth2/sign_out?rd=https%3A%2F%2Fkeycloak.example.com%2Frealms%2Fopenshell%2Fprotocol%2Fopenid-connect%2Flogout
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --whitelist-domain=keycloak.example.com

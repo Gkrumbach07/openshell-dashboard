@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Reuse a pre-existing HTTPS Gateway; it terminates TLS and forwards HTTP to
 # oauth2-proxy, preserving the original Host header for terminal WebSockets.
+# Replace ingressNamespace with the namespace of the Gateway's data-plane pods.
+# It may differ from the Gateway resource namespace below.
+networkPolicy:
+  ingressNamespace: replace-with-gateway-data-plane-namespace
 httpRoute:
   enabled: true
   hostnames: [dashboard.example.com]

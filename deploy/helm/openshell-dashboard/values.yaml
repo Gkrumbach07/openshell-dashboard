@@ -27,7 +27,7 @@ dashboard:
     pullPolicy: null
   # -- Dashboard container port (loopback only; never exposed via Service).
   port: 8080
-  # -- Sign-out endpoint exposed by oauth2-proxy.
+  # -- Sign-out endpoint. For Keycloak, rd is the encoded IdP end-session URL; its post_logout_redirect_uri should be the proxy /oauth2/sign_in page (register it with the client).
   logoutURL: /oauth2/sign_out
 
 authProxy:
@@ -37,7 +37,7 @@ authProxy:
     # -- oauth2-proxy repository. Replace with approved downstream image if needed.
     repository: oauth2-proxy/oauth2-proxy
     # -- Proxy image tag; pinned until proxy version is tied to chart releases.
-    tag: v7.15.2
+    tag: v7.15.5
     # -- Proxy image digest; takes precedence over tag.
     digest: ""
     # -- Proxy pull policy; null uses global.image.pullPolicy.
@@ -133,9 +133,9 @@ oidc:
   provider: oidc
   # -- OIDC issuer URL (e.g. https://keycloak.example.com/realms/openshell)
   issuer: ""
-  # -- Expected audience claim for the API resource server. IdP must add it to token aud. Purely informational.
+  # -- Expected gateway API audience. Set to the API client ID for Keycloak client roles; informational only.
   audience: openshell-api
-  # -- Same roles claim path as gateway server.oidc.rolesClaim (documented for installer parity and purely informaitonal).
+  # -- Same roles claim path as gateway server.oidc.rolesClaim (documented for installer parity; informational only).
   rolesClaim: ""
   # -- Role name for admin access. Must be the same as the openshell gateway admin name. Defaults to "admin"
   adminRole: ""
@@ -209,7 +209,7 @@ autoscaling:
 networkPolicy:
   # -- Restrict ingress to the proxy port from the ingress controller namespace.
   enabled: true
-  # -- Namespace of ingress data-plane pods. Empty uses openshift-ingress for Routes or httpRoute.gateway.namespace for HTTPRoute.
+  # -- Namespace of ingress data-plane pods. Defaults to openshift-ingress for Routes; required for HTTPRoute unless ingressFrom is set.
   ingressNamespace: ""
   # -- Optional ingress peers replacing the default namespace selector (e.g. host-network routers or Gateway data-plane pods).
   ingressFrom: []
@@ -239,7 +239,7 @@ httpRoute:
     # -- Create a Gateway in the release namespace; else use an existing one.
     create: false
     # -- GatewayClass for created Gateway.
-    className: eg
+    className: "eg"
     # -- Gateway resource name; empty uses dashboard fullname.
     name: ""
     # -- Existing Gateway namespace; empty uses release namespace.

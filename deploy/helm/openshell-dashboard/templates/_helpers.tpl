@@ -114,6 +114,9 @@ Value validation
 {{- if and .Values.openshiftRoute.enabled .Values.httpRoute.enabled -}}
 {{- fail "enable only one of openshiftRoute and httpRoute" -}}
 {{- end -}}
+{{- if and .Values.httpRoute.enabled .Values.networkPolicy.enabled (not .Values.networkPolicy.ingressNamespace) (not .Values.networkPolicy.ingressFrom) -}}
+{{- fail "httpRoute with NetworkPolicy requires networkPolicy.ingressNamespace or networkPolicy.ingressFrom for Gateway data-plane ingress" -}}
+{{- end -}}
 {{- if and .Values.openshiftRoute.enabled (not (has .Values.openshiftRoute.termination (list "edge" "reencrypt"))) -}}
 {{- fail "openshiftRoute.termination must be edge or reencrypt (not passthrough)" -}}
 {{- end -}}

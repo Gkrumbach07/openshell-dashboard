@@ -3,15 +3,18 @@
 # Example Keycloak OIDC settings. Replace the issuer with a URL reachable by both
 # browser and pods, matching the gateway's server.oidc.issuer.
 # Layer values-route-edge.yaml and values-openshift-scc.yaml for OpenShift.
-# Add an audience mapper to the dashboard client so its access and id token aud
-# contains openshell-dashboard or specified dashboard audience.
-# If not using client roles on an API client, a role mapping must be added for the gateway's expected audience
-# Register https://<dashboard-host>/oauth2/callback.
+# Assign openshell-api client roles to Keycloak groups, then scope the dashboard
+# client to those roles. Keep Keycloak's built-in roles client scope: Audience
+# Resolve adds openshell-api to the access token aud when a role is present.
+# No custom audience mapper is needed. The gateway must use the same audience,
+# rolesClaim, adminRole, and userRole. Register the dashboard callback URL in
+# Valid redirect URIs and https://<dashboard-host>/oauth2/sign_in in Valid post
+# logout redirect URIs for the dashboard client.
 oidc:
   provider: keycloak-oidc
   issuer: https://keycloak.apps.example.com/realms/openshell
-  audience: openshell-cli
-  rolesClaim: realm_access.roles
+  audience: openshell-api
+  rolesClaim: resource_access.openshell-api.roles
   adminRole: openshell-admin
   clientId: openshell-dashboard
   allowedRoles:
