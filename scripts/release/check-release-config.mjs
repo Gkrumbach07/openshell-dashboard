@@ -6,10 +6,10 @@
 // silently did not. This loads the configuration the way semantic-release
 // does and checks three things:
 //
-//   1. It loads, and nothing but the release-type plugin can decide a release.
-//      Releases are cut by hand with a chosen type; if the stock commit
-//      analyzer were still listed, a commit title could raise the release
-//      above what the person chose.
+//   1. It loads, nothing but the release-type plugin can decide a release, and
+//      nothing publishes to npm. Releases are cut by hand with a chosen type;
+//      if the stock commit analyzer were still listed, a commit title could
+//      raise the release above what the person chose.
 //   2. The release-type plugin does what it says: the chosen type is what gets
 //      released, no choice is an error, no commits is no release, and what it
 //      reports as "the commits suggest" matches the table in CONTRIBUTING.md.
@@ -33,6 +33,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RANGE_PLUGIN = './scripts/release/gateway-range-plugin.mjs';
 const TYPE_PLUGIN = './scripts/release/release-type-plugin.mjs';
 const STOCK_ANALYZER = '@semantic-release/commit-analyzer';
+const NPM_PLUGIN = '@semantic-release/npm';
 
 // What CONTRIBUTING.md says each title suggests. `none` means it suggests no
 // release. The person cutting the release still chooses; this is what they
@@ -100,15 +101,18 @@ async function main() {
   console.log(`  branches: ${JSON.stringify(options.branches)}`);
   console.log(`  plugins:  ${pluginNames.join(', ')}`);
 
-  for (const step of ['generateNotes', 'prepare']) {
-    if (!loaded.includes(`Loaded plugin "${step}" from "${RANGE_PLUGIN}"`)) {
-      throw new Error(`${RANGE_PLUGIN} did not load for the ${step} step`);
-    }
+  if (!loaded.includes(`Loaded plugin "generateNotes" from "${RANGE_PLUGIN}"`)) {
+    throw new Error(`${RANGE_PLUGIN} did not load for the generateNotes step`);
   }
-  if (pluginNames.indexOf(RANGE_PLUGIN) > pluginNames.indexOf('@semantic-release/npm')) {
-    throw new Error(`${RANGE_PLUGIN} must come before @semantic-release/npm, which publishes package.json`);
+  console.log(`  ${RANGE_PLUGIN}: generateNotes loaded`);
+
+  // The npm package is retired (ADR 0008). The plugin is one of
+  // semantic-release's defaults, so leaving `plugins` out of the configuration
+  // would be enough to bring it back.
+  if (pluginNames.includes(NPM_PLUGIN)) {
+    throw new Error(`${NPM_PLUGIN} is configured; the npm package is retired and must not be published`);
   }
-  console.log(`  ${RANGE_PLUGIN}: generateNotes and prepare loaded, ahead of the npm plugin`);
+  console.log(`  ${NPM_PLUGIN}: not configured, so nothing is published to npm`);
 
   // Nothing but the release-type plugin may decide a release. semantic-release
   // takes the LARGEST answer when several plugins analyze the commits, so the

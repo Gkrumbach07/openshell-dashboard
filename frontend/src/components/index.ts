@@ -1,4 +1,4 @@
-// Barrel for downstream consumers (package.json "./components" export).
+// Barrel of the shared components (ADR 0001; not published, ADR 0008).
 // Internal code imports directly from the source modules.
 export { default as PhaseLabel } from './PhaseLabel';
 export { default as LabelsList } from './LabelsList';

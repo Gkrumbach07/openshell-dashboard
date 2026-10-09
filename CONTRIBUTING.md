@@ -47,7 +47,7 @@ Feature and behavior PRs should link an accepted issue.
 
 #### Merging does not release; the title still matters
 
-Merging a pull request publishes nothing. A release is cut by a person, who starts the `Publish to npm` workflow on `main` and chooses patch, minor or major ([docs/releasing.md](docs/releasing.md)). The one exception is a pull request opened by the compat sweep, which is released as a patch once it is merged.
+Merging a pull request publishes nothing. A release is cut by a person, who starts the `Release` workflow on `main` and chooses patch, minor or major ([docs/releasing.md](docs/releasing.md)). The one exception is a pull request opened by the compat sweep, which is released as a patch once it is merged.
 
 The commit message still does two jobs, so write it as carefully as before. With a squash merge the pull request **title** is the commit message. It is what the release notes are written from, and it is what the person cutting the release is told the commits suggest:
 
@@ -61,7 +61,7 @@ The commit message still does two jobs, so write it as carefully as before. With
 | a `git revert` under the title git gives it, `Revert "…"`, **whatever it reverts** | patch |
 | any other title that is not a Conventional Commit, such as `Add foo (#74)` | none |
 
-**Workflow changes use the `ci:` type.** A change to `.github/workflows/`, or to the scripts CI and the release pipeline run, alters nothing in the package or the image, so it does not belong in the release notes and must not make the commits look like they call for a release. When releases were automatic, `fix(ci):` and `feat(ci):` did worse than that: releases 1.0.1, 1.0.2, 1.0.3 and 1.1.0 were each published by a commit that changed nothing we ship. A `ci` scope is treated the same as the `ci` type, but write `ci:` so the title says what the change is.
+**Workflow changes use the `ci:` type.** A change to `.github/workflows/`, or to the scripts CI and the release pipeline run, alters nothing in the image, so it does not belong in the release notes and must not make the commits look like they call for a release. When releases were automatic, `fix(ci):` and `feat(ci):` did worse than that: releases 1.0.1, 1.0.2, 1.0.3 and 1.1.0 were each published by a commit that changed nothing we ship. A `ci` scope is treated the same as the `ci` type, but write `ci:` so the title says what the change is.
 
 A commit whose type or scope is `ci` is left out of the release notes and suggests no release, even when it is marked breaking.
 
@@ -71,7 +71,7 @@ A commit whose type or scope is `ci` is left out of the release notes and sugges
 ci: revert "pin the runners"
 ```
 
-Use `fix:` or `feat:` only for something a user of the dashboard or a consumer of the npm package would notice. The rules live in [`release.config.cjs`](release.config.cjs); CI runs sample commits through them on every pull request (`scripts/release/check-release-config.mjs`), and [docs/releasing.md](docs/releasing.md) describes the rest of the pipeline.
+Use `fix:` or `feat:` only for something a user of the dashboard would notice. The rules live in [`release.config.cjs`](release.config.cjs); CI runs sample commits through them on every pull request (`scripts/release/check-release-config.mjs`), and [docs/releasing.md](docs/releasing.md) describes the rest of the pipeline.
 
 #### If you move the supported gateway range
 

@@ -24,7 +24,7 @@ export default SandboxList;
 - PascalCase files for components, camelCase for hooks
 - `data-testid` on interactive and testable elements
 - Pages are flat files in `src/pages/` (no subdirectories)
-- Barrel exports in `src/pages/index.ts` and `src/components/index.ts` are for downstream npm consumers
+- Barrel exports in `src/pages/index.ts` and `src/components/index.ts` list what each directory offers; keep them current. They are no longer published as an npm package (ADR 0008)
 
 ## Page components must be exportable
 

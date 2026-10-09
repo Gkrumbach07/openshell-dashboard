@@ -13,5 +13,6 @@ recorded here — an ADR appears when the decision does.
 | [0005](0005-gateway-version-compatibility.md) | Gateway compatibility: pin a supported range, never track `latest` | Accepted |
 | [0006](0006-compat-links-and-sweep-axes.md) | Amends 0005: three links proven separately, two sweep axes, no `dev` pins | Accepted |
 | [0007](0007-releases-are-cut-by-hand.md) | Releases are cut by hand with a chosen type; a merged compat-sweep bump is the one automatic patch | Accepted |
+| [0008](0008-retire-the-npm-package.md) | Amends 0001 and 0004: the npm package is retired; the dashboard ships as a container image and a Helm chart | Accepted |
 
 From here forward, ADRs are append-only: supersede, don't rewrite.

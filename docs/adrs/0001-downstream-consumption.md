@@ -118,6 +118,7 @@ about extending this contract, not a workaround.
 ## Amendments
 
 - [ADR 0004](0004-downstream-consumption-i18n.md) — adds i18n as a sixth extension mechanism (issue #27).
+- [ADR 0008](0008-retire-the-npm-package.md) — withdraws decision 1: the npm package is retired, and nothing is built or published as a library. The barrels and mechanisms 2 to 5 stay as how the frontend is organised.
 
 ## Consequences
 
