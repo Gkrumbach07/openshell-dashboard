@@ -1,16 +1,14 @@
 // semantic-release plugin: every release says which OpenShell gateways it supports.
 //
-// Loaded by release.config.cjs. It adds two steps to a release:
+// Loaded by release.config.cjs. It adds one step to a release:
 //
 //   generateNotes  appends a "Supported OpenShell gateways" section to the
 //                  notes, which is what the GitHub release is published with
-//   prepare        stamps the same facts into <pkgRoot>/package.json before
-//                  @semantic-release/npm publishes it (see stamp-package.mjs)
 //
-// Both take the range from scripts/gateway-range.mjs at release time, so the
+// It takes the range from scripts/gateway-range.mjs at release time, so the
 // claim is the one the required compat lanes proved for the commit being
-// released. Neither step runs unless a release is actually being cut, and both
-// run before semantic-release creates the tag: if the pins cannot be turned
+// released. The step does not run unless a release is actually being cut, and
+// it runs before semantic-release creates the tag: if the pins cannot be turned
 // into a range, the release stops before anything is published.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -22,7 +20,6 @@ import {
   formatRange,
   readGatewayRange,
 } from '../gateway-range.mjs';
-import { stampPackage } from './stamp-package.mjs';
 
 /**
  * The range a previous release declared, or null when it cannot be known —
@@ -63,7 +60,7 @@ export function supportedGatewaysNotes({ range, previous, previousTag, readmeUrl
     '',
   ];
 
-  // Our semver describes the npm API, not the gateway a deployment needs:
+  // The version number does not describe the gateway a deployment needs:
   // moving the range can break a running installation in a patch release
   // (ADR 0005). So a change is called out rather than left to a diff of two
   // release pages.
@@ -94,11 +91,4 @@ export async function generateNotes(pluginConfig, context) {
     // same range, and stays right for this version after main has moved on.
     readmeUrl: repo && nextRelease?.gitTag ? `${repo}/blob/${nextRelease.gitTag}/README.md#compatibility` : null,
   });
-}
-
-export async function prepare(pluginConfig, context) {
-  const { cwd, logger } = context;
-  const pkgPath = join(cwd, pluginConfig.pkgRoot ?? '.', 'package.json');
-  const stamped = stampPackage(pkgPath);
-  logger.log('Stamped %s with openshell = %j', pkgPath, stamped);
 }

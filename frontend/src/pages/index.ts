@@ -1,4 +1,4 @@
-// Barrel for downstream consumers (package.json "./pages" export). Each page
+// Barrel of the page components (ADR 0001; not published, ADR 0008). Each page
 // is self-contained: takes props, fetches via internal API hooks, renders
 // pure PatternFly — no external context required.
 export { default as LoginPage } from './LoginPage';

@@ -15,17 +15,19 @@ A release `vX.Y.Z` is:
 
 | Artifact | Where | Made by |
 |---|---|---|
-| npm package `openshell-dashboard@X.Y.Z` (frontend only) | npmjs.com | `semantic-release`, in `publish.yml` |
 | GitHub release `vX.Y.Z` | this repository | `semantic-release`, in `publish.yml` |
 | Container image tags `X.Y.Z` and `X.Y` | `quay.io/gkrumbach07/openshell-dashboard` | `publish.yml`, by retagging the image CI already built |
+| Helm chart `openshell-dashboard`, version `X.Y.Z` | `oci://ghcr.io/gkrumbach07/openshell-dashboard/helm-chart` | `publish.yml`, by packaging the chart at the released commit once the image is tagged |
 
-The BFF and the UI ship together, so they share the version.
+The BFF and the UI ship together, so they share the version. Nothing is
+published to npm; that package is retired
+([ADR 0008](adrs/0008-retire-the-npm-package.md)).
 
 ## Cutting a release
 
 1. Make sure CI has passed for the commit `main` points at. A release tags the
    image that CI run built, so a commit without a green run is refused.
-2. Start the workflow: **Actions → Publish to npm → Run workflow**, on `main`.
+2. Start the workflow: **Actions → Release → Run workflow**, on `main`.
    Choose **patch**, **minor** or **major**. Leave **Dry run** ticked.
 3. Read the run. Its summary says which version it would cut and how your
    choice compares with what the commit titles suggest; the log has the release
@@ -94,10 +96,10 @@ ci.yml ── build ──► push-manifest ────────────
 publish.yml   started by a person, with a release type   (or: CI passed for a merged sweep bump)
    │
    ├── semantic-release ───────────────────────► git tag vX.Y.Z
-   │                                             npm openshell-dashboard@X.Y.Z
    │                                             GitHub release vX.Y.Z
    │
    └── a vX.Y.Z tag is on this commit ──► tag-image ──► image :X.Y.Z, :X.Y  (same digest)
+                                              └──► publish-chart ──► chart X.Y.Z
 ```
 
 Five properties are worth knowing:
@@ -150,8 +152,10 @@ by a single `BREAKING CHANGE:` footer nobody meant as a milestone.
 
 ## What every release declares
 
-Each artifact states the range of OpenShell gateways the release supports and
-the Go SDK it was built against (#66, ADR 0005). The range is the lowest and the
+The GitHub release and the container image each state the range of OpenShell
+gateways the release supports and the Go SDK it was built against (#66,
+ADR 0005). The Helm chart states nothing of its own; by default it deploys the
+image of the same version. The range is the lowest and the
 highest version among the **required** lanes in
 [`deploy/ci/gateway-pins.json`](../deploy/ci/gateway-pins.json) at the released
 commit. One script derives it, [`scripts/gateway-range.mjs`](../scripts/gateway-range.mjs),
@@ -160,14 +164,8 @@ and everything else calls that script:
 | Artifact | What it carries | Written by |
 |---|---|---|
 | GitHub release | a *Supported OpenShell gateways* section, which also calls out a range that changed since the previous release | `generateNotes` in `scripts/release/gateway-range-plugin.mjs` |
-| npm package | `"openshell": { "gateway": ">=A <=B", "sdk": "…" }` in `package.json` | `prepare` in the same plugin, via `scripts/release/stamp-package.mjs` |
 | Container image | env `GATEWAY_SUPPORTED_MIN` / `GATEWAY_SUPPORTED_MAX`, and labels `io.github.gkrumbach07.openshell-dashboard.gateway.min`, `.gateway.max`, `.sdk` | build args in `ci.yml`'s `build` job, consumed by `deploy/Dockerfile`; `image-range` reads the pushed image back and fails if they are missing |
 | README | the table under *Compatibility* | `scripts/readme-gateway-range.mjs --write`, run by whatever moves the pins (the compat sweep's pull requests do it themselves) and checked in CI |
-
-The committed `frontend/package.json` has no `openshell` field, for the same
-reason its version is `0.0.0-semantically-released`: the value is stamped into
-the CI checkout just before `npm publish` and never committed, so there is no
-second copy to drift.
 
 The only thing that has to agree with the pins file is `backend/go.mod`: the
 `sdk` field must equal the SDK version there, and
@@ -176,12 +174,12 @@ gateway lanes are otherwise independent and move in separate pull requests
 ([ADR 0006](adrs/0006-compat-links-and-sweep-axes.md)).
 
 **Releases up to and including `1.1.1` have none of this.** They were cut by
-the previous pipeline: no *Supported OpenShell gateways* section, no `openshell`
-field, no range on the image, and no `X.Y.Z` or `X.Y` image tag. Nothing here
+the previous pipeline: no *Supported OpenShell gateways* section,
+no range on the image, and no `X.Y.Z` or `X.Y` image tag. Nothing here
 adds them after the fact. The first release cut by this pipeline is the first
 one that carries them.
 
-Our semver describes the npm API, not the gateway a deployment needs. A release
+The version number does not describe the gateway a deployment needs. A release
 that moves the range can break a running installation while looking like a
 patch, which is why the release notes say so explicitly when it happens.
 
@@ -210,11 +208,11 @@ passed alone.
 answered the lookup with something other than "here it is" or "no such tag", so
 the write-once check could not be made and nothing was pushed. Re-run the job.
 
-**`semantic-release` failed after creating the git tag** (for example, npm
-rejected the publish). The tag `vX.Y.Z` now exists without its npm package or
-GitHub release, and a re-run will not publish them, because the tag tells
+**`semantic-release` failed after creating the git tag** (for example, GitHub
+refused to create the release). The tag `vX.Y.Z` now exists without its
+GitHub release, and a re-run will not create it, because the tag tells
 `semantic-release` the version is already out. This needs a person: delete the
-tag and re-run, or publish the missing pieces by hand. Note that a re-run in
+tag and re-run, or create the release by hand. Note that a re-run in
 this state does give the image its version tags, since a release tag is on the
 commit.
 
@@ -237,7 +235,7 @@ None of this needs a registry, a token or a docker daemon:
 ```bash
 node scripts/gateway-range.mjs --check          # the range, and that its SDK is the one in go.mod
 node scripts/readme-gateway-range.mjs --check   # the README states it
-node --test "scripts/**/*.test.mjs"             # release type, the sweep-bump check, notes, stamp, release detection, the tip check, retag and image check (against a stand-in docker)
+node --test "scripts/**/*.test.mjs"             # release type, the sweep-bump check, notes, release detection, the tip check, retag and image check (against a stand-in docker)
 
 # release.config.cjs, against the semantic-release version publish.yml pins:
 npm install --no-package-lock --prefix /tmp/sr semantic-release@25.0.9
@@ -247,15 +245,6 @@ node scripts/release/check-release-config.mjs --from /tmp/sr
 The `release-tooling` job in `ci.yml` runs all four on every pull request,
 because the first real run of the release configuration is on `main`, after the
 merge.
-
-To see what the published package would contain:
-
-```bash
-node scripts/release/stamp-package.mjs            # adds "openshell" to frontend/package.json
-(cd frontend && npm pack --silent --pack-destination /tmp)
-tar -xOzf /tmp/openshell-dashboard-0.0.0-semantically-released.tgz package/package.json | jq .openshell
-git checkout -- frontend/package.json             # the stamp is never committed
-```
 
 ## What this pipeline does not do
 

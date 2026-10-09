@@ -85,7 +85,7 @@ In `frontend/src/app/AppLayout.tsx`, add a `NavItem` to the sidebar with appropr
 </NavItem>
 ```
 
-### 4. Export for downstream
+### 4. Add it to the pages barrel
 
 Add to `frontend/src/pages/index.ts`:
 
@@ -93,7 +93,7 @@ Add to `frontend/src/pages/index.ts`:
 export { default as SandboxListPage } from './SandboxListPage';
 ```
 
-This allows downstream consumers to `import { SandboxListPage } from 'openshell-dashboard/pages'`.
+The barrel lists every page. Nothing is published from it (the npm package is retired, ADR 0008), so this keeps the list complete rather than releasing an API.
 
 ### 5. Add API hooks if needed
 

@@ -65,6 +65,10 @@ Per issue #27:
 - RTL layout support
 - Locale-completeness CI (only useful once a second locale exists)
 
+## Amendments
+
+- [ADR 0008](0008-retire-the-npm-package.md) — the barrel is no longer published as `openshell-dashboard/i18n`, and the **Dependencies** and **Build** paragraphs above no longer apply. The facade rule, the English catalogs and the host override path stay.
+
 ## Consequences
 
 - Downstream hosts may ignore i18n for English-only embeds — published pages

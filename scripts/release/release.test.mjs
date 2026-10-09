@@ -2,7 +2,7 @@
 //
 // The release pipeline only runs for real on main, and its last step talks to a
 // container registry. These tests cover the parts that decide things — what the
-// notes say, what gets stamped, whether a release was cut, which tags move and
+// notes say, whether a release was cut, which tags move and
 // which never may — with no network, no registry and no docker daemon:
 // retag-image.sh is run against a stand-in `docker` that keeps a registry in a
 // file, and branch-tip.sh against a throwaway git remote on disk.
@@ -15,9 +15,8 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { readGatewayRange } from '../gateway-range.mjs';
-import { generateNotes, prepare, supportedGatewaysNotes } from './gateway-range-plugin.mjs';
+import { generateNotes, supportedGatewaysNotes } from './gateway-range-plugin.mjs';
 import { releaseAt } from './released-version.mjs';
-import { stampPackage } from './stamp-package.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SDK = 'v0.0.0-20260928030816-6648bd0c290e';
@@ -71,36 +70,13 @@ test('generateNotes reads the committed pins and tolerates a first release', asy
   assert.match(notes, /\(https:\/\/github\.com\/Gkrumbach07\/openshell-dashboard\/blob\//);
 });
 
-// --- package.json stamp ----------------------------------------------------
+// --- nothing goes to npm ---------------------------------------------------
 
-test('stamping adds the openshell field and changes nothing else', (t) => {
-  const pkgPath = join(tempDir(t), 'package.json');
-  const before = { name: 'openshell-dashboard', version: '0.0.0-semantically-released', files: ['dist'] };
-  writeFileSync(pkgPath, `${JSON.stringify(before, null, 2)}\n`);
-
-  stampPackage(pkgPath, range);
-
-  const raw = readFileSync(pkgPath, 'utf8');
-  assert.deepEqual(JSON.parse(raw), { ...before, openshell: { gateway: '>=0.1.0 <=0.1.2', sdk: SDK } });
-  assert.ok(raw.endsWith('}\n'));
-  // Stamping twice is the same as stamping once.
-  stampPackage(pkgPath, range);
-  assert.equal(readFileSync(pkgPath, 'utf8'), raw);
-});
-
-test('the prepare step stamps <pkgRoot>/package.json from the committed pins', async (t) => {
-  const cwd = tempDir(t);
-  writeFileSync(join(cwd, 'package.json'), '{\n  "name": "x"\n}\n');
-  const logged = [];
-
-  await prepare({ pkgRoot: '.' }, { cwd, logger: { log: (...args) => logged.push(args) } });
-
-  const committed = readGatewayRange();
-  assert.deepEqual(JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8')).openshell, {
-    gateway: committed.range,
-    sdk: committed.sdk,
-  });
-  assert.equal(logged.length, 1);
+// The npm package is retired (ADR 0008). `private` is what makes `npm publish`
+// refuse the package, whoever runs it and from wherever.
+test('frontend/package.json is private, so it cannot be published', () => {
+  const pkg = JSON.parse(readFileSync(join(repoRoot, 'frontend', 'package.json'), 'utf8'));
+  assert.equal(pkg.private, true);
 });
 
 // --- was a release cut? ----------------------------------------------------

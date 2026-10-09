@@ -7,7 +7,7 @@ Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell). Go
 ```
 frontend/           React + TypeScript + PatternFly 6
   src/app/          App shell, routing (App.tsx), layout, theme
-  src/pages/        Page components — flat files, exported for downstream
+  src/pages/        Page components — flat files, self-contained
   src/components/   Shared components
   src/api/          REST client (client.ts), hooks, queryKeys.ts
   src/hooks/        Custom hooks (useBulkDelete, useListPage, useTableSelection)
@@ -45,7 +45,7 @@ Requires a running OpenShell gateway: `openshell gateway start` (Podman) or poin
 
 Each rule has a corresponding Architecture Decision Record in [`docs/adrs/`](docs/adrs/). Read those for full context, alternatives considered, and consequences.
 
-- **Downstream consumption** ([ADR 0001](docs/adrs/0001-downstream-consumption.md)). Consumers install the npm package and get five base mechanisms: barrels, slots, self-contained pages with navigation callbacks, feature flags, runtime config (`setApiBasePath`). i18n is a sixth mechanism per [ADR 0004](docs/adrs/0004-downstream-consumption-i18n.md) (`./i18n` barrel). Minimal co-located CSS (layout rules only, all values via PF tokens). Zero imports from any downstream platform.
+- **Extension surface, no npm package** ([ADR 0001](docs/adrs/0001-downstream-consumption.md), as amended by [ADR 0008](docs/adrs/0008-retire-the-npm-package.md)). The dashboard ships as a container image and a Helm chart; nothing is built or published as an npm library. The mechanisms ADR 0001 defined stay as how the frontend is organised: barrels, slots, self-contained pages with navigation callbacks, feature flags, runtime config (`setApiBasePath`). i18n is a sixth mechanism per [ADR 0004](docs/adrs/0004-downstream-consumption-i18n.md) (`./i18n` barrel). Minimal co-located CSS (layout rules only, all values via PF tokens). Zero imports from any downstream platform.
 - **Relay-only auth** ([ADR 0002](docs/adrs/0002-auth-relay-only-bff.md)). The BFF never terminates authentication — a fronting proxy (oauth2-proxy standalone, the host platform's proxy when embedded) owns login/sessions/refresh/CSRF and injects `x-forwarded-access-token`. Bearer chain: proxy header → `Authorization: Bearer` → 401. The BFF never validates tokens and never authorizes. The only auth switch is `AUTH_DISABLED` (dev).
 - **Surface the API as-is.** The upstream OpenShell API defines what exists — never invent RPCs, fields, lifecycle states, or abstractions (no Agent object; Sandbox is fundamental, labels categorize). See `.claude/rules/openshell-api.md` for the hard rules.
 - **Stay in parity with the gateway; the BFF translates nothing.** Request and response bodies mirror the gateway's messages. When the gateway wants something a particular way — a credential under its env var name, a provider's profile scope, a setting in its own type — the UI sends it that way and the BFF passes it on. The BFF does not rename keys, infer a scope or coerce a type to make an older request shape keep working. The OpenShell CLI and TUI are the reference for how a client is expected to call an RPC (hard facts 8, 21 and 22).

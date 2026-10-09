@@ -31,7 +31,7 @@ EXPOSE 8080
 #
 # CI passes these from `node scripts/gateway-range.mjs`, which derives them from
 # the required compat lanes in deploy/ci/gateway-pins.json — the same source as
-# the release notes and the npm package, so the three cannot disagree. They are
+# the release notes, so the two cannot disagree. They are
 # build args, not literals, so that nothing here needs editing when the range
 # moves. A plain `docker build` without them still works and leaves all of them
 # empty, which means "this build does not say", not "any gateway". Because empty

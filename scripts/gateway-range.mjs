@@ -8,10 +8,10 @@
 // is the highest.
 //
 // This file is the only place that turns the pins into a range. The container
-// image's build args (ci.yml), the release notes and the published
-// package.json (release.config.cjs) and the README's Compatibility section
-// (readme-gateway-range.mjs) all call it, so a published artifact cannot claim
-// something CI did not test and two artifacts cannot disagree with each other.
+// image's build args (ci.yml), the release notes (release.config.cjs) and the
+// README's Compatibility section (readme-gateway-range.mjs) all call it, so a
+// published artifact cannot claim something CI did not test and two artifacts
+// cannot disagree with each other.
 // What moves the range is therefore a change to the pins file, and nothing else.
 //
 //   node scripts/gateway-range.mjs                  summary for a person

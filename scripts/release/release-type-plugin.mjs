@@ -100,7 +100,7 @@ export async function analyzeCommits(_pluginConfig, { commits, env, logger }) {
   if (!RELEASE_TYPES.includes(chosen)) {
     throw new Error(
       `RELEASE_TYPE must be one of ${RELEASE_TYPES.join(', ')}, got ${JSON.stringify(chosen ?? '')}. ` +
-        'Releases are cut by hand: start the "Publish to npm" workflow on main and choose the kind of release ' +
+        'Releases are cut by hand: start the "Release" workflow on main and choose the kind of release ' +
         '(see docs/releasing.md).',
     );
   }

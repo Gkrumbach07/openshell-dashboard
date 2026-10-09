@@ -1,5 +1,5 @@
-// Barrel for downstream consumers (package.json "./api" export). Internal
-// code imports directly from the source modules.
+// Barrel of the API client and hooks (ADR 0001; not published, ADR 0008).
+// Internal code imports directly from the source modules.
 export * from './client';
 export * from './auth';
 export * from './gateway';

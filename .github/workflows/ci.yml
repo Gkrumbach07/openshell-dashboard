@@ -61,12 +61,7 @@ jobs:
       - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
         run: cd frontend && npm run typecheck
       - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
-        run: cd frontend && npm run build:lib
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
         run: cd frontend && npm test -- --coverage --passWithNoTests
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
-        name: Verify packed package imports in Node ESM
-        run: cd frontend && npm run verify:consumer
 
   check-backend:
     runs-on: ubuntu-latest
@@ -295,7 +290,7 @@ jobs:
           node-version: "22"
       # The image states which gateways it supports, as two env vars the BFF
       # can read and as labels. The values come from the same script that
-      # writes the release notes and stamps the npm package, which derives them
+      # writes the release notes, which derives them
       # from the required compat lanes — nothing here is typed by hand, and a
       # pins file that yields no range fails the build rather than shipping an
       # image that claims nothing.
@@ -501,7 +496,7 @@ jobs:
   #     one backend/go.mod builds against
   #   - the README's Compatibility section states that range (it is generated;
   #     this fails when someone moved the pins and did not regenerate it)
-  #   - the scripts that write release notes, stamp package.json, detect a
+  #   - the scripts that write release notes, detect a
   #     release, decide whether `latest` may move and retag the image do what
   #     they say, against a stand-in docker and a throwaway git remote
   #   - release.config.cjs loads in the semantic-release that publish.yml runs,

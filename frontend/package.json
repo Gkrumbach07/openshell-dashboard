@@ -1,53 +1,12 @@
 {
   "name": "openshell-dashboard",
   "version": "0.0.0-semantically-released",
+  "private": true,
   "description": "OpenShell Dashboard frontend — React + PatternFly 6 admin UI for the OpenShell gateway",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/Gkrumbach07/openshell-dashboard"
-  },
-  "main": "dist/pages/index.js",
-  "module": "dist/pages/index.js",
-  "types": "./dist/pages/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/pages/index.d.ts",
-      "default": "./dist/pages/index.js"
-    },
-    "./pages": {
-      "types": "./dist/pages/index.d.ts",
-      "default": "./dist/pages/index.js"
-    },
-    "./components": {
-      "types": "./dist/components/index.d.ts",
-      "default": "./dist/components/index.js"
-    },
-    "./api": {
-      "types": "./dist/api/index.d.ts",
-      "default": "./dist/api/index.js"
-    },
-    "./types": {
-      "types": "./dist/types/index.d.ts",
-      "default": "./dist/types/index.js"
-    },
-    "./slots": {
-      "types": "./dist/slots/index.d.ts",
-      "default": "./dist/slots/index.js"
-    },
-    "./i18n": {
-      "types": "./dist/i18n/index.d.ts",
-      "default": "./dist/i18n/index.js"
-    }
-  },
-  "files": [
-    "dist",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
-  "publishConfig": {
-    "access": "public"
   },
   "scripts": {
     "start": "vite",
@@ -60,32 +19,25 @@
     "test": "jest",
     "test:coverage": "jest --coverage",
     "e2e": "cypress run",
-    "e2e:open": "cypress open",
-    "build:lib": "node scripts/build-lib.mjs",
-    "verify:lib": "node scripts/verify-lib-build.mjs",
-    "verify:consumer": "node scripts/verify-packed-consumer.mjs"
+    "e2e:open": "cypress open"
   },
-  "peerDependencies": {
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@patternfly/react-code-editor": "^6.6.0",
     "@patternfly/react-core": "^6.2.0",
     "@patternfly/react-icons": "^6.2.0",
     "@patternfly/react-log-viewer": "^6.5.0",
     "@patternfly/react-table": "^6.2.0",
     "@tanstack/react-query": "^5.59.0",
-    "i18next": "^26.3.4",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-i18next": "^17.0.0",
-    "react-router-dom": "^6.30.0"
-  },
-  "dependencies": {
-    "@monaco-editor/react": "^4.7.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
     "i18next": "^26.3.6",
     "monaco-editor": "^0.52.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "react-i18next": "^17.0.11",
+    "react-router-dom": "^6.30.0",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
@@ -108,7 +60,6 @@
     "jest-environment-jsdom": "^30.4.1",
     "prettier": "^3.9.6",
     "ts-jest": "^29.2.5",
-    "tsc-alias": "^1.8.15",
     "typescript": "^5.6.3",
     "vite": "^7.1.0"
   }

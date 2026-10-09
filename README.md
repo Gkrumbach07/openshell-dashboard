@@ -7,9 +7,9 @@ Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell), th
 - **Providers**: register inference/service credentials from provider profiles
 - **Gateway**: status, version, compute drivers
 
-The frontend's page components are self-contained and exported (`openshell-dashboard/pages`) so downstream platforms can import and wrap them.
+The dashboard ships as a [container image](#container-image) and a Helm chart ([`deploy/helm/openshell-dashboard`](deploy/helm/openshell-dashboard)). It is no longer published as an npm package: the versions of `openshell-dashboard` already on npm stay there, and a release from `main` no longer adds one ([ADR 0008](docs/adrs/0008-retire-the-npm-package.md)).
 
-UI copy goes through an English-only i18n layer (`openshell-dashboard/i18n`; contract in [ADR 0004](docs/adrs/0004-downstream-consumption-i18n.md)). See [`frontend/src/i18n/README.md`](frontend/src/i18n/README.md) for contributor usage and how hosts can override strings or add locales.
+UI copy goes through an English-only i18n layer ([`frontend/src/i18n`](frontend/src/i18n); contract in [ADR 0004](docs/adrs/0004-downstream-consumption-i18n.md)). See [`frontend/src/i18n/README.md`](frontend/src/i18n/README.md) for contributor usage and how to override strings or add locales.
 
 ## Compatibility
 
@@ -30,16 +30,16 @@ A gateway newer than the newest tested one is *untested by this build*, not know
 
 ### Which dashboard for which gateway
 
-| Your gateway | Dashboard | npm | Container image |
-|---|---|---|---|
-| in the range above | **1.x**, the current line, released from `main` | `openshell-dashboard@1` | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>`; for `1.1.0` and earlier, the [commit tag](#container-image) |
-| `0.0.116` | **0.2.x**: `v0.2.0` today; a 0.2.x maintenance line is being set up | `openshell-dashboard@0.2.0` | `quay.io/gkrumbach07/openshell-dashboard:sha-701454a` |
+| Your gateway | Dashboard | Container image |
+|---|---|---|
+| in the range above | **1.x**, the current line, released from `main` | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>`; for `1.1.0` and earlier, the [commit tag](#container-image) |
+| `0.0.116` | **0.2.x**: `v0.2.0` today; a 0.2.x maintenance line is being set up | `quay.io/gkrumbach07/openshell-dashboard:sha-701454a` |
 
 **Do not use dashboard `0.3.0`.** It works correctly with none of these gateways. Against `0.1.0` and newer it fails. Against `0.0.116` it does something worse than fail: it silently ignores the workspace. A sandbox created in workspace `team-a` lands in `default`, every workspace page lists the contents of `default`, and nothing reports an error. Its SDK sends the workspace in a field that gateway `0.0.116` does not have, and a protobuf field the receiver does not know is ignored without complaint.
 
 No build spans `0.0.116` and `0.1.x`. 1.x against `0.0.116` fails every workspace-scoped call with `workspace '\n\adefault' not found`. `0.2.0` against `0.1.0` or newer fails with `workspace_scope is required` or a bare `internal error`. Gateway `0.0.116` also has no sandbox-template RPCs (it answers them with gRPC `UNIMPLEMENTED`), so sandbox templates do not work against it with any dashboard.
 
-**1.x is not a stability claim.** The version numbers were assigned automatically from commit messages; nobody decided that a 1.0 milestone had been reached (see [#78](https://github.com/Gkrumbach07/openshell-dashboard/issues/78)). The package will be renamed, with a fresh version history, when the repository moves to another organisation.
+**1.x is not a stability claim.** The version numbers were assigned automatically from commit messages; nobody decided that a 1.0 milestone had been reached (see [#78](https://github.com/Gkrumbach07/openshell-dashboard/issues/78)).
 
 ### How the range is established
 
@@ -60,10 +60,9 @@ Starting with the first release cut after `1.1.1`, every release declares the ra
 | Artifact | Where | How to read it |
 |---|---|---|
 | GitHub release | a *Supported OpenShell gateways* section in the release notes | the [releases page](https://github.com/Gkrumbach07/openshell-dashboard/releases) |
-| npm package | `openshell.gateway` (a semver range) and `openshell.sdk` in `package.json` | `npm view openshell-dashboard@<version> openshell` |
 | Container image | env `GATEWAY_SUPPORTED_MIN` and `GATEWAY_SUPPORTED_MAX`; labels `io.github.gkrumbach07.openshell-dashboard.gateway.min`, `.gateway.max` and `.sdk` | `skopeo inspect docker://quay.io/gkrumbach07/openshell-dashboard:<tag>` |
 
-Releases up to and including `1.1.1` predate this and declare nothing: their release notes have no such section, their package has no `openshell` field, and their images carry neither the variables nor the labels. For those, the table under [Which dashboard for which gateway](#which-dashboard-for-which-gateway) is the only statement there is.
+Releases up to and including `1.1.1` predate this and declare nothing: their release notes have no such section, and their images carry neither the variables nor the labels. For those, the table under [Which dashboard for which gateway](#which-dashboard-for-which-gateway) is the only statement there is.
 
 ## Quick start (local dev)
 

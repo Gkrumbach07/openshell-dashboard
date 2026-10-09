@@ -12,20 +12,19 @@
 # commits qualify is decided from where they came from, not from their title;
 # see scripts/release/sweep-bump.mjs.
 #
-# One version, three artifacts, each of which says which OpenShell gateways it
-# supports (#66, ADR 0005):
+# One version, three artifacts. Two of them say which OpenShell gateways the
+# release supports (#66, ADR 0005):
 #
-#   npm package      semantic-release publishes it; `openshell` in package.json
 #   GitHub release   semantic-release creates it; a section in the notes
 #   container image  the image CI already built for this commit gets the tags
 #                    X.Y.Z and X.Y; it carries the range as env vars and labels
 #
+# The third is the Helm chart, packaged at the same version. Nothing is
+# published to npm: that package is retired (ADR 0008).
+#
 # What a release contains and declares is in release.config.cjs.
 # docs/releasing.md walks through the whole pipeline.
-#
-# This file must stay named publish.yml: npm trusted publishing is bound to the
-# workflow filename, and a renamed workflow can no longer publish.
-name: Publish to npm
+name: Release
 
 on:
   workflow_dispatch:
@@ -70,8 +69,7 @@ jobs:
     # above matches the head branch NAME of the run that finished, so a pull
     # request opened from a fork's own `main` branch also arrives here with
     # head_branch == 'main'. Without them this job — which can write to the
-    # repository and publish to npm — would check out and build that fork's
-    # code.
+    # repository — would check out and run that fork's code.
     if: >
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_run' &&
@@ -81,7 +79,6 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     permissions:
       contents: write
-      id-token: write
       issues: write
       pull-requests: write
       # To ask whether CI passed for the commit a person wants to release.
@@ -105,11 +102,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.14.0'
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
 
-      # Decides what this run releases, if anything, before anything is built.
+      # Decides what this run releases, if anything, before anything else runs.
       #
       #   asked for by a person   the type they chose; a dry run unless they
       #                           cleared the box. A real release also needs CI
@@ -164,25 +158,7 @@ jobs:
             echo "dry_run=$dry_run"
           } >> "$GITHUB_OUTPUT"
 
-      # npm trusted publishing requires npm >= 11.5.1. It exchanges the
-      # job's GitHub OIDC token for a short-lived npm publish credential.
-      - name: Configure npm trusted publishing
-        if: steps.plan.outputs.type != ''
-        run: npm install --global npm@11.5.1
-
-      - name: Install dependencies
-        if: steps.plan.outputs.type != ''
-        run: cd frontend && npm ci
-
-      - name: Build library
-        if: steps.plan.outputs.type != ''
-        run: cd frontend && npm run build:lib
-
-      - name: Verify packed package imports in Node ESM
-        if: steps.plan.outputs.type != ''
-        run: cd frontend && npm run verify:consumer
-
-      # Tags vX.Y.Z, publishes the npm package and creates the GitHub release,
+      # Tags vX.Y.Z and creates the GitHub release,
       # for the kind of release decided above (RELEASE_TYPE; the release
       # configuration refuses to run without it). With --dry-run it prints the
       # version and the notes and changes nothing. If there are no commits
@@ -231,7 +207,7 @@ jobs:
   # here rather than move the release onto it. See docs/releasing.md.
   #
   # A separate job so that the registry credentials are never in the job that
-  # holds the npm and repository permissions, and so that a registry hiccup can
+  # holds the repository permissions, and so that a registry hiccup can
   # be retried on its own ("Re-run failed jobs") without touching the release.
   tag-image:
     needs: publish
