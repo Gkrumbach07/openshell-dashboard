@@ -71,7 +71,10 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: LOGOUT_URL
-            value: /oauth2/sign_out
+            value: /oauth2/sign_out?rd=/oauth2/sign_in
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --backend-logout-url=/oauth2/sign_out
       - contains:
           path: spec.template.spec.containers[1].args
           content: --cookie-samesite=lax

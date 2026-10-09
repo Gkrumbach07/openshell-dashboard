@@ -79,7 +79,7 @@ Sets the gateway URL
 {{- end -}}
 
 {{/*
-Sets the dashboard oidc redirect URL 
+Sets the dashboard OIDC redirect URL
 */}}
 {{- define "openshell-dashboard.redirectURL" -}}
 {{- if .Values.oidc.redirectURL -}}
@@ -88,6 +88,15 @@ Sets the dashboard oidc redirect URL
 {{- printf "https://%s/oauth2/callback" .Values.openshiftRoute.host -}}
 {{- else if .Values.httpRoute.enabled -}}
 {{- printf "https://%s/oauth2/callback" (first .Values.httpRoute.hostnames) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Sets the optional proxy-to-provider logout URL
+*/}}
+{{- define "openshell-dashboard.backendLogoutURL" -}}
+{{- with .Values.oidc.backendLogoutURL -}}
+{{- . -}}
 {{- end -}}
 {{- end -}}
 
@@ -113,6 +122,9 @@ Value validation
 {{- end -}}
 {{- if and .Values.openshiftRoute.enabled .Values.httpRoute.enabled -}}
 {{- fail "enable only one of openshiftRoute and httpRoute" -}}
+{{- end -}}
+{{- if and .Values.httpRoute.enabled .Values.networkPolicy.enabled (not .Values.networkPolicy.ingressNamespace) (not .Values.networkPolicy.ingressFrom) -}}
+{{- fail "httpRoute with NetworkPolicy requires networkPolicy.ingressNamespace or networkPolicy.ingressFrom for Gateway data-plane ingress" -}}
 {{- end -}}
 {{- if and .Values.openshiftRoute.enabled (not (has .Values.openshiftRoute.termination (list "edge" "reencrypt"))) -}}
 {{- fail "openshiftRoute.termination must be edge or reencrypt (not passthrough)" -}}

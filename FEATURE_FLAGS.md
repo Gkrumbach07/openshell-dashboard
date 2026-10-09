@@ -26,7 +26,7 @@ The `/api/v1/auth/config` response includes a `features` object:
 {
   "authDisabled": false,
   "adminRole": "admin",
-  "logoutUrl": "/oauth2/sign_out",
+  "logoutUrl": "/oauth2/sign_out?rd=/oauth2/sign_in",
   "features": {
     "terminal": true,
     "fileTransfer": true,
@@ -72,4 +72,3 @@ const flags = useFeatureFlags();
 ### Downstream override
 
 When consumed via module federation, the downstream wrapper can override flags by passing them as props to the page components, or by configuring the BFF sidecar's env vars in the deployment manifest.
-

@@ -12,6 +12,7 @@ release:
   namespace: my-namespace
 set:
   oidc.issuer: https://idp.example.com/realms/openshell
+  networkPolicy.ingressNamespace: envoy-gateway-system
 tests:
   - it: uses the upstream gateway Service DNS and client CA Secret
     template: templates/deployment.yaml

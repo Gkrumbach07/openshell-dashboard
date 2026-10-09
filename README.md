@@ -21,7 +21,7 @@ The build reaches the gateway through one pinned Go SDK. It is [tested against r
 
 <!-- gateway-range:begin (generated from deploy/ci/gateway-pins.json by scripts/readme-gateway-range.mjs; do not edit) -->
 | | |
-|---|---|
+| --- | --- |
 | Supported gateways | `0.1.x` |
 | Tested on | `0.1.0`, `0.1.3` |
 | OpenShell Go SDK | `v0.0.0-20261009050449-e1f3c82caa3e` |
@@ -32,7 +32,7 @@ A release of that line that is not listed under *Tested on* is supported all the
 ### Which dashboard for which gateway
 
 | Your gateway | Dashboard | Container image |
-|---|---|---|
+| --- | --- | --- |
 | on the line above | **1.x**, the current line, released from `main` | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>`; for `1.1.0` and earlier, the [commit tag](#container-image) |
 | `0.0.116` | **0.2.x**: `v0.2.0` today; a 0.2.x maintenance line is being set up | `quay.io/gkrumbach07/openshell-dashboard:sha-701454a` |
 
@@ -61,7 +61,7 @@ CI also fails when the table above is stale. The [compat sweep](#the-sweep-has-t
 Every release cut after `1.2.0` declares the line it was cut for, so you do not need this repository to find out what a given version needs:
 
 | Artifact | Where | How to read it |
-|---|---|---|
+| --- | --- | --- |
 | GitHub release | a *Supported OpenShell gateways* section in the release notes | the [releases page](https://github.com/Gkrumbach07/openshell-dashboard/releases) |
 | Container image | labels `io.github.gkrumbach07.openshell-dashboard.gateway.line` and `.sdk` | `skopeo inspect docker://quay.io/gkrumbach07/openshell-dashboard:<tag>` |
 
@@ -81,10 +81,10 @@ make dev
 
 | Process | Port | Notes |
 |---------|------|-------|
-| Vite dev server | http://localhost:3000 | proxies `/api` → BFF |
-| Go BFF | http://localhost:8080 | runs with `AUTH_DISABLED=true` by default in dev |
+| Vite dev server | <http://localhost:3000> | proxies `/api` → BFF |
+| Go BFF | <http://localhost:8080> | runs with `AUTH_DISABLED=true` by default in dev |
 
-Open http://localhost:3000, click **Continue as developer**, and you're in.
+Open <http://localhost:3000>, click **Continue as developer**, and you're in.
 
 ### Local dev with an OIDC gateway (full stack)
 
@@ -102,10 +102,10 @@ That's it. `dev-full` starts Keycloak and the gateway (if not already running), 
 
 If `OPENSHELL_DIR` is not set, the script prompts interactively and offers to clone the repo for you. The chosen path is saved to `scripts/.env.dev` so you only configure it once.
 
-Open http://localhost:3000 and log in via Keycloak with one of the test users:
+Open <http://localhost:3000> and log in via Keycloak with one of the test users:
 
 | User | Password | Role |
-|------|----------|------|
+| ------ | ---------- | ------ |
 | `admin@test` | `admin` | Platform admin (full access) |
 | `user@test` | `user` | Workspace member |
 | `user-b@test` | `user-b` | Workspace member |
@@ -113,7 +113,7 @@ Open http://localhost:3000 and log in via Keycloak with one of the test users:
 ### What `dev-full` starts
 
 | Component | How | Lifecycle |
-|-----------|-----|-----------|
+| ----------- | ----- | ----------- |
 | Keycloak | Podman container (`openshell-keycloak`) on port 8180 | Runs until `dev-env.sh stop` |
 | OpenShell gateway | Background process built from source, port 17670 (gRPCs) + 17671 (health) | Runs until `dev-env.sh stop` |
 | Dashboard BFF | `go run` on port 8080 | Runs with `make dev`, Ctrl+C to stop |
@@ -133,18 +133,18 @@ Most server flags have env var fallbacks. `--healthcheck` is probe-only: it chec
 `http://127.0.0.1:$PORT/api/v1/healthz` and exits without starting a server.
 
 | Flag | Env var | Default | Description |
-|------|---------|---------|-------------|
+| ------ | --------- | --------- | ------------- |
 | `-port` | `PORT` | `8080` | BFF listen port |
 | `-listen-address` | `LISTEN_ADDRESS` | | BFF listen address; empty binds all interfaces |
 | `-gateway-url` | `OPENSHELL_GATEWAY_URL` | `localhost:50051` | Gateway gRPC endpoint (`grpcs://` prefix for TLS) |
-| `-static-dir` | `STATIC_DIR` |: | Serve built frontend from this directory |
+| `-static-dir` | `STATIC_DIR` | : | Serve built frontend from this directory |
 | `-auth-disabled` | `AUTH_DISABLED` | `false` | Skip auth: **dev only** |
 | `-auth-token-header` | `AUTH_TOKEN_HEADER` | `x-forwarded-access-token` | Header the auth proxy injects the bearer into |
 | `-auth-user-header` | `AUTH_USER_HEADER` | `x-auth-request-user` | Header the auth proxy injects the username into |
 | `-admin-role` | `ADMIN_ROLE` | `admin` | Role name the frontend treats as platform admin (display gating only) |
-| `-logout-url` | `LOGOUT_URL` | `/oauth2/sign_out` | Auth proxy sign-out URL the frontend redirects to on logout |
 | `-gateway-release-line` | `GATEWAY_RELEASE_LINE` | compiled in | Gateway release line this build is for, written `major.minor`; see [Compatibility](#compatibility). Leave it unset: the default is built into the binary. Override it only for tests and local development. A value that is not a line turns the compatibility notice off. The BFF only informs and never refuses a gateway |
-| `-gateway-ca-cert` | `GATEWAY_CA_CERT` |: | Path to CA cert for self-signed gateway TLS |
+| `-logout-url` | `LOGOUT_URL` | `/oauth2/sign_out?rd=/oauth2/sign_in` | Auth proxy sign-out URL the frontend redirects to on logout |
+| `-gateway-ca-cert` | `GATEWAY_CA_CERT` | : | Path to CA cert for self-signed gateway TLS |
 | `-gateway-client-cert` | `GATEWAY_CLIENT_CERT` | | Path to client certificate for gateway mTLS |
 | `-gateway-client-key` | `GATEWAY_CLIENT_KEY` | | Path to client private key for gateway mTLS |
 | `-tls-cert` | `TLS_CERT_FILE` | | Path to server certificate for inbound BFF HTTPS |
@@ -223,8 +223,9 @@ RBAC decisions.
   (or kube-auth-proxy on OpenShift) in front of the BFF, registered as an
   OIDC client with the **same IdP the gateway trusts**, with an audience the
   gateway accepts. oauth2-proxy handles login, cookie sessions, refresh, and
-  sign-out (`/oauth2/sign_out` — the BFF's default `LOGOUT_URL`), and it
-  authenticates WebSocket upgrades (the terminal) like any other request.
+  sign-out (`/oauth2/sign_out?rd=/oauth2/sign_in` — the BFF's default
+  `LOGOUT_URL`), and it authenticates WebSocket upgrades (the terminal) like
+  any other request.
   The secure-agent-workspace validated pattern ships exactly this setup.
   **Deployment requirement:** the BFF must only be reachable through the
   proxy — anything that can reach the BFF directly can present any header.
@@ -315,7 +316,7 @@ The gateway's **TOML config is versioned too**, and the schemas are mutually
 exclusive — `0.1.0` and newer require v2, releases up to `0.0.116` require v1:
 
 | | v1 (≤ 0.0.116) | v2 (≥ 0.1.0) |
-|---|---|---|
+| --- | --- | --- |
 | `version` | `1` | `2` |
 | compute driver | `compute_drivers = ["docker"]` | `compute_driver = "docker"` |
 | `image_pull_policy` | `"IfNotPresent"` | `"if_not_present"` |
@@ -338,7 +339,7 @@ Per [ADR 0005](docs/adrs/0005-gateway-version-compatibility.md), as amended by
 gateway releases it is tested on and never claims `latest`:
 
 | Job | When | Blocking | Question |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `compat` (ci.yml) | per PR | yes | do we still work with the gateways we pin? |
 | `compat-sweep` | daily / manual | no | how far ahead can we move? |
 
@@ -360,7 +361,7 @@ change on our side. A required lane must therefore be a release, and
 The chain is gateway → SDK → BFF → UI, and no link is inferred from another:
 
 | Link | Proven by |
-|---|---|
+| --- | --- |
 | **wire:** gateway ↔ SDK | `backend/test/compat` against a real gateway, with `-count=1` |
 | **source:** SDK ↔ BFF | the compiler, `go vet` and the unit tests |
 | BFF ↔ UI | shipping both from one commit |
@@ -374,7 +375,7 @@ source migration, and is never reported as a gateway problem.
 `compat-sweep` asks two questions, and each holds the other side still:
 
 | Axis | Held still | Varies | Question | Its pull request changes |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | gateway | the SDK pin in `backend/go.mod` | the gateway image | which gateways does the code we ship today work with? | `deploy/ci/gateway-pins.json` only: the ceiling lane moves |
 | SDK | the required lanes | the SDK | can we move to a newer SDK without losing a gateway we support? | `backend/go.mod`, `backend/go.sum` and the `sdk` field of the pins file |
 
@@ -450,7 +451,7 @@ deliberately does not move with the gateway.
 CI publishes `quay.io/gkrumbach07/openshell-dashboard` (linux/amd64 and linux/arm64). The image is built once per commit; every other tag is that same image, retagged by digest:
 
 | Tag | Points at | Moves when |
-|---|---|---|
+| --- | --- | --- |
 | `X.Y.Z` | the image built for the commit released as `vX.Y.Z` | never: it is written once, and the retag refuses to point it anywhere else |
 | `X.Y` | the newest `X.Y.z` release | a patch release is cut |
 | `latest` | the newest commit on `main` that passed **every** CI job, including the required compat lanes, while it was the tip of `main` | CI goes green on the tip of `main`; it only moves forward, so re-running an older run does not pull it back |
@@ -460,7 +461,7 @@ CI publishes `quay.io/gkrumbach07/openshell-dashboard` (linux/amd64 and linux/ar
 Version tags are created automatically starting with the first release cut after `1.1.1`. `1.1.1` itself was tagged once by hand (`1.1.1` is the same image as `sha-9fbdc37`, and like every release before the automation it declares no gateway range). Releases before it have no `X.Y.Z` or `X.Y` tag and never get one automatically. What exists for them is the commit tag, `sha-` plus the first seven characters of the released commit. The ones you are likely to need:
 
 | Release | Image tag |
-|---|---|
+| --- | --- |
 | `1.1.1` | `1.1.1` (also `sha-9fbdc37`) |
 | `1.1.0` | `sha-71335e5` |
 | `0.3.0` | `sha-978bcb5` ([do not use](#which-dashboard-for-which-gateway)) |
