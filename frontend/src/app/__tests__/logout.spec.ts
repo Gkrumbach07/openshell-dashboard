@@ -9,11 +9,8 @@ jest.mock('../../api/auth', () => ({ getAuthConfig: jest.fn() }));
 const mockGetAuthConfig = getAuthConfig as jest.MockedFunction<
   typeof getAuthConfig
 >;
-const fetchMock = jest.fn();
 const assign = jest.fn();
-const replace = jest.fn();
 const removeItem = jest.fn();
-const originalFetch = global.fetch;
 
 const authConfig = (overrides: Partial<AuthConfig> = {}): AuthConfig =>
   ({ authDisabled: false, ...overrides }) as AuthConfig;
@@ -23,54 +20,30 @@ describe('logout', () => {
     jest.clearAllMocks();
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
-      value: { location: { assign, replace }, sessionStorage: { removeItem } },
+      value: { location: { assign }, sessionStorage: { removeItem } },
     });
-    global.fetch = fetchMock as typeof fetch;
-    mockGetAuthConfig.mockResolvedValue(authConfig());
+    mockGetAuthConfig.mockResolvedValue(
+      authConfig({ logoutUrl: '/oauth2/sign_out?rd=/oauth2/sign_in' }),
+    );
   });
 
   afterAll(() => {
-    global.fetch = originalFetch;
     Reflect.deleteProperty(globalThis, 'window');
   });
 
-  it('waits for proxy sign-out before visiting sign-in, without following its root redirect', async () => {
-    let finishSignOut!: (response: Response) => void;
-    fetchMock.mockReturnValue(
-      new Promise<Response>((resolve) => {
-        finishSignOut = resolve;
-      }),
-    );
+  it('sends the browser through proxy sign-out to its sign-in page', async () => {
+    await logout();
 
-    const operation = logout();
-    await Promise.resolve();
-
-    expect(fetchMock).toHaveBeenCalledWith('/oauth2/sign_out', {
-      credentials: 'same-origin',
-      redirect: 'manual',
-    });
-    expect(assign).not.toHaveBeenCalled();
-    expect(replace).not.toHaveBeenCalled();
-
-    finishSignOut({ type: 'opaqueredirect' } as Response);
-    await operation;
-
-    expect(replace).toHaveBeenCalledWith('/oauth2/sign_in');
-    expect(assign).not.toHaveBeenCalled();
+    expect(assign).toHaveBeenCalledWith('/oauth2/sign_out?rd=/oauth2/sign_in');
     expect(removeItem).toHaveBeenCalledWith('openshell-dashboard.devMode');
   });
 
-  it('navigates to proxy sign-out if the request fails or does not redirect', async () => {
-    fetchMock.mockRejectedValueOnce(new Error('network error'));
-    await logout();
-    expect(assign).toHaveBeenCalledWith('/oauth2/sign_out');
-    expect(replace).not.toHaveBeenCalled();
+  it('uses the proxy sign-in redirect when config omits the URL', async () => {
+    mockGetAuthConfig.mockResolvedValue(authConfig());
 
-    assign.mockClear();
-    fetchMock.mockResolvedValueOnce({ type: 'basic', status: 500 });
     await logout();
-    expect(assign).toHaveBeenCalledWith('/oauth2/sign_out');
-    expect(replace).not.toHaveBeenCalled();
+
+    expect(assign).toHaveBeenCalledWith('/oauth2/sign_out?rd=/oauth2/sign_in');
   });
 
   it('keeps custom proxy URLs as browser navigations', async () => {
@@ -81,7 +54,6 @@ describe('logout', () => {
     await logout();
 
     expect(assign).toHaveBeenCalledWith('/platform/logout');
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('keeps dev logout on the dev login page', async () => {
@@ -90,6 +62,5 @@ describe('logout', () => {
     await logout();
 
     expect(assign).toHaveBeenCalledWith('/login');
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

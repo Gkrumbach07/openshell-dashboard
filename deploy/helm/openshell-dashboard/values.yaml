@@ -27,8 +27,8 @@ dashboard:
     pullPolicy: null
   # -- Dashboard container port (loopback only; never exposed via Service).
   port: 8080
-  # -- Browser-facing sign-out URL.
-  logoutURL: /oauth2/sign_out
+  # -- Browser-facing sign-out URL; rd returns to oauth2-proxy sign-in after clearing the session.
+  logoutURL: /oauth2/sign_out?rd=/oauth2/sign_in
 
 authProxy:
   image:

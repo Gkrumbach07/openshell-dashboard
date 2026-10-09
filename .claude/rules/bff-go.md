@@ -122,6 +122,7 @@ func (h *SandboxHandler) GetSandbox(w http.ResponseWriter, r *http.Request) {
 ```
 
 Key patterns:
+
 - `apiutils.DecodeBody(w, r, &dst)` — handles MaxBytesReader, DisallowUnknownFields, writes error response on failure, returns false
 - `apiutils.WriteJSON(w, statusCode, payload)` — marshals and writes
 - `apiutils.WriteError(w, statusCode, code, message)` — writes ErrorResponse envelope; `code` is an `apiutils.ResponseCode` constant, never a bare string. Add a new constant rather than inlining a literal.
@@ -155,7 +156,7 @@ Before adding anything auth-adjacent, check ADR 0002: no auth termination, no JW
 Env vars (some also available as CLI flags):
 
 | Env Var | Flag | Default | Description |
-|---------|------|---------|-------------|
+| --------- | ------ | --------- | ------------- |
 | `PORT` | `-port` | `8080` | BFF listen port |
 | `LISTEN_ADDRESS` | `-listen-address` | | Optional listen address override |
 | `OPENSHELL_GATEWAY_URL` | `-gateway-url` | `localhost:50051` | Gateway gRPC endpoint |
@@ -169,8 +170,8 @@ Env vars (some also available as CLI flags):
 | `AUTH_TOKEN_HEADER` | `-auth-token-header` | `x-forwarded-access-token` | Token header name |
 | `AUTH_USER_HEADER` | `-auth-user-header` | `x-auth-request-user` | User header name |
 | `ADMIN_ROLE` | `-admin-role` | `admin` | OIDC role claim for admin (display gating only — gateway enforces) |
-| `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out` | Proxy sign-out path the frontend redirects to on logout |
 | `GATEWAY_RELEASE_LINE` | `-gateway-release-line` | compiled in | Gateway release line this build is for, written `major.minor` (`0.1`). A gateway whose version starts with those two numbers is `supported` (any patch, pre-release, dev build or downstream rebuild), any other line is `unsupported`, and a gateway with no usable version is `unknown`. The default is `models.BuiltInGatewayReleaseLine` in `backend/pkg/models/gateway_release_line.go`, the line of the newest required lane in `deploy/ci/gateway-pins.json`; `node scripts/gateway-range.mjs --check` fails in CI when the two disagree. Override it only for tests and local development: no image or chart sets it, and a value that is not a line turns the status into `unknown`. The verdict is served by `GET /gateway/compatibility` to every signed-in user (version read from the gateway's unauthenticated health check) and also rides on `GET /gateway`, which the gateway answers for platform admins only. Informational only — the BFF never blocks on it (ADR 0009) |
+| `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out?rd=/oauth2/sign_in` | Proxy sign-out path the frontend redirects to on logout |
 | `FEATURE_*` | | varies | Feature flags: `FEATURE_TERMINAL`, `FEATURE_FILE_TRANSFER`, `FEATURE_SETTINGS`, `FEATURE_GLOBAL_POLICY`, `FEATURE_CREDENTIAL_REFRESH`, `FEATURE_SERVICES`, `FEATURE_DRAFT_POLICY` |
 
 ## Error handling

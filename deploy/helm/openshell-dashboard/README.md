@@ -39,9 +39,9 @@ helm upgrade --install openshell-dashboard . \
   --set-string "authProxy.whitelistDomains[0]=$KEYCLOAK_HOST"
 ```
 
-Follow Helm NOTES after installation. The dashboard calls `/oauth2/sign_out`, waits for oauth2-proxy to clear its cookie, then navigates to `/oauth2/sign_in`. The example `authProxy.whitelistDomains` entry keeps oauth2-proxy's sign-in page visible instead of immediately starting another OIDC login.
+Follow Helm NOTES after installation. The dashboard navigates to `/oauth2/sign_out?rd=/oauth2/sign_in`; oauth2-proxy calls backend logout, clears its cookie, and redirects the browser to its sign-in page. The example `authProxy.whitelistDomains` entry keeps oauth2-proxy's sign-in page visible instead of immediately starting another OIDC login.
 
-For providers that support server-side logout, set `oidc.backendLogoutURL` to an IdP endpoint reachable from the oauth2-proxy pod, for example `https://keycloak.apps.example.com/realms/openshell/protocol/openid-connect/logout?id_token_hint={id_token}`. oauth2-proxy replaces `{id_token}` with the session ID token and calls the URL with GET before clearing its cookie. Leave it empty to disable the backend call. Keep `dashboard.logoutURL` as `/oauth2/sign_out` for the dashboard's sign-in navigation. No Keycloak post-logout redirect URI is needed. Do not use `/oauth2/sign_out` as the backend URL.
+For providers that support server-side logout, set `oidc.backendLogoutURL` to an IdP endpoint reachable from the oauth2-proxy pod, for example `https://keycloak.apps.example.com/realms/openshell/protocol/openid-connect/logout?id_token_hint={id_token}`. oauth2-proxy replaces `{id_token}` with the session ID token and calls the URL with GET before clearing its cookie. Leave it empty to disable the backend call. Keep `dashboard.logoutURL` as `/oauth2/sign_out?rd=/oauth2/sign_in`; `rd` targets the proxy's sign-in page, not Keycloak. No Keycloak post-logout redirect URI is needed. Do not use `/oauth2/sign_out` as the backend URL.
 
 ## Configuration
 
@@ -83,7 +83,7 @@ For providers that support server-side logout, set `oidc.backendLogoutURL` to an
 | dashboard.image.registry | string | `""` | Dashboard image registry; empty uses global.image.registry. |
 | dashboard.image.repository | string | `"gkrumbach07/openshell-dashboard"` | Dashboard image repository. |
 | dashboard.image.tag | string | `""` | Dashboard image tag; empty uses global.image.tag then Chart.appVersion. |
-| dashboard.logoutURL | string | `"/oauth2/sign_out"` | Browser-facing sign-out URL. |
+| dashboard.logoutURL | string | `"/oauth2/sign_out?rd=/oauth2/sign_in"` | Browser-facing sign-out URL; rd returns to oauth2-proxy sign-in after clearing the session. |
 | dashboard.port | int | `8080` | Dashboard container port (loopback only; never exposed via Service). |
 | fullnameOverride | string | `""` | Full resource name override. |
 | gateway.caKey | string | `"ca.crt"` | CA key in the Secret. |

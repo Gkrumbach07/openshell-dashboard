@@ -53,8 +53,8 @@ func main() {
 		tokenHeader       = flag.String("auth-token-header", envOr("AUTH_TOKEN_HEADER", "x-forwarded-access-token"), "header injected by auth proxy containing the bearer token (env AUTH_TOKEN_HEADER)")
 		userHeader        = flag.String("auth-user-header", envOr("AUTH_USER_HEADER", "x-auth-request-user"), "header injected by auth proxy containing the username (env AUTH_USER_HEADER)")
 		adminRole         = flag.String("admin-role", envOr("ADMIN_ROLE", "admin"), "role name that grants platform admin access (env ADMIN_ROLE)")
-		logoutURL         = flag.String("logout-url", envOr("LOGOUT_URL", "/oauth2/sign_out"), "auth proxy sign-out URL to redirect to on logout (env LOGOUT_URL)")
 		releaseLine       = flag.String("gateway-release-line", envOr("GATEWAY_RELEASE_LINE", models.BuiltInGatewayReleaseLine), "gateway release line this build is for, major.minor; the default is compiled in, override it only for tests and local development (env GATEWAY_RELEASE_LINE)")
+		logoutURL         = flag.String("logout-url", envOr("LOGOUT_URL", "/oauth2/sign_out?rd=/oauth2/sign_in"), "auth proxy sign-out URL to redirect to on logout (env LOGOUT_URL)")
 	)
 	flag.Parse()
 
