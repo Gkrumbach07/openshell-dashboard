@@ -3,6 +3,10 @@ export type ApiError = Error & {
   code?: string;
 };
 
+type RequestOptions = {
+  notifySessionExpired?: boolean;
+};
+
 const buildError = (
   status: number,
   code: string | undefined,
@@ -108,10 +112,12 @@ export const apiAuthHeaders = async (): Promise<Record<string, string>> => {
  * returned (status 401, message "Session expired", and the `code` of the
  * response when it had one).
  *
- * `apiFetch` calls this for every 401 it receives. It is exported for the
- * requests `apiFetch` cannot make (see `apiUrl`), which call it for theirs. An
- * embedding product may rely on its handler running for a 401 on any HTTP
- * request of the package. Call it only for a response that was a 401.
+ * `apiFetch` calls this for each 401 unless the caller disables notification,
+ * as the standalone auth gate does for whoami so it can render the error. It
+ * is exported for requests `apiFetch` cannot make (see `apiUrl`), which call it
+ * for theirs. An embedding product may rely on its handler running for a 401
+ * on calls that have not disabled notification. Call it only for a response
+ * that was a 401.
  */
 export const sessionExpiredError = (code?: string): ApiError => {
   onSessionExpired?.();
@@ -121,6 +127,7 @@ export const sessionExpiredError = (code?: string): ApiError => {
 export const apiFetch = async <T>(
   path: string,
   init?: RequestInit,
+  options?: RequestOptions,
 ): Promise<T> => {
   const headers: Record<string, string> = {
     ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
@@ -154,7 +161,10 @@ export const apiFetch = async <T>(
     }
 
     if (response.status === 401) {
-      throw sessionExpiredError(code);
+      if (options?.notifySessionExpired !== false) {
+        throw sessionExpiredError(code);
+      }
+      throw buildError(401, code, message);
     }
 
     throw buildError(response.status, code, message);
@@ -162,7 +172,8 @@ export const apiFetch = async <T>(
   return (await response.json()) as T;
 };
 
-export const get = <T>(path: string): Promise<T> => apiFetch<T>(path);
+export const get = <T>(path: string, options?: RequestOptions): Promise<T> =>
+  apiFetch<T>(path, undefined, options);
 
 export const post = <T>(path: string, body?: unknown): Promise<T> =>
   apiFetch<T>(path, {

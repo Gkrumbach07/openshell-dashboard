@@ -146,7 +146,7 @@ func (h *GatewayHandler) GetReadyz(w http.ResponseWriter, r *http.Request) {
 	apiutils.WriteJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
-// GetWhoAmI returns gateway identity, falling back to proxy identity.
+// GetWhoAmI returns the gateway-validated identity or its error.
 func (h *GatewayHandler) GetWhoAmI(w http.ResponseWriter, r *http.Request) {
 	if h.auth.Disabled() {
 		apiutils.WriteJSON(w, http.StatusOK, models.CurrentUser{
@@ -158,15 +158,9 @@ func (h *GatewayHandler) GetWhoAmI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := h.svc.GetCurrentUser(r.Context())
-	if err == nil {
-		apiutils.WriteJSON(w, http.StatusOK, user)
+	if err != nil {
+		apiutils.WriteSDKError(w, err)
 		return
 	}
-
-	if proxyUser := auth.UserFromContext(r.Context()); proxyUser != "" {
-		apiutils.WriteJSON(w, http.StatusOK, models.CurrentUser{Subject: proxyUser, DisplayName: proxyUser})
-		return
-	}
-
-	apiutils.WriteSDKError(w, err)
+	apiutils.WriteJSON(w, http.StatusOK, user)
 }

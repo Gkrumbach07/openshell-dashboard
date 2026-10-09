@@ -1,5 +1,11 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { Alert, Bullseye, Button, Spinner } from '@patternfly/react-core';
+import {
+  Alert,
+  Bullseye,
+  Button,
+  Content,
+  Spinner,
+} from '@patternfly/react-core';
 import { Route, Routes } from 'react-router-dom';
 
 import LoginPage from '../pages/LoginPage';
@@ -12,6 +18,7 @@ import AuthRequiredPage from './AuthRequiredPage';
 import { clearDevSession, isDevSession } from './authStore';
 import {
   clearProxyReauthReloadFlag,
+  reloadPageForProxyReauth,
   reloadOnceForProxyReauth,
 } from './authSession';
 
@@ -39,7 +46,10 @@ const AppRoutes: React.FC = () => {
     isError: whoamiError,
     error: whoamiQueryError,
     refetch: refetchWhoami,
-  } = useCurrentUser({ enabled: authRequired });
+  } = useCurrentUser({
+    enabled: authRequired,
+    notifySessionExpired: false,
+  });
 
   // Stale dev-mode flag from a prior `make dev` run must not trigger 401 redirects.
   useLayoutEffect(() => {
@@ -61,7 +71,7 @@ const AppRoutes: React.FC = () => {
       return () => setSessionExpiredHandler(null);
     }
 
-    if (!authRequired || !user) {
+    if (!authRequired || !user || whoamiError) {
       setSessionExpiredHandler(null);
       return;
     }
@@ -69,7 +79,7 @@ const AppRoutes: React.FC = () => {
     clearProxyReauthReloadFlag();
     setSessionExpiredHandler(reloadOnceForProxyReauth);
     return () => setSessionExpiredHandler(null);
-  }, [config?.authDisabled, devAuthenticated, authRequired, user]);
+  }, [config?.authDisabled, devAuthenticated, authRequired, user, whoamiError]);
 
   if (configLoading) {
     return <AuthBootstrapLoading />;
@@ -104,27 +114,49 @@ const AppRoutes: React.FC = () => {
     return <AuthBootstrapLoading />;
   }
 
-  if (!user) {
-    if (whoamiError && isUnauthorized(whoamiQueryError)) {
+  if (whoamiError) {
+    const apiError = whoamiQueryError as ApiError | null;
+    if (isUnauthorized(apiError) && apiError?.code !== 'unauthenticated') {
       return <AuthRequiredPage />;
     }
-    if (whoamiError) {
-      return (
-        <Bullseye style={{ minHeight: '100vh' }}>
-          <Alert
-            variant="danger"
-            title={t('sessionVerifyFailed')}
-            actionLinks={
-              <Button variant="link" onClick={() => void refetchWhoami()}>
-                {tCommon('actions.retry')}
-              </Button>
-            }
-          >
-            {t('sessionBffUnreachable')}
-          </Alert>
-        </Bullseye>
-      );
-    }
+    const rejected = isUnauthorized(apiError);
+    const message = rejected
+      ? t('sessionRejectedBody')
+      : typeof apiError?.status === 'number'
+        ? apiError.message
+        : t('sessionBffUnreachable');
+    const guidance =
+      apiError?.code === 'gateway_unavailable'
+        ? t('sessionGatewayUnavailableHelp')
+        : apiError?.code === 'permission_denied'
+          ? t('sessionPermissionDeniedHelp')
+          : null;
+    return (
+      <Bullseye style={{ minHeight: '100vh' }}>
+        <Alert
+          variant="danger"
+          title={
+            rejected ? t('sessionRejectedTitle') : t('sessionVerifyFailed')
+          }
+          actionLinks={
+            <Button
+              variant="link"
+              onClick={
+                rejected ? reloadPageForProxyReauth : () => void refetchWhoami()
+              }
+            >
+              {rejected ? t('sessionReload') : tCommon('actions.retry')}
+            </Button>
+          }
+        >
+          <Content component="p">{message}</Content>
+          {guidance && <Content component="p">{guidance}</Content>}
+        </Alert>
+      </Bullseye>
+    );
+  }
+
+  if (!user) {
     return null;
   }
 

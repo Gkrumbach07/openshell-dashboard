@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/apiutils"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/auth"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
@@ -141,6 +143,84 @@ func TestGetWhoAmIIdentity(t *testing.T) {
 	const want = `{"subject":"f3b1c2","displayName":"Ada","identityProvider":"oidc","roles":["openshell-admin"],"scopes":["openid","sandbox:read"]}`
 	if got := strings.TrimSpace(w.Body.String()); got != want {
 		t.Errorf("body = %s\nwant %s", got, want)
+	}
+}
+
+func TestGetWhoAmIPropagatesGatewayErrors(t *testing.T) {
+	tests := []struct { //nolint:govet // fieldalignment: test readability
+		name       string
+		gatewayErr error
+		proxyUser  string
+		wantStatus int
+		wantBody   apiutils.ErrorResponse
+	}{
+		{
+			name:       "rejected token with proxy user",
+			gatewayErr: &openshell.StatusError{Code: openshell.ErrorUnauthenticated, Message: "token rejected"},
+			proxyUser:  "proxy-ada",
+			wantStatus: http.StatusUnauthorized,
+			wantBody:   apiutils.ErrorResponse{Code: apiutils.Unauthenticated, Message: "token rejected"},
+		},
+		{
+			name:       "permission denied with proxy user",
+			gatewayErr: &openshell.StatusError{Code: openshell.ErrorPermissionDenied, Message: "access denied"},
+			proxyUser:  "proxy-ada",
+			wantStatus: http.StatusForbidden,
+			wantBody:   apiutils.ErrorResponse{Code: apiutils.PermissionDenied, Message: "access denied"},
+		},
+		{
+			name:       "unavailable gateway with proxy user",
+			gatewayErr: &openshell.StatusError{Code: openshell.ErrorUnavailable, Message: "connection refused"},
+			proxyUser:  "proxy-ada",
+			wantStatus: http.StatusBadGateway,
+			wantBody:   apiutils.ErrorResponse{Code: apiutils.GatewayUnavailable, Message: "OpenShell gateway is unreachable"},
+		},
+		{
+			name:       "unexpected gateway error with proxy user",
+			gatewayErr: errors.New("internal gateway details"),
+			proxyUser:  "proxy-ada",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   apiutils.ErrorResponse{Code: apiutils.Internal, Message: "internal error"},
+		},
+		{
+			name:       "rejected token without proxy user",
+			gatewayErr: &openshell.StatusError{Code: openshell.ErrorUnauthenticated, Message: "token rejected"},
+			wantStatus: http.StatusUnauthorized,
+			wantBody:   apiutils.ErrorResponse{Code: apiutils.Unauthenticated, Message: "token rejected"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sdk := &mockSDK{}
+			sdk.health.getCurrentUserFn = func(ctx context.Context) (*openshell.CurrentUser, error) {
+				if got := auth.TokenFromContext(ctx); got != "test-token" {
+					t.Errorf("gateway token = %q, want test-token", got)
+				}
+				return nil, tc.gatewayErr
+			}
+			middleware := auth.New(auth.Config{})
+			handler := NewGatewayHandler(services.NewGatewayService(sdk), middleware, models.AuthConfigResponse{})
+			req := httptest.NewRequest(http.MethodGet, "/auth/whoami", nil)
+			req.Header.Set("x-forwarded-access-token", "test-token")
+			if tc.proxyUser != "" {
+				req.Header.Set("x-auth-request-user", tc.proxyUser)
+			}
+			w := httptest.NewRecorder()
+			middleware.Handler(http.HandlerFunc(handler.GetWhoAmI)).ServeHTTP(w, req)
+
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d; body: %s", w.Code, tc.wantStatus, w.Body.String())
+			}
+			var body map[string]any
+			if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			wantBody := map[string]any{"code": tc.wantBody.Code.String(), "message": tc.wantBody.Message}
+			if !reflect.DeepEqual(body, wantBody) {
+				t.Errorf("body = %v, want %v", body, wantBody)
+			}
+		})
 	}
 }
 
