@@ -1,15 +1,23 @@
-import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-const pkg = JSON.parse(
-  readFileSync(
-    fileURLToPath(new URL('./package.json', import.meta.url)),
-    'utf8',
-  ),
-) as { version: string };
+// The commit the build is made from, when whatever runs the build says so:
+// CI passes DASHBOARD_COMMIT to the image build (deploy/Dockerfile). The About
+// dialog shows it. Nothing else identifies a build: the image exists before
+// any release does and is only given more tags when one is cut, so no version
+// number can be compiled in.
+//
+// Left unset, the dialog shows no commit. Set to something that is not a
+// commit id, the build stops: better than an About dialog that states one.
+const commit = (process.env.DASHBOARD_COMMIT ?? '').trim();
+if (commit !== '' && !/^[0-9a-f]{7,40}$/.test(commit)) {
+  throw new Error(
+    `DASHBOARD_COMMIT is ${JSON.stringify(commit)}, which is not a git commit id (7 to 40 hex characters). ` +
+      'Pass the commit the build is made from, or leave it unset.',
+  );
+}
 
 export default defineConfig({
   plugins: [react()],
@@ -20,7 +28,7 @@ export default defineConfig({
     },
   },
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __DASHBOARD_COMMIT__: JSON.stringify(commit),
   },
   server: {
     port: 3000,

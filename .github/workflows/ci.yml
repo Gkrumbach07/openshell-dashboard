@@ -353,9 +353,14 @@ jobs:
           file: deploy/Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          # DASHBOARD_COMMIT is what the About dialog shows as the commit the
+          # image is built from. It is the commit this run is for, the same
+          # one the image's sha-<7> tag is made from: on a pull request that
+          # is the merge commit GitHub tests, not the head of the branch.
           build-args: |
             GATEWAY_RELEASE_LINE=${{ steps.gateway.outputs.line }}
             OPENSHELL_SDK_VERSION=${{ steps.gateway.outputs.sdk }}
+            DASHBOARD_COMMIT=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,scope=${{ matrix.platform }},mode=max
           outputs: ${{ env.PUBLISH_IMAGE == 'true' && 'type=image,name=quay.io/gkrumbach07/openshell-dashboard,push-by-digest=true,name-canonical=true,push=true' || '' }}

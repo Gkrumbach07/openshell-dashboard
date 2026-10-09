@@ -7,6 +7,15 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm install --no-audit --no-fund
 COPY frontend/ ./
+# The commit this image is built from, for the About dialog, which shows its
+# first seven characters: the same ones as in the image's sha-<7> tag. CI
+# passes it. Without it the build still works and the dialog shows no commit,
+# which is true of an image nobody told where it came from; the gateway
+# release line it shows comes from the BFF and needs nothing passed.
+#
+# Declared here, after everything else in the stage, so that a new commit
+# re-runs the build below and not the install above.
+ARG DASHBOARD_COMMIT=""
 RUN npm run build
 
 # --- Backend build ---

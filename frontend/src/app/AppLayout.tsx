@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { APP_VERSION } from '../constants';
+import { BUILD_COMMIT } from '../constants';
 import {
   AboutModal,
   Button,
@@ -41,7 +41,7 @@ import { Link, useLocation } from 'react-router-dom';
 
 import openshellLogo from '~/assets/openshell-logo.svg';
 import openshellLogoDark from '~/assets/openshell-logo-dark.svg';
-import { useGatewayInfo } from '../api/gateway';
+import { useGatewayCompatibility, useGatewayInfo } from '../api/gateway';
 import { useCurrentUser, useFeatureFlags } from '../api/auth';
 import { useUserRole } from '../api/rbac';
 import CurrentUserModal from '../components/CurrentUserModal';
@@ -99,6 +99,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const { isPlatformAdmin, isUser, isLoading: isRoleLoading } = useUserRole();
   const features = useFeatureFlags();
   const gateway = useGatewayInfo();
+  // The release line this build is for comes from the BFF, which has it
+  // compiled in, so it is known in every image whatever built it. Read from
+  // the route every signed-in user may call; the notice and the masthead keep
+  // the same query fresh.
+  const builtForLine =
+    useGatewayCompatibility().data?.compatibility?.supportedLine;
   const [isAboutOpen, setAboutOpen] = useState(false);
   const [isHelpOpen, setHelpOpen] = useState(false);
   const [isUserOpen, setUserOpen] = useState(false);
@@ -309,14 +315,30 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             isAutoFit
             autoFitMinModifier={{ default: '200px' }}
           >
+            {/* A build has no version number to show: the image is built
+                before a release is cut and only given more tags afterwards.
+                What is true of it is the gateway release line it is for, and
+                the commit it is made from when the build was told. */}
             <DescriptionListGroup>
               <DescriptionListTerm>
-                {t('about.dashboardVersion')}
+                {t('about.builtForGateway')}
               </DescriptionListTerm>
-              <DescriptionListDescription>
-                {APP_VERSION}
+              <DescriptionListDescription data-testid="about-gateway-line">
+                {builtForLine
+                  ? t('about.gatewayLine', { line: builtForLine })
+                  : t('about.unknown')}
               </DescriptionListDescription>
             </DescriptionListGroup>
+            {BUILD_COMMIT && (
+              <DescriptionListGroup>
+                <DescriptionListTerm>
+                  {t('about.dashboardCommit')}
+                </DescriptionListTerm>
+                <DescriptionListDescription data-testid="about-dashboard-commit">
+                  {BUILD_COMMIT}
+                </DescriptionListDescription>
+              </DescriptionListGroup>
+            )}
             <DescriptionListGroup>
               <DescriptionListTerm>
                 {t('about.gatewayVersion')}
