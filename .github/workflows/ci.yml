@@ -211,8 +211,8 @@ jobs:
   # (GetSandboxRequest 2, ListSandboxesRequest 4, ...). A 0.0.116 gateway
   # therefore reads the serialized selector as a workspace NAME and reports
   # `workspace '\n\adefault' not found` on every workspace-scoped call. That
-  # gateway is served by dashboard v0.2.0 and its 0.2.x maintenance line, not
-  # by main (ADR 0006).
+  # gateway is served by the one-off gateway-0.0.116 release, not by main
+  # (ADR 0009, amendment of 2026-10-10).
   #
   # A wire break is not always that loud. Dashboard v0.3.0 sent the selector
   # at field numbers 0.0.116 does not know; protobuf dropped them, every
