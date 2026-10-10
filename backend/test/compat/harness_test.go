@@ -5,7 +5,7 @@
 // depends on.
 //
 // It is build-tagged so `go test ./...` never picks it up — it needs a live
-// stack. CI runs it once per gateway version in a matrix; see
+// stack. CI runs it against the one gateway the branch pins; see
 // .github/workflows/ci.yml and deploy/ci/.
 //
 //	BFF_URL=http://localhost:9080 go test -tags compat -count=1 ./test/compat/... -v
@@ -15,13 +15,13 @@
 // crosses the wire proves that the SDK we pin still speaks the protocol of a
 // given gateway. So the map below is organized by what crosses the wire.
 //
-// # What a green lane looks like
+// # What a green run looks like
 //
 // Almost every test drives the gateway through the BFF's real routes. The ones
 // in guard_test.go do not: they check the suite's own guards against canned
 // answers and send the gateway nothing.
 //
-// A green lane on gateways 0.1.0 to 0.1.2 has no test that SKIPs. The skips
+// A green run on a gateway of line 0.1 has no test that SKIPs. The skips
 // the suite can produce all say why: a known bug (see the end of this comment,
 // none at present), a gateway that is not this run's own (the writing subtests
 // of TestGlobalSettings, TestGlobalPolicy and TestSandboxSettings, and all of

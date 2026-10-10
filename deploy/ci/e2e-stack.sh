@@ -1,47 +1,65 @@
 #!/usr/bin/env bash
 # Brings the OpenShell gateway stack up or down for the compat suite
-# (backend/test/compat). Used by CI's version matrix and usable locally.
+# (backend/test/compat). Used by CI and usable locally.
 #
-#   OPENSHELL_VERSION=0.1.2 deploy/ci/e2e-stack.sh up
+#   deploy/ci/e2e-stack.sh up                            the gateway this branch pins
+#   OPENSHELL_VERSION=0.1.2 deploy/ci/e2e-stack.sh up    another release, by its tag
 #   deploy/ci/e2e-stack.sh down
 #
-# OPENSHELL_VERSION picks the gateway AND supervisor tag — they are released
-# together and must match. The community sandbox image publishes no semver
-# tags, so it is pinned separately (COMPAT_SANDBOX_IMAGE, defaulting to
+# With nothing set, the stack runs the release deploy/ci/gateway-pins.json
+# names, by digest: the gateway ci.yml's `compat` job runs for this branch.
+# OPENSHELL_VERSION picks another gateway AND supervisor tag — they are
+# released together and must match. The community sandbox image publishes no
+# semver tags, so it is pinned separately (COMPAT_SANDBOX_IMAGE, defaulting to
 # sandbox_image in gateway-pins.json) and deliberately does NOT move with the
 # gateway version.
 #
 # This script only ever changes the GATEWAY side. Which SDK the BFF is built
-# against is whatever backend/go.mod says; the two are separate links and are
-# tested separately (ADR 0006).
+# against is whatever backend/go.mod says. A branch pins the two from one
+# upstream release (ADR 0009); running another gateway here is a way to ask
+# about one, not to move to it.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# CI never relies on this default: every lane and every sweep leg passes
-# OPENSHELL_GATEWAY_IMAGE / OPENSHELL_SUPERVISOR_IMAGE as tag@digest. `latest`
-# is the newest upstream RELEASE (`dev` is upstream HEAD), which is a sensible
-# thing to try locally but a moving tag, so not something to pin.
-VERSION="${OPENSHELL_VERSION:-latest}"
-export OPENSHELL_GATEWAY_IMAGE="${OPENSHELL_GATEWAY_IMAGE:-ghcr.io/nvidia/openshell/gateway:${VERSION}}"
-export OPENSHELL_SUPERVISOR_IMAGE="${OPENSHELL_SUPERVISOR_IMAGE:-ghcr.io/nvidia/openshell/supervisor:${VERSION}}"
-# The workload image is pinned by digest in gateway-pins.json. Fall back to the
-# moving tag only when jq is not installed, so a local run still works.
-if [ -z "${COMPAT_SANDBOX_IMAGE:-}" ] && command -v jq >/dev/null 2>&1; then
-  COMPAT_SANDBOX_IMAGE="$(jq -er '.sandbox_image' gateway-pins.json 2>/dev/null || true)"
+# One value from the pins file, or nothing when jq is not installed, so a
+# local run without it still works.
+pinned() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -er --arg key "$1" '.[$key]' gateway-pins.json 2>/dev/null || true
+  fi
+}
+
+# CI never relies on these defaults: ci.yml and follow-upstream.yml pass
+# OPENSHELL_GATEWAY_IMAGE / OPENSHELL_SUPERVISOR_IMAGE as tag@digest. The last
+# resort, `latest`, is the newest upstream RELEASE (`dev` is upstream HEAD): a
+# moving tag, used only when the pins cannot be read.
+if [ -n "${OPENSHELL_VERSION:-}" ]; then
+  default_gateway="ghcr.io/nvidia/openshell/gateway:${OPENSHELL_VERSION}"
+  default_supervisor="ghcr.io/nvidia/openshell/supervisor:${OPENSHELL_VERSION}"
+  default_schema=""
+else
+  default_gateway="$(pinned gateway_image)"
+  default_supervisor="$(pinned supervisor_image)"
+  default_schema="$(pinned config_schema)"
 fi
+export OPENSHELL_GATEWAY_IMAGE="${OPENSHELL_GATEWAY_IMAGE:-${default_gateway:-ghcr.io/nvidia/openshell/gateway:latest}}"
+export OPENSHELL_SUPERVISOR_IMAGE="${OPENSHELL_SUPERVISOR_IMAGE:-${default_supervisor:-ghcr.io/nvidia/openshell/supervisor:latest}}"
+# The workload image is pinned by digest in gateway-pins.json. Fall back to the
+# moving tag only when the pins cannot be read.
+COMPAT_SANDBOX_IMAGE="${COMPAT_SANDBOX_IMAGE:-$(pinned sandbox_image)}"
 export COMPAT_SANDBOX_IMAGE="${COMPAT_SANDBOX_IMAGE:-ghcr.io/nvidia/openshell-community/sandboxes/base:latest}"
 
 # The gateway's own config file is versioned and the schemas are mutually
 # exclusive: 0.1.0 and newer require v2, releases up to 0.0.116 require v1.
-# Defaults to v2 because every gateway main supports (0.1.0 and newer) needs it.
+# Defaults to the schema the pins name for the pinned gateway, and to v2 for
+# any other, because every gateway since 0.1.0 needs it.
 #
 # `auto` tries v2 and falls back to v1 when the gateway rejects the config
-# version. The compat sweep's gateway axis needs this because it can cross a
-# schema boundary and cannot know in advance which side a release sits on.
+# version, for a gateway whose side of that boundary is not known in advance.
 # Under GitHub Actions the schema the gateway accepted is written to the step
-# output `config_schema`, so the sweep can record it in the lane it proposes.
-OPENSHELL_CONFIG_SCHEMA="${OPENSHELL_CONFIG_SCHEMA:-v2}"
+# output `config_schema`.
+OPENSHELL_CONFIG_SCHEMA="${OPENSHELL_CONFIG_SCHEMA:-${default_schema:-v2}}"
 
 # Callback address the in-sandbox supervisor uses to reach the gateway.
 # Sandbox containers are created by the gateway directly on the host daemon
@@ -166,8 +184,8 @@ up() {
 # if the gateway never reports healthy. Leaves the stack down on failure so the
 # next attempt starts clean - and prints the gateway's log BEFORE doing so,
 # because `docker compose logs` has nothing to show once the containers are
-# gone. A sweep leg whose gateway never started used to end with two status
-# lines and a report telling the reader to "read the stack log".
+# gone. A job whose gateway never started used to end with two status lines
+# and a report telling the reader to "read the stack log".
 try_schema() {
   local schema="$1" logs
   render_config "$schema"

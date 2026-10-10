@@ -1,19 +1,20 @@
 // Run with: node --test "scripts/**/*.test.mjs"
 //
-// Releases are cut by hand, with a chosen type; the one automatic release is a
-// merged compat-sweep bump. These tests cover the two pieces that decide that:
-// release-type-plugin.mjs (what kind of release) and sweep-bump.mjs (whether a
-// commit may be released without anyone asking).
+// Releases are cut by hand, with a chosen type; the one automatic release is
+// the merge of `next`, the move to a new OpenShell release. These tests cover
+// the two pieces that decide that: release-type-plugin.mjs (what kind of
+// release) and next-merge.mjs (whether a commit may be released without anyone
+// asking).
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { mergedFromNext } from './next-merge.mjs';
 import { analyzeCommits, compareChoice, suggest, suggestFor } from './release-type-plugin.mjs';
-import { leavesItsAxis, sweepAxis } from './sweep-bump.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const quiet = { log() {}, warn() {}, error() {}, success() {} };
@@ -82,129 +83,82 @@ test('the choice and the comparison are written to the run summary', async (t) =
 
 const REPO = 'Gkrumbach07/openshell-dashboard';
 const pull = (overrides = {}) => ({
-  merged_at: '2026-10-06T06:30:00Z',
+  merged_at: '2026-10-14T06:30:00Z',
   base: { ref: 'main' },
-  head: { ref: 'compat-sweep/gateway', repo: { full_name: REPO } },
+  head: { ref: 'next', repo: { full_name: REPO } },
+  title: 'fix: move to OpenShell 0.1.4',
   ...overrides,
 });
 
-test('a commit merged from the sweep branch of this repository names its axis', () => {
-  assert.equal(sweepAxis([pull()], REPO), 'gateway');
-  assert.equal(sweepAxis([pull({ head: { ref: 'compat-sweep/sdk', repo: { full_name: REPO } } })], REPO), 'sdk');
+test('a commit merged from the next branch of this repository is the move to a new release', () => {
+  assert.equal(mergedFromNext([pull()], REPO), true);
+  // The title plays no part: it is what a person could type.
+  assert.equal(mergedFromNext([pull({ title: 'anything at all' })], REPO), true);
 });
 
-test('anything else is not a sweep bump', () => {
+test('anything else is not', () => {
   // An ordinary pull request, whatever it is titled.
-  assert.equal(sweepAxis([pull({ head: { ref: 'fix/something', repo: { full_name: REPO } } })], REPO), null);
-  // A fork that named its branch after the sweep's.
+  const ordinary = { head: { ref: 'fix/something', repo: { full_name: REPO } } };
+  assert.equal(mergedFromNext([pull(ordinary)], REPO), false);
+  assert.equal(mergedFromNext([pull({ ...ordinary, title: 'fix: move to OpenShell 0.1.4' })], REPO), false);
+  // A branch whose name only starts with it, and the retired sweep's branches.
+  for (const ref of ['next-steps', 'feature/next', 'compat-sweep/gateway', 'compat-sweep/sdk']) {
+    assert.equal(mergedFromNext([pull({ head: { ref, repo: { full_name: REPO } } })], REPO), false, ref);
+  }
+  // A fork that named its branch next.
   assert.equal(
-    sweepAxis([pull({ head: { ref: 'compat-sweep/gateway', repo: { full_name: 'someone/openshell-dashboard' } } })], REPO),
-    null,
+    mergedFromNext([pull({ head: { ref: 'next', repo: { full_name: 'someone/openshell-dashboard' } } })], REPO),
+    false,
   );
   // A fork that has since been deleted.
-  assert.equal(sweepAxis([pull({ head: { ref: 'compat-sweep/gateway', repo: null } })], REPO), null);
+  assert.equal(mergedFromNext([pull({ head: { ref: 'next', repo: null } })], REPO), false);
   // Not merged, or merged somewhere other than main.
-  assert.equal(sweepAxis([pull({ merged_at: null })], REPO), null);
-  assert.equal(sweepAxis([pull({ base: { ref: '0.2.x' } })], REPO), null);
+  assert.equal(mergedFromNext([pull({ merged_at: null })], REPO), false);
+  assert.equal(mergedFromNext([pull({ base: { ref: 'release/0.1' } })], REPO), false);
+  assert.equal(mergedFromNext([pull({ base: { ref: '0.2.x' } })], REPO), false);
   // A commit pushed straight to main has no pull request.
-  assert.equal(sweepAxis([], REPO), null);
+  assert.equal(mergedFromNext([], REPO), false);
   // Two merged pull requests for one commit is not something to guess about.
-  assert.equal(sweepAxis([pull(), pull()], REPO), null);
+  assert.equal(mergedFromNext([pull(), pull()], REPO), false);
 });
 
-// The guard is the sweep's own (deploy/ci/sweep/guard.py), so this builds a
-// small repository that has it and commits to that.
-const have = (command) => spawnSync(command, ['--version'], { stdio: 'ignore' }).status === 0;
+test('a pull request into next is not released when it merges; only next into main is', () => {
+  const intoNext = pull({ base: { ref: 'next' }, head: { ref: 'feat/needs-0.1.4', repo: { full_name: REPO } } });
+  assert.equal(mergedFromNext([intoNext], REPO), false);
+  // Should GitHub list both for a commit that reached main through next, the
+  // one into next does not count against the one into main.
+  assert.equal(mergedFromNext([intoNext, pull()], REPO), true);
+});
 
-function repositoryWithTheGuard(t) {
-  const dir = mkdtempSync(join(tmpdir(), 'sweep-bump-repo-'));
+test('the command prints where the commit came from in GITHUB_OUTPUT form, and exits 0 either way', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'next-merge-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const git = (...args) =>
-    execFileSync('git', args, {
-      cwd: dir,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: 't',
-        GIT_AUTHOR_EMAIL: 't@example.com',
-        GIT_COMMITTER_NAME: 't',
-        GIT_COMMITTER_EMAIL: 't@example.com',
-      },
-    }).trim();
-  mkdirSync(join(dir, 'deploy/ci'), { recursive: true });
-  mkdirSync(join(dir, 'backend'), { recursive: true });
-  cpSync(join(repoRoot, 'deploy/ci/sweep'), join(dir, 'deploy/ci/sweep'), { recursive: true });
-  for (const file of ['deploy/ci/gateway-pins.json', 'backend/go.mod', 'backend/go.sum']) {
-    cpSync(join(repoRoot, file), join(dir, file));
-  }
-  writeFileSync(join(dir, 'unrelated.txt'), 'one\n');
-  git('init', '-q', '-b', 'main');
-  git('add', '-A');
-  git('commit', '-q', '-m', 'start');
-  return { dir, git };
-}
-
-/** Moves the SDK pin the way the sdk axis does: go.mod and the pins' sdk field, together. */
-function moveTheSdk(dir) {
-  const pinsPath = join(dir, 'deploy/ci/gateway-pins.json');
-  const pins = JSON.parse(readFileSync(pinsPath, 'utf8'));
-  const next = 'v0.0.0-20261005140000-07a05f856a09';
-  const goModPath = join(dir, 'backend/go.mod');
-  writeFileSync(goModPath, readFileSync(goModPath, 'utf8').replace(pins.sdk, next));
-  writeFileSync(pinsPath, readFileSync(pinsPath, 'utf8').replace(pins.sdk, next));
-}
-
-test('a merged commit that stays on its axis passes the sweep guard', { skip: !have('python3') }, (t) => {
-  const { dir, git } = repositoryWithTheGuard(t);
-  moveTheSdk(dir);
-  git('add', '-A');
-  git('commit', '-q', '-m', 'fix(sdk): move to the OpenShell SDK at v0.1.3');
-  assert.equal(leavesItsAxis(git('rev-parse', 'HEAD'), 'sdk', dir), null);
-  // The scratch worktree is gone and the repository is where it was.
-  assert.equal(git('worktree', 'list').split('\n').length, 1);
-  assert.equal(git('status', '--short'), '');
-});
-
-test('the same commit with one more file in it does not', { skip: !have('python3') }, (t) => {
-  const { dir, git } = repositoryWithTheGuard(t);
-  moveTheSdk(dir);
-  writeFileSync(join(dir, 'unrelated.txt'), 'two\n');
-  git('add', '-A');
-  git('commit', '-q', '-m', 'fix(sdk): move to the OpenShell SDK at v0.1.3');
-  const problem = leavesItsAxis(git('rev-parse', 'HEAD'), 'sdk', dir);
-  assert.match(problem, /unrelated\.txt/);
-});
-
-test('an SDK move is not a gateway-axis change', { skip: !have('python3') }, (t) => {
-  const { dir, git } = repositoryWithTheGuard(t);
-  moveTheSdk(dir);
-  git('add', '-A');
-  git('commit', '-q', '-m', 'fix(compat): support gateway 0.1.3');
-  assert.match(leavesItsAxis(git('rev-parse', 'HEAD'), 'gateway', dir), /one-axis guard \(gateway\)/);
-});
-
-test('the command prints an empty axis for an ordinary commit and exits 0', { skip: !have('python3') }, (t) => {
-  const { dir, git } = repositoryWithTheGuard(t);
-  writeFileSync(join(dir, 'unrelated.txt'), 'two\n');
-  git('add', '-A');
-  git('commit', '-q', '-m', 'feat: something');
-  const pulls = join(dir, '..', `pulls-${process.pid}.json`);
-  t.after(() => rmSync(pulls, { force: true }));
+  const pulls = join(dir, 'pulls.json');
   const run = (list) => {
     writeFileSync(pulls, JSON.stringify(list));
     return spawnSync(
       process.execPath,
-      [join(repoRoot, 'scripts/release/sweep-bump.mjs'), '--sha', git('rev-parse', 'HEAD'), '--repo', REPO, '--pulls', pulls],
-      { cwd: dir, encoding: 'utf8' },
+      [join(repoRoot, 'scripts/release/next-merge.mjs'), '--sha', 'a'.repeat(40), '--repo', REPO, '--pulls', pulls],
+      { encoding: 'utf8' },
     );
   };
   const ordinary = run([pull({ head: { ref: 'feat/something', repo: { full_name: REPO } } })]);
   assert.equal(ordinary.status, 0);
-  assert.equal(ordinary.stdout, 'axis=\n');
-  // From the sweep's branch, but changing something the axis may not: still
-  // not automatic, and it says why.
-  const widened = run([pull()]);
-  assert.equal(widened.status, 0);
-  assert.equal(widened.stdout, 'axis=\n');
-  assert.match(widened.stderr, /changes more than that axis may/);
+  assert.equal(ordinary.stdout, 'from=\n');
+  assert.match(ordinary.stderr, /was not merged from the next branch/);
+
+  const fromNext = run([pull()]);
+  assert.equal(fromNext.status, 0);
+  assert.equal(fromNext.stdout, 'from=next\n');
+
+  // publish.yml reads the answer with `sed -n 's/^from=//p'`.
+  const read = (stdout) => stdout.replace(/^from=/m, '').trim();
+  assert.equal(read(ordinary.stdout), '');
+  assert.equal(read(fromNext.stdout), 'next');
+});
+
+test('the command needs a commit and a repository', () => {
+  const result = spawnSync(process.execPath, [join(repoRoot, 'scripts/release/next-merge.mjs')], { encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--sha <commit> and --repo <owner\/name> are required/);
 });

@@ -5,12 +5,12 @@
 # run it again with "dry run" cleared to publish. Merging a pull request never
 # publishes anything by itself, whatever its title says.
 #
-# The one exception is a pull request the compat sweep opened to raise the
-# gateway ceiling or move the SDK. Once it is merged and CI has passed on main,
-# this workflow cuts a patch for it without being asked: that release is the
-# point of the pull request and the one most likely to be forgotten. Which
-# commits qualify is decided from where they came from, not from their title;
-# see scripts/release/sweep-bump.mjs.
+# The one exception is the move to a new OpenShell release, which reaches main
+# as the pull request from the `next` branch (follow-upstream.yml). Once it is
+# merged and CI has passed on main, this workflow cuts a patch for it without
+# being asked: that release is the point of the pull request and the one most
+# likely to be forgotten. Which commits qualify is decided from where they came
+# from, not from their title; see scripts/release/next-merge.mjs.
 #
 # One version, three artifacts. Two of them say which OpenShell gateways the
 # release supports (#66, ADR 0009):
@@ -46,8 +46,8 @@ on:
         description: "Dry run: show the version and the notes, publish nothing"
         type: boolean
         default: true
-  # Only for merged compat-sweep bumps; every other CI run that finishes on
-  # main ends this workflow without releasing.
+  # Only for a merged pull request from `next`; every other CI run that
+  # finishes on main ends this workflow without releasing.
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -64,7 +64,7 @@ jobs:
     #
     #   workflow_dispatch  a maintainer asked for a release, on main.
     #   workflow_run       CI passed for a PUSH to main in THIS repository.
-    #                      Releases only if that push is a merged sweep bump.
+    #                      Releases only if that push is the merge of `next`.
     #
     # The event and repository checks are not redundant. `branches: [main]`
     # above matches the head branch NAME of the run that finished, so a pull
@@ -110,8 +110,8 @@ jobs:
       #                           cleared the box. A real release also needs CI
       #                           to have passed for this commit: the image the
       #                           release tags is the one that CI run built.
-      #   CI finished on main     a patch, but only when the commit is a merged
-      #                           compat-sweep bump that stayed on its axis.
+      #   CI finished on main     a patch, but only when the commit was merged
+      #                           from the `next` branch of this repository.
       #                           Anything else: nothing, and the job ends green.
       - name: What does this run release?
         id: plan
@@ -146,12 +146,12 @@ jobs:
             fi
             echo "Asked for by a person: a $type release$([ "$dry_run" = "true" ] && echo ' (dry run)')." | tee -a "$GITHUB_STEP_SUMMARY"
           else
-            axis="$(node scripts/release/sweep-bump.mjs --sha "$sha" --repo "$REPO" | sed -n 's/^axis=//p')"
-            if [ -n "$axis" ]; then
+            from="$(node scripts/release/next-merge.mjs --sha "$sha" --repo "$REPO" | sed -n 's/^from=//p')"
+            if [ -n "$from" ]; then
               type="patch"
-              echo "Merged compat-sweep bump on the $axis axis: cutting a patch." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "Merged from $from, the move to a new OpenShell release: cutting a patch." | tee -a "$GITHUB_STEP_SUMMARY"
             else
-              echo "CI passed for $sha, which is not a compat-sweep bump. Nothing is released automatically; releases are cut by hand (docs/releasing.md)." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "CI passed for $sha, which was not merged from next. Nothing is released automatically; releases are cut by hand (docs/releasing.md)." | tee -a "$GITHUB_STEP_SUMMARY"
             fi
           fi
           {

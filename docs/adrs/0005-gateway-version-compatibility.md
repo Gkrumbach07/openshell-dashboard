@@ -180,6 +180,7 @@ range has to be discovered by test, not promised in advance.
 
 - [ADR 0006](0006-compat-links-and-sweep-axes.md) — replaces decision 4 and the rule that the SDK pin and the gateway pins move together; no `dev` pins.
 - [ADR 0009](0009-console-release-policy.md) — replaces decision 1: a release is for one gateway minor release line, not a window with a floor and a ceiling, and the compatibility notice compares release lines (no `untested`). Decision 5 holds for the console's own patch releases only. Never claiming `latest` stands.
+- 2026-10-09, [ADR 0009](0009-console-release-policy.md) decisions 6 to 8 implemented — a branch pins one gateway release and CI runs the compatibility suite against that one, and the scheduled sweep is replaced by following upstream's release tags on a `next` branch (`.github/workflows/follow-upstream.yml`). The SDK and the gateway are again taken from one upstream tag and moved in one change, which is where this ADR started; what is different is that the pair is proven by running it, and that pre-releases are run ahead of the stable release. Pinning by digest, keeping the pins machine-readable and reporting to one issue that is rewritten in place all stand.
 
 ## References
 

@@ -6,20 +6,32 @@
 //                  notes, which is what the GitHub release is published with
 //
 // It takes the gateway release line from scripts/gateway-range.mjs at release
-// time, so the claim is the one the required compat lanes proved for the
-// commit being released. The step does not run unless a release is actually
-// being cut, and it runs before semantic-release creates the tag: if the pins
-// cannot be turned into a line, the release stops before anything is
-// published.
+// time, so the claim is the one the compat job proved for the commit being
+// released. The step does not run unless a release is actually being cut, and
+// it runs before semantic-release creates the tag: if the pins cannot be
+// turned into a line, the release stops before anything is published.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { PINS_FILE, deriveGatewayLine, formatLine, readGatewayLine } from '../gateway-range.mjs';
+import { PINS_FILE, deriveGatewayLine, formatLine, lineOfLanes, readGatewayLine } from '../gateway-range.mjs';
+
+/**
+ * The line a pins document declares, in either shape the file has had: one
+ * pinned release, or (before 2026-10-09) a list of lanes. Null when it is
+ * neither.
+ */
+export function lineDeclaredBy(pins) {
+  try {
+    return deriveGatewayLine(pins).line;
+  } catch {
+    return lineOfLanes(pins);
+  }
+}
 
 /**
  * What a previous release declared, or null when it cannot be known —
- * no previous release, or a release from before the lanes were releases.
+ * no previous release, or a release from before the pins named releases.
  */
 function declaredAtTag(tag, cwd) {
   if (!tag) {
@@ -31,7 +43,8 @@ function declaredAtTag(tag, cwd) {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     });
-    return deriveGatewayLine(JSON.parse(pins));
+    const line = lineDeclaredBy(JSON.parse(pins));
+    return line ? { line } : null;
   } catch {
     return null;
   }
@@ -48,19 +61,11 @@ function repositoryUrl(pkgPath) {
   }
 }
 
-/** "0.1.0", "0.1.0 and 0.1.3", "0.1.0, 0.1.2 and 0.1.3". */
-function listReleases(releases) {
-  if (releases.length <= 1) {
-    return releases.join('');
-  }
-  return `${releases.slice(0, -1).join(', ')} and ${releases[releases.length - 1]}`;
-}
-
 export function supportedGatewaysNotes({ declared, previous, previousTag, readmeUrl }) {
   const lines = [
     '### Supported OpenShell gateways',
     '',
-    `**${formatLine(declared.line)}**, tested on ${listReleases(declared.tested)}, ` +
+    `**${formatLine(declared.line)}**, tested on ${declared.release}, ` +
       `built against OpenShell Go SDK \`${declared.sdk}\`.`,
     '',
   ];
@@ -78,8 +83,8 @@ export function supportedGatewaysNotes({ declared, previous, previousTag, readme
   const compatibility = readmeUrl ? `[Compatibility](${readmeUrl})` : 'Compatibility in the README';
   lines.push(
     `This release is for the gateway ${formatLine(declared.line)} release line: any patch release of ` +
-      'it, and any pre-release or rebuild of one. The releases named above are the ones this commit ' +
-      'passed the compatibility suite against. A gateway on another release line is not supported ' +
+      'it, and any pre-release or rebuild of one. The release named above is the one this commit ' +
+      'is built on and passed the compatibility suite against. A gateway on another release line is not supported ' +
       `by this release; see ${compatibility} for which dashboard to run instead.`,
   );
   return lines.join('\n');

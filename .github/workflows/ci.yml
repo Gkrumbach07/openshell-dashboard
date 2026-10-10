@@ -1,10 +1,22 @@
 name: CI
 
+# Every change is tested against the gateway pinned by the branch it merges
+# into (ADR 0009, decision 6), so this runs for all three kinds of branch:
+#
+#   main          one stable upstream release
+#   release/X.Y   the line before it, for critical and security fixes
+#   next          the upcoming release, usually a pre-release. A pull request
+#                 into `next` is work that needs it; the pull request from
+#                 `next` into main is the move itself, and this workflow
+#                 running there is "check B" (follow-upstream.yml).
+#
+# Nothing runs on a push to `next`: it is rebased and force-pushed, and its
+# pull request into main already tests every commit that lands on it.
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**"]
   pull_request:
-    branches: [main]
+    branches: [main, next, "release/**"]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -35,6 +47,9 @@ jobs:
           make helm-docs
           git diff --exit-code -- deploy/helm/openshell-dashboard/README.md
 
+  # On a pull request the two check-* jobs do their work only when their half
+  # of the tree changed. On a push, to main or to a release branch, they always
+  # do: that is the run a release is cut from.
   check-frontend:
     runs-on: ubuntu-latest
     steps:
@@ -47,20 +62,20 @@ jobs:
               - 'frontend/**'
               - 'package*.json'
       - uses: actions/setup-node@v4
-        if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+        if: steps.filter.outputs.frontend == 'true' || github.event_name == 'push'
         with:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.event_name == 'push'
         run: cd frontend && npm ci
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.event_name == 'push'
         run: cd frontend && npm run lint
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.event_name == 'push'
         run: cd frontend && npm run format:check
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.event_name == 'push'
         run: cd frontend && npm run typecheck
-      - if: steps.filter.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.frontend == 'true' || github.event_name == 'push'
         run: cd frontend && npm test -- --coverage --passWithNoTests
 
   check-backend:
@@ -74,16 +89,16 @@ jobs:
             backend:
               - 'backend/**'
       - uses: actions/setup-go@v5
-        if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/main'
+        if: steps.filter.outputs.backend == 'true' || github.event_name == 'push'
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.backend == 'true' || github.event_name == 'push'
         uses: golangci/golangci-lint-action@v9
         with:
           working-directory: backend
           version: v2.12.2
-      - if: steps.filter.outputs.backend == 'true' || github.ref == 'refs/heads/main'
+      - if: steps.filter.outputs.backend == 'true' || github.event_name == 'push'
         run: cd backend && go test -race -count=1 -coverprofile=coverage.out ./...
 
   e2e:
@@ -112,54 +127,83 @@ jobs:
 
   # Gateway compatibility (ADR 0005 as amended by ADR 0006 and ADR 0009).
   #
-  # The version chain is gateway -> SDK -> BFF -> UI, and each link is proven
-  # separately. The two jobs below prove the WIRE link (gateway<->SDK), which
-  # nothing but a real gateway can prove: the newest gateway is not assumed to
-  # work with the newest SDK, in either direction. The SOURCE link (SDK<->BFF)
-  # is check-backend's job — the compiler and the unit tests.
+  # A branch is built on ONE upstream release, and deploy/ci/gateway-pins.json
+  # names it: the gateway and supervisor images, and the Go SDK at the commit
+  # upstream tagged that release with. Every change is tested against that
+  # gateway, whichever branch it merges into.
   #
-  # compat-pins reads deploy/ci/gateway-pins.json, the one place the tested
-  # gateways are written down, and fails fast when that file is malformed: no
-  # required lane, a lane image without @sha256:, a version that is not x.y.z,
-  # a dev lane, or an `sdk` field that disagrees with backend/go.mod.
+  # The version chain is gateway -> SDK -> BFF -> UI. The `compat` job below
+  # proves the WIRE link (gateway<->SDK), which nothing but a real gateway can
+  # prove. The SOURCE link (SDK<->BFF) is check-backend's job: the compiler
+  # and the unit tests.
+  #
+  # compat-pins reads the pins file and fails fast when it is malformed: an
+  # image without @sha256:, an image tagged with another release, a dev build,
+  # a release that is neither X.Y.Z nor X.Y.Z-pre.N, or an `sdk` field that
+  # disagrees with backend/go.mod.
   #
   # The gateway release line this build is for is the major.minor of the
-  # newest required lane. It is compiled into the BFF, and release-tooling
-  # below fails when that constant and the pins disagree.
+  # pinned release. It is compiled into the BFF, and release-tooling below
+  # fails when that constant and the pins disagree.
   compat-pins:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
-      lanes: ${{ steps.read.outputs.lanes }}
+      release: ${{ steps.read.outputs.release }}
+      gateway_image: ${{ steps.read.outputs.gateway_image }}
+      supervisor_image: ${{ steps.read.outputs.supervisor_image }}
+      config_schema: ${{ steps.read.outputs.config_schema }}
       sandbox_image: ${{ steps.read.outputs.sandbox_image }}
     steps:
       - uses: actions/checkout@v4
-      # The validator below and the scheduled sweep share this code. A second
-      # of unit tests here keeps both honest on every PR.
-      - name: Unit-test the pins and sweep logic
-        run: python3 -m unittest discover -s deploy/ci/sweep
+      # The validator below and the Follow upstream workflow share this code.
+      # A few seconds of unit tests here keep both honest on every PR.
+      - name: Unit-test the pins and upstream logic
+        run: python3 -m unittest discover -s deploy/ci/upstream
       - name: Validate the pins file
-        run: python3 deploy/ci/sweep/sweep.py validate-pins deploy/ci/gateway-pins.json --go-mod backend/go.mod
+        run: python3 deploy/ci/upstream/follow.py validate-pins deploy/ci/gateway-pins.json --go-mod backend/go.mod
       - id: read
         run: |
           set -euo pipefail
-          echo "lanes=$(jq -c '.lanes' deploy/ci/gateway-pins.json)" >> "$GITHUB_OUTPUT"
-          echo "sandbox_image=$(jq -er '.sandbox_image' deploy/ci/gateway-pins.json)" >> "$GITHUB_OUTPUT"
+          for key in release gateway_image supervisor_image config_schema sandbox_image; do
+            echo "$key=$(jq -er --arg key "$key" '.[$key]' deploy/ci/gateway-pins.json)" >> "$GITHUB_OUTPUT"
+          done
 
-  # One job per lane in deploy/ci/gateway-pins.json.
+  # NOT a compatibility result. It answers one question: does this branch pin
+  # a stable upstream release?
   #
-  # A PR tests the PINS — an old and the newest release of the gateway line
-  # this dashboard is for — and nothing else. Looking at other
-  # releases, at upstream HEAD and at newer SDKs is the scheduled sweep's job
-  # (compat-sweep.yml), not something every PR should pay for.
+  # `main` and `release/**` pin stable releases only. `next` pins the upcoming
+  # release, which is a pre-release until upstream cuts the stable one, so the
+  # pull request from `next` into main fails HERE, by name, for as long as that
+  # lasts. That is what keeps it from merging, and it is kept apart from
+  # `compat` on purpose: a red `compat` means the console does not work with
+  # the gateway, and a red check here only means "not released upstream yet".
+  # The Follow upstream workflow re-pins `next` when the stable release is out.
   #
-  # Lanes are RELEASES pinned by digest. A `dev` gateway resolves a moving
-  # ghcr.io/nvidia/openshell/sandbox:dev image at runtime, so even a
-  # digest-pinned dev lane drifts with upstream HEAD — that is what turned
-  # this job red on main on 2026-10-02 with no change on our side.
+  # A pull request INTO `next` is work that needs the pre-release, so the job
+  # does not run there.
+  stable-release:
+    name: pins a stable release
+    if: github.event_name == 'push' || github.base_ref != 'next'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: The pins name a stable OpenShell release, not a pre-release
+        run: python3 deploy/ci/upstream/follow.py require-stable deploy/ci/gateway-pins.json
+
+  # The compatibility suite against the one gateway this branch pins.
   #
-  # `required: true` lanes block the build; advisory lanes may fail.
+  # The gateway is a RELEASE pinned by digest: a stable release, or on `next` a
+  # pre-release. Never a `dev` build. A dev gateway resolves a moving
+  # ghcr.io/nvidia/openshell/sandbox:dev image at runtime, so even pinned by
+  # digest it drifts with upstream HEAD, which is what turned this job red on
+  # main on 2026-10-02 with no change on our side.
+  #
+  # Looking ahead, at the releases upstream has tagged since, is not something
+  # every PR pays for: follow-upstream.yml does it on a schedule.
   #
   # Why the wire link cannot be assumed: between 0.0.116 and 0.1.0 upstream
   # replaced `string workspace` on every request with a WorkspaceSelector
@@ -172,48 +216,45 @@ jobs:
   #
   # A wire break is not always that loud. Dashboard v0.3.0 sent the selector
   # at field numbers 0.0.116 does not know; protobuf dropped them, every
-  # request landed in the `default` workspace, and nothing failed. These lanes
-  # prove what the compat suite varies, and only that.
+  # request landed in the `default` workspace, and nothing failed. This job
+  # proves what the compat suite varies, and only that.
   #
   # The gateway's own TOML config is versioned too, and the schemas are
   # mutually exclusive: 0.1.0 and newer require v2, releases up to 0.0.116
-  # require v1. Each lane therefore names its config template.
+  # require v1. The pins therefore name the config template.
+  #
+  # The job has one fixed name, `compat`, whatever release is pinned, so that a
+  # branch protection rule can require it and keep requiring it after a move.
   compat:
-    name: compat (gateway ${{ matrix.label }})
     needs: compat-pins
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    continue-on-error: ${{ !matrix.required }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.compat-pins.outputs.lanes) }}
     env:
+      PINNED_RELEASE: ${{ needs.compat-pins.outputs.release }}
       # The community sandbox image publishes no semver tags, so it is pinned
-      # by digest in gateway-pins.json and held constant across the matrix: we
-      # are varying the gateway, not the workload.
+      # by digest in gateway-pins.json and does not move with the gateway.
       COMPAT_SANDBOX_IMAGE: ${{ needs.compat-pins.outputs.sandbox_image }}
       # Read by deploy/ci/e2e-stack.sh. Passed through env rather than written
       # into the scripts below, so no workflow expression is ever expanded
       # inside a shell command.
-      OPENSHELL_GATEWAY_IMAGE: ${{ matrix.gateway_image }}
-      OPENSHELL_SUPERVISOR_IMAGE: ${{ matrix.supervisor_image }}
-      OPENSHELL_CONFIG_SCHEMA: ${{ matrix.config_schema }}
+      OPENSHELL_GATEWAY_IMAGE: ${{ needs.compat-pins.outputs.gateway_image }}
+      OPENSHELL_SUPERVISOR_IMAGE: ${{ needs.compat-pins.outputs.supervisor_image }}
+      OPENSHELL_CONFIG_SCHEMA: ${{ needs.compat-pins.outputs.config_schema }}
       # The BFF under test is told nothing about gateways: like a released
-      # image, it judges them against the release line compiled into it. A
-      # required lane then has to be judged "supported". Every required lane
-      # is a release of that line, so any other verdict means the line in the
-      # BFF is not the pins' line, the comparison broke, or the gateway's
-      # version report changed. An advisory lane may be on another line, so
-      # nothing is asserted for it.
-      COMPAT_EXPECT_COMPATIBILITY: ${{ matrix.required && 'supported' || '' }}
+      # image, it judges them against the release line compiled into it, and
+      # the pinned gateway has to be judged "supported". It is a release of
+      # that line, so any other verdict means the line in the BFF is not the
+      # pins' line, the comparison broke, or the gateway's version report
+      # changed.
+      COMPAT_EXPECT_COMPATIBILITY: supported
     steps:
       - uses: actions/checkout@v4
 
       - name: Pull images
         run: |
           set -euo pipefail
+          echo "gateway under test: OpenShell $PINNED_RELEASE"
           docker pull "$OPENSHELL_GATEWAY_IMAGE"
           docker pull "$OPENSHELL_SUPERVISOR_IMAGE"
           docker pull "$COMPAT_SANDBOX_IMAGE"
@@ -283,8 +324,8 @@ jobs:
           node-version: "22"
       # The image states which gateway release line it is for, and the SDK it
       # was built against, as labels. The values come from the same script
-      # that writes the release notes, which derives them from the required
-      # compat lanes — nothing here is typed by hand, and a pins file that
+      # that writes the release notes, which derives them from the release the
+      # pins name — nothing here is typed by hand, and a pins file that
       # yields no line fails the build rather than shipping an image that
       # claims nothing. The BFF does not read the labels: its line is compiled
       # in, and release-tooling holds that constant to the same pins.
@@ -336,11 +377,13 @@ jobs:
   # the commit (and the PR number, on a pull request). It needs only `build`,
   # deliberately: these tags say "this is what that commit built", which is true
   # whether or not the commit is any good, and they are how a pull request gets
-  # an image to try before its checks finish.
+  # an image to try before its checks finish. That includes a pull request into
+  # `next` and the pull request from `next` into main: both get `pr-<n>` and
+  # `sha-<7>`, built on the pre-release's SDK.
   #
   # It does NOT tag `latest`. That tag is a recommendation, and it used to move
   # here — on every push to main, with only `build` to wait for — so it could
-  # and did point at a commit whose required compat lane had failed.
+  # and did point at a commit whose compat job had failed.
   # `promote-latest` below moves it, once everything has passed.
   push-manifest:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
@@ -416,6 +459,9 @@ jobs:
   #
   # publish.yml only runs after this workflow succeeds on main, so by the time
   # a release is cut `latest` and the new X.Y.Z tag name the same digest.
+  #
+  # Only main promotes. A push to a release branch builds and tests the same
+  # way and gets its `sha-<7>` image, and `latest` is not its to move.
   promote-latest:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -427,6 +473,7 @@ jobs:
         check-frontend,
         check-backend,
         e2e,
+        stable-release,
         compat,
         release-tooling,
       ]

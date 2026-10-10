@@ -6,8 +6,8 @@ request is titled. This page says how to cut one, what happens when you do,
 what each artifact ends up saying about the gateways it supports, and what to
 do when a step fails.
 
-The one release nobody has to ask for is a merged compat-sweep bump; see
-[The one automatic release](#the-one-automatic-release).
+The one release nobody has to ask for is the merge of `next`, the move to a new
+OpenShell release; see [The one automatic release](#the-one-automatic-release).
 
 ## One version, three artifacts
 
@@ -56,25 +56,35 @@ Things to know:
 
 ### The one automatic release
 
-The compat sweep opens pull requests that raise the newest supported gateway or
-move the SDK ([ADR 0006](adrs/0006-compat-links-and-sweep-axes.md)). Their whole
-purpose is to change what the next release declares and contains, they are
-always a patch, and they are the release most likely to be forgotten. So when
-one is merged and CI has passed on `main`, `publish.yml` cuts a patch for it
-without being asked.
+`main` moves to a new OpenShell release by merging `next`: the branch the
+[Follow upstream](../.github/workflows/follow-upstream.yml) workflow keeps one
+commit ahead of `main`, with the gateway CI runs and the SDK the BFF is built
+on moved to the new release
+([ADR 0009](adrs/0009-console-release-policy.md), decisions 7 and 8;
+[`deploy/ci/upstream/README.md`](../deploy/ci/upstream/README.md)). The whole
+purpose of that merge is to change what the next release is built on and
+declares, and it is the release most likely to be forgotten. So when it is
+merged and CI has passed on `main`, `publish.yml` cuts a patch for it without
+being asked.
 
 Which commits qualify is decided from where they came from, never from their
-title ([`scripts/release/sweep-bump.mjs`](../scripts/release/sweep-bump.mjs)):
+title ([`scripts/release/next-merge.mjs`](../scripts/release/next-merge.mjs)):
+the commit was merged into `main` by a pull request whose head was the branch
+`next` **in this repository**. A fork's branch of that name does not count, and
+neither does a pull request *into* `next`.
 
-- the commit was merged into `main` from `compat-sweep/gateway` or
-  `compat-sweep/sdk` **in this repository**, and
-- it changes only what that axis may change. This is the sweep's own one-axis
-  guard, run again on the merged commit, so a sweep pull request that someone
-  added other changes to is not released automatically.
+Anything else is simply not released; cut it by hand if it should be. Three
+things to know about the patch cut this way:
 
-Anything that fails either test is simply not released; cut it by hand if it
-should be. A patch cut this way also carries every other commit merged since
-the last release, like any release does.
+- It carries every commit merged since the last release, like any release
+  does. That includes whatever people put on `next` beside the pin move, which
+  is the point: work that needed the new gateway ships with it.
+- **It is a patch even when the move starts a new gateway minor.** By
+  [ADR 0009](adrs/0009-console-release-policy.md) that release should be a
+  minor; working the version out from the move is not built yet. The pull
+  request says so when it applies.
+- It follows the merge only if CI passes for the commit `main` ends up on. If a
+  second merge cancels that CI run, cut the release by hand.
 
 ## The pipeline
 
@@ -86,14 +96,14 @@ ci.yml ── build ──► push-manifest ────────────
    │                     └── image-range   (reads it back: does it declare its line?)
    │
    ├── check-frontend, check-backend, e2e
-   ├── compat (every required gateway lane)
+   ├── compat (the gateway this branch pins), stable-release
    ├── release-tooling
    │
    └── all green, and this commit is still the tip of main
    │                 └──► promote-latest ──────► image :latest  (same digest)
    │
    ▼
-publish.yml   started by a person, with a release type   (or: CI passed for a merged sweep bump)
+publish.yml   started by a person, with a release type   (or: CI passed for the merge of next)
    │
    ├── semantic-release ───────────────────────► git tag vX.Y.Z
    │                                             GitHub release vX.Y.Z
@@ -156,18 +166,18 @@ The GitHub release and the container image each state the OpenShell gateway
 release line the release is for and the Go SDK it was built against (#66,
 [ADR 0009](adrs/0009-console-release-policy.md)). The Helm chart states nothing
 of its own; by default it deploys the image of the same version. The line is
-the major and minor number of the newest **required** lane in
-[`deploy/ci/gateway-pins.json`](../deploy/ci/gateway-pins.json) at the released
-commit, written `0.1` and shown as `0.1.x`: every gateway release that starts
-with those two numbers. One script derives it,
+the major and minor number of the release that
+[`deploy/ci/gateway-pins.json`](../deploy/ci/gateway-pins.json) names at the
+released commit, written `0.1` and shown as `0.1.x`: every gateway release that
+starts with those two numbers. One script derives it,
 [`scripts/gateway-range.mjs`](../scripts/gateway-range.mjs), and everything
 else calls that script:
 
 | Artifact | What it carries | Written by |
 |---|---|---|
-| GitHub release | a *Supported OpenShell gateways* section: the line, the releases it was tested on and the SDK. It also calls out a line that changed since the previous release | `generateNotes` in `scripts/release/gateway-range-plugin.mjs` |
+| GitHub release | a *Supported OpenShell gateways* section: the line, the gateway release it was built on and tested against, and the SDK. It also calls out a line that changed since the previous release | `generateNotes` in `scripts/release/gateway-range-plugin.mjs` |
 | Container image | labels `io.github.gkrumbach07.openshell-dashboard.gateway.line` and `.sdk` | build args in `ci.yml`'s `build` job, consumed by `deploy/Dockerfile`; `image-range` reads the pushed image back and fails if they are missing |
-| README | the table under *Compatibility* | `scripts/readme-gateway-range.mjs --write`, run by whatever moves the pins (the compat sweep's pull requests do it themselves) and checked in CI |
+| README | the table under *Compatibility* | `scripts/readme-gateway-range.mjs --write`, run by whatever moves the pins (the Follow upstream workflow does it itself) and checked in CI |
 
 The BFF in the image does not read the labels. The line it compares a gateway
 with is compiled into the binary (`BuiltInGatewayReleaseLine` in
@@ -178,13 +188,13 @@ compatibility notice.
 Two things have to agree with the pins file, and
 `node scripts/gateway-range.mjs --check` fails when either does not:
 
-- `backend/go.mod`: the `sdk` field must equal the SDK version there. The SDK
-  and the gateway lanes are otherwise independent and move in separate pull
-  requests ([ADR 0006](adrs/0006-compat-links-and-sweep-axes.md)).
-- the line compiled into the BFF: it must be the line of the newest required
-  lane. A lane that moves to a newer patch of the same line changes nothing
-  here. A lane that moves to a new minor changes the constant in the same pull
-  request.
+- `backend/go.mod`: the `sdk` field must equal the SDK version there. Both are
+  the SDK at the commit upstream tagged the pinned release with, and they move
+  with the gateway images in one commit
+  ([ADR 0009](adrs/0009-console-release-policy.md), decision 7).
+- the line compiled into the BFF: it must be the line of the pinned release. A
+  move to a newer patch of the same line changes nothing here. A move to a new
+  minor changes the constant in the same commit.
 
 **Release `1.2.0` declares a range of gateway versions instead of a line.** It
 was cut before ADR 0009: its notes state a range, and its image carries env
@@ -252,7 +262,7 @@ None of this needs a registry, a token or a docker daemon:
 ```bash
 node scripts/gateway-range.mjs --check          # the gateway release line, and that the line in the BFF and the SDK in go.mod match the pins
 node scripts/readme-gateway-range.mjs --check   # the README states it
-node --test "scripts/**/*.test.mjs"             # release type, the sweep-bump check, notes, release detection, the tip check, retag and image check (against a stand-in docker)
+node --test "scripts/**/*.test.mjs"             # release type, the merged-from-next check, notes, release detection, the tip check, retag and image check (against a stand-in docker)
 
 # release.config.cjs, against the semantic-release version publish.yml pins:
 npm install --no-package-lock --prefix /tmp/sr semantic-release@25.0.9
@@ -266,10 +276,13 @@ merge.
 ## What this pipeline does not do
 
 - **It releases from `main` only.** `branches` in `release.config.cjs` names
-  nothing else. The dashboard for gateway `0.0.116` lives on the `0.2.x`
-  branch, which has its own copy of this workflow and is also released by
-  hand; nothing described on this page releases it. (`0.3.0` is not that line:
-  see *Compatibility* in the README for why it must not be used.)
+  nothing else. CI runs on `release/<major>.<minor>` branches, and the Follow
+  upstream workflow creates one when `main` is about to leave a gateway minor,
+  but nothing here cuts a release from one yet. The dashboard for gateway
+  `0.0.116` lives on the `0.2.x` branch, which predates that scheme, has its
+  own copy of this workflow and is also released by hand; nothing described on
+  this page releases it. (`0.3.0` is not that line: see *Compatibility* in the
+  README for why it must not be used.)
 - **It does not pick the version for you.** The suggestion is advice.
 - **It does not rebuild images for a release.** The version is decided after the
   image exists, so the image's own `org.opencontainers.image.version` label

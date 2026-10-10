@@ -44,7 +44,7 @@ func gatewayCompatibility(t *testing.T) (version string, verdict compatibilityVe
 // give.
 //
 // Set COMPAT_EXPECT_COMPATIBILITY to pin the expected verdict for the gateway
-// under test: "supported" for a lane on the BFF's line, "unsupported" for a
+// under test: "supported" for a gateway on the BFF's line, "unsupported" for a
 // gateway on another (0.0.116 against line 0.1). To see "unsupported" from a
 // gateway of the BFF's own line, start the BFF with another line
 // (GATEWAY_RELEASE_LINE=9.9); deploy/ci/e2e-stack.sh passes its environment
@@ -142,7 +142,7 @@ func TestGatewayCompatibilityHealth(t *testing.T) {
 // for every caller, where GetGatewayInfo is for platform admins only. If the
 // two ever disagreed, a user would be shown a verdict about a version the
 // Gateway page and the About dialog do not display. It does not depend on the
-// verdict, so it runs in every lane.
+// verdict, so it runs against every gateway.
 func TestGatewayCompatibilityVersionSource(t *testing.T) {
 	var info struct {
 		Compatibility  *compatibilityVerdict `json:"compatibility"`
