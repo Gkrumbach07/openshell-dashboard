@@ -345,6 +345,46 @@ merged move to a new gateway patch release is released as a patch.
 
   ADR 0007's own amendment says which of its decisions this replaces.
 
+- **2026-10-10: `v0.1.0` is the first release under this policy, and the
+  releases from before it are deleted.** With this, nothing in "Implemented in
+  steps" is left unbuilt.
+
+  - *The console's version shares the gateway's line (decision 1).* `v0.1.0`
+    was released from `main` at `e80505a`: gateway line `0.1.x`, tested on
+    0.1.3, image tags `0.1.0` (written once) and `0.1` (moves with each
+    release on the line), Helm chart `0.1.0`. Every numbered release that
+    exists follows the policy, so "A reader needs two numbers, not a table",
+    under Consequences, holds for all of them.
+  - *The releases from before.* The ten releases `v0.1.3`, `v0.2.0`, `v0.3.0`
+    and `v1.0.0` to `v1.2.0` were deleted, GitHub releases and git tags both.
+    Their numbers had been assigned automatically from commit titles and said
+    nothing about a gateway. The amendment above says "This change deletes no
+    tag and no release"; this one does. The tag names are free, and later
+    releases use them again at other commits: the fourth release on the `0.1`
+    line will be `v0.1.3`, and `v0.2.0` comes when the gateway reaches 0.2.
+    The refusal that amendment describes stays in `cut-release.mjs`, for a
+    tag pushed by hand or pushed back from a clone that still has an old one.
+  - *Gateway 0.0.116.* It is served by one release, named `gateway-0.0.116`:
+    a GitHub release and a git tag of that name on commit `906960b`, the tip
+    of the `0.2.x` branch, and the image tag `gateway-0.0.116`. It is outside
+    the version numbering on purpose: gateway 0.0.x releases were not
+    compatible with each other, so a console version `0.0.x` would claim too
+    much. It is for gateway 0.0.116 only, and no further release is planned
+    for it. The `0.2.x` branch is deleted; the tag keeps its commit. This
+    replaces "gateway 0.0.116 being served by the 0.2.x line", under "What
+    this replaces in ADR 0006", and the sentence about the `0.2.x` branch
+    under "Not built yet".
+  - *What "Implemented in steps" leaves unbuilt: nothing.* Of its four "Not
+    built yet" items, the first amendment replaced the sweep and built the
+    workflow that keeps `next` and creates `release/<major>.<minor>`, and the
+    second made the version computed and removed the release type. Built is
+    not the same as used. When `v0.1.0` was released, the Follow upstream
+    workflow had not run yet, so no `next` branch and no
+    `release/<major>.<minor>` branch existed; `v0.1.0` was started by hand,
+    and neither the automatic release of a merged `next` nor a release from a
+    release branch had run outside the tests. Keeping a release branch up to
+    date, and deciding what is backported to it, is still a person's work.
+
 ## References
 
 - [RFC 0014](https://github.com/NVIDIA/OpenShell/tree/main/rfc/0014-release-stability) — OpenShell's proposed release and stability policy, whose terms and whose rule on Stable interfaces this ADR uses

@@ -7,7 +7,7 @@ Standalone web admin UI for [OpenShell](https://github.com/NVIDIA/OpenShell), th
 - **Providers**: register inference/service credentials from provider profiles
 - **Gateway**: status, version, compute drivers
 
-The dashboard ships as a [container image](#container-image) and a Helm chart ([`deploy/helm/openshell-dashboard`](deploy/helm/openshell-dashboard)). It is no longer published as an npm package: the versions of `openshell-dashboard` already on npm stay there, and a release from `main` no longer adds one ([ADR 0008](docs/adrs/0008-retire-the-npm-package.md)).
+The dashboard ships as a [container image](#container-image) and a Helm chart ([`deploy/helm/openshell-dashboard`](deploy/helm/openshell-dashboard)). It is no longer published as an npm package: the versions of `openshell-dashboard` already on npm stay there, and no release adds one ([ADR 0008](docs/adrs/0008-retire-the-npm-package.md)).
 
 UI copy goes through an English-only i18n layer ([`frontend/src/i18n`](frontend/src/i18n); contract in [ADR 0004](docs/adrs/0004-downstream-consumption-i18n.md)). See [`frontend/src/i18n/README.md`](frontend/src/i18n/README.md) for contributor usage and how to override strings or add locales.
 
@@ -35,14 +35,18 @@ A dashboard release is numbered after the gateway release line it is for: dashbo
 
 | Your gateway | Dashboard | Container image |
 |---|---|---|
-| on the line above | a release whose first two numbers are that line, cut from `main`. `1.0.0` to `1.2.0` are for gateway `0.1.x` too; they are from before releases were numbered this way | `quay.io/gkrumbach07/openshell-dashboard:<X.Y.Z>`; for `1.1.0` and earlier, the [commit tag](#container-image) |
-| `0.0.116` | `0.2.0`, also from before; a maintenance line for it is being set up on the `0.2.x` branch | `quay.io/gkrumbach07/openshell-dashboard:sha-701454a` |
+| `0.1.x` | `0.1.x` | `quay.io/gkrumbach07/openshell-dashboard:0.1` for the newest release of the line, or an exact `:0.1.N` |
+| `0.0.116` | the [`gateway-0.0.116`](https://github.com/Gkrumbach07/openshell-dashboard/releases/tag/gateway-0.0.116) release | `quay.io/gkrumbach07/openshell-dashboard:gateway-0.0.116` |
 
-**Do not use dashboard `0.3.0`.** It works correctly with none of these gateways. Against `0.1.0` and newer it fails. Against `0.0.116` it does something worse than fail: it silently ignores the workspace. A sandbox created in workspace `team-a` lands in `default`, every workspace page lists the contents of `default`, and nothing reports an error. Its SDK sends the workspace in a field that gateway `0.0.116` does not have, and a protobuf field the receiver does not know is ignored without complaint.
+Nothing else is supported, and no build works with both of these gateways.
 
-No build spans `0.0.116` and `0.1.x`. 1.x against `0.0.116` fails every workspace-scoped call with `workspace '\n\adefault' not found`. `0.2.0` against `0.1.0` or newer fails with `workspace_scope is required` or a bare `internal error`. Gateway `0.0.116` also has no sandbox-template RPCs (it answers them with gRPC `UNIMPLEMENTED`), so sandbox templates do not work against it with any dashboard.
+`gateway-0.0.116` is a one-off build for gateway `0.0.116` only. It is named after its gateway and sits outside the version numbering on purpose: gateway `0.0.x` releases were not compatible with each other, so a dashboard `0.0.x` would claim too much. It has no Templates support, because gateway `0.0.116` has no sandbox-template RPCs. It does not work with gateway `0.1.0` or newer, and no further releases are planned for it.
 
-**The releases cut before this numbering do not follow it.** `0.1.3`, `0.2.0`, `0.3.0` and `1.0.0` to `1.2.0` got their numbers automatically from commit messages, so those numbers say nothing about a gateway, and 1.x is not a stability claim: nobody decided that a 1.0 milestone had been reached (see [#78](https://github.com/Gkrumbach07/openshell-dashboard/issues/78)). `1.x` is for gateway `0.1.x`. `0.1.3` and `0.2.0` are not for a gateway `0.1.x` or `0.2.x`: both are built on the SDK for gateway `0.0.116`. For these releases the table above is the only statement there is.
+**Ten earlier releases were withdrawn on 2026-10-10:** `0.1.3`, `0.2.0`, `0.3.0` and `1.0.0` to `1.2.0`. Their numbers had been assigned automatically from commit messages and said nothing about a gateway. The GitHub releases, their git tags and the image tags `1.1.1`, `1.2.0`, `1.2` and `0.2.x` were deleted; the `sha-<7>` images and the versions on npm stay, and the npm package is marked deprecated. The tag names are being reused, at other commits: the fourth release on the `0.1` line will be `v0.1.3`, and `v0.2.0` comes when the gateway reaches `0.2`. A clone or fork that still has the old tags should drop them, because `git fetch` does not replace a tag it already has (a fork on its own remote too, with `git push <remote> --delete` and the same names):
+
+```bash
+git tag -d v0.1.3 v0.2.0 v0.3.0 v1.0.0 v1.0.1 v1.0.2 v1.0.3 v1.1.0 v1.1.1 v1.2.0
+```
 
 ### How the line is established
 
@@ -60,7 +64,7 @@ CI also fails when the table above is stale. The [workflow that moves the pin](#
 
 ### Where each artifact says it
 
-Every release cut after `1.2.0` declares the line it was cut for, so you do not need this repository to find out what a given version needs:
+Every numbered release declares the line it was cut for, so you do not need this repository to find out what a given version needs:
 
 | Artifact | Where | How to read it |
 |---|---|---|
@@ -68,7 +72,7 @@ Every release cut after `1.2.0` declares the line it was cut for, so you do not 
 | GitHub release | a *Supported OpenShell gateways* section in the release notes | the [releases page](https://github.com/Gkrumbach07/openshell-dashboard/releases) |
 | Container image | labels `io.github.gkrumbach07.openshell-dashboard.gateway.line` and `.sdk` | `skopeo inspect docker://quay.io/gkrumbach07/openshell-dashboard:<tag>` |
 
-Release `1.2.0` was cut when a build declared a range of gateway versions instead, `0.1.0` to `0.1.2`: its notes state the range, and its image carries it as env `GATEWAY_SUPPORTED_MIN` and `GATEWAY_SUPPORTED_MAX` and labels `.gateway.min` and `.gateway.max`. Releases up to and including `1.1.1` declare nothing: their release notes have no such section, and their images carry neither the variables nor the labels. For those, the table under [Which dashboard for which gateway](#which-dashboard-for-which-gateway) is the only statement there is.
+The `gateway-0.0.116` release has no number, and its image carries neither label. Its name and its release notes say which gateway it is for.
 
 ## Quick start (local dev)
 
@@ -446,17 +450,9 @@ CI publishes `quay.io/gkrumbach07/openshell-dashboard` (linux/amd64 and linux/ar
 | `latest` | the newest commit on `main` that passed **every** CI job, including the compat suite against the pinned gateway, while it was the tip of `main` | CI goes green on the tip of `main`; it only moves forward, so re-running an older run does not pull it back. A release does not move it |
 | `sha-<7>` | the image built for that commit, whether or not its checks passed | only when CI is re-run in full for that commit, which builds it again |
 | `pr-<n>` | the latest build of that pull request | the PR is updated |
+| `gateway-0.0.116` | the one-off build for gateway `0.0.116`, the same image as `sha-906960b` | never |
 
-Version tags are created automatically starting with the first release cut after `1.1.1`. `1.1.1` itself was tagged once by hand (`1.1.1` is the same image as `sha-9fbdc37`, and like every release before the automation it declares no gateway range). Releases before it have no `X.Y.Z` or `X.Y` tag and never get one automatically. What exists for them is the commit tag, `sha-` plus the first seven characters of the released commit. The ones you are likely to need:
-
-| Release | Image tag |
-|---|---|
-| `1.1.1` | `1.1.1` (also `sha-9fbdc37`) |
-| `1.1.0` | `sha-71335e5` |
-| `0.3.0` | `sha-978bcb5` ([do not use](#which-dashboard-for-which-gateway)) |
-| `0.2.0` | `sha-701454a` |
-
-For a deployment, pin `X.Y.Z` (or the commit tag, for a release in the table above) and check it against your gateway in [Compatibility](#compatibility). How releases are cut and numbered is in [docs/releasing.md](docs/releasing.md).
+For a deployment, pin `X.Y.Z` (or `gateway-0.0.116`, for that gateway) and check it against your gateway in [Compatibility](#compatibility). How releases are cut and numbered is in [docs/releasing.md](docs/releasing.md).
 
 A running dashboard does not show a version number, because its image is built before a release is cut and only given more tags afterwards. **Help → About** shows the gateway release line the build is for and, for an image CI built, the first seven characters of the commit it is built from: the same ones as in its `sha-<7>` tag.
 

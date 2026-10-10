@@ -132,3 +132,7 @@ produced. Their decisions do not depend on it and are unchanged. One sentence
 is left without an object: ADR 0007 says that undoing 1.x "waits for the
 package rename in #78". There is no package to rename now, and what happens to
 the version numbers is not decided here.
+
+## Amendments
+
+- 2026-10-10, [ADR 0009](0009-console-release-policy.md), amendment of that date — decision 5 now holds for npm only. The versions on npm are still left alone. The git tags and GitHub releases from before ADR 0009 were deleted, and releases are numbered from `v0.1.0`, not from the last tag. The `0.2.x` branch is deleted without a version having been published to npm from it.
