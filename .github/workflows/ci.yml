@@ -353,9 +353,14 @@ jobs:
           file: deploy/Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          # DASHBOARD_COMMIT is what the About dialog shows as the commit the
+          # image is built from. It is the commit this run is for, the same
+          # one the image's sha-<7> tag is made from: on a pull request that
+          # is the merge commit GitHub tests, not the head of the branch.
           build-args: |
             GATEWAY_RELEASE_LINE=${{ steps.gateway.outputs.line }}
             OPENSHELL_SDK_VERSION=${{ steps.gateway.outputs.sdk }}
+            DASHBOARD_COMMIT=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,scope=${{ matrix.platform }},mode=max
           outputs: ${{ env.PUBLISH_IMAGE == 'true' && 'type=image,name=quay.io/gkrumbach07/openshell-dashboard,push-by-digest=true,name-canonical=true,push=true' || '' }}
@@ -528,9 +533,9 @@ jobs:
           helm push "$RUNNER_TEMP/openshell-dashboard-0.0.0-dev.tgz" \
             "oci://ghcr.io/${GITHUB_REPOSITORY,,}/helm-chart"
 
-  # The release pipeline (publish.yml, release.config.cjs, scripts/release/)
-  # runs for real only on main, after a merge. This job is where a mistake in it
-  # is caught beforehand, and it is also where the supported gateway release
+  # The release pipeline (publish.yml, scripts/release/) runs for real only on
+  # main and on release branches, after a merge. This job is where a mistake in
+  # it is caught beforehand, and it is also where the supported gateway release
   # line is kept honest:
   #
   #   - the line can be derived from the pins, the line compiled into the BFF
@@ -538,12 +543,12 @@ jobs:
   #     the pins name is the one backend/go.mod builds against
   #   - the README's Compatibility section states that line (it is generated;
   #     this fails when someone moved the pins and did not regenerate it)
-  #   - the scripts that write release notes, detect a
-  #     release, decide whether `latest` may move and retag the image do what
-  #     they say, against a stand-in docker and a throwaway git remote
-  #   - release.config.cjs loads in the semantic-release that publish.yml runs,
-  #     its rules cut the releases CONTRIBUTING.md says they cut, and the
-  #     release notes list a commit exactly when it cuts one
+  #   - the scripts that work out the version of a release, write its notes,
+  #     cut it, detect it, decide whether `latest` may move and retag the image
+  #     do what they say, against throwaway git repositories, a stand-in `gh`
+  #     and a stand-in docker
+  #   - the two steps of publish.yml that are shell written in the workflow
+  #     file decide what they are meant to: the tests run them
   release-tooling:
     runs-on: ubuntu-latest
     steps:
@@ -557,15 +562,3 @@ jobs:
         run: node scripts/readme-gateway-range.mjs --check
       - name: Release script tests
         run: node --test "scripts/**/*.test.mjs"
-      - name: Release configuration and rules
-        run: |
-          set -euo pipefail
-          # Check against the semantic-release that will actually run. The
-          # version lives in publish.yml and nowhere else.
-          spec="$(grep -oE 'semantic-release@[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/publish.yml | sort -u || true)"
-          if [ "$(printf '%s' "$spec" | grep -c . || true)" -ne 1 ]; then
-            echo "::error::expected exactly one pinned semantic-release version in publish.yml, found: ${spec:-none}"
-            exit 1
-          fi
-          npm install --no-audit --no-fund --no-package-lock --prefix "$RUNNER_TEMP/semantic-release" "$spec"
-          node scripts/release/check-release-config.mjs --from "$RUNNER_TEMP/semantic-release"

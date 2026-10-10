@@ -295,6 +295,56 @@ merged move to a new gateway patch release is released as a patch.
   to a new gateway minor is therefore still released as a patch, and the
   `next` pull request says so when it applies.
 
+- **2026-10-09: the version of a release is computed (decisions 1 to 5, as
+  far as version numbers go).** The two things the amendment above lists as
+  still not built are built: the console's version shares the gateway's line,
+  and nobody chooses a release type.
+
+  - *The computation.* The line is the major and minor number of the stable
+    release the branch pins: `release` in `deploy/ci/gateway-pins.json`, which
+    CI holds to the built-in line. The version is `<line>.<n>`, where `n` is
+    one more than the highest patch among the release tags `v<line>.*` that
+    exist, and `0` when the line has none
+    (`scripts/release/next-version.mjs`). Tags on other lines are ignored,
+    and so is any tag that is not exactly `vX.Y.Z`. A branch that pins a
+    pre-release is not released.
+  - *Decision 1.* The first two numbers of a release are its gateway line, so
+    whether a console works with a gateway can be read off two version
+    numbers.
+  - *Decisions 2 and 4.* There is no release type. The first release after
+    the pin moves to a new gateway minor is `X.Y.0`, because that line has no
+    tag yet, and every other release is the next patch. Nothing a contributor
+    writes can start a minor. "Held until the compatibility suite passes" is
+    enforced as it was: a release needs a green CI run for its commit.
+  - *Decision 3.* The merge of `next` is still released without being asked,
+    and its version is computed like any other: the next patch for a move
+    within the line, `X.Y.0` for a move to a new minor.
+  - *Decision 5.* The release workflow can be started by hand on
+    `release/<major>.<minor>`, where the same computation gives that line its
+    next patch. Only that line's `X.Y` image tag moves. The branch has to pin
+    its own line, and the commit has to contain the newest release of its
+    line. Keeping a release branch up to date, and deciding what is
+    backported to it, is still a person's work.
+  - *How.* `semantic-release` is removed. It numbers a release as the last
+    tag plus a chosen kind of bump, and starts a history at `1.0.0`; neither
+    is this model. `scripts/release/cut-release.mjs` computes the version,
+    writes the notes (the titles of the commits since the previous release,
+    then the *Supported OpenShell gateways* section) and creates the GitHub
+    release, which creates the tag.
+  - *What a running console shows.* No version number: an image is built
+    before a release is cut and is only given more tags afterwards. The About
+    dialog shows the gateway release line the build is for, and the commit it
+    is built from when the build was told.
+  - *The releases from before.* The tags `v0.1.3`, `v0.2.0`, `v0.3.0` and
+    `v1.0.0` to `v1.2.0` were numbered from commit titles. The computation
+    cannot tell them from its own, so `v0.1.3` is counted on the `0.1` line
+    for as long as it exists. What can be told is that its commit was not
+    built for that line: a dry run says so, and a real run refuses to release
+    while it is counted. This change deletes no tag and no release. "A reader needs two numbers, not a table", under
+    Consequences, holds for every release cut from here on.
+
+  ADR 0007's own amendment says which of its decisions this replaces.
+
 ## References
 
 - [RFC 0014](https://github.com/NVIDIA/OpenShell/tree/main/rfc/0014-release-stability) — OpenShell's proposed release and stability policy, whose terms and whose rule on Stable interfaces this ADR uses

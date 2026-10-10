@@ -29,6 +29,7 @@ return <Button>{t('create')}</Button>;
 
 ### Changed keys
 
+- `common` → `about`: the About dialog no longer shows a dashboard version, because a build does not know one. `dashboardVersion` is removed; an override of it is no longer read. `builtForGateway` and `gatewayLine` (which takes `{{line}}`) label and format the gateway release line the build is for, and `dashboardCommit` labels the commit it is made from.
 - `common` → `gatewayCompatibility`: the notice compares gateway release lines ([ADR 0009](../../../docs/adrs/0009-console-release-policy.md)). `unsupported.title` and `unsupported.body` have new text, and `unsupported.body` now takes `{{version}}` and `{{line}}` (it took `{{version}}` and `{{supported}}`). `versionRange`, `untested.title`, `untested.body` and `untested.dismiss` are removed; an override of any of them is no longer read.
 
 ## Downstream hosts

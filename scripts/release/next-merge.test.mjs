@@ -1,83 +1,20 @@
 // Run with: node --test "scripts/**/*.test.mjs"
 //
-// Releases are cut by hand, with a chosen type; the one automatic release is
-// the merge of `next`, the move to a new OpenShell release. These tests cover
-// the two pieces that decide that: release-type-plugin.mjs (what kind of
-// release) and next-merge.mjs (whether a commit may be released without anyone
-// asking).
+// A release is started by a person. The one automatic release is the merge of
+// `next`, the move to a new OpenShell release. These tests cover what decides
+// that: next-merge.mjs, which says whether a commit may be released without
+// anyone asking. What version it gets is in next-version.test.mjs.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { mergedFromNext } from './next-merge.mjs';
-import { analyzeCommits, compareChoice, suggest, suggestFor } from './release-type-plugin.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const quiet = { log() {}, warn() {}, error() {}, success() {} };
-const commit = (message) => ({ hash: 'x'.repeat(40), message });
-
-// ---- what kind of release ---------------------------------------------------
-
-test('the chosen type is released, whatever the commits suggest', async () => {
-  const breaking = [commit('feat!: drop the old props'), commit('fix: a typo')];
-  for (const type of ['patch', 'minor', 'major']) {
-    assert.equal(await analyzeCommits({}, { commits: breaking, env: { RELEASE_TYPE: type }, logger: quiet }), type);
-  }
-  // And the other way round: a major can be chosen when no title asks for one.
-  const quietCommits = [commit('docs: reword'), commit('Add foo (#74)')];
-  assert.equal(
-    await analyzeCommits({}, { commits: quietCommits, env: { RELEASE_TYPE: 'major' }, logger: quiet }),
-    'major',
-  );
-});
-
-test('running without a chosen type is an error, not a default', async () => {
-  for (const env of [{}, { RELEASE_TYPE: '' }, { RELEASE_TYPE: '(choose one)' }, { RELEASE_TYPE: 'MINOR' }]) {
-    await assert.rejects(
-      analyzeCommits({}, { commits: [commit('feat: x')], env, logger: quiet }),
-      /RELEASE_TYPE must be one of patch, minor, major/,
-    );
-  }
-});
-
-test('with no commits since the last release there is nothing to release', async () => {
-  assert.equal(await analyzeCommits({}, { commits: [], env: { RELEASE_TYPE: 'patch' }, logger: quiet }), null);
-});
-
-test('what the commits suggest: the largest of them, and nothing from CI commits', () => {
-  assert.equal(suggest([commit('fix: a'), commit('feat: b'), commit('docs: c')]), 'minor');
-  assert.equal(suggest([commit('fix: a'), commit('fix(bff)!: b')]), 'major');
-  assert.equal(suggest([commit('ci!: a'), commit('feat(ci): b'), commit('chore: c')]), null);
-  assert.equal(suggest([]), null);
-  assert.equal(suggestFor('fix: x\n\nBREAKING CHANGE: y'), 'major');
-  assert.equal(suggestFor('Revert "feat: x"\n\nThis reverts commit abc.'), 'patch');
-});
-
-test('a choice smaller than the commits suggest is the one that gets flagged', () => {
-  assert.equal(compareChoice('patch', 'major').smaller, true);
-  assert.match(compareChoice('patch', 'major').text, /LARGER than the patch that was chosen/);
-  assert.equal(compareChoice('minor', 'minor').smaller, false);
-  assert.equal(compareChoice('major', 'patch').smaller, false);
-  assert.equal(compareChoice('patch', null).smaller, false);
-});
-
-test('the choice and the comparison are written to the run summary', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'release-type-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const summary = join(dir, 'summary.md');
-  writeFileSync(summary, '');
-  await analyzeCommits(
-    {},
-    { commits: [commit('feat: x')], env: { RELEASE_TYPE: 'patch', GITHUB_STEP_SUMMARY: summary }, logger: quiet },
-  );
-  const written = readFileSync(summary, 'utf8');
-  assert.match(written, /Release type chosen: `patch`/);
-  assert.match(written, /suggest a minor release, which is LARGER/);
-});
 
 // ---- which commit may release without being asked ---------------------------
 

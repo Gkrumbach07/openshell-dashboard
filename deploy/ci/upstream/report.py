@@ -25,11 +25,12 @@ PINS_PATH = "deploy/ci/gateway-pins.json"
 NEXT = "next"
 BASE = "main"
 
-# The pull request title is the pin commit's title, and the release notes are
-# written from it. `fix`, so it is listed under Bug Fixes in the release that
-# follows the merge. The title is not what releases it: publish.yml cuts a
-# patch for a merged pull request whose head was `next` in this repository
-# (scripts/release/next-merge.mjs).
+# The pull request title is the pin commit's title, and the notes of the
+# release that follows the merge list it as written. The title is not what
+# releases it, and not what numbers it: publish.yml releases a merged pull
+# request whose head was `next` in this repository
+# (scripts/release/next-merge.mjs), at the version worked out from the pin
+# (scripts/release/next-version.mjs).
 PR_TITLE = "fix: move to OpenShell %s"
 
 PR_MARKER = "<!-- follow-upstream:next -->"
@@ -225,15 +226,16 @@ def pr_body(plan, outcome, has_bot_token=False, automerge=False, repo_url="", re
             "and each commit on `next` land on `main` as they are.",
         ]
     lines += [
-        "After the merge, a patch release is cut by itself once CI has passed on `main`.",
+        "After the merge, a release is cut by itself once CI has passed on `main`. Nobody chooses its "
+        "version: it is the console's next patch on the gateway release line `main` then pins.",
     ]
     if new_line:
         lines += [
             "",
-            "**That release is numbered as a patch.** The first console release for a new gateway "
-            "release line should be a minor (ADR 0009, decision 2), and working the version out from "
-            "the move is not built yet. If that matters for this release, settle it before merging: "
-            "the patch is cut without anyone being asked.",
+            "**That release starts the console's %s line.** A line that has no release yet starts "
+            "at `.0`, so this one is the console's minor release for the new gateway release line "
+            "(ADR 0009, decision 2). It is cut without anyone being asked."
+            % _code(versions.line(release) + ".x"),
         ]
     return "\n".join(lines) + "\n"
 

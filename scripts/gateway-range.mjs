@@ -9,10 +9,10 @@
 // on, and the gateway every change is tested against.
 //
 // This file is the only place that turns the pins into a line. The container
-// image's label (ci.yml), the release notes (release.config.cjs) and the
-// README's Compatibility section (readme-gateway-range.mjs) all call it, so a
-// published artifact cannot claim something CI did not test and two artifacts
-// cannot disagree with each other.
+// image's label (ci.yml), the version and the notes of a release
+// (scripts/release/) and the README's Compatibility section
+// (readme-gateway-range.mjs) all call it, so a published artifact cannot claim
+// something CI did not test and two artifacts cannot disagree with each other.
 //
 // One thing restates the line and cannot call this file: the BFF, which has
 // the line compiled in so that every image knows it whatever built it

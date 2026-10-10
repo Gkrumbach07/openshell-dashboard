@@ -55,33 +55,30 @@ test: add sandbox create form tests
 
 Feature and behavior PRs should link an accepted issue.
 
-#### Merging does not release; the title still matters
+#### Merging does not release; the title is the release note
 
-Merging a pull request publishes nothing. A release is cut by a person, who starts the `Release` workflow on `main` and chooses patch, minor or major ([docs/releasing.md](docs/releasing.md)). The one exception is the pull request from `next`, the move to a new OpenShell release, which is released as a patch once it is merged.
+Merging a pull request publishes nothing. A release is started by a person, who runs the `Release` workflow on `main` ([docs/releasing.md](docs/releasing.md)). The one exception is the pull request from `next`, the move to a new OpenShell release, which is released once it is merged.
 
-The commit message still does two jobs, so write it as carefully as before. With a squash merge the pull request **title** is the commit message. It is what the release notes are written from, and it is what the person cutting the release is told the commits suggest:
+Nobody chooses the version of a release, and no title changes it. It is the gateway release line the branch is built on, then the next patch number ([ADR 0009](docs/adrs/0009-console-release-policy.md)): a `feat:` does not make a minor, and a `!` does not make a major.
 
-| Commit | Release it suggests |
+The title still matters, because it is the release note. With a squash merge the pull request **title** is the commit message, and the notes of a release list the title of every commit since the release before it, as written. Write it for someone reading the release page:
+
+| Commit | In the release notes |
 |--------|-----------------|
-| `fix: …`, `perf: …` | patch |
-| `feat: …` | minor |
-| a `!` after the type or scope (`feat!: …`, `fix(bff)!: …`), or a `BREAKING CHANGE:` footer | major |
-| `docs:`, `test:`, `chore:`, `build:`, `refactor:`, `style:` | none |
-| anything whose type or scope is `ci` (`ci: …`, `fix(ci): …`, `feat(ci): …`), even when marked breaking | none |
-| a `git revert` under the title git gives it, `Revert "…"`, **whatever it reverts** | patch |
-| any other title that is not a Conventional Commit, such as `Add foo (#74)` | none |
+| `fix: …`, `feat: …`, `perf: …`, `docs: …`, and every other type | listed, as written |
+| anything whose type or scope is `ci` (`ci: …`, `fix(ci): …`, `feat(ci)!: …`) | left out |
+| a `git revert` under the title git gives it, `Revert "…"`, **whatever it reverts** | listed |
+| any other title that is not a Conventional Commit, such as `Add foo (#74)` | listed, as written |
 
-**Workflow changes use the `ci:` type.** A change to `.github/workflows/`, or to the scripts CI and the release pipeline run, alters nothing in the image, so it does not belong in the release notes and must not make the commits look like they call for a release. When releases were automatic, `fix(ci):` and `feat(ci):` did worse than that: releases 1.0.1, 1.0.2, 1.0.3 and 1.1.0 were each published by a commit that changed nothing we ship. A `ci` scope is treated the same as the `ci` type, but write `ci:` so the title says what the change is.
+**Workflow changes use the `ci:` type.** A change to `.github/workflows/`, or to the scripts CI and the release pipeline run, alters nothing in the image, so it does not belong in the release notes. A `ci` scope is treated the same as the `ci` type, but write `ci:` so the title says what the change is.
 
-A commit whose type or scope is `ci` is left out of the release notes and suggests no release, even when it is marked breaking.
-
-**Reverting a CI change: title it `ci: revert …`.** The title `git revert` writes, `Revert "ci: pin the runners"`, has no type and no scope, so nothing can tell that the commit it undoes was about CI. Left as it is, the revert is listed in the next release's notes and counts as suggesting a patch. Retitle the commit, or the pull request if it is squash-merged:
+**Reverting a CI change: title it `ci: revert …`.** The title `git revert` writes, `Revert "ci: pin the runners"`, has no type and no scope, so nothing can tell that the commit it undoes was about CI, and it is listed in the next release's notes. Retitle the commit, or the pull request if it is squash-merged:
 
 ```
 ci: revert "pin the runners"
 ```
 
-Use `fix:` or `feat:` only for something a user of the dashboard would notice. The rules live in [`release.config.cjs`](release.config.cjs); CI runs sample commits through them on every pull request (`scripts/release/check-release-config.mjs`), and [docs/releasing.md](docs/releasing.md) describes the rest of the pipeline.
+Use `fix:` or `feat:` only for something a user of the dashboard would notice, and mark a breaking change with a `!` after the type or scope (`fix(bff)!: …`) so that it stands out in the notes. What is listed is decided by `isCiCommit` in [`scripts/release/release-notes.mjs`](scripts/release/release-notes.mjs), which the script tests cover, and [docs/releasing.md](docs/releasing.md) describes the rest of the pipeline.
 
 #### The pinned OpenShell release
 

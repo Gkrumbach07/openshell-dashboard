@@ -611,10 +611,14 @@ class TheSweepIsRetired(unittest.TestCase):
 
 
 class AutomaticRelease(unittest.TestCase):
-    def test_publish_asks_whether_the_commit_was_merged_from_next_and_cuts_a_patch(self):
+    def test_publish_asks_whether_the_commit_was_merged_from_next_and_releases_it(self):
         self.assertIn('node scripts/release/next-merge.mjs --sha "$sha" --repo "$REPO"', PUBLISH)
         plan_step = PUBLISH[PUBLISH.index("next-merge.mjs --sha") :]
-        self.assertIn('type="patch"', plan_step[: plan_step.index("} >> \"$GITHUB_OUTPUT\"")])
+        # It decides that the merge is released, not what the release is
+        # numbered: the version is worked out from the pinned release and the
+        # tags (scripts/release/next-version.mjs).
+        self.assertIn('release="true"', plan_step[: plan_step.index("} >> \"$GITHUB_OUTPUT\"")])
+        self.assertNotIn("release_type", PUBLISH)
 
 
 class StackScript(unittest.TestCase):
