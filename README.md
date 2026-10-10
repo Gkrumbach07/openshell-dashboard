@@ -80,8 +80,8 @@ This branch is built on:
 | | |
 |---|---|
 | Supported gateways | `0.1.x` |
-| Tested on | `0.1.3` |
-| OpenShell Go SDK | `v0.0.0-20261009050449-e1f3c82caa3e` |
+| Tested on | `0.1.4` |
+| OpenShell Go SDK | `v0.0.0-20261013191600-5a7728c304b5` |
 <!-- gateway-range:end -->
 
 [docs/compatibility.md](docs/compatibility.md) says what the dashboard shows when the gateway is on another line, and how the claim is tested.
