@@ -1,5 +1,5 @@
 ---
-description: Security conventions for the OpenShell Dashboard
+description: Security conventions for OpenShell Dashboard
 globs: "backend/**,frontend/src/api/**"
 alwaysApply: false
 ---
@@ -8,12 +8,12 @@ alwaysApply: false
 
 ## Auth
 
-- The BFF is relay-only (ADR 0002): it NEVER terminates authentication. A fronting auth proxy (oauth2-proxy standalone, the host platform's proxy when embedded) owns login, sessions, refresh, logout, and CSRF, and injects the bearer
+- The BFF is relay-only (ADR 0002): it NEVER terminates authentication. The auth proxy (oauth2-proxy, which the Helm chart runs as a sidecar) owns sign-in, sessions, refresh, sign-out and CSRF, and sets the bearer
 - Bearer resolution is one precedence chain — `x-forwarded-access-token` → `Authorization: Bearer` → 401. No cookies, no session codec, no OIDC endpoints in the BFF
 - The BFF NEVER validates tokens (no JWKS, no go-oidc, no JWT parsing) and NEVER authorizes (ADR 0002). The gateway validates against its own OIDC JWKS and enforces RBAC
-- Deployment invariant: trusting `x-forwarded-access-token` is safe only when the proxy is the sole network path to the BFF (localhost sidecar, pod-internal port, proxy-only ingress). Manifests must enforce this; never expose the BFF port directly in an authenticated deployment
+- Deployment invariant: trusting `x-forwarded-access-token` is safe only when the proxy is the sole network path to the BFF (ADR 0002, decision 5). The Helm chart enforces it: the BFF listens on `127.0.0.1`, the Service exposes the proxy's port only, and the NetworkPolicy admits that port only. Never expose the BFF port directly in a deployment
 - Never expose raw gateway errors to the frontend — use `apiutils.WriteSDKError()` which maps SDK and fallback gRPC status codes to safe HTTP status codes
-- The BFF has no CORS middleware — it is accessed same-origin (behind a proxy or via the Vite dev server proxy)
+- The BFF has no CORS middleware — it is accessed same-origin (behind the auth proxy, or through the Vite dev server's proxy in local development), and the terminal's WebSocket refuses a handshake from another origin
 
 ## Secrets
 
@@ -33,5 +33,5 @@ alwaysApply: false
 
 ## No inline credentials
 
-- Gateway URL, OIDC issuer, auth header names — all from env vars or flags, never hardcoded
+- Gateway URL, TLS files, auth header names — all from flags or environment variables, never hardcoded
 - No `.env` files committed

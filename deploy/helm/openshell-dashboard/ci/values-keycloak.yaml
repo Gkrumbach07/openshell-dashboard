@@ -1,21 +1,39 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
 # SPDX-License-Identifier: Apache-2.0
-# Example Keycloak OIDC settings. Replace the issuer with a URL reachable by both
-# browser and pods, matching the gateway's server.oidc.issuer.
-# Layer values-route-edge.yaml and values-openshift-scc.yaml for OpenShift.
-# Add an audience mapper to the dashboard client so its access and id token aud
-# contains openshell-dashboard or specified dashboard audience.
-# If not using client roles on an API client, a role mapping must be added for the gateway's expected audience
-# Register https://<dashboard-host>/oauth2/callback.
+# Keycloak as the identity provider, with the realm of
+# deploy/keycloak/openshell-realm.json. Add one way to reach the dashboard:
+# values-gateway-api.yaml, values-route-edge.yaml or values-port-forward.yaml.
+#
+# What has to agree with the gateway's OIDC settings:
+#   issuer        the gateway's issuer, at a URL browsers and pods both reach
+#   adminRole     the gateway's admin role
+#   allowedRoles  the gateway's admin role and user role, each written as
+#                 <the client that holds the role>:<role>
+#
+# What has to agree with the Keycloak client:
+#   clientId, and its client secret in the Secret named by existingSecret
+#   codeChallengeMethod: the client requires PKCE with S256
+#   https://<dashboard host>/oauth2/callback is a valid redirect URI
+#   https://<dashboard host>/* is a valid post logout redirect URI
 oidc:
   provider: keycloak-oidc
-  issuer: https://keycloak.apps.example.com/realms/openshell
-  audience: openshell-cli
-  rolesClaim: realm_access.roles
-  adminRole: openshell-admin
+  issuer: https://keycloak.example.com/realms/openshell
   clientId: openshell-dashboard
+  existingSecret: openshell-dashboard-oidc
+  codeChallengeMethod: S256
+  adminRole: openshell-admin
   allowedRoles:
     - openshell-api:openshell-admin
     - openshell-api:openshell-user
-  existingSecret: openshell-dashboard-oidc
-  codeChallengeMethod: S256
+
+# Sign-out that ends the Keycloak session as well as the dashboard's. The
+# address at the end of logoutURL is the dashboard's own, so it changes with
+# the host (values-route-edge.yaml uses another one). With
+# values-port-forward.yaml, leave the dashboard and authProxy blocks out.
+dashboard:
+  # /oauth2/sign_out?rd=<URL-encoded Keycloak logout URL, which returns to the dashboard>
+  logoutURL: "/oauth2/sign_out?rd=https%3A%2F%2Fkeycloak.example.com%2Frealms%2Fopenshell%2Fprotocol%2Fopenid-connect%2Flogout%3Fclient_id%3Dopenshell-dashboard%26post_logout_redirect_uri%3Dhttps%3A%2F%2Fdashboard.example.com%2F"
+authProxy:
+  whitelistDomains: [keycloak.example.com]
+  # the chart leaves this flag out once whitelistDomains is set
+  extraArgs: ["--skip-provider-button=true"]

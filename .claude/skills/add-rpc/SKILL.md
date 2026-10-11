@@ -1,6 +1,6 @@
 ---
 name: add-rpc
-description: Add a new OpenShell API capability to the dashboard using the vendored Go SDK. Updates the handler, models, frontend API hook, and types. Use when adding a new endpoint to the dashboard.
+description: Add a new OpenShell API capability to the dashboard using the OpenShell Go SDK. Updates the handler, models, frontend API hook, and types. Use when adding a new endpoint to the dashboard.
 ---
 
 # Add API Capability
@@ -12,28 +12,29 @@ types.
 ## Arguments
 
 `$ARGUMENTS` — SDK method or gateway capability name. Example:
-`CreateWorkspace`, `ListProviders`, `GetInferenceRoute`
+`CreateWorkspace`, `ListProviders`, `GetSandboxTemplate`
 
 ## Steps
 
 ### 1. Find the capability in the SDK
 
-Read the vendored SDK surface described in `.claude/rules/openshell-api.md`.
+Read the SDK surface described in `.claude/rules/openshell-api.md`.
 Start with `openshell/v1/` and `types/` in the pinned module version. Note:
-- Which SDK sub-client owns the capability (`Sandboxes()`, `Workspaces()`, `Providers()`, `Exec()`, `Inference()`, `Policy()`, `Services()`, ...)
+- Which SDK sub-client owns the capability (`Sandboxes()`, `SandboxTemplates()`, `Workspaces()`, `Providers()`, `Exec()`, `Config()`, `Policy()`, `Services()`, `Health()`)
 - Workspace scoping
 - Whether the API addresses a sandbox by name or UUID
 - Secret-bearing fields or write-only fields that must not be sent back to the frontend
-- Whether the public SDK is actually missing what you need; if so, document the gap before adding any escape hatch
+- Whether the SDK is actually missing what you need; if so, name the gap before adding a direct gRPC call (ADR 0003, decision 4)
 
 If the capability exists upstream but not in the **pinned** SDK, do not run
 `go get ...@latest` to reach it. The SDK moves with the gateway, to the commit
 of an upstream release tag, and the Follow upstream workflow makes that move
-on the `next` branch (see "SDK updates" in `.claude/rules/bff-go.md` and ADR
-0009). If the capability is in the upcoming release, the endpoint is work for
-`next`: branch from it and open the pull request into it. Also check that the
-gateway this branch pins (`node scripts/gateway-range.mjs`) actually serves
-the RPC — an older gateway answers gRPC `UNIMPLEMENTED` for one it predates.
+on the `next` branch (ADR 0005, decision 7; see "SDK updates" in
+`.claude/rules/bff-go.md`). If the capability is in the upcoming release, the
+endpoint is work for `next`: branch from it and open the pull request into it.
+Also check that the gateway this branch pins (`node scripts/gateway-range.mjs`
+prints its release) actually serves the RPC: a gateway answers gRPC
+`UNIMPLEMENTED` for an RPC it does not have.
 
 ### 2. Update models / request parsing
 
@@ -53,10 +54,9 @@ For request bodies:
 
 ### 3. Service interface
 
-Handlers never hold the SDK client directly — they depend on a narrow
-interface in `backend/pkg/services/`, which is the seam downstream swaps to
-layer custom behavior on top of the upstream default. For most resources the
-interface just embeds the SDK's sub-client:
+Handlers never hold the SDK client directly. They depend on a narrow
+interface in `backend/pkg/services/`. For most resources the interface just
+embeds the SDK's sub-client:
 
 ```go
 // backend/pkg/services/workspace.go
@@ -82,7 +82,7 @@ func (h *WorkspacesHandler) CreateWorkspace(w http.ResponseWriter, r *http.Reque
         return
     }
     if !apiutils.ValidDNS1123(body.Name) {
-        apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidName, "name must be a valid DNS-1123 label")
+        apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidName, "workspace name must be a valid DNS-1123 label")
         return
     }
     workspace, err := h.svc.Create(r.Context(), body.Name, body.Labels)
@@ -96,8 +96,8 @@ func (h *WorkspacesHandler) CreateWorkspace(w http.ResponseWriter, r *http.Reque
 
 Key patterns:
 - No `Handler` suffix on method names (the struct carries it, not the method)
-- URL params come from `r.PathValue("workspace")` — chi populates these via
-  `SetPathValue`, so do not import chi in a handler
+- URL params come from `r.PathValue("workspace")` — chi sets them on every
+  matched route, so do not import chi in a handler
 - `apiutils.DecodeBody(w, r, &dst)` for request parsing (returns false on error,
   writes the response itself)
 - `apiutils.WriteSDKError(w, err)` for gateway/SDK errors
@@ -106,10 +106,19 @@ Key patterns:
 - Error codes are `apiutils.ResponseCode` constants, never bare strings — add a
   new constant to `pkg/apiutils/respond.go` rather than inlining a literal
 
-Register the route in `backend/pkg/server/app.go`:
+Register the route in `Routes()` in `backend/pkg/server/app.go`. Routes are
+nested: the workspace routes sit inside `r.Route("/workspaces", ...)`, and a
+route that belongs to one workspace goes inside `r.Route("/{workspace}", ...)`:
 
 ```go
-r.Post("/workspaces", app.workspaces.CreateWorkspace)
+r.Route("/workspaces", func(r chi.Router) {
+    r.Get("/", app.workspaces.ListWorkspaces)
+    r.Post("/", app.workspaces.CreateWorkspace)
+    r.Route("/{workspace}", func(r chi.Router) {
+        r.Get("/", app.workspaces.GetWorkspace)
+        // ...
+    })
+})
 ```
 
 If the resource has no handler struct yet, add one plus its constructor, and
@@ -117,13 +126,19 @@ wire it in `NewApp`.
 
 ### 5. Frontend types
 
-Add to `frontend/src/types/`:
+Every type is in `frontend/src/types/index.ts`; there are no per-resource type
+files. Add the response type and the request body there, in the shape the BFF
+sends and takes:
 
 ```typescript
 export type Workspace = {
+  metadata: ObjectMeta;
+  phase: WorkspacePhase;
+};
+
+export type CreateWorkspaceRequest = {
   name: string;
-  labels: Record<string, string>;
-  createdAt: string;
+  labels?: Record<string, string>;
 };
 ```
 
@@ -133,10 +148,11 @@ Add to the appropriate file in `frontend/src/api/`. Use `get`, `post`, `put`, `d
 
 ```typescript
 import { post } from './client';
-import type { Workspace } from '../types/workspace';
+import type { CreateWorkspaceRequest, Workspace } from '../types';
 
-export const createWorkspace = (name: string): Promise<Workspace> =>
-  post<Workspace>('/api/v1/workspaces', { name });
+export const createWorkspace = (
+  body: CreateWorkspaceRequest,
+): Promise<Workspace> => post<Workspace>('/api/v1/workspaces', body);
 ```
 
 ### 7. Frontend hook
@@ -145,25 +161,29 @@ Add query/mutation hooks using the centralized `queryKeys` from `./queryKeys`:
 
 ```typescript
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createWorkspace } from './workspaces';
 import { workspaceKeys } from './queryKeys';
 
 export const useCreateWorkspace = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (name: string) => createWorkspace(name),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: workspaceKeys.all }),
+    mutationFn: createWorkspace,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.all }),
   });
 };
 ```
 
-For query hooks, use `queryKeys` factories. Check `queryKeys.ts` for available keys — not all resources have a `list()` method (e.g., `workspaceKeys` has `all`, `detail(name)`, `members(workspace)` but no `list()`):
+Check `queryKeys.ts` for the factories a resource has. Use `list(...)` for a
+list query and invalidate with `all`. Lists and status are polled, not pushed
+(ADR 0003, decision 6): give such a query a `refetchInterval` from
+`frontend/src/constants.ts`:
 
 ```typescript
-export const useWorkspaces = () =>
+export const useWorkspaces = (labelSelector?: string) =>
   useQuery({
-    queryKey: workspaceKeys.all,
-    queryFn: () => listWorkspaces(),
+    queryKey: workspaceKeys.list(labelSelector),
+    queryFn: () => listWorkspaces(labelSelector),
+    refetchInterval: RESOURCE_POLL_MS,
   });
 ```
 
@@ -175,6 +195,6 @@ relevant mock SDK sub-client instead of inventing a parallel interface layer.
 ### 9. Verify
 
 ```bash
-cd backend && go build ./... && go test ./...
-cd frontend && npm run typecheck
+(cd backend && go build ./... && go test ./...)
+(cd frontend && npm run typecheck)
 ```

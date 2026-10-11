@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
 # SPDX-License-Identifier: Apache-2.0
-# Reuse a pre-existing HTTPS Gateway; it terminates TLS and forwards HTTP to
+# Attach to an existing HTTPS Gateway; it terminates TLS and forwards HTTP to
 # oauth2-proxy, preserving the original Host header for terminal WebSockets.
+# The Gateway's listener has to admit routes from the dashboard's namespace.
 httpRoute:
   enabled: true
   hostnames: [dashboard.example.com]
@@ -9,5 +10,10 @@ httpRoute:
     create: false
     name: ingress
     namespace: openshell-ingress
+    # The name of the Gateway's HTTPS listener.
+    sectionName: https
     listener:
       protocol: HTTPS
+networkPolicy:
+  # The namespace of the Gateway's data-plane pods.
+  ingressNamespace: envoy-gateway-system
