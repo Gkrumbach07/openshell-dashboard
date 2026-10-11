@@ -18,7 +18,7 @@ import nextbranch
 import versions
 from upstream import UPSTREAM_URL
 
-ADR_PATH = "docs/adrs/0009-console-release-policy.md"
+ADR_PATH = "docs/adrs/0005-gateway-compatibility-and-releases.md"
 WORKFLOW_PATH = ".github/workflows/follow-upstream.yml"
 PINS_PATH = "deploy/ci/gateway-pins.json"
 
@@ -36,9 +36,7 @@ PR_TITLE = "fix: move to OpenShell %s"
 PR_MARKER = "<!-- follow-upstream:next -->"
 CONFLICT_MARKER = "<!-- follow-upstream:conflict %s -->"
 ISSUE_MARKER = "<!-- follow-upstream:check-a -->"
-# The label the retired compat sweep kept its one issue under. Kept, so the
-# first run of this workflow rewrites or closes that issue instead of leaving
-# it open beside a new one.
+# The label of the one issue check A keeps.
 ISSUE_LABEL = "compat-migrate"
 ISSUE_LABEL_DESCRIPTION = "Follow upstream: main fails the compatibility suite against an upcoming OpenShell release"
 
@@ -142,7 +140,7 @@ def pr_body(plan, outcome, has_bot_token=False, automerge=False, repo_url="", re
         "This is `next`: the move to the upcoming OpenShell release, opened early (%s, decisions 7 "
         "and 8). The %s workflow keeps the branch and rewrites this description, so an edit made "
         "here by hand is lost."
-        % (_link("ADR 0009", repo_url, ADR_PATH), _link("Follow upstream", repo_url, WORKFLOW_PATH)),
+        % (_link("ADR 0005", repo_url, ADR_PATH), _link("Follow upstream", repo_url, WORKFLOW_PATH)),
         "",
     ]
     if stable:
@@ -234,7 +232,7 @@ def pr_body(plan, outcome, has_bot_token=False, automerge=False, repo_url="", re
             "",
             "**That release starts the console's %s line.** A line that has no release yet starts "
             "at `.0`, so this one is the console's minor release for the new gateway release line "
-            "(ADR 0009, decision 2). It is cut without anyone being asked."
+            "(ADR 0005, decision 2). It is cut without anyone being asked."
             % _code(versions.line(release) + ".x"),
         ]
     return "\n".join(lines) + "\n"
@@ -354,7 +352,7 @@ def issue_text(plan, run_url="", repo_url=""):
         ISSUE_MARKER,
         "Kept by %s (%s, decision 8). Rewritten in place on every run and closed when check A passes "
         "again. Do not edit it by hand: the next run overwrites it."
-        % (_link("the Follow upstream workflow", repo_url, WORKFLOW_PATH), _link("ADR 0009", repo_url, ADR_PATH)),
+        % (_link("the Follow upstream workflow", repo_url, WORKFLOW_PATH), _link("ADR 0005", repo_url, ADR_PATH)),
         "",
         "**Check A failed.** The BFF built from `main` (OpenShell %s, SDK %s) does not pass "
         "`backend/test/compat` against the OpenShell %s %s. The failing tests are in %s."
@@ -375,7 +373,7 @@ def issue_text(plan, run_url="", repo_url=""):
             "installed today and has not been touched fails against it. **Upstream broke a Stable "
             "interface inside a minor release line**, which OpenShell's release policy (RFC 0014) says "
             "it does not do, and which the console's claim to work with every gateway of its line "
-            "rests on (ADR 0009, decision 10)."
+            "rests on (ADR 0005, decision 10)."
             % (_code(version), _code(target["line"] + ".x")),
             "",
             "### What to do",
@@ -418,7 +416,7 @@ def issue_text(plan, run_url="", repo_url=""):
             "",
             "Do the work on `next`. Check B, CI on the `next` pull request, runs the suite with the "
             "console built on the new line's SDK, and the console's minor release is held until it "
-            "passes (ADR 0009, decision 2).",
+            "passes (ADR 0005, decision 2).",
         ]
     return title, "\n".join(lines) + "\n"
 

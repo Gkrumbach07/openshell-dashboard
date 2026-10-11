@@ -90,7 +90,7 @@ test('a release that is not a release is refused, not read as a line', () => {
   }
 });
 
-test('there is no declaration without the SDK, or from the lanes the file used to hold', () => {
+test('there is no declaration without the SDK, or from a pins file that lists lanes', () => {
   assert.throws(() => deriveGatewayLine({ release: '0.1.2' }), /"sdk" is missing/);
   assert.throws(() => deriveGatewayLine({ release: '0.1.2', sdk: ' ' }), /"sdk" is missing/);
   const lanes = { sdk: SDK, lanes: [{ version: '0.1.2', required: true }] };
@@ -98,9 +98,9 @@ test('there is no declaration without the SDK, or from the lanes the file used t
   assert.throws(() => deriveGatewayLine(null), /not an OpenShell release/);
 });
 
-// The release notes compare a release with the one before it, and releases
-// cut before 2026-10-09 have a pins file that lists lanes.
-test('the line of an earlier pins file is that of its newest required lane', () => {
+// A tag pushed back from an old clone can point at a commit whose pins file
+// lists lanes.
+test('the line of a pins file that lists lanes is that of its newest required lane', () => {
   const lane = (version, required = true) => ({ version, required });
   assert.equal(lineOfLanes({ lanes: [lane('0.1.2'), lane('0.1.0')] }), '0.1');
   assert.equal(lineOfLanes({ lanes: [lane('0.9.0'), lane('0.10.0'), lane('0.2.11')] }), '0.10');

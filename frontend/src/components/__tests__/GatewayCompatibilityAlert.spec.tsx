@@ -90,16 +90,16 @@ describe('GatewayCompatibilityAlert', () => {
 
   it.each([
     ['supported', gateway('0.1.3', { status: 'supported', ...line })],
-    // A later patch, a pre-release and a downstream rebuild of the line are
-    // the line: the BFF says supported and nothing is shown.
+    // A later patch, a pre-release and a rebuild of the line are the line:
+    // the BFF says supported and nothing is shown.
     ['a later patch', gateway('0.1.9', { status: 'supported', ...line })],
     ['a pre-release', gateway('0.1.4-pre.2', { status: 'supported', ...line })],
-    ['a rebuild', gateway('0.1.2-rhaiv.5', { status: 'supported', ...line })],
+    ['a rebuild', gateway('0.1.2-vendor.5', { status: 'supported', ...line })],
     // A gateway that does not know its own version is unknown: the BFF does
     // not guess, so neither does the notice.
     ['unknown', gateway('0.0.0', { status: 'unknown', ...line })],
     ['unknown without a line', gateway('0.0.116', { status: 'unknown' })],
-    // A host that replaced the route with something else.
+    // An answer that carries no verdict at all.
     ['a response without a verdict', { gatewayVersion: '0.0.116' }],
   ])('shows nothing for %s', (_name, info) => {
     mockGateway(info);
@@ -226,14 +226,14 @@ describe('GatewayCompatibilityAlert', () => {
 
   describe('wrapper', () => {
     const wrapper = (alert: React.ReactElement) => (
-      <section data-testid="host-layout">{alert}</section>
+      <section data-testid="page-layout">{alert}</section>
     );
 
     it('wraps the alert when one is shown, inside the live region', () => {
       mockGateway(gateway('0.2.0', { status: 'unsupported', ...line }));
       render(<GatewayCompatibilityAlert wrapper={wrapper} />);
 
-      const layout = screen.getByTestId('host-layout');
+      const layout = screen.getByTestId('page-layout');
       expect(layout).toContainElement(
         screen.getByTestId('gateway-compatibility-alert'),
       );
@@ -244,7 +244,7 @@ describe('GatewayCompatibilityAlert', () => {
       mockGateway(gateway('0.1.3', { status: 'supported', ...line }));
       render(<GatewayCompatibilityAlert wrapper={wrapper} />);
 
-      expect(screen.queryByTestId('host-layout')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('page-layout')).not.toBeInTheDocument();
       expectNothingShown();
     });
 
@@ -257,7 +257,7 @@ describe('GatewayCompatibilityAlert', () => {
       mockGateway(gateway('0.1.3', { status: 'supported', ...line }));
       rerender(<GatewayCompatibilityAlert wrapper={wrapper} />);
 
-      expect(screen.queryByTestId('host-layout')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('page-layout')).not.toBeInTheDocument();
       expectNothingShown();
     });
   });

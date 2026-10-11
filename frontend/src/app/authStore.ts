@@ -1,7 +1,7 @@
-// Client-side auth state. Real sessions live in an HttpOnly cookie managed by
-// the BFF — JavaScript never sees a token. The only state kept here is the
-// dev-mode flag ("Continue as developer" when AUTH_DISABLED=true), which is
-// not a credential.
+// Client-side auth state. The session belongs to the auth proxy in front of
+// the BFF, which keeps it in its own HttpOnly cookie: JavaScript never sees a
+// token. The only state kept here is the dev-mode flag ("Continue as
+// developer" when AUTH_DISABLED=true), which is not a credential.
 const DEV_MODE_KEY = 'openshell-dashboard.devMode';
 
 export const isDevSession = (): boolean =>

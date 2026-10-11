@@ -107,8 +107,8 @@ export const useApplyApprovalMode = (workspace: string) => {
 
   const apply = useCallback(
     async (created: Sandbox, mode: ApprovalMode): Promise<boolean> => {
-      // Nothing of the answer is read for the default, so a create succeeds
-      // exactly as it did before there was a mode to set.
+      // Nothing of the answer is read for the default: there is no setting
+      // to write, so the create is the whole of it.
       if (mode === 'manual') {
         return true;
       }

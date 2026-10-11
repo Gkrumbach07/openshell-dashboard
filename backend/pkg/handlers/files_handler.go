@@ -190,8 +190,7 @@ type uploadedFile struct {
 }
 
 // uploadResponse answers an upload in which every file was written. The
-// fields beside Files describe the first file, as they did when an upload was
-// always one file.
+// fields beside Files describe the first file.
 type uploadResponse struct {
 	Path     string         `json:"path"`
 	Stdout   string         `json:"stdout"`
@@ -337,10 +336,11 @@ func (up *upload) receiveFile(w http.ResponseWriter, r *http.Request, part *mult
 	}
 
 	// The SDK exposes no non-TTY stdin exec (Run has no stdin; Interactive
-	// forces a PTY that corrupts binary payloads) and has no binary-safe upload
-	// helper yet. Stream the bytes into `dd` over the gateway's interactive
-	// exec RPC without a TTY via the dedicated raw client, which sends them in
-	// chunks: the gateway refuses any single gRPC message over 1 MiB.
+	// forces a PTY that corrupts binary payloads), and its Files().Upload copies
+	// a local path over an SSH session, which a streamed request body is not.
+	// Stream the bytes into `dd` over the gateway's interactive exec RPC without
+	// a TTY via the dedicated raw client, which sends them in chunks: the
+	// gateway refuses any single gRPC message over 1 MiB.
 	content := &countingReader{r: part}
 	output, exitCode, execErr := services.ExecWithStdinStream(ctx, up.h.svc, up.workspace, up.sandbox,
 		[]string{"dd", "of=" + destPath, "bs=4096"}, content)
@@ -492,8 +492,7 @@ type pathKind int
 
 const (
 	// pathUnknown is a path the sandbox could not be asked about because it
-	// has no stat. It is downloaded as a file, as every path was before
-	// directories could be.
+	// has no stat. It is downloaded as a file.
 	pathUnknown pathKind = iota
 	pathFile
 	pathDirectory

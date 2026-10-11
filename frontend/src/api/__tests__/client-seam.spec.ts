@@ -58,9 +58,9 @@ describe('apiAuthHeaders', () => {
   });
 
   it('carries the token of a getter that answers at once', async () => {
-    setAuthTokenGetter(() => 'token-b');
+    setAuthTokenGetter(() => 'test-token');
     await expect(apiAuthHeaders()).resolves.toEqual({
-      Authorization: 'Bearer token-b',
+      Authorization: 'Bearer test-token',
     });
   });
 
@@ -82,16 +82,16 @@ describe('apiAuthHeaders', () => {
   });
 
   it('is empty again once the getter is cleared', async () => {
-    setAuthTokenGetter(() => 'token-b');
+    setAuthTokenGetter(() => 'test-token');
     setAuthTokenGetter(null);
     await expect(apiAuthHeaders()).resolves.toEqual({});
   });
 
   it('puts the token on the header that was chosen for it', async () => {
-    setAuthTokenGetter(() => 'token-b');
-    setAuthTokenHeader('X-OpenShell-Authorization');
+    setAuthTokenGetter(() => 'test-token');
+    setAuthTokenHeader('X-Alt-Authorization');
     await expect(apiAuthHeaders()).resolves.toEqual({
-      'X-OpenShell-Authorization': 'Bearer token-b',
+      'X-Alt-Authorization': 'Bearer test-token',
     });
   });
 
@@ -147,8 +147,8 @@ describe('apiFetch', () => {
 
   it('sends the request to the URL apiUrl gives, with the headers apiAuthHeaders gives', async () => {
     setApiBasePath('/openshell');
-    setAuthTokenGetter(async () => 'token-b');
-    setAuthTokenHeader('X-OpenShell-Authorization');
+    setAuthTokenGetter(async () => 'test-token');
+    setAuthTokenHeader('X-Alt-Authorization');
     mockFetch.mockResolvedValueOnce(ok);
 
     await apiFetch('/api/v1/workspaces');
@@ -156,7 +156,7 @@ describe('apiFetch', () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe('/openshell/api/v1/workspaces');
     expect(init.headers).toEqual({
-      'X-OpenShell-Authorization': 'Bearer token-b',
+      'X-Alt-Authorization': 'Bearer test-token',
     });
   });
 
@@ -168,13 +168,13 @@ describe('apiFetch', () => {
   });
 
   it('lets the token replace a header of the same name the caller set', async () => {
-    setAuthTokenGetter(() => 'token-b');
+    setAuthTokenGetter(() => 'test-token');
     mockFetch.mockResolvedValueOnce(ok);
     await apiFetch('/api/v1/workspaces', {
       headers: { Authorization: 'Bearer stale' },
     });
     expect(mockFetch.mock.calls[0][1].headers).toEqual({
-      Authorization: 'Bearer token-b',
+      Authorization: 'Bearer test-token',
     });
   });
 

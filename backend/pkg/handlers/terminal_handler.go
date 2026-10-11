@@ -45,7 +45,7 @@ type resizeMessage struct {
 // carries the options of `openshell sandbox exec`: what to run, where, and
 // with which environment. They travel in a frame and not in the URL so that
 // environment values stay out of access logs. Without it the session runs the
-// default shell, as it always has.
+// default shell.
 type startMessage struct {
 	Environment  map[string]string `json:"environment,omitempty"`
 	Type         string            `json:"type"`

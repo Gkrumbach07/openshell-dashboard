@@ -384,8 +384,9 @@ class TheJobThatCanWrite(unittest.TestCase):
 
     def test_auto_merge_is_off_unless_the_repository_variable_says_true(self):
         self.assertIn("AUTOMERGE: ${{ vars.UPSTREAM_AUTOMERGE == 'true' }}", job_env(self.lines))
-        # The workflow never merges by itself: the one `gh pr merge --auto` is
-        # in publish.py, behind the flag this variable sets.
+        # The workflow never merges by itself. publish.py asks GitHub to turn
+        # auto-merge on, with a GraphQL mutation and never with `gh pr merge`,
+        # behind the flag this variable sets.
         for script in run_scripts(self.lines):
             self.assertNotIn("pr merge", script)
             self.assertNotIn("--auto ", script)

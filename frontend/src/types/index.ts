@@ -1,6 +1,6 @@
 // TypeScript interfaces matching the SDK-backed BFF payloads (camelCase,
-// protojson-style). The vendored OpenShell Go SDK is the source of truth;
-// see .claude/rules/openshell-api.md.
+// protojson-style). The OpenShell Go SDK is the source of truth; see
+// .claude/rules/openshell-api.md.
 
 export type ObjectMeta = {
   id: string;
@@ -817,9 +817,9 @@ export type GatewayExtension = {
 
 // openshell.v1.GetGatewayInfoResponse — status, version, compute drivers and
 // negotiated extensions are everything the gateway exposes about itself.
-// compatibility is the one field the BFF adds. It and extensions are optional
-// because an older BFF, or a host that replaces the /gateway route, does not
-// send them.
+// compatibility is the one field the BFF adds. It and extensions are
+// optional: the BFF leaves compatibility out when it has no verdict to give,
+// and the UI treats a missing extensions list as empty.
 //
 // The gateway answers this for platform admins only. A user without that role
 // gets a 403 here; GatewayCompatibilityInfo is what they can read.
@@ -838,8 +838,8 @@ export type GatewayInfo = {
 // healthy is what that same health check says about the gateway: true when it
 // answered "healthy", false when it answered anything else (the BFF's SDK does
 // not say whether that was degraded, unhealthy or unspecified). It is absent
-// when the BFF had no health to report, which an older BFF never has. A
-// gateway that did not answer at all is not a value here: the request fails.
+// when the BFF had no health to report. A gateway that did not answer at all
+// is not a value here: the request fails.
 export type GatewayCompatibilityInfo = {
   gatewayVersion: string;
   healthy?: boolean;

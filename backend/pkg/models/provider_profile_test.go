@@ -22,7 +22,7 @@ import (
 
 // populate sets every field of a message, and of every message under it, to a
 // value that is not its default, from the message's own descriptor. A field
-// the vendored proto gains is therefore set here without anyone listing it,
+// the SDK's proto gains is therefore set here without anyone listing it,
 // which is what lets the round trips below notice a field nothing carries.
 func populate(t *testing.T, m protoreflect.Message, next *int) {
 	t.Helper()
@@ -132,7 +132,7 @@ func writtenBack(t *testing.T, dto ProviderProfile) ProviderProfileInput {
 // survive the trip is removed from the profile.
 //
 // Every field is covered, including ones this test does not name: populate
-// walks the message descriptors of the vendored proto. Moving the SDK to a
+// walks the message descriptors of the SDK's proto. Moving the SDK to a
 // release that adds a field to ProviderProfile, or to a message under it,
 // fails here until the DTOs carry it.
 func TestProviderProfileSurvivesBeingReadAndWrittenBack(t *testing.T) {
@@ -231,7 +231,7 @@ func TestProviderProfileCarriesWhatUsedToBeDropped(t *testing.T) {
 		DisplayName: "GitHub",
 		Category:    "UNSPECIFIED",
 		Annotations: map[string]string{"example.com/source": "platform"},
-		// The host:port line the list has always shown.
+		// The host:port line the list shows.
 		Endpoints: []string{"api.github.com:443"},
 		Binaries:  []ProfileBinary{{Path: "/usr/bin/gh"}},
 		Discovery: &ProfileDiscovery{Credentials: []string{"api_token"}},
@@ -351,7 +351,7 @@ func TestProfileDurationsKeepAbsentApartFromZero(t *testing.T) {
 	}
 }
 
-// A newer gateway can send an enum value the vendored proto has no name for.
+// A newer gateway can send an enum value the SDK's proto has no name for.
 // It is carried as its number so that reading the profile and writing it back
 // does not turn it into something else.
 func TestProfileEnumsTheProtoHasNoNameFor(t *testing.T) {
@@ -390,7 +390,7 @@ func TestProviderProfileInputCategory(t *testing.T) {
 		{category: "INFERENCE", want: pb.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_INFERENCE},
 		{category: "SOURCE_CONTROL", want: pb.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_SOURCE_CONTROL},
 		{category: "UNSPECIFIED", want: pb.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_UNSPECIFIED},
-		// What the import form's body has always been read as.
+		// A name that is no category is OTHER.
 		{category: "", want: pb.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_OTHER},
 		{category: "nonsense", want: pb.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_OTHER},
 	}
@@ -476,8 +476,8 @@ func TestProviderProfileInputRefusesWhatTheMessageCannotHold(t *testing.T) {
 	}
 }
 
-// The body the profile form has always sent, with a host and a port for each
-// endpoint, is still a profile.
+// A body with the short form of its endpoints, a host and a port for each, is
+// a profile.
 func TestProviderProfileInputTakesTheHostAndPortForm(t *testing.T) {
 	var input ProviderProfileInput
 	body := `{"id":"custom","displayName":"Custom","category":"DATA","inferenceCapable":false,
@@ -569,11 +569,10 @@ func fillSDK(t *testing.T, v reflect.Value, next *int) {
 	}
 }
 
-// The same property for a BFF that reaches profiles through the SDK only: a
-// profile read with the SDK, returned as the DTO, sent back and written with
-// the SDK is the profile that was read, field for field of the SDK's type.
-// fillSDK walks that type, so a field the SDK gains fails here until it is
-// carried.
+// The same property for the SDK-backed store: a profile read with the SDK,
+// returned as the DTO, sent back and written with the SDK is the profile that
+// was read, field for field of the SDK's type. fillSDK walks that type, so a
+// field the SDK gains fails here until it is carried.
 func TestProviderProfileSurvivesTheSDKRoundTrip(t *testing.T) {
 	var want openshell.ProviderProfile
 	next := 0

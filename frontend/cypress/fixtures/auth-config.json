@@ -9,9 +9,6 @@
     "globalPolicy": true,
     "credentialRefresh": true,
     "services": true,
-    "draftPolicy": true,
-    "deploymentContext": "standalone",
-    "workspaceBinding": false,
-    "resourceLinks": false
+    "draftPolicy": true
   }
 }

@@ -235,7 +235,7 @@ describe('AllWorkspacesPage', () => {
     );
   });
 
-  it('hands navigation to the host when it provides callbacks', () => {
+  it('hands navigation to the callbacks when they are passed', () => {
     const onSelectSandbox = jest.fn();
     const onSelectWorkspace = jest.fn();
     const onSelectProvider = jest.fn();

@@ -38,8 +38,8 @@ test('anything else is not', () => {
   const ordinary = { head: { ref: 'fix/something', repo: { full_name: REPO } } };
   assert.equal(mergedFromNext([pull(ordinary)], REPO), false);
   assert.equal(mergedFromNext([pull({ ...ordinary, title: 'fix: move to OpenShell 0.1.4' })], REPO), false);
-  // A branch whose name only starts with it, and the retired sweep's branches.
-  for (const ref of ['next-steps', 'feature/next', 'compat-sweep/gateway', 'compat-sweep/sdk']) {
+  // A branch whose name only starts with it, or only contains it.
+  for (const ref of ['next-steps', 'feature/next', 'nextish', 'bot/next']) {
     assert.equal(mergedFromNext([pull({ head: { ref, repo: { full_name: REPO } } })], REPO), false, ref);
   }
   // A fork that named its branch next.

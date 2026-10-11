@@ -37,12 +37,12 @@ test('the notes state the line, what it was tested on and the SDK, and link the 
   const notes = supportedGatewaysNotes({
     declared,
     previous,
-    previousTag: 'v1.1.0',
-    readmeUrl: 'https://github.com/o/r/blob/v1.2.0/README.md#compatibility',
+    previousTag: 'v0.1.0',
+    readmeUrl: 'https://github.com/o/r/blob/v0.1.1/README.md#compatibility',
   });
   assert.match(notes, /^### Supported OpenShell gateways\n/);
   assert.ok(notes.includes(`**0.1.x**, tested on 0.1.2, built against OpenShell Go SDK \`${SDK}\`.`), notes);
-  assert.match(notes, /\[Compatibility\]\(https:\/\/github\.com\/o\/r\/blob\/v1\.2\.0\/README\.md#compatibility\)/);
+  assert.match(notes, /\[Compatibility\]\(https:\/\/github\.com\/o\/r\/blob\/v0\.1\.1\/README\.md#compatibility\)/);
   assert.doesNotMatch(notes, /release line changed/);
 });
 
@@ -56,12 +56,12 @@ test('a new release line is called out, because a patch number will not say so',
   const notes = supportedGatewaysNotes({
     declared: { line: '0.2', release: '0.2.0', sdk: SDK },
     previous,
-    previousTag: 'v1.1.0',
+    previousTag: 'v0.1.0',
     readmeUrl: null,
   });
   assert.match(
     notes,
-    /> \*\*The supported gateway release line changed in this release\.\*\* v1\.1\.0 supported 0\.1\.x\./,
+    /> \*\*The supported gateway release line changed in this release\.\*\* v0\.1\.0 supported 0\.1\.x\./,
   );
 });
 
@@ -69,19 +69,19 @@ test('a newer patch of the same line is not a change of line', () => {
   const notes = supportedGatewaysNotes({
     declared: { ...declared, release: '0.1.3' },
     previous,
-    previousTag: 'v1.1.0',
+    previousTag: 'v0.1.0',
     readmeUrl: null,
   });
   assert.doesNotMatch(notes, /release line changed/);
 });
 
 test('nothing is claimed about a previous release whose line is unknown', () => {
-  const notes = supportedGatewaysNotes({ declared, previous: null, previousTag: 'v1.1.0', readmeUrl: null });
+  const notes = supportedGatewaysNotes({ declared, previous: null, previousTag: 'v0.1.0', readmeUrl: null });
   assert.doesNotMatch(notes, /release line changed/);
 });
 
-// The previous release may have been cut before the pins named one release.
-test('the line of the previous release is read from either shape its pins file had', () => {
+// A tag pushed back from an old clone may point at a pins file that lists lanes.
+test('the line of the previous release is read from a pins file of either shape', () => {
   assert.equal(lineDeclaredBy({ release: '0.1.3', sdk: SDK }), '0.1');
   const lanes = [
     { version: '0.1.3', required: true },
@@ -182,8 +182,8 @@ test('the first release of a new line says the line changed, next to the changes
 
 // --- nothing goes to npm ---------------------------------------------------
 
-// The npm package is retired (ADR 0008). `private` is what makes `npm publish`
-// refuse the package, whoever runs it and from wherever.
+// frontend/package.json is an application's manifest, not a published
+// package. `private` is what makes `npm publish` refuse it.
 test('frontend/package.json is private, so it cannot be published', () => {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'frontend', 'package.json'), 'utf8'));
   assert.equal(pkg.private, true);
@@ -217,8 +217,8 @@ test('a release moves the tag of its own line and no other', () => {
   assert.deepEqual(releaseAt(['v0.2.1'], all, '0.2').imageTags, ['0.2.1', '0.2']);
 });
 
-// A tag from before releases were numbered by gateway line can sit on a commit
-// whose pins are for another line. It is not that commit's release.
+// A release tag this pipeline did not cut can sit on a commit whose pins are
+// for another line. It is not that commit's release.
 test('a release tag of another line on the commit is not its release', () => {
   assert.equal(releaseAt(['v1.2.0'], ['v0.1.3', 'v1.2.0'], '0.1'), null);
   assert.deepEqual(releaseAt(['v1.2.0', 'v0.1.4'], ['v0.1.3', 'v0.1.4', 'v1.2.0'], '0.1'), {
@@ -306,19 +306,19 @@ if (args[2] === 'create') {
 }
 
 test('a release gets its tags in one push, at the digest of the source tag', { skip: !canRunRetag }, (t) => {
-  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '1.2.0', '1.2'], {
+  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '0.1.0', '0.1'], {
     registry: { [SOURCE]: DIGEST },
   });
   assert.equal(status, 0, stderr);
   assert.deepEqual(calls, [
     inspected(SOURCE),
     // Is the version tag free? It is looked up before anything is pushed.
-    inspected('1.2.0'),
-    `buildx imagetools create --tag ${IMAGE}:1.2.0 --tag ${IMAGE}:1.2 ${IMAGE}@${DIGEST}`,
-    inspected('1.2.0'),
-    inspected('1.2'),
+    inspected('0.1.0'),
+    `buildx imagetools create --tag ${IMAGE}:0.1.0 --tag ${IMAGE}:0.1 ${IMAGE}@${DIGEST}`,
+    inspected('0.1.0'),
+    inspected('0.1'),
   ]);
-  assert.deepEqual(registry, { [SOURCE]: DIGEST, '1.2.0': DIGEST, '1.2': DIGEST });
+  assert.deepEqual(registry, { [SOURCE]: DIGEST, '0.1.0': DIGEST, '0.1': DIGEST });
 });
 
 test('DRY_RUN=1 resolves the digest and prints the command without pushing', { skip: !canRunRetag }, (t) => {
@@ -333,19 +333,19 @@ test('DRY_RUN=1 resolves the digest and prints the command without pushing', { s
 });
 
 test('an image CI never built is an error that says so', { skip: !canRunRetag }, (t) => {
-  const { status, calls, stderr } = retag(t, [IMAGE, SOURCE, '1.2.0']);
+  const { status, calls, stderr } = retag(t, [IMAGE, SOURCE, '0.1.0']);
   assert.equal(status, 1);
   assert.deepEqual(calls, [inspected(SOURCE)], 'nothing else is asked of the registry, and nothing is pushed');
   assert.match(stderr, /sha-0a1b2c3 is not in the registry/);
 });
 
 test('a new tag that does not carry the source digest fails the step', { skip: !canRunRetag }, (t) => {
-  const { status, stderr } = retag(t, [IMAGE, SOURCE, '1.2.0'], {
+  const { status, stderr } = retag(t, [IMAGE, SOURCE, '0.1.0'], {
     registry: { [SOURCE]: DIGEST },
     env: { STUB_CREATE_DIGEST: REBUILT },
   });
   assert.equal(status, 1);
-  assert.match(stderr, /1\.2\.0 is sha256:b+, expected sha256:a+/);
+  assert.match(stderr, /0\.1\.0 is sha256:b+, expected sha256:a+/);
 });
 
 test('retag refuses to run without a source and at least one new tag', { skip: !canRunRetag }, (t) => {
@@ -357,33 +357,33 @@ test('retag refuses to run without a source and at least one new tag', { skip: !
 // A full re-run of a released commit's CI run builds the commit again and
 // re-points sha-<commit> at the new build. The release must not follow it.
 test('a version tag is write-once: a rebuilt commit cannot move it, and nothing else moves', { skip: !canRunRetag }, (t) => {
-  const before = { [SOURCE]: REBUILT, '1.2.0': DIGEST, '1.2': DIGEST, latest: DIGEST };
-  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '1.2.0', '1.2'], { registry: before });
+  const before = { [SOURCE]: REBUILT, '0.1.0': DIGEST, '0.1': DIGEST, latest: DIGEST };
+  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '0.1.0', '0.1'], { registry: before });
   assert.equal(status, 1);
-  assert.match(stderr, /1\.2\.0 already names sha256:a+, and a version tag is never moved/);
+  assert.match(stderr, /0\.1\.0 already names sha256:a+, and a version tag is never moved/);
   assert.match(stderr, /sha-0a1b2c3 is now sha256:b+/);
-  assert.deepEqual(pushes(calls), [], 'not even the movable 1.2 is pushed');
+  assert.deepEqual(pushes(calls), [], 'not even the movable 0.1 is pushed');
   assert.deepEqual(registry, before);
 });
 
 test('the refusal does not depend on the order the tags are given in', { skip: !canRunRetag }, (t) => {
-  const before = { [SOURCE]: REBUILT, '1.2.0': DIGEST, '1.2': DIGEST };
-  const { status, calls, registry } = retag(t, [IMAGE, SOURCE, '1.2', '1.2.0'], { registry: before });
+  const before = { [SOURCE]: REBUILT, '0.1.0': DIGEST, '0.1': DIGEST };
+  const { status, calls, registry } = retag(t, [IMAGE, SOURCE, '0.1', '0.1.0'], { registry: before });
   assert.equal(status, 1);
   assert.deepEqual(pushes(calls), []);
   assert.deepEqual(registry, before);
 });
 
 test('tagging a release again with the image it already has is not an error', { skip: !canRunRetag }, (t) => {
-  const before = { [SOURCE]: DIGEST, '1.2.0': DIGEST, '1.2': DIGEST };
-  const again = retag(t, [IMAGE, SOURCE, '1.2.0', '1.2'], { registry: before });
+  const before = { [SOURCE]: DIGEST, '0.1.0': DIGEST, '0.1': DIGEST };
+  const again = retag(t, [IMAGE, SOURCE, '0.1.0', '0.1'], { registry: before });
   assert.equal(again.status, 0, again.stderr);
   // The version tag is left alone; only the movable one is pushed.
-  assert.deepEqual(pushes(again.calls), [`buildx imagetools create --tag ${IMAGE}:1.2 ${IMAGE}@${DIGEST}`]);
-  assert.match(again.stdout, /1\.2\.0 already names sha256:a+; leaving it/);
+  assert.deepEqual(pushes(again.calls), [`buildx imagetools create --tag ${IMAGE}:0.1 ${IMAGE}@${DIGEST}`]);
+  assert.match(again.stdout, /0\.1\.0 already names sha256:a+; leaving it/);
   assert.deepEqual(again.registry, before);
 
-  const alone = retag(t, [IMAGE, SOURCE, '1.2.0'], { registry: before });
+  const alone = retag(t, [IMAGE, SOURCE, '0.1.0'], { registry: before });
   assert.equal(alone.status, 0, alone.stderr);
   assert.deepEqual(pushes(alone.calls), []);
   assert.match(alone.stdout, /nothing to push/);
@@ -391,13 +391,13 @@ test('tagging a release again with the image it already has is not an error', { 
 
 test('a version tag is not pushed while the registry cannot say whether it exists', { skip: !canRunRetag }, (t) => {
   const before = { [SOURCE]: DIGEST };
-  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '1.2.0', '1.2'], {
+  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '0.1.0', '0.1'], {
     registry: before,
-    env: { STUB_UNREADABLE_TAG: '1.2.0' },
+    env: { STUB_UNREADABLE_TAG: '0.1.0' },
   });
   assert.equal(status, 1);
   assert.match(stderr, /503 Service Unavailable/, 'the registry answer is shown');
-  assert.match(stderr, /could not tell whether quay\.io\/example\/dashboard:1\.2\.0 already exists/);
+  assert.match(stderr, /could not tell whether quay\.io\/example\/dashboard:0\.1\.0 already exists/);
   assert.deepEqual(pushes(calls), []);
   assert.deepEqual(registry, before);
 });
@@ -411,12 +411,12 @@ test('latest and X.Y are meant to move, and still do', { skip: !canRunRetag }, (
     `buildx imagetools create --tag ${IMAGE}:latest ${IMAGE}@${REBUILT}`,
   ]);
 
-  // The next patch release: 1.2 moves to it, 1.2.0 stays where it was.
-  const patch = retag(t, [IMAGE, SOURCE, '1.2.1', '1.2'], {
-    registry: { [SOURCE]: REBUILT, '1.2.0': DIGEST, '1.2': DIGEST },
+  // The next patch release: 0.1 moves to it, 0.1.0 stays where it was.
+  const patch = retag(t, [IMAGE, SOURCE, '0.1.1', '0.1'], {
+    registry: { [SOURCE]: REBUILT, '0.1.0': DIGEST, '0.1': DIGEST },
   });
   assert.equal(patch.status, 0, patch.stderr);
-  assert.deepEqual(patch.registry, { [SOURCE]: REBUILT, '1.2.0': DIGEST, '1.2.1': REBUILT, '1.2': REBUILT });
+  assert.deepEqual(patch.registry, { [SOURCE]: REBUILT, '0.1.0': DIGEST, '0.1.1': REBUILT, '0.1': REBUILT });
 });
 
 // --- latest only moves forward ---------------------------------------------

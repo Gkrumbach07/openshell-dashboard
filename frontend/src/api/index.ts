@@ -1,5 +1,5 @@
-// Barrel of the API client and hooks (ADR 0001; not published, ADR 0008).
-// Internal code imports directly from the source modules.
+// The API client and hooks, re-exported from one place. Nothing in the app
+// imports from here: each import names the source module.
 export * from './client';
 export * from './auth';
 export * from './gateway';

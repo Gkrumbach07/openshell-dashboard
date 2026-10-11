@@ -613,7 +613,7 @@ GATEWAY_CA_CERT=${PKI_DIR}/ca.crt
 # The BFF is a token relay (ADR 0002) — it runs no OIDC flows of its own.
 # Local dev uses dev mode against a gateway that allows unauthenticated
 # calls; to test real browser auth, put oauth2-proxy in front of the BFF
-# pointed at the Keycloak realm this script starts (see README "Auth").
+# pointed at the Keycloak realm this script starts (see docs/authentication.md).
 AUTH_DISABLED=true
 EOF
 }
@@ -770,7 +770,7 @@ usage() {
   echo "  rebuild-gateway   Rebuild and restart the gateway"
   echo ""
   echo "Environment variables:"
-  echo "  OPENSHELL_DIR     Path to OpenShell source (default: ~/Work/projects/openshell)"
+  echo "  OPENSHELL_DIR     Path to an OpenShell source checkout (asked for on first run and saved in scripts/.env.dev)"
   echo "  KEYCLOAK_PORT     Keycloak port (default: 8180)"
 }
 

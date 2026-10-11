@@ -1,11 +1,11 @@
 """`next`: main, the pin move, then people's commits.
 
-`next` is the move to the upcoming upstream release, opened early (ADR 0009,
-decision 8). This file does the git work that keeps it in that shape, in a
-scratch worktree and on a detached HEAD. It never pushes and never touches a
-remote: the result is a commit, recorded under a local ref, and a description
-of what happened. Publishing is a separate step (publish.py), so a run that
-stops halfway here leaves `next` exactly as it was.
+`next` is the move to the upcoming upstream release, opened early
+(ADR 0005, decision 8). This file does the git work that keeps it in that
+shape, in a scratch worktree and on a detached HEAD. It never pushes and never
+touches a remote: the result is a commit, recorded under a local ref, and a
+description of what happened. Publishing is a separate step (publish.py), so a
+run that stops halfway here leaves `next` exactly as it was.
 
 The shape:
 

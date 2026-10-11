@@ -24,7 +24,7 @@ import (
 // L7 rules and so on), which decides what a sandbox with the provider attached
 // may reach. Reading or writing a profile through the narrower type drops
 // that. provider_profile_sdk.go converts between the proto message and the SDK
-// type for the callers that only have the SDK.
+// type, for the store that reaches profiles through the SDK.
 //
 // Nothing in a profile is secret: it is the schema of a provider type, and no
 // field of ProviderProfile or of the messages under it carries the proto
@@ -124,9 +124,8 @@ type ProfileFile struct {
 	EnvVar  string `json:"envVar,omitempty"`
 }
 
-// ProfileEndpointInput is an endpoint as the profile form wrote it before
-// NetworkEndpoints existed: a host and a port, and since then a protocol.
-// Anything more goes in ProviderProfileInput.NetworkEndpoints.
+// ProfileEndpointInput is the short form of an endpoint: a host, a port and a
+// protocol. Anything more goes in ProviderProfileInput.NetworkEndpoints.
 //
 // A profile that was read carries something else under the same name: the
 // "host:port" summary of each endpoint, as a string (ProviderProfile.Endpoints).
@@ -169,9 +168,9 @@ func (e *ProfileEndpointInput) UnmarshalJSON(data []byte) error {
 //
 // NetworkEndpoints takes each endpoint whole, as ProviderProfile returns them:
 // one protojson openshell.sandbox.v1.NetworkEndpoint per entry. Endpoints is
-// the older host-and-port form. A request sends one or the other, except that
-// the "host:port" summaries a read profile carries in Endpoints may come back
-// beside NetworkEndpoints and are then ignored.
+// the short form (ProfileEndpointInput). A request sends one or the other,
+// except that the "host:port" summaries a read profile carries in Endpoints
+// may come back beside NetworkEndpoints and are then ignored.
 //
 // Source and Scope are set by the gateway and ignored when written; they are
 // accepted so that a profile that was read, or exported to a file, can be sent
@@ -206,7 +205,7 @@ const (
 )
 
 // enumName is a proto enum value as the DTOs spell it: its name without the
-// enum's prefix. A number the vendored proto has no name for, which a newer
+// enum's prefix. A number the SDK's proto has no name for, which a newer
 // gateway can send, is written as that number so that it survives being read
 // and written back.
 func enumName(names map[int32]string, prefix string, value int32) string {
@@ -468,8 +467,7 @@ func profileTokenGrantFromProto(grant *pb.ProviderCredentialTokenGrant) *Profile
 }
 
 // parseProfileCategory reads a category as the DTOs spell it. A name that is
-// no category is OTHER, which is what the import form's body has always been
-// read as and what a profile file defaults to.
+// no category is OTHER, which is also what a profile file defaults to.
 func parseProfileCategory(name string) pb.ProviderProfileCategory {
 	if name == enumUnspecified {
 		return pb.ProviderProfileCategory_PROVIDER_PROFILE_CATEGORY_UNSPECIFIED

@@ -101,8 +101,7 @@ func NewApp(
 // "unknown". Nothing is ever blocked on the result.
 //
 // It is a method rather than a NewApp parameter because NewApp's trailing
-// parameter is already the variadic extension list, and downstream callers of
-// NewApp must keep compiling. Call it before Routes.
+// parameter is already the variadic extension list. Call it before Routes.
 func (app *App) SetGatewayReleaseLine(line models.GatewayReleaseLine) {
 	app.gateway.SetGatewayReleaseLine(line)
 }
@@ -113,8 +112,8 @@ func (app *App) SetGatewayReleaseLine(line models.GatewayReleaseLine) {
 // reads them from the gateway's own answer. Without it providers are returned
 // with no credential names against gateways 0.1.x.
 //
-// Like SetGatewayReleaseLine it is a method rather than a NewApp parameter so
-// that downstream callers of NewApp keep compiling. Call it before Routes.
+// Like SetGatewayReleaseLine it is a method rather than a NewApp parameter.
+// Call it before Routes.
 func (app *App) SetProviderCredentialKeys(keys services.ProviderCredentialKeyReader) {
 	app.providers.SetCredentialKeyReader(keys)
 	app.logs.SetCredentialKeyReader(keys)
@@ -130,8 +129,8 @@ func (app *App) SetProviderCredentialKeys(keys services.ProviderCredentialKeyRea
 // drops whatever the stored profile's endpoints held beyond those three
 // fields.
 //
-// Like SetGatewayReleaseLine it is a method rather than a NewApp parameter so
-// that downstream callers of NewApp keep compiling. Call it before Routes.
+// Like SetGatewayReleaseLine it is a method rather than a NewApp parameter.
+// Call it before Routes.
 func (app *App) SetProviderProfiles(profiles services.ProviderProfileStore) {
 	app.providers.SetProfileStore(profiles)
 }
@@ -158,8 +157,8 @@ func (app *App) Routes() http.Handler {
 			// The verdict on its own: /gateway carries it too, but the
 			// gateway only answers that one for platform admins.
 			r.Get("/gateway/compatibility", app.gateway.GetGatewayCompatibility)
-			// Pending draft chunks per sandbox: of one workspace with
-			// ?workspace=, of every workspace without (platform admins only).
+			// Pending draft chunks per sandbox, of the workspace named in
+			// ?workspace=. Without one the summary is empty.
 			r.Get("/draft-summary", app.drafts.GetDraftSummary)
 
 			r.Route("/global-policy", func(r chi.Router) {

@@ -1,6 +1,6 @@
 """The pin move: put a working tree on another upstream release.
 
-Moving to a release is one change (ADR 0009, decision 7). Everything that
+Moving to a release is one change (ADR 0005, decision 7). Everything that
 comes from the release moves in it, and everything that restates the pins is
 brought back in step:
 

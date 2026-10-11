@@ -1,4 +1,4 @@
-# Follow upstream OpenShell releases (ADR 0009, decisions 6, 7 and 8).
+# Follow upstream OpenShell releases (ADR 0005, decisions 6, 7 and 8).
 #
 # A branch of this repository is built on ONE upstream release, named by
 # deploy/ci/gateway-pins.json, and ci.yml tests every change against it. This
@@ -17,16 +17,16 @@
 #              the bump pull request, opened early: a draft while the target is
 #              a pre-release, ready for review once upstream cuts the stable
 #              release. ci.yml running on that pull request is CHECK B, the
-#              console built on the upcoming SDK against the upcoming gateway.
+#              dashboard built on the upcoming SDK against the upcoming gateway.
 #
 #   check A    Runs the compatibility suite with the BFF as main builds it
-#              today against the target's gateway. That is what a console
+#              today against the target's gateway. That is what a dashboard
 #              already installed will meet when the gateway is upgraded under
 #              it. A failure goes to one issue, rewritten in place and closed
 #              when it passes again.
 #
-# This replaces the two-axis compat sweep (ADR 0006): moving to a release is
-# one change now, not a gateway pull request and an SDK pull request.
+# Moving to a release is one change: the gateway images and the SDK move
+# together, in one commit.
 #
 # Invariants. Each is enforced in code, not only stated here:
 #   1. Only vX.Y.Z and vX.Y.Z-pre.N are followed.     versions.py
@@ -258,7 +258,7 @@ jobs:
   #
   # This is the job that runs upstream's gateway image, so it can read the
   # repository and nothing else, and no secret reaches it. backend/go.mod is
-  # never modified here: the question is about the console we ship, on the SDK
+  # never modified here: the question is about the dashboard we ship, on the SDK
   # it ships with.
   check-a:
     name: "Check A: main against OpenShell ${{ needs.plan.outputs.target }}"
@@ -416,8 +416,7 @@ jobs:
 
       # Never in a dry run. Found by label, not by title: the title names the
       # release, which changes. Only OPEN issues count, so closing one means
-      # "handled". The label is the retired compat sweep's, so its last issue
-      # is taken over by the first run of this workflow.
+      # "handled".
       - name: Maintain the issue
         if: env.DRY_RUN == 'false'
         env:

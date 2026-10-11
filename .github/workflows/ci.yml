@@ -1,7 +1,7 @@
 name: CI
 
 # Every change is tested against the gateway pinned by the branch it merges
-# into (ADR 0009, decision 6), so this runs for all three kinds of branch:
+# into (ADR 0005, decision 6), so this runs for all three kinds of branch:
 #
 #   main          one stable upstream release
 #   release/X.Y   the line before it, for critical and security fixes
@@ -125,7 +125,7 @@ jobs:
           path: frontend/cypress/screenshots
           if-no-files-found: ignore
 
-  # Gateway compatibility (ADR 0005 as amended by ADR 0006 and ADR 0009).
+  # Gateway compatibility (ADR 0005).
   #
   # A branch is built on ONE upstream release, and deploy/ci/gateway-pins.json
   # names it: the gateway and supervisor images, and the Go SDK at the commit
@@ -177,7 +177,7 @@ jobs:
   # release, which is a pre-release until upstream cuts the stable one, so the
   # pull request from `next` into main fails HERE, by name, for as long as that
   # lasts. That is what keeps it from merging, and it is kept apart from
-  # `compat` on purpose: a red `compat` means the console does not work with
+  # `compat` on purpose: a red `compat` means the dashboard does not work with
   # the gateway, and a red check here only means "not released upstream yet".
   # The Follow upstream workflow re-pins `next` when the stable release is out.
   #
@@ -212,12 +212,13 @@ jobs:
   # therefore reads the serialized selector as a workspace NAME and reports
   # `workspace '\n\adefault' not found` on every workspace-scoped call. That
   # gateway is served by the one-off gateway-0.0.116 release, not by main
-  # (ADR 0009, amendment of 2026-10-10).
+  # (ADR 0005, decision 12).
   #
-  # A wire break is not always that loud. Dashboard v0.3.0 sent the selector
-  # at field numbers 0.0.116 does not know; protobuf dropped them, every
-  # request landed in the `default` workspace, and nothing failed. This job
-  # proves what the compat suite varies, and only that.
+  # A wire break is not always that loud. An SDK that sends the selector at
+  # field numbers 0.0.116 does not know gets no error from that gateway:
+  # protobuf drops them, every request lands in the `default` workspace, and
+  # nothing fails. This job proves what the compat suite varies, and only
+  # that.
   #
   # The gateway's own TOML config is versioned too, and the schemas are
   # mutually exclusive: 0.1.0 and newer require v2, releases up to 0.0.116
@@ -386,10 +387,10 @@ jobs:
   # `next` and the pull request from `next` into main: both get `pr-<n>` and
   # `sha-<7>`, built on the pre-release's SDK.
   #
-  # It does NOT tag `latest`. That tag is a recommendation, and it used to move
-  # here — on every push to main, with only `build` to wait for — so it could
-  # and did point at a commit whose compat job had failed.
-  # `promote-latest` below moves it, once everything has passed.
+  # It does NOT tag `latest`. That tag is a recommendation. Moved here, on
+  # every push to main with only `build` to wait for, it could point at a
+  # commit whose compat job had failed. `promote-latest` below moves it, once
+  # everything has passed.
   push-manifest:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -462,8 +463,9 @@ jobs:
   # and when it is not it stands down: it succeeds, touches nothing and never
   # logs in to the registry. The run for the tip is the one that promotes.
   #
-  # publish.yml only runs after this workflow succeeds on main, so by the time
-  # a release is cut `latest` and the new X.Y.Z tag name the same digest.
+  # publish.yml releases a commit only after this workflow has succeeded for
+  # it. For a release cut from the tip of main, `latest` and the new X.Y.Z tag
+  # therefore name the same digest.
   #
   # Only main promotes. A push to a release branch builds and tests the same
   # way and gets its `sha-<7>` image, and `latest` is not its to move.

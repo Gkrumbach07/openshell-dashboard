@@ -16,8 +16,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-// policyProtoMarshaler emits camelCase JSON matching the pre-SDK protojson
-// contract the frontend consumes.
+// policyProtoMarshaler emits the camelCase protojson the frontend reads.
 var policyProtoMarshaler = protojson.MarshalOptions{UseProtoNames: false}
 
 // FromSDKSandbox converts an SDK Sandbox to the JSON DTO the frontend expects.
@@ -207,7 +206,7 @@ func BuildSDKSandboxSpec(req CreateSandboxRequest) (*openshell.SandboxSpec, erro
 
 // BuildSDKCreateOptions builds the options of a sandbox create: the sandbox's
 // annotations and the services to expose with it. It returns none when there
-// is neither, which leaves the request as it was before either existed.
+// is neither.
 func BuildSDKCreateOptions(annotations map[string]string, exposures []ServiceExposure) []openshell.CreateOptions {
 	if len(annotations) == 0 && len(exposures) == 0 {
 		return nil
@@ -379,8 +378,7 @@ func BuildSDKTemplateGovernanceSpec(req CreateSandboxFromTemplateRequest) (*open
 // ParseSDKPolicy converts camelCase JSON from the frontend into the SDK
 // SandboxPolicy. It round-trips through the proto with protojson so every
 // policy field (L7 rules, deny rules, IP allowlists, multi-port, MCP,
-// middleware, ...) is preserved — protojson rejects unknown fields, matching
-// the pre-SDK validation behavior.
+// middleware, ...) is preserved. protojson rejects unknown fields.
 func ParseSDKPolicy(raw json.RawMessage) (*openshell.SandboxPolicy, error) {
 	var pb sbv1.SandboxPolicy
 	if err := protojson.Unmarshal(raw, &pb); err != nil {
@@ -962,8 +960,8 @@ func FromSDKSandboxLogs(result *openshell.LogResult) SandboxLogs {
 
 // DeleteResult is the BFF's response envelope for every delete endpoint.
 //
-// Outcome carries the gateway's own answer. Deleted stays for the existing
-// frontend contract and is true only when completion is actually established:
+// Outcome carries the gateway's own answer. Deleted is the boolean the
+// frontend reads, and is true only when completion is actually established:
 // per the SDK (openshell/v1/types/mutations.go) that means DeletionCompleted
 // or DeletionAlreadyAbsent. DeletionAccepted means the gateway queued
 // asynchronous cleanup and the resource may still exist, and unrecognized
@@ -974,9 +972,9 @@ type DeleteResult struct {
 }
 
 // FromSDKDeletion converts an SDK DeletionResult into the BFF response.
-// A nil result (older gateway, or an SDK path that reports no outcome) is
-// reported as completed, preserving the pre-pagination behavior where a nil
-// error meant the delete succeeded.
+// A nil result (an SDK call that reports no outcome) is reported as
+// completed: a handler converts the result only after the call returned no
+// error.
 func FromSDKDeletion(res *openshell.DeletionResult) DeleteResult {
 	if res == nil {
 		return DeleteResult{Deleted: true, Outcome: "completed"}

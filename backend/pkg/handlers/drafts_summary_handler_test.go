@@ -165,8 +165,8 @@ func TestWorkspaceDraftSummary(t *testing.T) {
 			},
 		},
 		{
-			// The gateway's own lists always name the workspace. A service a
-			// downstream substitutes might not.
+			// The SDK's Sandbox type allows an empty workspace. The gateway's
+			// own lists always name one.
 			name:      "a sandbox that names no workspace is read in the one that was asked for",
 			sandboxes: []*openshell.Sandbox{{Name: "busy"}},
 			chunks: map[string][]openshell.PolicyChunk{
@@ -218,9 +218,9 @@ func TestWorkspaceDraftSummary(t *testing.T) {
 	}
 }
 
-// "unavailable" is only on the wire for a sandbox it is true of, so that an
-// entry without it reads the way the summary always has. What the gateway
-// said about that one sandbox stays in the BFF's log.
+// "unavailable" is only on the wire for a sandbox it is true of: an entry
+// whose count was read carries no such field. What the gateway said about
+// that one sandbox stays in the BFF's log.
 func TestWorkspaceDraftSummaryWireShape(t *testing.T) {
 	sdk := &mockSDK{}
 	sdk.sandboxes.listFn = func(context.Context, string, ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
@@ -450,9 +450,9 @@ func TestDraftSummaryGivesUpOnASlowInbox(t *testing.T) {
 	}
 }
 
-// A handler nobody gave a sandbox service cannot list sandboxes. A downstream
-// server built with NewDraftsHandler alone keeps the empty summary it had
-// before there was a real one, not a 500 on a route its frontend polls.
+// A handler nobody gave a sandbox service cannot list sandboxes. Built with
+// NewDraftsHandler alone it answers an empty summary on every summary route,
+// not a 500.
 func TestDraftSummaryWithoutSandboxService(t *testing.T) {
 	handler := NewDraftsHandler(services.NewPolicyService((&mockSDK{}).Policy()))
 	r := chi.NewRouter()
@@ -476,11 +476,9 @@ func wantEmptyDraftSummary(t *testing.T, w *httptest.ResponseRecorder) {
 	}
 }
 
-// Without a workspace the old route answers what it always has: an empty
-// summary, without a call to the gateway. Frontends older than the workspace
-// route poll it for every user, and a summary of every workspace would be a
-// draft read per sandbox on the gateway per poll, and a 403 for everyone who
-// is not a platform admin.
+// Without a workspace the route answers an empty summary, without a call to
+// the gateway. A summary of every workspace would be a draft read per sandbox
+// on the gateway, and a 403 for everyone who is not a platform admin.
 func TestDraftSummaryWithoutAWorkspaceIsEmpty(t *testing.T) {
 	sdk := &mockSDK{}
 	sdk.sandboxes.listFn = func(_ context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error) {

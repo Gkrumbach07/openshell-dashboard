@@ -9,10 +9,9 @@ import "context"
 // drops them. Keys only: a credential's value is never read. Implemented by
 // clients.RawExecClient.
 //
-// It is an interface of its own, rather than a method added to
-// ProviderCredentialKeyReader, so that a downstream type written against that
-// interface keeps compiling. A reader without it leaves the providers of the
-// all-workspaces list with whatever credential names the SDK carries.
+// It is an interface of its own, not a method of ProviderCredentialKeyReader.
+// With a reader that lacks it, which only unit tests have, the providers of
+// the all-workspaces list keep whatever credential names the SDK carries.
 type AllWorkspacesProviderCredentialKeyReader interface {
 	// ListProviderCredentialKeysAllWorkspaces returns the keys each provider
 	// holds, by workspace and then by provider name. A provider name is only

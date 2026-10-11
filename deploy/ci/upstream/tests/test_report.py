@@ -140,7 +140,7 @@ class Issue(unittest.TestCase):
         body = self.text(TODAY)[1]
         for target in re.findall(r"\]\(([^)]+)\)", body):
             self.assertTrue(target.startswith("https://"), target)
-        self.assertIn(REPO_URL + "/blob/main/docs/adrs/0009-console-release-policy.md", body)
+        self.assertIn(REPO_URL + "/blob/main/docs/adrs/0005-gateway-compatibility-and-releases.md", body)
 
     def test_a_stable_release_on_mains_own_line_is_a_broken_stable_interface_to_report_upstream(self):
         body = self.text(STABLE)[1]

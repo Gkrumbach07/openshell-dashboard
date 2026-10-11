@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// Ports cypress/e2e-integration/gateway.cy.ts.
 func TestGatewayInfo(t *testing.T) {
 	var info struct {
 		Status         string `json:"status"`

@@ -1,6 +1,6 @@
 """deploy/ci/gateway-pins.json: load it, validate it, move it to another release.
 
-The pins file names the ONE upstream release a branch is built on (ADR 0009):
+The pins file names the ONE upstream release a branch is built on (ADR 0005):
 the gateway and supervisor images the compatibility suite runs against, and
 the Go SDK the BFF is compiled with. They are taken from the same upstream
 tag and move together.
@@ -26,9 +26,9 @@ import re
 import versions
 
 REQUIRED_KEYS = ("release", "sdk", "gateway_image", "supervisor_image", "sandbox_image", "config_schema")
-# What the file held while a branch pinned several gateways and declared a
-# range (ADR 0006). A branch pins one release now, so these are refused: left
-# in place, they would be a second statement that nothing reads.
+# Keys the file held when it listed several gateways. A branch pins one
+# release, so these are refused: left in place, they would be a second
+# statement that nothing reads.
 RETIRED_KEYS = ("lanes", "floor", "floor_release", "ceiling", "ceiling_release", "range")
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -136,7 +136,7 @@ def validate(doc, schemas=None, go_mod_version=None):
         return ["the pins file must be a JSON object"]
 
     # Other top-level keys are left alone, so another tool may keep its own
-    # data here. Only what the file used to hold is refused.
+    # data here. Only the keys in RETIRED_KEYS are refused.
     for key in RETIRED_KEYS:
         if key in doc:
             problems.append(
@@ -205,7 +205,7 @@ def require_stable(doc):
     """Problems, if this pins document may not merge into `main` or `release/**`.
 
     Only a stable release is pinned there. `next` pins a pre-release by
-    definition, and is the only branch that does (ADR 0009).
+    definition, and is the only branch that does (ADR 0005, decision 6).
     """
     release = doc.get("release") if isinstance(doc, dict) else None
     if versions.parse(release) is None:

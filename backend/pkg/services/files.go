@@ -17,8 +17,8 @@ type StdinExecer interface {
 // that error and must not reach the command as a shorter stdin. Implemented by
 // clients.RawExecClient.
 //
-// It is a separate, optional interface so that an existing StdinExecer keeps
-// working: ExecWithStdinStream reads stdin whole for one that cannot stream.
+// It is a separate, optional interface: ExecWithStdinStream reads stdin whole
+// for a StdinExecer that cannot stream.
 type StdinStreamExecer interface {
 	ExecWithStdinStream(ctx context.Context, workspace, sandboxName string, command []string, stdin io.Reader) (string, int, error)
 }

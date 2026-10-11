@@ -1,10 +1,10 @@
-// The version of the next console release. It is computed, never chosen.
+// The version of the next dashboard release. It is computed, never chosen.
 //
-// The console shares the gateway's minor release line (ADR 0009): console
+// The dashboard shares the gateway's minor release line (ADR 0005): dashboard
 // 0.1.x is for gateway 0.1.x. So the first two numbers of a release are not
 // anybody's to pick. They are the line of the OpenShell release the branch is
 // built on, which deploy/ci/gateway-pins.json names. The third number counts
-// the console's own releases on that line:
+// the dashboard's own releases on that line:
 //
 //   line     major.minor of the pinned release
 //   version  <line>.<n>, where n is one more than the highest patch among the
@@ -12,8 +12,8 @@
 //
 // That is the whole rule. The first release after the pin moves to a new
 // gateway minor comes out as X.Y.0 because that line has no tag yet, and
-// every other release is the next patch: a console never starts a minor on
-// its own (ADR 0009, decision 4). Nothing here reads a commit title, and
+// every other release is the next patch: a dashboard never starts a minor on
+// its own (ADR 0005, decision 4). Nothing here reads a commit title, and
 // there is no release type to get wrong.
 //
 // The tags counted are the ones that exist, wherever they point. A patch cut
@@ -21,8 +21,8 @@
 // else. cut-release.mjs is what reads the repository; this file only does the
 // arithmetic, so that it can be tested without one.
 
-// A console release tag: vX.Y.Z and nothing after it. v1.2.0-beta.1 and
-// v1.2.0+build are not releases, and neither is anything without the v.
+// A dashboard release tag: vX.Y.Z and nothing after it. v0.1.4-beta.1 and
+// v0.1.4+build are not releases, and neither is anything without the v.
 const RELEASE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 // What a branch can pin (deploy/ci/gateway-pins.json): a stable OpenShell

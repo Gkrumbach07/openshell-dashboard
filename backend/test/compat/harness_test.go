@@ -65,10 +65,11 @@
 //	               from it; a template without an image and a
 //	               sandbox made from it                        sandbox_create_defaults_test.go
 //	               the pending draft chunks of a workspace's
-//	               sandboxes, and of every workspace's         draft_summary_test.go
+//	               sandboxes, and the empty summary outside
+//	               a workspace                                 draft_summary_test.go
 //	exec           file upload, including one larger than a
 //	               gRPC message the gateway accepts, and
-//	               download (the raw proto escape hatch in
+//	               download (the direct gRPC call in
 //	               pkg/clients/rawexec.go and the SDK's
 //	               non-interactive Exec().Run), the terminal
 //	               websocket (interactive exec)                exec_test.go
@@ -123,7 +124,7 @@
 //
 // Deliberately not covered, and why:
 //
-//   - Inference routes and a standalone exec endpoint: the BFF has no such
+//   - Inference routes and an exec endpoint of its own: the BFF has no such
 //     routes. Non-interactive exec is reachable only through file transfer,
 //     which is where it is covered.
 //   - auth/whoami: the BFF answers it without calling the gateway, because
@@ -214,7 +215,8 @@ var (
 	httpClient = &http.Client{Timeout: 30 * time.Second}
 
 	// gatewayVersion is resolved once in TestMain and reported in failures, so
-	// a matrix run says which version broke without cross-referencing logs.
+	// a failure says which gateway it was against: the pinned one in ci.yml, or
+	// the upcoming release in follow-upstream.yml's check A.
 	gatewayVersion = "unknown"
 )
 
@@ -495,10 +497,9 @@ func mustDownload(t *testing.T, workspace, sandboxName, filePath string) ([]byte
 	return raw, header
 }
 
-// requireSandboxes skips tests that boot a sandbox when -short is set, the
-// same switch TestSandboxLifecycle has always honored, and fails them at once
-// when an earlier test has already shown that sandboxes do not boot on this
-// gateway (see bootFailure).
+// requireSandboxes skips tests that boot a sandbox when -short is set, and
+// fails them at once when an earlier test has already shown that sandboxes do
+// not boot on this gateway (see bootFailure).
 func requireSandboxes(t *testing.T) {
 	t.Helper()
 	if testing.Short() {

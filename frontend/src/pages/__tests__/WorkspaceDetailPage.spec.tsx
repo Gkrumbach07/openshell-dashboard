@@ -218,7 +218,7 @@ describe('WorkspaceDetailPage', () => {
     );
   });
 
-  it('hands the navigation to onViewSandbox when the host provides it', () => {
+  it('hands the navigation to onViewSandbox when it is passed', () => {
     const onViewSandbox = jest.fn();
     renderPage({ onViewSandbox });
     fireEvent.click(screen.getByRole('tab', { name: /Services/ }));

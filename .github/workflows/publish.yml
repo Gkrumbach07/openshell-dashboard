@@ -12,15 +12,16 @@
 # to be forgotten. Which commits qualify is decided from where they came from,
 # not from their title; see scripts/release/next-merge.mjs.
 #
-# Nobody chooses the version (ADR 0009). The console shares the gateway's
-# minor release line, so a release is <line>.<n>: the line of the OpenShell
-# release the branch pins in deploy/ci/gateway-pins.json, then one more than
-# the highest patch already tagged on that line, or 0 when the line has no tag.
-# The first release after main moves to a new gateway minor is therefore X.Y.0,
-# and every other release is the next patch. See scripts/release/next-version.mjs.
+# Nobody chooses the version (ADR 0005, decision 11). The dashboard shares the
+# gateway's minor release line, so a release is <line>.<n>: the line of the
+# OpenShell release the branch pins in deploy/ci/gateway-pins.json, then one
+# more than the highest patch already tagged on that line, or 0 when the line
+# has no tag. The first release after main moves to a new gateway minor is
+# therefore X.Y.0, and every other release is the next patch. See
+# scripts/release/next-version.mjs.
 #
 # One version, three artifacts. Two of them say which OpenShell gateways the
-# release supports (#66, ADR 0009):
+# release supports (ADR 0005):
 #
 #   GitHub release   scripts/release/cut-release.mjs creates it, and the tag
 #                    vX.Y.Z with it; a section in the notes
@@ -28,8 +29,7 @@
 #                    X.Y.Z and X.Y; it carries the gateway release line as a
 #                    label, and the BFF inside has it compiled in
 #
-# The third is the Helm chart, packaged at the same version. Nothing is
-# published to npm: that package is retired (ADR 0008).
+# The third is the Helm chart, packaged at the same version.
 #
 # docs/releasing.md walks through the whole pipeline.
 name: Release

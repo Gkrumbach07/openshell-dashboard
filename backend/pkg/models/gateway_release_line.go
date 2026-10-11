@@ -2,7 +2,7 @@ package models
 
 // BuiltInGatewayReleaseLine is the gateway minor release line this build is
 // for, written major.minor. The dashboard shares the gateway's minor release
-// line (ADR 0009): a build for 0.1 works with every gateway 0.1.x, and with
+// line (ADR 0005): a build for 0.1 works with every gateway 0.1.x, and with
 // no other line.
 //
 // It is the line of the release deploy/ci/gateway-pins.json names, the

@@ -60,15 +60,15 @@ func TestGuardSettingWrite(t *testing.T) {
 			want:   proceed,
 		},
 		{
-			// The reviewed version skipped here and the lane stayed green
-			// while the Settings page was blank.
+			// A skip here would leave CI green while the Settings page is
+			// blank.
 			name:   "an empty list is a failure, not a skip",
 			listed: settingsOf(),
 			want:   broken,
 			reason: "listed no settings at all",
 		},
 		{
-			// The reviewed version overwrote the value and then unset it.
+			// Writing here would overwrite the value and then unset it.
 			name:   "a value somebody else set is left alone",
 			listed: settingsOf("ocsf_json_enabled", nil, key, "auto"),
 			want:   standDown,
