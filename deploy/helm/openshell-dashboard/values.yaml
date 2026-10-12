@@ -62,7 +62,7 @@ authProxy:
   upstreamTimeout: 120s
   # -- API path patterns that return HTTP 401 instead of redirecting to the identity provider on an expired session.
   apiRoutes: ["^/api/"]
-  # -- Allowed redirect domains (including IdP sign-out redirects); prefix with . or *. to allow subdomains. Setting the list also drops --skip-provider-button=true, which authProxy.extraArgs can add back.
+  # -- Allowed redirect domains (including IdP sign-out redirects); prefix with . or *. to allow subdomains. Setting the list also drops the `skip-provider-button` flag, which authProxy.extraArgs can add back.
   whitelistDomains: []
   # -- Additional oauth2-proxy flags, appended after chart-generated arguments.
   extraArgs: []

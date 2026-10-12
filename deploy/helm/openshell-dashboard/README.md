@@ -112,7 +112,7 @@ These files are in the repository, not in the packaged chart. CI renders each on
 | authProxy.resources | object | `{}` | Resource requests/limits for oauth2-proxy. |
 | authProxy.tls.secretName | string | `""` | Secret with tls.crt/tls.key for HTTPS proxy backend (required for Route reencrypt). |
 | authProxy.upstreamTimeout | string | `"120s"` | Maximum amount of time the proxy will wait for a response from the upstream. |
-| authProxy.whitelistDomains | list | `[]` | Allowed redirect domains (including IdP sign-out redirects); prefix with . or *. to allow subdomains. Setting the list also drops --skip-provider-button=true, which authProxy.extraArgs can add back. |
+| authProxy.whitelistDomains | list | `[]` | Allowed redirect domains (including IdP sign-out redirects); prefix with . or *. to allow subdomains. Setting the list also drops the `skip-provider-button` flag, which authProxy.extraArgs can add back. |
 | autoscaling.enabled | bool | `false` | Create autoscaling/v2 HPA (CPU/memory metrics need requests or limits on both containers). |
 | autoscaling.maxReplicas | int | `4` | Maximum replicas. |
 | autoscaling.minReplicas | int | `1` | Minimum replicas. |
