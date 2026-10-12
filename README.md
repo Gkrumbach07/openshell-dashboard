@@ -68,7 +68,7 @@ Then open `https://dashboard.example.com` and sign in. The [install guide](docs/
 A dashboard release is for one minor release line of the OpenShell gateway: every gateway release that shares a major and a minor number, so `0.1.x` is `0.1.0`, `0.1.3` and every other release whose version starts with `0.1`. To know whether a dashboard works with a gateway, compare the first two numbers of their versions; the patch numbers play no part ([ADR 0005](docs/adrs/0005-gateway-compatibility-and-releases.md)).
 
 | Your gateway | Dashboard | Container image |
-| --- | --- | --- |
+|---|---|---|
 | `0.1.x` | `0.1.x` | `quay.io/gkrumbach07/openshell-dashboard:0.1` for the newest release of the line, or an exact `:0.1.N` |
 | `0.0.116` | the [`gateway-0.0.116`](https://github.com/Gkrumbach07/openshell-dashboard/releases/tag/gateway-0.0.116) release | `quay.io/gkrumbach07/openshell-dashboard:gateway-0.0.116` |
 
@@ -78,7 +78,7 @@ This branch is built on:
 
 <!-- gateway-range:begin (generated from deploy/ci/gateway-pins.json by scripts/readme-gateway-range.mjs; do not edit) -->
 | | |
-| --- | --- |
+|---|---|
 | Supported gateways | `0.1.x` |
 | Tested on | `0.1.3` |
 | OpenShell Go SDK | `v0.0.0-20261009050449-e1f3c82caa3e` |
