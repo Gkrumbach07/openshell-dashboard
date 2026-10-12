@@ -156,5 +156,5 @@ If the page needs data not yet wired up, use the `add-rpc` skill first.
 make lint
 make typecheck
 make test
-make dev  # verify in browser
+make dev  # verify in browser (make gateway first)
 ```

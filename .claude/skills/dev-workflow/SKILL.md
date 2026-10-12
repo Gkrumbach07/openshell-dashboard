@@ -42,10 +42,11 @@ Or individually:
 
 ## For UI changes
 
-Start the dev server and verify in a browser:
+Start the gateway and the dev server, and verify in a browser:
 
 ```bash
-make dev  # needs a running gateway; OPENSHELL_GATEWAY_URL points at it
+make gateway  # the pinned OpenShell gateway, in Docker, until make dev-down
+make dev      # http://localhost:3000, without sign-in; make dev-full for sign-in
 ```
 
 Check: does the page load? Does the data display? Do actions (create, delete) work? Are error states handled?

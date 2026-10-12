@@ -100,15 +100,16 @@ This branch is built on:
 
 ## Development
 
-You need Go 1.26.7 or newer, Node 22 and [a running OpenShell gateway](https://github.com/NVIDIA/OpenShell/blob/main/docs/about/installation.mdx) of the supported release line. Export its address and certificates first ([Connecting to a gateway outside the chart](docs/configuration.md#connecting-to-a-gateway-outside-the-chart)).
+You need Go 1.26.7 or newer, Node 22, Docker with Compose, `jq`, `openssl` and `curl`.
 
 ```sh
-make setup   # install the frontend and Go dependencies
-make dev     # the UI on http://localhost:3000 and the BFF on port 8080, without sign-in
-make test    # frontend unit tests and Go tests
+make setup     # install the frontend and Go dependencies
+make gateway   # the OpenShell gateway this branch pins, in Docker
+make dev       # the UI on http://localhost:3000 and the BFF on port 8080, without sign-in
+make test      # frontend unit tests and Go tests
 ```
 
-[docs/development.md](docs/development.md) has the steps in order, the other targets and the layout of the code.
+`make dev-full` runs it behind sign-in. [docs/development.md](docs/development.md) has the steps in order, the other targets and the layout of the code.
 
 ## Contributing
 

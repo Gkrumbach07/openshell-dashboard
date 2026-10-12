@@ -5,38 +5,43 @@ How to run the dashboard from a checkout, test it, and find your way around the 
 ## Prerequisites
 
 - Go 1.26.7 or newer (`backend/go.mod`), Node 22.
-- A running OpenShell gateway of the supported release line ([installing OpenShell](https://github.com/NVIDIA/OpenShell/blob/main/docs/about/installation.mdx)): the line under [Compatibility](../README.md#compatibility).
-- Docker and `jq`, for the compat suite; Docker also builds the image.
+- Docker with Compose, `jq`, `openssl` and `curl`: the local gateway and the compat suite run in Docker, which also builds the image.
 - For `make lint`, [golangci-lint](https://github.com/golangci/golangci-lint) v2 built with Go 1.26.7 or newer; an older build stops before it lints. CI runs v2.12.2.
 
 ## Run it locally
 
-1. `make setup` installs the frontend and Go dependencies.
-2. Export the gateway's address and certificates, as in [Connecting to a gateway outside the chart](configuration.md#connecting-to-a-gateway-outside-the-chart).
-3. `make dev` starts two processes:
+```sh
+make setup      # once: the frontend and Go dependencies
+make gateway    # the OpenShell release this branch pins, in Docker
+make dev        # the UI on http://localhost:3000 and the BFF on port 8080
+```
 
-| Process | Address | Notes |
-|---|---|---|
-| Vite dev server | `http://localhost:3000` | Serves the UI with hot reload and proxies `/api` to the BFF |
-| Go BFF | `http://localhost:8080` | Runs with `AUTH_DISABLED=true` unless you set it. Restart it after a Go change |
+Open `http://localhost:3000` and choose **Continue as developer**. Sign-in is off: you are `dev-user`, a platform admin, and the BFF forwards no token. The UI reloads on a change; restart `make dev` after a Go change.
 
-Open `http://localhost:3000` and choose **Continue as developer**. Sign-in is off, so the BFF forwards no token.
+With sign-in, in place of the last two:
 
-Without a gateway of your own, `make compat-up` starts the release this branch is built on in Docker ([the compat suite](#the-compat-suite)); then run `OPENSHELL_GATEWAY_URL=localhost:8080 PORT=9080 BFF_URL=http://localhost:9080 make dev`.
+```sh
+make dev-full   # also Keycloak, with the realm of deploy/keycloak/, and the auth proxy
+```
 
-To run the dashboard with sign-in on a local cluster, see [`deploy/keycloak/dev/README.md`](../deploy/keycloak/dev/README.md).
+Open `http://localhost:4180`, not the port 3000 the dev server prints. The command prints the password of `admin1`, a platform admin, and `user1`, and the subject by which `admin1` adds `user1` to a workspace under **Members**; `scripts/dev-env.sh status` prints them again. The first run pulls Keycloak and builds the auth proxy; the first sandbox pulls a 4 GB image.
+
+- **Stop.** Ctrl-C, then `make dev-down`. `make dev-reset` also deletes the gateway's data; run it before you delete the checkout.
+- **Logs.** `make dev-logs` follows the gateway and Keycloak.
+- **Docker.** The gateway runs on the daemon `docker` talks to (`docker context ls`). Tested on colima on macOS only; there, keep the checkout under your home directory.
+- **A gateway of your own.** For `make dev`, skip `make gateway` and export its address and certificates first ([Connecting to a gateway outside the chart](configuration.md#connecting-to-a-gateway-outside-the-chart)).
 
 ## Make targets
 
 | Target | What it does |
 |---|---|
 | `make setup` | `npm install` in `frontend/`, `go mod download` in `backend/` |
-| `make dev` | The Vite dev server and the BFF, as above. Only the frontend reloads on a change |
+| `make gateway`, `dev`, `dev-full`, `dev-logs`, `dev-down`, `dev-reset` | [Run it locally](#run-it-locally) |
 | `make test` | `go test ./...` and Jest |
 | `make lint` | ESLint, the Prettier check and golangci-lint |
 | `make typecheck`, `make format` | `tsc --noEmit`; Prettier, writing the files |
 | `make build` | The container image, with `docker build` |
-| `make compat`, `compat-up`, `compat-down` | [The compat suite](#the-compat-suite) |
+| `make compat` | [The compat suite](#the-compat-suite) |
 | `make helm-lint`, `helm-test`, `helm-docs` | [The Helm chart](#the-helm-chart) |
 
 ## Tests
@@ -52,10 +57,9 @@ The compatibility suite, `compat` for short, is `backend/test/compat`: Go tests 
 ```sh
 make compat                            # against the gateway this branch pins
 OPENSHELL_VERSION=0.1.2 make compat    # against another gateway release, by its tag
-make compat-up                         # only the gateway; make compat-down removes it
 ```
 
-`make compat` starts the gateway with Docker Compose, builds the BFF, runs the suite and removes the gateway. It expects the Docker socket at `/var/run/docker.sock` and keeps the gateway's state in `/var/lib/openshell`, with `sudo` when it cannot write there; `DOCKER_SOCK` and `OPENSHELL_STATE_DIR` point it elsewhere. Without `jq` it runs the gateway tagged `latest` instead.
+`make compat` starts a gateway of its own, on port 8080, builds the BFF, runs the suite and removes the gateway and its data.
 
 A unit test with a stand-in for the SDK cannot see a gateway that reads a request differently, so the suite runs against the pinned gateway on every pull request ([How it is tested](compatibility.md#how-it-is-tested)).
 
@@ -100,8 +104,8 @@ backend/             Go BFF
   pkg/auth/          takes the bearer from the request
   pkg/apiutils/      shared HTTP helpers
   test/compat/       the compat suite
-deploy/              Dockerfile, Helm chart (helm/), Keycloak realm (keycloak/), compat stack and gateway pins (ci/)
-scripts/             release and CI tooling, dev-env.sh
+deploy/              Dockerfile, Helm chart (helm/), Keycloak realm (keycloak/), local stack (dev/), compat stack and gateway pins (ci/)
+scripts/             release and CI tooling, dev-env.sh (the local stack)
 images/              a sandbox image (claude-code/)
 tasks/, mise.toml    the helm-docs task `make helm-docs` runs
 .github/workflows/   CI (ci.yml), releases (publish.yml), Follow upstream (follow-upstream.yml)
@@ -120,7 +124,3 @@ const features = useFeatureFlags();
 ## Branches and the pinned OpenShell release
 
 A branch is built on one OpenShell release, which `deploy/ci/gateway-pins.json` names: `main` on a stable release, `next` on the upcoming one. Which branch a change goes to is in [CONTRIBUTING.md](../CONTRIBUTING.md#where-a-pull-request-goes), and how the pinned release moves is in [`deploy/ci/upstream/README.md`](../deploy/ci/upstream/README.md).
-
-## Known issues
-
-`make dev-full` (`scripts/dev-env.sh start`, then `make dev`) starts Keycloak in Podman and builds a gateway from an OpenShell checkout, but writes a version 1 gateway config, which gateways from 0.1.0 on refuse: it does not start a gateway of the supported release line. `scripts/dev-env.sh stop` stops what it started.
