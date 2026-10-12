@@ -19,6 +19,7 @@ import {
 import { useUserRole } from '../api/rbac';
 import { useAddMember } from '../api/workspaces';
 import { useAlerts } from '../app/AlertContext';
+import { useI18n } from '../i18n';
 import type { WorkspaceRole } from '../types';
 
 type AddMemberModalProps = {
@@ -37,6 +38,12 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
   const addMember = useAddMember(workspace);
   const { addSuccess } = useAlerts();
   const { isPlatformAdmin } = useUserRole();
+  const { t } = useI18n('workspaces');
+  const { t: tCommon } = useI18n('common');
+
+  // The gateway stores the subject as it is sent and matches it exactly, so
+  // a space pasted along with it would make a member nobody can sign in as.
+  const principalSubject = subject.trim();
 
   const close = () => {
     setSubject('');
@@ -46,8 +53,11 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
   };
 
   const submit = () => {
+    if (!principalSubject || addMember.isPending) {
+      return;
+    }
     addMember.mutate(
-      { principalSubject: subject, role },
+      { principalSubject, role },
       {
         onSuccess: () => {
           addSuccess('Member added');
@@ -83,12 +93,14 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
               isRequired
               value={subject}
               onChange={(_event, value) => setSubject(value)}
-              placeholder="OIDC subject claim, e.g. user@example.com"
+              aria-describedby="member-subject-help"
             />
             <FormHelperText>
-              <HelperText>
-                <HelperTextItem>
-                  The OIDC `sub` claim of the user to add
+              <HelperText id="member-subject-help">
+                <HelperTextItem data-testid="member-subject-help">
+                  {t('members.add.subjectHelp', {
+                    action: tCommon('header.copySubject'),
+                  })}
                 </HelperTextItem>
               </HelperText>
             </FormHelperText>
@@ -125,7 +137,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
         <Button
           variant="primary"
           onClick={submit}
-          isDisabled={!subject || addMember.isPending}
+          isDisabled={!principalSubject || addMember.isPending}
           isLoading={addMember.isPending}
           data-testid="add-member-submit"
         >

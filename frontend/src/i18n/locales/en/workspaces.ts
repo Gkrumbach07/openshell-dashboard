@@ -44,6 +44,14 @@ export default {
     // Some of the selected workspaces were deleted and some were not.
     toastSome: 'Workspaces deleted: {{names}}',
   },
+  members: {
+    add: {
+      // Under the subject field of the Add member dialog. {{action}} is the
+      // user menu's item that copies the signed-in user's subject.
+      subjectHelp:
+        'The OIDC subject (the "sub" claim) of the user, usually not their email address or username. Once they can sign in, they get it from "{{action}}" in the user menu.',
+    },
+  },
   // The list is refreshed in the background, and a refresh failed.
   refreshFailed: {
     title: 'The workspace list could not be refreshed',

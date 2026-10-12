@@ -381,7 +381,6 @@ type LintProviderProfilesResult struct {
 type CurrentUser struct {
 	Subject          string   `json:"subject"`
 	DisplayName      string   `json:"displayName,omitempty"`
-	Email            string   `json:"email,omitempty"`
 	IdentityProvider string   `json:"identityProvider,omitempty"`
 	Roles            []string `json:"roles"`
 	Scopes           []string `json:"scopes,omitempty"`
