@@ -17,7 +17,7 @@ import (
 var _ GatewayVersionReader = (*GatewayService)(nil)
 
 // authorizationRule returns the authorization the gateway's proto declares for
-// one OpenShell RPC, as compiled into the vendored SDK. It is the same
+// one OpenShell RPC, as compiled into the SDK. It is the same
 // descriptor option the gateway builds its own authorization table from.
 func authorizationRule(t *testing.T, method string) *optionsv1.AuthorizationRule {
 	t.Helper()

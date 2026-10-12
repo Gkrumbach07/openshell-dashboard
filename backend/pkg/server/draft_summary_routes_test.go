@@ -90,14 +90,13 @@ func TestDraftSummaryRoutes(t *testing.T) {
 			want: map[string]int{"team-b/agent": 1},
 		},
 		{
-			name: "the old route, for one workspace",
+			name: "the route outside a workspace, with ?workspace=",
 			path: "/api/v1/draft-summary?workspace=team-b",
 			want: map[string]int{"team-b/agent": 1},
 		},
 		{
-			// Empty, as it was before there was a real summary: see
-			// DraftsHandler.GetDraftSummary.
-			name: "the old route, without a workspace",
+			// Empty: see DraftsHandler.GetDraftSummary.
+			name: "the route outside a workspace, without one",
 			path: "/api/v1/draft-summary",
 			want: map[string]int{},
 		},

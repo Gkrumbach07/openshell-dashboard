@@ -29,8 +29,8 @@ func (h *LogsHandler) SetCredentialKeyReader(keys services.ProviderCredentialKey
 	h.keys = keys
 }
 
-// GetSandboxLogs serves the polled logs view. The SDK resolves sandbox name
-// to sandbox_id internally.
+// GetSandboxLogs serves the polled logs view. The gateway is asked by sandbox
+// name and workspace; the SDK first checks that the sandbox exists.
 //
 // Query params: lines (default 200), sinceMs, source (repeatable:
 // gateway|sandbox), level (min level, e.g. INFO).

@@ -159,10 +159,10 @@ const invalidateProviders = (
 // React Query holds on to a mutation, its variables included, for five
 // minutes after the last component that used it has unmounted or reset it.
 // The variables of these requests are credential values and refresh material.
-// An embedding host owns the query client and may inspect or persist what is
-// in it, so nothing secret is left there once the dialog that sent it has
-// closed. While the dialog is open the mutation is still observed, and stays:
-// the error of a request that failed is read from it.
+// Anything that holds the query client can read what is in it, so nothing
+// secret is left there once the dialog that sent it has closed. While the
+// dialog is open the mutation is still observed, and stays: the error of a
+// request that failed is read from it.
 const SECRET_REQUEST_GC_MS = 0;
 
 export const useCreateProvider = (workspace: string) => {

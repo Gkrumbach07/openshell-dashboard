@@ -209,9 +209,9 @@ describe('uploadFile', () => {
     );
   });
 
-  // The upload is a request of the configured client like any other: an
-  // embedding product that moved the API, or that supplies the token itself,
-  // must find its files going the same way as everything else.
+  // The upload is a request of the configured client like any other: with a
+  // base path or a token getter set, files go the same way as everything
+  // else.
   describe('through the configured client', () => {
     it('sends no auth header of its own while no token getter is set', async () => {
       void uploadFile('default', 'sb', file);
@@ -229,21 +229,21 @@ describe('uploadFile', () => {
     });
 
     it('carries the token of the token getter, asked for before it is sent', async () => {
-      const getter = jest.fn(async () => 'token-b');
+      const getter = jest.fn(async () => 'test-token');
       setAuthTokenGetter(getter);
       void uploadFile('default', 'sb', file);
       await started();
       expect(getter).toHaveBeenCalledTimes(1);
-      expect(sent[0].headers).toEqual({ Authorization: 'Bearer token-b' });
+      expect(sent[0].headers).toEqual({ Authorization: 'Bearer test-token' });
     });
 
     it('puts the token on the header that was chosen for it', async () => {
-      setAuthTokenGetter(() => 'token-b');
-      setAuthTokenHeader('X-OpenShell-Authorization');
+      setAuthTokenGetter(() => 'test-token');
+      setAuthTokenHeader('X-Alt-Authorization');
       void uploadFile('default', 'sb', file);
       await started();
       expect(sent[0].headers).toEqual({
-        'X-OpenShell-Authorization': 'Bearer token-b',
+        'X-Alt-Authorization': 'Bearer test-token',
       });
     });
 
@@ -414,8 +414,8 @@ describe('downloadFile', () => {
   describe('through the configured client', () => {
     it('asks the API under the base path, with the token of the token getter', async () => {
       setApiBasePath('/openshell');
-      setAuthTokenGetter(async () => 'token-b');
-      setAuthTokenHeader('X-OpenShell-Authorization');
+      setAuthTokenGetter(async () => 'test-token');
+      setAuthTokenHeader('X-Alt-Authorization');
       fetchMock.mockResolvedValue(
         answer(200, 'application/octet-stream', new Blob(['hello'])),
       );
@@ -425,7 +425,7 @@ describe('downloadFile', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock).toHaveBeenCalledWith(
         '/openshell/api/v1/workspaces/team%20a/sandboxes/sb/files?path=%2Fsandbox%2Fout%2Freport.bin',
-        { headers: { 'X-OpenShell-Authorization': 'Bearer token-b' } },
+        { headers: { 'X-Alt-Authorization': 'Bearer test-token' } },
       );
     });
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Command line for following upstream OpenShell releases (ADR 0009, decisions 6 to 8).
+"""Command line for following upstream OpenShell releases (ADR 0005, decisions 6 to 8).
 
 .github/workflows/follow-upstream.yml and the compat-pins job in ci.yml call
 this file and nothing else in this directory. The workflows keep the parts

@@ -34,9 +34,9 @@ authProxy:
   image:
     # -- oauth2-proxy registry; empty uses global.image.registry.
     registry: ""
-    # -- oauth2-proxy repository. Replace with approved downstream image if needed.
+    # -- oauth2-proxy repository. Change it to pull the proxy from another registry or a mirror.
     repository: oauth2-proxy/oauth2-proxy
-    # -- Proxy image tag; pinned until proxy version is tied to chart releases.
+    # -- oauth2-proxy image tag.
     tag: v7.15.2
     # -- Proxy image digest; takes precedence over tag.
     digest: ""
@@ -62,7 +62,7 @@ authProxy:
   upstreamTimeout: 120s
   # -- API path patterns that return HTTP 401 instead of redirecting to the identity provider on an expired session.
   apiRoutes: ["^/api/"]
-  # -- Allowed redirect domains (including IdP sign-out redirects); prefix with . or *. to allow subdomains.
+  # -- Allowed redirect domains (including IdP sign-out redirects); prefix with . or *. to allow subdomains. Setting the list also drops the `skip-provider-button` flag, which authProxy.extraArgs can add back.
   whitelistDomains: []
   # -- Additional oauth2-proxy flags, appended after chart-generated arguments.
   extraArgs: []
@@ -89,7 +89,7 @@ podLabels: {}
 
 # Set null on OpenShift restricted-v2 to let SCC assign namespace-specific group.
 podSecurityContext:
-  # -- Pod fsGroup for vanilla Kubernetes; OpenShift overlay sets podSecurityContext to null.
+  # -- fsGroup of the pod; on OpenShift set podSecurityContext to null.
   fsGroup: 1000
 
 securityContext:
@@ -115,7 +115,7 @@ gateway:
   tls:
     # -- Use grpcs:// for the derived gateway URL; disable only with gateway.caSecretName empty.
     enabled: true
-  # -- Upstream gateway Service fullname (default upstream helm install openshell).
+  # -- Name of the OpenShell gateway's Service: openshell when the gateway is installed as release openshell.
   serviceName: openshell
   # -- TLS CA Secret in the release namespace. Empty only with a plaintext grpc:// or http:// gateway URL.
   caSecretName: openshell-client-tls
@@ -133,9 +133,9 @@ oidc:
   provider: oidc
   # -- OIDC issuer URL (e.g. https://keycloak.example.com/realms/openshell)
   issuer: ""
-  # -- Expected audience claim for the API resource server. IdP must add it to token aud. Purely informational.
+  # -- Expected audience claim for the API resource server. IdP must add it to token aud. Purely informational: the chart only prints it in the post-install notes.
   audience: openshell-api
-  # -- Same roles claim path as gateway server.oidc.rolesClaim (documented for installer parity and purely informaitonal).
+  # -- Roles claim path, the same as the gateway's roles claim. Informational: the chart does not read it.
   rolesClaim: ""
   # -- Role name for admin access. Must be the same as the openshell gateway admin name. Defaults to "admin"
   adminRole: ""
@@ -160,7 +160,7 @@ oidc:
 
 probes:
   startup:
-    # -- Dashboard exec command; default calls the BFF's loopback self-check. Override for images with another binary path.
+    # -- Dashboard exec command; the default calls the BFF's loopback self-check.
     dashboardCommand: [/usr/local/bin/openshell-dashboard, --healthcheck]
     # -- Startup probe failure threshold (dashboard and proxy).
     failureThreshold: 30
@@ -223,7 +223,7 @@ openshiftRoute:
   termination: edge
   # -- CA PEM for reencrypt backend validation (requires a separate TLS-enabled proxy configuration).
   destinationCACertificate: ""
-  # -- Route annotations; upstream e2e timeout values cover long-lived terminal WebSockets.
+  # -- Route annotations; the timeouts cover long-lived terminal WebSockets.
   annotations:
     haproxy.router.openshift.io/timeout: 300s
     haproxy.router.openshift.io/timeout-tunnel: 1h
@@ -244,7 +244,7 @@ httpRoute:
     name: ""
     # -- Existing Gateway namespace; empty uses release namespace.
     namespace: ""
-    # -- Listener name when attaching to an existing Gateway; omitted by default unless this chart creates it.
+    # -- Listener name when attaching to an existing Gateway. Set it to the HTTPS listener: without it the route attaches to every listener that admits it. For a Gateway this chart creates, the chart sets it.
     sectionName: ""
     listener:
       # -- Listener port.

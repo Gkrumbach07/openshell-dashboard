@@ -160,10 +160,10 @@ func gatewayLine(t *testing.T, raw string) models.GatewayReleaseLine {
 }
 
 // GET /gateway carries the dashboard's verdict on the gateway's version. The
-// gateways here are the ones that matter today: the release the 0.2.x
-// dashboard serves, a release of this build's line, upstream HEAD on that
-// line, and the first release of the next line. Each body is logged, so
-// `go test -v -run TestGetGatewayCompatibility` shows exactly what the
+// gateways here are the ones that matter today: 0.0.116, which the one-off
+// gateway-0.0.116 release is for, a release of this build's line, a dev build
+// of that line, and the first release of the next line. Each body is logged,
+// so `go test -v -run TestGetGatewayCompatibility` shows exactly what the
 // frontend receives.
 func TestGetGatewayCompatibility(t *testing.T) {
 	tests := []struct { //nolint:govet // fieldalignment: test readability
@@ -259,7 +259,7 @@ func TestGetGatewayCompatibility(t *testing.T) {
 }
 
 // A gateway that cannot be reached has no version to judge, so the error is
-// relayed as before rather than dressed up as a compatibility result.
+// relayed rather than dressed up as a compatibility result.
 func TestGetGatewayUnavailable(t *testing.T) {
 	sdk := &mockSDK{}
 	sdk.health.getGatewayInfoFn = func(_ context.Context) (*openshell.GatewayInfo, error) {
@@ -371,10 +371,10 @@ func TestGetGatewayCompatibilityRoute(t *testing.T) {
 		{
 			// The version is passed through as reported; only the verdict
 			// reads it as the release it rebuilds.
-			name:     "downstream rebuild of a release of the line",
+			name:     "rebuild of a release of the line",
 			line:     "0.1",
-			reported: "0.1.2-rhaiv.5",
-			want:     `{"gatewayVersion":"0.1.2-rhaiv.5","healthy":true,"compatibility":{"status":"supported","supportedLine":"0.1"}}`,
+			reported: "0.1.2-vendor.5",
+			want:     `{"gatewayVersion":"0.1.2-vendor.5","healthy":true,"compatibility":{"status":"supported","supportedLine":"0.1"}}`,
 		},
 		{
 			name:     "gateway on a newer line",
@@ -542,9 +542,9 @@ func TestGetGatewayCompatibilityHealth(t *testing.T) {
 	}
 }
 
-// versionOnlyGatewayService is a downstream gateway service that offers the
-// role-free version source and was written before the health had one: it has
-// GetGatewayVersion and no GetGatewayHealth.
+// versionOnlyGatewayService is a gateway service that offers the role-free
+// version source and nothing for the health: it has GetGatewayVersion and no
+// GetGatewayHealth.
 type versionOnlyGatewayService struct {
 	infoOnlyGatewayService
 	version string
@@ -554,9 +554,9 @@ func (s versionOnlyGatewayService) GetGatewayVersion(context.Context) (string, e
 	return s.version, nil
 }
 
-// A downstream service keeps compiling and keeps its verdict whichever of the
-// optional sources it has. The health comes from the best source on offer,
-// and is left out when there is none rather than guessed.
+// A service gets its verdict whichever of the optional sources it has. The
+// health comes from the best source on offer, and is left out when there is
+// none rather than guessed.
 func TestGetGatewayCompatibilityHealthSources(t *testing.T) {
 	tests := []struct { //nolint:govet // fieldalignment: test readability
 		name string
@@ -610,9 +610,8 @@ func TestGetGatewayCompatibilityHealthSources(t *testing.T) {
 	}
 }
 
-// infoOnlyGatewayService is a downstream gateway service written against
-// GatewayServiceInterface alone, before the verdict had a route of its own:
-// it has no GetGatewayVersion.
+// infoOnlyGatewayService is a gateway service that implements
+// GatewayServiceInterface and nothing more: it has no GetGatewayVersion.
 type infoOnlyGatewayService struct {
 	info *models.GatewayInfo
 	err  error
@@ -626,8 +625,8 @@ func (infoOnlyGatewayService) GetCurrentUser(context.Context) (*models.CurrentUs
 	return &models.CurrentUser{}, nil
 }
 
-// Such a service still compiles and still gets a verdict, from the only
-// version source it has. That source is admin-only, so its refusal is relayed.
+// Such a service gets a verdict from the only version source it has. That
+// source is admin-only, so its refusal is relayed.
 func TestGetGatewayCompatibilityFallsBackToGatewayInfo(t *testing.T) {
 	get := func(svc services.GatewayServiceInterface) *httptest.ResponseRecorder {
 		handler := NewGatewayHandler(svc, auth.New(auth.Config{}), models.AuthConfigResponse{})
@@ -703,9 +702,8 @@ func TestGetWhoAmIAuthDisabled(t *testing.T) {
 	}
 }
 
-// versionOverridingGateway is a downstream service of the kind
-// services.GatewayServiceInterface describes: it embeds the upstream one and
-// answers one method itself.
+// versionOverridingGateway embeds services.GatewayService and answers one
+// method itself.
 type versionOverridingGateway struct {
 	*services.GatewayService
 	version string
@@ -715,15 +713,15 @@ func (g *versionOverridingGateway) GetGatewayVersion(context.Context) (string, e
 	return g.version, nil
 }
 
-// A downstream service that embeds the upstream one and answers the version
+// A service that embeds services.GatewayService and answers the version
 // itself inherits GetGatewayHealth without having written it. Its version is
 // the one served and judged; only the health comes from the health check.
-func TestGetGatewayCompatibilityKeepsADownstreamVersion(t *testing.T) {
+func TestGetGatewayCompatibilityKeepsAServiceVersion(t *testing.T) {
 	sdk := &mockSDK{}
 	sdk.health.checkFn = func(context.Context) (*openshell.HealthResult, error) {
 		return &openshell.HealthResult{Healthy: true, Version: "0.0.1"}, nil
 	}
-	svc := &versionOverridingGateway{GatewayService: services.NewGatewayService(sdk), version: "9.9.9-downstream"}
+	svc := &versionOverridingGateway{GatewayService: services.NewGatewayService(sdk), version: "9.9.9-custom"}
 	handler := NewGatewayHandler(svc, auth.New(auth.Config{}), models.AuthConfigResponse{})
 
 	w := httptest.NewRecorder()
@@ -735,8 +733,8 @@ func TestGetGatewayCompatibilityKeepsADownstreamVersion(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v; body: %s", err, w.Body.String())
 	}
-	if got.GatewayVersion != "9.9.9-downstream" {
-		t.Errorf("gatewayVersion = %q, want the downstream service's own answer", got.GatewayVersion)
+	if got.GatewayVersion != "9.9.9-custom" {
+		t.Errorf("gatewayVersion = %q, want the service's own answer", got.GatewayVersion)
 	}
 	if got.Healthy == nil || !*got.Healthy {
 		t.Errorf("healthy = %v, want true from the health check", got.Healthy)

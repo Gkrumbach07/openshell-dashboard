@@ -1,101 +1,34 @@
-# ADR 0002: Auth — Relay-Only BFF Behind a Fronting Proxy
+# ADR 0002: Authentication: a relay-only BFF behind an authenticating proxy
 
 **Status:** Accepted
-**Date:** 2026-08-07
-**Authors:** Gage Krumbach
+**Date:** 2026-10-11
 
 ## Context
 
-The dashboard runs in three deployment contexts (local dev, standalone
-community installs, embedded in a hosting platform), and the OpenShell gateway
-enforces its own RBAC using OIDC JWTs validated against its JWKS. Someone has
-to get a JWT from the user's browser to the gateway on every request.
+The OpenShell gateway authenticates users with OIDC: it validates a JWT against its issuer's keys and enforces roles and workspace membership itself. Something has to carry the user's token from a browser to the gateway on every request.
 
-## Decision
+## Decisions
 
-**The BFF never terminates authentication.** A fronting auth proxy owns
-login, sessions, refresh, logout, and CSRF in every authenticated
-deployment. The BFF relays bearers and does nothing else with them.
+1. **The BFF never terminates authentication.** An authenticating proxy in front of it owns sign-in, the session cookie, token refresh, sign-out and CSRF protection. The Helm chart runs oauth2-proxy for this, as a second container in the dashboard's pod.
+2. **The BFF takes the bearer from one chain and forwards it.** First the `x-forwarded-access-token` header the proxy sets (`AUTH_TOKEN_HEADER` renames it), then an `Authorization: Bearer` header from an API client, otherwise `401`. Every call to the gateway carries that bearer as per-request credentials.
+3. **The BFF does nothing else with a token.** It does not validate it: no JWKS, no signature, issuer or audience check, no JWT parsing. It does not authorize: the gateway enforces roles and membership. It keeps no session, cookie or refresh logic. Its only auth routes are `GET /api/v1/auth/config` and `GET /api/v1/auth/whoami`.
+4. **There are two modes and one switch.** `AUTH_DISABLED=true` is for local development: a synthetic `dev-user`, no token forwarded, and any token on the request ignored. Every other deployment runs behind the proxy.
+5. **The proxy is the only network path to the BFF.** A request that reaches the BFF directly can present any header. The chart enforces this: the BFF listens on `127.0.0.1`, the Service exposes the proxy's port only, and the NetworkPolicy admits traffic to that port only.
+6. **The proxy and the gateway trust the same OIDC issuer.** The proxy forwards the access token, and the gateway has to accept it: its audience and its roles claim. Any OIDC provider works; the [install guide](../install.md) and the example values use Keycloak.
+7. **The UI asks the gateway who the user is.** It reads `GET /api/v1/auth/config` once. With auth disabled it shows a developer sign-in page. Otherwise it calls `GET /api/v1/auth/whoami` before it renders anything else, and the roles it shows are the gateway's. Hiding a navigation item for a role is convenience, not enforcement. A `401` on a later request reloads the page once, so the proxy can sign the user in again. Sign-out goes to the proxy's sign-out address (`LOGOUT_URL`, `/oauth2/sign_out` by default). The UI has no login form, no callback page and no token in browser storage.
+8. **The BFF is same-origin only.** It has no CORS middleware, and the terminal's WebSocket refuses a handshake from another origin.
 
-### Modes
+## Limits
 
-| Mode | Activation | Who terminates auth | Bearer source |
-|------|-----------|--------------------|---------------|
-| **Dev** | `AUTH_DISABLED=true` | nobody — synthetic `dev-user`, no token forwarded | none |
-| **Standalone** | default | **oauth2-proxy** shipped alongside the BFF, configured against the deployment's IdP | `x-forwarded-access-token` |
-| **Federated** | default | the host platform's auth proxy | `x-forwarded-access-token` |
+- A client certificate (`GATEWAY_CLIENT_CERT`, `GATEWAY_CLIENT_KEY`) secures the BFF's connection to a gateway that requires mutual TLS. It does not replace the user's bearer on a gateway that uses OIDC. On a gateway that authenticates by client certificate alone, every signed-in user reaches the gateway as that one certificate; the chart refuses a client certificate unless sign-in is restricted with `oidc.allowedGroups` or `oidc.allowedRoles`.
 
-Standalone and federated are the **same architecture** with different proxy
-operators — the BFF cannot and need not distinguish them. The only auth
-switch is `AUTH_DISABLED`.
+## Alternatives
 
-Bearer resolution: `x-forwarded-access-token` → `Authorization: Bearer` → 401.
-
-### What the BFF never does with a token
-
-1. **No termination.** No login flows, no OIDC endpoints, no cookies, no
-   session state, no refresh, no logout logic.
-2. **No validation.** No JWKS, no signature/issuer/audience checks, no JWT
-   parsing. The gateway validates against its own JWKS; a second validator
-   would drift.
-3. **No authorization.** The gateway enforces RBAC. Frontend role display
-   comes from `GetCurrentUser`; hiding a nav item is UX, not enforcement.
-4. **No ambient identity.** Every gRPC call carries the caller's bearer via
-   per-RPC credentials. No service-account fallback.
-
-### The deployment invariant
-
-Unconditional trust in `x-forwarded-access-token` is safe only when the
-proxy is the **sole network path** to the BFF (localhost sidecar,
-pod-internal port, proxy-only ingress). Never expose the BFF port directly
-in an authenticated deployment.
-
-### Frontend behavior
-
-The frontend reads `GET /api/v1/auth/config` and branches once:
-`authDisabled` → dev login page; otherwise render the authenticated app —
-the proxy guaranteed a logged-in user before the first byte of HTML arrived.
-On 401 (expired proxy session): full page reload so the proxy
-re-authenticates, unless the host installed `setSessionExpiredHandler`.
-No PKCE flow, no callback page, no OIDC login UI.
-
-### Out of scope
-
-- The gateway's other client-auth modes (mTLS, Edge JWT, plaintext) are not
-  supported. The proxy-to-user leg is OIDC; the BFF-to-gateway leg is the
-  forwarded JWT.
-- **Token exchange** (RFC 8693): if it materializes, it lands in the
-  proxy/platform layer, not in the BFF.
-
-## History
-
-Three approaches were tried:
-
-1. **sessionStorage SPA tokens**: frontend held the JWT, sent
-   `Authorization: Bearer`. Broke WebSocket auth (no headers on upgrades),
-   exposed tokens to XSS, logout didn't work.
-2. **In-BFF cookie custodian**: BFF ran PKCE, sealed tokens into
-   AES-256-GCM `__Host-` cookies, refreshed server-side, enforced CSRF.
-   Well-engineered per the IETF browser-based-apps BCP, but made the BFF an
-   identity proxy (~1,500 lines, six endpoints).
-3. **Relay-only**: the custodian's requirements (HttpOnly sessions, refresh,
-   WS coverage, lifetime caps) are real — oauth2-proxy meets them on the
-   other side of a network boundary. Every production deployment already
-   fronted the BFF with a proxy; the custodian's only real consumer was a
-   bare standalone install, which now ships oauth2-proxy instead.
-
-The lesson: the BFF grew custody not because pipes inevitably do, but
-because it was the only component present to meet a real need (browser
-login). Fixing the *deployment shape* — proxy ships alongside — makes the
-pure relay sustainable.
+- *Tokens held by the UI in `sessionStorage` and sent as `Authorization: Bearer`.* Exposed to script injection, unable to authenticate a WebSocket upgrade, and with no real sign-out.
+- *A session kept by the BFF:* PKCE in the BFF, tokens sealed in cookies, refresh on the server, CSRF checks. Sound, but it turns the BFF into an identity proxy and repeats what oauth2-proxy does one hop earlier.
+- *Validate the JWT in the BFF as well as in the gateway.* A second validator can drift from the first.
 
 ## Consequences
 
-- The BFF's entire auth surface is ~50 lines of header reading. Auth bugs
-  are proxy configuration or gateway configuration.
-- Any standard OIDC IdP works via the proxy's config. The relay is
-  indifferent to token format; the gateway's JWKS compatibility is a
-  deployment concern, not BFF code.
-- Beyond auth, the BFF stays out of: Kubernetes API calls, credential
-  brokering (write-only pass-through), rate limiting / WAF (ingress layer),
-  and server-side state (no session store, no database).
+- A sign-in problem is a proxy or gateway configuration problem, not BFF code.
+- The BFF is indifferent to the token's format and to the identity provider. What the gateway needs in the token is in [Authentication](../authentication.md#what-the-token-must-contain).

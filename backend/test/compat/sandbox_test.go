@@ -287,9 +287,8 @@ func withCurrentVersion(t *testing.T, workspace, name string, send func(version 
 	return nil
 }
 
-// Ports cypress/e2e-integration/sandbox-lifecycle.cy.ts — the one compat test
-// that exercises the whole stack: gateway, compute driver, supervisor image
-// and the sandbox workload.
+// TestSandboxLifecycle exercises the whole stack: gateway, compute driver,
+// supervisor image and the sandbox workload.
 func TestSandboxLifecycle(t *testing.T) {
 	requireSandboxes(t)
 	name := randName("cs")

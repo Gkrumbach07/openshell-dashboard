@@ -22,11 +22,11 @@
         "paths": [
           {
             "name": "i18next",
-            "message": "Import useI18n / I18nProvider / catalogs from ~/i18n instead."
+            "message": "Import useI18n from the i18n module (src/i18n) instead."
           },
           {
             "name": "react-i18next",
-            "message": "Import useI18n / I18nProvider / catalogs from ~/i18n instead."
+            "message": "Import useI18n from the i18n module (src/i18n) instead."
           }
         ]
       }

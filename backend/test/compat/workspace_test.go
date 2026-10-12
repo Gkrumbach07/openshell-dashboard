@@ -61,7 +61,6 @@ func removeWorkspace(name string) {
 	}
 }
 
-// Ports cypress/e2e-integration/workspace-lifecycle.cy.ts.
 func TestWorkspaceLifecycle(t *testing.T) {
 	name := randName("cw")
 

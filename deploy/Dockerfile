@@ -37,7 +37,7 @@ ENV PORT=8080 \
 EXPOSE 8080
 
 # Which OpenShell gateway release line this build is for, and the SDK it was
-# built against (#66, ADR 0009), as labels for someone holding only an image
+# built against (ADR 0005), as labels for someone holding only an image
 # reference:
 #   skopeo inspect docker://<image> | jq .Labels
 #

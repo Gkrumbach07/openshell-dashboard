@@ -7,7 +7,7 @@
 # Usage with dashboard:
 #   Image: ghcr.io/<your-registry>/openshell-claude-code:latest
 #   Provider: claude-code (attach your Anthropic API key)
-#   Policy: web-audit or anthropic-agent template
+#   Policy: the anthropic-agent starter template
 
 FROM ghcr.io/nvidia/openshell-community/sandboxes/base:latest
 

@@ -2,7 +2,7 @@
 // The OpenShell gateway release line this build is for, derived from
 // deploy/ci/gateway-pins.json.
 //
-// A dashboard build shares the gateway's minor release line (ADR 0009): a
+// A dashboard build shares the gateway's minor release line (ADR 0005): a
 // build for 0.1 works with every gateway 0.1.x and with no other line. Nobody
 // gets to type the line an artifact declares. It is the major.minor of the
 // release the pins file names: the one upstream release this branch is built
@@ -75,11 +75,13 @@ export function deriveGatewayLine(pins) {
 }
 
 /**
- * The line a pins file from before 2026-10-09 declared. Such a file listed
- * several gateways as `lanes`, and its line was that of the newest required
- * one (ADR 0006). Nothing writes that shape any more; the release notes read
- * it from an earlier release's tag to say whether the line changed since.
- * Returns null when the file is not of that shape either.
+ * The line a pins file that lists several gateways as `lanes` declares: that
+ * of the newest required one. Nothing writes that shape, and no release tag
+ * vX.Y.Z points at a commit that has it. It is read only for a release tag
+ * this pipeline did not cut (one pushed by hand, or pushed back from an old
+ * clone): the release notes and cut-release.mjs ask which line such a tag's
+ * commit was built for. Returns null when the file is not of that shape
+ * either.
  */
 export function lineOfLanes(pins) {
   const versions = (Array.isArray(pins?.lanes) ? pins.lanes : [])
@@ -153,7 +155,7 @@ function check(declared, pinsPath) {
         `  If the gateway started a new minor release line and this branch is moving to it, set ` +
         `${LINE_CONSTANT} = ${JSON.stringify(declared.line)} in the same change that moves the pin, ` +
         'and run `node scripts/readme-gateway-range.mjs --write`. The Follow upstream workflow does ' +
-        'both when it moves `next`. Moving to a new line is a minor release of the dashboard (ADR 0009).\n' +
+        'both when it moves `next`. Moving to a new line is a minor release of the dashboard (ADR 0005).\n' +
         '  If the pin moved by mistake, move it back: a patch release of the gateway never changes the line.',
     );
   }
@@ -162,7 +164,7 @@ function check(declared, pinsPath) {
   // backend/go.mod. The field is a record; go.mod is what the BFF is compiled
   // against. If they differ, every artifact would declare an SDK the build
   // does not contain. Both come from the pinned release and move with it, in
-  // one commit (ADR 0009, decision 7).
+  // one commit (ADR 0005, decision 7).
   const sdk = sdkInGoMod();
   if (sdk !== declared.sdk) {
     throw new Error(

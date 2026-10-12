@@ -1,9 +1,8 @@
 package models
 
 // This file bridges the SDK's domain policy types (which carry no JSON tags)
-// and the proto SandboxPolicy, so we can (de)serialize policies with protojson
-// — reproducing the exact camelCase, full-fidelity JSON contract the frontend
-// spoke before the SDK migration.
+// and the proto SandboxPolicy, so we can (de)serialize policies with protojson:
+// the camelCase, full-fidelity JSON the frontend reads and writes.
 //
 // The SDK's own domain<->proto converter lives in an internal package and is
 // not importable, so the conversion below is a faithful port of

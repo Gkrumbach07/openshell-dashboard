@@ -12,8 +12,9 @@ import (
 )
 
 // This file converts a provider profile between the gateway's message and the
-// SDK's curated type, for a BFF that reaches provider profiles through the SDK
-// only. The SDK has the same conversion and keeps it internal.
+// SDK's curated type, for the store that reaches provider profiles through the
+// SDK (services.NewSDKProviderProfileStore). The SDK has the same conversion
+// and keeps it internal.
 //
 // Everything of a profile fits the SDK type except its endpoints, of which the
 // SDK carries a host, a port and a protocol. ProviderProfileFromSDK therefore

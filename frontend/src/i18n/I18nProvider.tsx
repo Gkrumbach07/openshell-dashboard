@@ -7,7 +7,10 @@ type I18nProviderProps = {
   children: ReactNode;
 };
 
-/** Thin facade over I18nextProvider for downstream hosts. */
+/**
+ * Thin facade over I18nextProvider. The app does not mount it: useI18n uses
+ * the default i18next instance (see init.ts).
+ */
 export const I18nProvider: React.FC<I18nProviderProps> = ({
   i18n,
   children,

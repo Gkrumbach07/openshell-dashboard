@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "The one OpenShell release this branch is built on (ADR 0009). Read by the",
+    "The one OpenShell release this branch is built on (ADR 0005). Read by the",
     "compat job in ci.yml, by the Follow upstream workflow, by",
     "deploy/ci/e2e-stack.sh and by scripts/gateway-range.mjs.",
     "",

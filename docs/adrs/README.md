@@ -1,19 +1,13 @@
 # Architecture Decision Records
 
-One decision per document. **Accepted** = in force; **Proposed** = decided
-pending conditions. Open questions that haven't reached a decision are not
-recorded here — an ADR appears when the decision does.
+Each document states decisions that are in force.
 
-| ADR | Decision | Status |
-|-----|----------|--------|
-| [0001](0001-downstream-consumption.md) | Downstream consumption: npm package + a five-mechanism extension surface | Accepted |
-| [0002](0002-auth-relay-only-bff.md) | Auth: relay-only BFF behind a fronting proxy (e.g. oauth2-proxy) | Accepted |
-| [0003](0003-gateway-client-sdk-vs-stubs.md) | Gateway client: openshell-sdk-go over generated stubs | Accepted |
-| [0004](0004-downstream-consumption-i18n.md) | Amends 0001: i18n as sixth extension mechanism | Accepted |
-| [0005](0005-gateway-version-compatibility.md) | Gateway compatibility: pin a supported range, never track `latest` | Accepted |
-| [0006](0006-compat-links-and-sweep-axes.md) | Amends 0005: three links proven separately, two sweep axes, no `dev` pins | Accepted |
-| [0007](0007-releases-are-cut-by-hand.md) | Releases are cut by hand with a chosen type; a merged compat-sweep bump is the one automatic patch | Accepted |
-| [0008](0008-retire-the-npm-package.md) | Amends 0001 and 0004: the npm package is retired; the dashboard ships as a container image and a Helm chart | Accepted |
-| [0009](0009-console-release-policy.md) | Amends 0005, 0006 and 0007: the console shares the gateway's minor release line; the compatibility notice compares release lines; the version of a release is computed from that line | Accepted |
+| ADR | Decision |
+|-----|----------|
+| [0001](0001-standalone-application.md) | A standalone application, shipped as a container image and a Helm chart |
+| [0002](0002-auth-relay-only-bff.md) | Authentication: a relay-only BFF behind an authenticating proxy |
+| [0003](0003-gateway-api-openshell-sdk.md) | Gateway API: the OpenShell Go SDK, surfaced as it is |
+| [0004](0004-frontend.md) | Frontend: PatternFly 6, one API client, feature flags and an i18n facade |
+| [0005](0005-gateway-compatibility-and-releases.md) | Gateway compatibility and releases |
 
-From here forward, ADRs are append-only: supersede, don't rewrite.
+To change a decision, edit its ADR in the pull request that changes the decision. Git holds the history.

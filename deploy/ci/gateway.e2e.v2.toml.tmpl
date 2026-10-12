@@ -1,15 +1,14 @@
 # Gateway config template for the compat stack — schema VERSION 2.
-# Required by gateways from 0.1.0 on, and by upstream HEAD (`dev`). Released
-# gateways up to 0.0.116 require the version 1 schema — see
-# gateway.e2e.v1.toml.tmpl.
+# Required by gateways from 0.1.0 on. Released gateways up to 0.0.116 require
+# the version 1 schema (gateway.e2e.v1.toml.tmpl).
 #
-# Differences from v1, all discovered by running the dev gateway:
+# Differences from v1:
 #   version            1 -> 2
 #   compute_drivers    ["docker"] -> compute_driver = "docker" (singular)
 #   image_pull_policy  "IfNotPresent" -> "if_not_present" (snake_case)
 #   sandbox_namespace  removed (no longer a recognized field)
 # Rendered to .rendered/gateway.toml by e2e-stack.sh, which substitutes the
-# image placeholders below.
+# placeholders below.
 [openshell]
 version = 2
 

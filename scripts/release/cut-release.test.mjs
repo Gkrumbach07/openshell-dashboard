@@ -17,7 +17,7 @@ import { lineOfBranch } from './cut-release.mjs';
 
 const scripts = dirname(fileURLToPath(import.meta.url));
 const SDK = 'v0.0.0-20261009050449-e1f3c82caa3e';
-const REPO_URL = 'https://github.com/example/console';
+const REPO_URL = 'https://github.com/example/dashboard';
 
 // Under a git hook GIT_DIR and friends point at the real repository, and on a
 // runner GITHUB_STEP_SUMMARY is the real run's summary. Neither may reach the
@@ -56,7 +56,7 @@ const { execFileSync } = require('node:child_process');
 const args = process.argv.slice(2);
 appendFileSync(process.env.STUB_LOG, JSON.stringify(args) + '\\n');
 if (process.env.STUB_GH_FAILS) {
-  process.stderr.write('HTTP 422: Validation Failed (https://api.github.com/repos/example/console/releases)\\n');
+  process.stderr.write('HTTP 422: Validation Failed (https://api.github.com/repos/example/dashboard/releases)\\n');
   process.exit(1);
 }
 if (args[0] === 'release' && args[1] === 'create') {
@@ -179,10 +179,11 @@ test('the run summary gets the plan and the notes', (t) => {
   assert.doesNotMatch(stdout, /::warning/);
 });
 
-// --- the tags from before this numbering -------------------------------------
+// --- release tags this script did not cut ------------------------------------
 
-// The repository on 2026-10-09: v0.1.3 from September, when nothing was
-// pinned, and v0.2.0 to v1.2.0 after it, all numbered from commit titles.
+// A repository with release tags this script did not cut, as an old clone
+// could push them back: v0.1.3, v0.2.0 and v1.0.0 on commits that pin nothing,
+// and v1.2.0 on a commit whose pins file lists lanes.
 function withOldTags(t) {
   const repo = repository(t, { pinned: null });
   repo.commit('feat: the first dashboard');
@@ -191,7 +192,7 @@ function withOldTags(t) {
   repo.git('tag', 'v0.2.0');
   repo.commit('feat!: resync the SDK');
   repo.git('tag', 'v1.0.0');
-  // By 1.2.0 the pins existed, as a list of lanes.
+  // v1.2.0 goes on a commit whose pins file lists lanes.
   mkdirSync(join(repo.work, 'deploy', 'ci'), { recursive: true });
   writeFileSync(
     join(repo.work, 'deploy', 'ci', 'gateway-pins.json'),
@@ -204,7 +205,7 @@ function withOldTags(t) {
   return repo;
 }
 
-test('with the old tags present the version is 0.1.4, and the run says which tag made it so', (t) => {
+test('a tag that was not cut for the line raises the version to 0.1.4, and the run says which tag made it so', (t) => {
   const repo = withOldTags(t);
   const { status, stdout, stderr } = repo.cut(['--branch', 'main', '--dry-run'], { GITHUB_ACTIONS: 'true' });
   assert.equal(status, 0, stderr);
@@ -230,7 +231,7 @@ test('with the old tags present the version is 0.1.4, and the run says which tag
 
 // The merge of `next` is released with no dry run before it, and a release
 // cannot be renumbered afterwards.
-test('a real run does not publish a number that a tag from before made too high', (t) => {
+test('a real run does not publish a number that such a tag made too high', (t) => {
   const repo = withOldTags(t);
   repo.push('main', '--tags');
   const before = repo.originTags();
@@ -248,7 +249,7 @@ test('a real run does not publish a number that a tag from before made too high'
   assert.deepEqual(repo.originTags(), before);
 
   // With that tag gone the same commit is released, as the first of its line.
-  // The other old tags are on other lines and do not stop it.
+  // The other tags are on other lines and do not stop it.
   repo.git('tag', '--delete', 'v0.1.3');
   const released = repo.cut(['--branch', 'main']);
   assert.equal(released.status, 0, released.stderr);
@@ -258,7 +259,7 @@ test('a real run does not publish a number that a tag from before made too high'
   assert.ok(repo.ghCalls()[0].includes('--latest=false'));
 });
 
-test('with the old tags deleted the first release is 0.1.0, and its notes open with a fixed sentence', (t) => {
+test('without those tags the first release is 0.1.0, and its notes open with a fixed sentence', (t) => {
   const repo = withOldTags(t);
   repo.git('tag', '--delete', 'v0.1.3', 'v0.2.0', 'v1.0.0', 'v1.2.0');
   const { status, stdout, stderr } = repo.cut(['--branch', 'main', '--dry-run'], { GITHUB_ACTIONS: 'true' });

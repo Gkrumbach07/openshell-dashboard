@@ -257,7 +257,7 @@ describe('SandboxDetailPage header', () => {
       expect(screen.getByTestId('workspace-page')).toBeInTheDocument();
     });
 
-    it('leaves where to go to the page that embeds it, when that says', () => {
+    it('calls onDeleted instead of navigating, when one is passed', () => {
       const onDeleted = jest.fn();
       renderPage(makeSandbox(), { onDeleted });
       confirmDelete();

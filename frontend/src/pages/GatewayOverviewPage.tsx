@@ -118,7 +118,7 @@ const GatewayOverviewPage: React.FC = () => {
   }
 
   const info = gateway.data;
-  // Absent from a BFF that predates the field.
+  // The type marks it optional; a missing list is shown as none.
   const extensions = info?.extensions ?? [];
   return (
     <>

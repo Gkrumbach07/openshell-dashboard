@@ -50,8 +50,8 @@ afterEach(() => jest.useRealTimers());
 // A request that creates or updates a provider, or configures its refresh,
 // carries credential values. React Query keeps the variables of a mutation
 // for five minutes after the last component that used it has gone, unless
-// told otherwise; a host that embeds these pages owns the query client and
-// may show or persist what is in it. So these are kept for no time at all.
+// told otherwise, and anything that holds the query client can read them.
+// So these are kept for no time at all.
 describe('requests that carry credential values', () => {
   it.each<
     [string, () => { mutateAsync: (body: never) => Promise<unknown> }, unknown]

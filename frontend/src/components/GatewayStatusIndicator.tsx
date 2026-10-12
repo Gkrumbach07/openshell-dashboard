@@ -70,9 +70,9 @@ const STATE_LABEL_KEY = {
 // to platform admins from a call the gateway refuses to everyone else.
 //
 // The label sits in a status region that is in the page from the start, so a
-// change is announced to a screen reader when it happens. Mount the component
-// where it stays mounted across navigation (an app shell, not a page) and
-// that is once per change, not once per route.
+// change is announced to a screen reader when it happens. AppLayout mounts it
+// in the masthead, where it stays mounted across navigation, so that is once
+// per change, not once per route.
 const GatewayStatusIndicator: React.FC = () => {
   const { t } = useI18n('common');
   const state = gatewayHealthStateOf(useGatewayCompatibility());

@@ -4,7 +4,7 @@
 // A release is started by a person (docs/releasing.md), with one exception:
 // the move to a new OpenShell release. That move is prepared on the `next`
 // branch by the Follow upstream workflow and reaches main as the pull request
-// from `next` (ADR 0009, decisions 7 and 8). Its whole purpose is to change
+// from `next` (ADR 0005, decisions 7 and 8). Its whole purpose is to change
 // what the next release is built on and declares, and it is the release most
 // likely to be forgotten. So publish.yml releases it by itself once it is
 // merged and CI has passed on main.

@@ -147,9 +147,9 @@ func TestGatewayCompatibilityRoute_ServesUsersWithoutTheAdminRole(t *testing.T) 
 	}
 }
 
-// An App nobody gave a line to — every existing caller of NewApp, and a BFF
-// started with no environment — judges gateways against the line compiled
-// into the build. The verdict route answers with it...
+// An App nobody gave a line to judges gateways against the line compiled into
+// the build, the line a BFF started with no environment hands its App. The
+// verdict route answers with it...
 func TestGatewayCompatibilityRoute_UsesTheBuiltInLine(t *testing.T) {
 	builtIn := models.BuiltInGatewayReleaseLine
 	sdk := fake.NewClient(fake.WithHealthResult(&openshell.HealthResult{Healthy: true, Version: builtIn + ".0"}))

@@ -8,8 +8,8 @@ alwaysApply: false
 
 ## Directory structure
 
-Everything the BFF exposes lives under `pkg/` so downstream consumers can
-import it. There is no `backend/internal/` tree.
+All of the BFF's packages live under `pkg/`. There is no `backend/internal/`
+tree.
 
 ```
 backend/
@@ -21,26 +21,30 @@ backend/
 │   │   ├── *_handler.go       # SandboxHandler, WorkspacesHandler, ...
 │   │   ├── *_handler_test.go  # Table-driven handler tests
 │   │   └── mock_sdk_test.go   # SDK test doubles
-│   ├── services/              # Thin interfaces over the SDK — the extension seam
+│   ├── services/              # The interfaces the handlers depend on, thin over the SDK
 │   │   ├── sandbox.go         # SandboxServiceInterface, NewSandboxService
 │   │   └── ...                # One file per resource
 │   ├── apiutils/              # Shared HTTP helpers
 │   │   └── respond.go         # WriteJSON, WriteError, WriteSDKError, DecodeBody,
 │   │                          # ValidDNS1123, ResponseCode constants
-│   ├── auth/                  # Proxy-delegated auth middleware
-│   │   └── proxy.go           # Token extraction from headers
-│   ├── clients/               # Narrow SDK escape hatches
+│   ├── auth/                  # Auth middleware
+│   │   └── proxy.go           # Reads the bearer from the request headers
+│   ├── clients/               # Bearer forwarding and the three direct gRPC calls
 │   │   ├── auth.go            # Per-request bearer forwarding
 │   │   ├── rawexec.go         # Non-TTY stdin exec for binary uploads
 │   │   ├── rawprovider.go     # Keys of the credentials a provider holds
 │   │   └── rawprofile.go      # Provider profiles, whole (endpoints included)
 │   └── models/                # Response DTOs and request builders
-│       ├── models.go          # DTOs shared with the frontend
-│       ├── auth.go            # AuthConfigResponse, FeatureFlags
+│       ├── models.go          # DTOs shared with the frontend, FeatureFlags
+│       ├── auth.go            # AuthConfigResponse
 │       ├── builders.go        # Request structs and lightweight builders
 │       ├── sdk_converters.go  # SDK <-> frontend JSON conversion
-│       ├── policyproto.go     # SDK policy <-> vendored proto bridge
-│       └── observability.go   # Observability/metrics helpers
+│       ├── policyproto.go     # SDK policy types <-> the SDK's proto, for protojson
+│       ├── observability.go   # DTOs for logs, policy revisions, drafts, services and settings
+│       ├── provider_profile.go        # Provider profile DTOs, endpoints as protojson
+│       ├── gateway_release_line.go    # The release line compiled into the build
+│       └── compatibility.go           # The verdict on a gateway's version
+├── test/compat/               # Compat suite, run against a real gateway
 ├── go.mod
 └── go.sum
 ```
@@ -54,15 +58,12 @@ handler struct. Method names carry no `Handler` suffix — the struct does:
 func (h *SandboxHandler) ListSandboxes(w http.ResponseWriter, r *http.Request)
 ```
 
-URL params via `r.PathValue("workspace")`. chi populates these through
-`SetPathValue` on every matched route (`mux.go`, `routeHTTP`), so handlers do
-not import chi. chi added that call in **v5.2.4** — on anything older every
-`r.PathValue` silently returns `""`, so treat v5.2.4 as a hard floor and never
-downgrade `github.com/go-chi/chi/v5` below it.
+URL params via `r.PathValue("workspace")`. chi sets these on every matched
+route, so handlers do not import chi.
 
 ## Gateway client
 
-The vendored Go SDK is the source of truth:
+The OpenShell Go SDK is the source of truth:
 
 ```go
 import openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
@@ -71,11 +72,11 @@ import openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 Handlers never hold `openshell.ClientInterface` directly. `NewApp` resolves the
 SDK sub-clients once (`Sandboxes()`, `Workspaces()`, `Providers()`, `Exec()`,
 `Policy()`, `Services()`, ...), wraps each in a `pkg/services` type, and injects
-that interface into the handler as `h.svc`. Downstream can substitute its own
-implementation of any `services.*Interface` without forking the handler.
+that interface into the handler as `h.svc`. A handler therefore depends on a
+narrow interface, not on the whole SDK client.
 
-The three intentional exceptions are in `pkg/clients`, and all use the SDK's
-generated proto client because of a gap in the public SDK:
+There are three direct gRPC calls in `pkg/clients`, each for a named gap in
+the SDK. All use the proto client the SDK ships:
 
 - `rawexec.go` streams a file into a sandbox for binary-safe uploads, because
   the public exec API lacks a non-TTY stdin path.
@@ -91,20 +92,19 @@ generated proto client because of a gap in the public SDK:
   update replaces the stored profile, so a profile that went through the SDK
   type would come back narrower than it was.
 
-Do not add new local wrappers, copied protos, or generated stub trees unless
-there is a concrete upstream SDK gap you can point to, and delete an exception
-when its gap closes.
+Do not add local wrappers, copied protos or generated stub trees. Add a direct
+gRPC call only for an SDK gap you can name, state the gap at the top of its
+file, and delete the call when the SDK closes the gap (ADR 0003, decision 4).
 
 ## Mirror the gateway
 
-The BFF translates nothing (see "Stay in parity with the gateway" in
-`CLAUDE.md`). A request body carries what the gateway's message carries and is
-forwarded as it is; a response carries what the gateway returned, minus
-secrets. When a request fails because the gateway wants it another way, change
-what the UI sends, not what the BFF forwards. In particular the BFF does not
-rename provider credential keys, work out a provider's profile scope, or guess
-the type of a setting, and it sends an update only what the request names
-rather than a resource it read first.
+The BFF translates nothing (ADR 0003, decision 3). A request body carries what
+the gateway's message carries and is forwarded as it is; a response carries
+what the gateway returned, minus secrets. When a request fails because the
+gateway wants it another way, change what the UI sends, not what the BFF
+forwards. In particular the BFF does not rename provider credential keys, work
+out a provider's profile scope, or guess the type of a setting, and it sends
+an update only what the request names rather than a resource it read first.
 
 ## Handlers
 
@@ -132,11 +132,11 @@ Key patterns:
 
 ## Auth
 
-Relay-only (ADR 0002): the BFF never terminates authentication. A fronting proxy (oauth2-proxy standalone, the host platform's proxy when embedded) owns login/sessions/refresh/CSRF and injects the bearer.
+Relay-only (ADR 0002): the BFF never terminates authentication. The auth proxy (oauth2-proxy, which the Helm chart runs as a sidecar) owns sign-in, sessions, refresh and CSRF, and sets the bearer.
 
-Bearer resolution is one precedence chain in `pkg/auth/proxy.go`, identical everywhere:
+Bearer resolution is one precedence chain in `pkg/auth/proxy.go`:
 
-1. `x-forwarded-access-token` header (injected by the fronting proxy)
+1. `x-forwarded-access-token` header (set by the auth proxy)
 2. `Authorization: Bearer` header (API clients)
 3. No bearer → 401
 
@@ -148,30 +148,19 @@ The BFF does NOT validate tokens, call JWKS endpoints, parse JWTs, or make autho
 
 Auth-adjacent routes (under `/api/v1/`): `auth/config` (bootstrap: authDisabled + feature flags), `auth/whoami` (gateway `GetCurrentUser`). That's all.
 
-Before adding anything auth-adjacent, check ADR 0002: no auth termination, no JWT validation, no RBAC, no k8s API calls, no credential brokering, no server-side state.
+Before adding anything auth-adjacent, check ADR 0002 (no auth termination, no JWT validation, no RBAC) and ADR 0001, decision 4 (no Kubernetes API calls, no credential brokering, no server-side state).
 
 ## Configuration
 
-Env vars (some also available as CLI flags):
+Every setting is a CLI flag with an environment variable, read in `cmd/server/main.go`. The exceptions are the `FEATURE_*` variables, which have no flag, and `--healthcheck`, which has no variable. The full table is in [docs/configuration.md](../../docs/configuration.md#bff-flags-and-environment-variables). The three you need most often:
 
-| Env Var | Flag | Default | Description |
+| Env var | Flag | Default | Description |
 |---------|------|---------|-------------|
-| `PORT` | `-port` | `8080` | BFF listen port |
-| `LISTEN_ADDRESS` | `-listen-address` | | Optional listen address override |
-| `OPENSHELL_GATEWAY_URL` | `-gateway-url` | `localhost:50051` | Gateway gRPC endpoint |
-| `GATEWAY_CA_CERT` | `-gateway-ca-cert` | | CA cert for gateway TLS |
-| `GATEWAY_CLIENT_CERT` | `-gateway-client-cert` | | Client cert for gateway mTLS |
-| `GATEWAY_CLIENT_KEY` | `-gateway-client-key` | | Client key for gateway mTLS |
-| `TLS_CERT_FILE` | `-tls-cert` | | Server cert for inbound BFF HTTPS |
-| `TLS_KEY_FILE` | `-tls-key` | | Server key for inbound BFF HTTPS |
-| `STATIC_DIR` | `-static-dir` | | Frontend static assets directory |
-| `AUTH_DISABLED` | `-auth-disabled` | `false` | Skip auth — dev only |
-| `AUTH_TOKEN_HEADER` | `-auth-token-header` | `x-forwarded-access-token` | Token header name |
-| `AUTH_USER_HEADER` | `-auth-user-header` | `x-auth-request-user` | User header name |
-| `ADMIN_ROLE` | `-admin-role` | `admin` | OIDC role claim for admin (display gating only — gateway enforces) |
-| `LOGOUT_URL` | `-logout-url` | `/oauth2/sign_out` | Proxy sign-out path the frontend redirects to on logout |
-| `GATEWAY_RELEASE_LINE` | `-gateway-release-line` | compiled in | Gateway release line this build is for, written `major.minor` (`0.1`). A gateway whose version starts with those two numbers is `supported` (any patch, pre-release, dev build or downstream rebuild), any other line is `unsupported`, and a gateway with no usable version is `unknown`. The default is `models.BuiltInGatewayReleaseLine` in `backend/pkg/models/gateway_release_line.go`, the line of the release `deploy/ci/gateway-pins.json` names; `node scripts/gateway-range.mjs --check` fails in CI when the two disagree. Override it only for tests and local development: no image or chart sets it, and a value that is not a line turns the status into `unknown`. The verdict is served by `GET /gateway/compatibility` to every signed-in user (version read from the gateway's unauthenticated health check) and also rides on `GET /gateway`, which the gateway answers for platform admins only. Informational only — the BFF never blocks on it (ADR 0009) |
-| `FEATURE_*` | | varies | Feature flags: `FEATURE_TERMINAL`, `FEATURE_FILE_TRANSFER`, `FEATURE_SETTINGS`, `FEATURE_GLOBAL_POLICY`, `FEATURE_CREDENTIAL_REFRESH`, `FEATURE_SERVICES`, `FEATURE_DRAFT_POLICY` |
+| `OPENSHELL_GATEWAY_URL` | `-gateway-url` | `localhost:50051` | Gateway gRPC endpoint. `grpcs://` or `https://` for TLS; `grpc://`, `http://` or no scheme for plaintext |
+| `AUTH_DISABLED` | `-auth-disabled` | `false` | Local development only: every request is a synthetic `dev-user`, and no token is forwarded to the gateway |
+| `GATEWAY_RELEASE_LINE` | `-gateway-release-line` | compiled in | Gateway release line this build is for, written `major.minor` (`0.1`). A gateway whose version starts with those two numbers is `supported` (any patch, pre-release, dev build or rebuild), any other line is `unsupported`, and a gateway with no usable version is `unknown` (ADR 0005, decision 9). The default is `models.BuiltInGatewayReleaseLine`, the line of the release `deploy/ci/gateway-pins.json` names; `node scripts/gateway-range.mjs --check` fails in CI when the two disagree. Override it only for tests and local development: no image or chart sets it, and a value that is not a line turns the status into `unknown`. The verdict only informs; the BFF never blocks on it |
+
+`GET /gateway/compatibility` serves the verdict to every signed-in user, with the version read from the gateway's unauthenticated health check. It also rides on `GET /gateway`, which the gateway answers for platform admins only.
 
 ## Error handling
 
@@ -184,68 +173,33 @@ type ErrorResponse struct {
 }
 ```
 
-`ResponseCode` is a string enum in `pkg/apiutils/respond.go`. Every code the BFF
-can return is declared there so the frontend has one authoritative list.
+`ResponseCode` is a string enum in `pkg/apiutils/respond.go`. Every code a
+handler returns is declared there. One code is not: the auth middleware
+answers a request without a bearer with `unauthorized` (`pkg/auth/proxy.go`).
 
 ## Testing
 
 - Table-driven tests with `*_test.go` adjacent to implementation
 - `httptest.NewRecorder()` + `http.NewRequest()` for handler tests
 - `mock_sdk_test.go` provides `openshell.ClientInterface` test doubles for handler coverage
-- `rawexec_test.go`, `rawprovider_test.go` (with `rawprovider_allworkspaces_test.go`) and `rawprofile_test.go` cover the three low-level gRPC escape hatches against a fake gateway that enforces the real one's 1 MiB message limit
+- `rawexec_test.go`, `rawprovider_test.go` (with `rawprovider_allworkspaces_test.go`) and `rawprofile_test.go` cover the three direct gRPC calls against a fake gateway that enforces the real one's 1 MiB message limit
 - `slog` for structured logging
 
 ## SDK updates
 
-The SDK is pinned to the commit of an upstream **release tag**, and it moves
-together with the gateway the branch pins: one upstream release, one commit
-(ADR 0009, decision 7; hard facts 17 and 20 in `openshell-api.md`). Never
-`go get ...@latest` or a branch: `@latest` is whatever upstream HEAD is that
-minute, and nothing was tested against it.
+The SDK is pinned to the commit of an OpenShell **release tag** and moves
+together with the gateway the branch pins, in one commit (ADR 0005, decision 7;
+hard facts 17 and 20 in `openshell-api.md`). The Follow upstream workflow makes
+that commit, on the `next` branch: never make it by hand, and never
+`go get ...@latest` or a branch. A person does the work the move makes
+necessary, in a pull request into `next`: the call sites and the test doubles
+in `mock_sdk_test.go` when `check-backend` is red on the `next` pull request,
+and the dashboard itself when `compat` is red there or the issue labelled
+`compat-migrate` is open. How the workflow works is in
+[deploy/ci/upstream/README.md](../../deploy/ci/upstream/README.md).
 
-You do not do this by hand, and not in a pull request of your own. The Follow
-upstream workflow (`.github/workflows/follow-upstream.yml`) reads upstream's
-tags every hour and makes the move on the `next` branch, as the first commit
-after `main`: the pins file, `go.mod`, `go.sum`, the built-in release line when
-the minor changes, and the README's generated block. `next` pins the newest
-pre-release until upstream cuts the stable release, then that; merging `next`
-is how `main` moves. See `deploy/ci/upstream/README.md`.
-
-What is left for a person is the work the move makes necessary:
-
-- **The BFF no longer builds, vets or passes its tests against the new SDK**
-  (CI on the `next` pull request is red in `check-backend`). That is a source
-  migration: fix the call sites and the test doubles in `mock_sdk_test.go` in
-  a pull request **into `next`**, not `main`. It cannot land on `main`, where
-  the SDK is still the old one.
-- **The compat suite fails on `next`** (`compat` is red there). The console on
-  the new SDK does not work with the new gateway: fix it on `next` too.
-- **Check A's issue is open** (label `compat-migrate`). The console as `main`
-  builds it fails against the upcoming gateway. On `main`'s own release line
-  that is upstream breaking a Stable interface; the issue says what to do.
-
-To look at a move before the workflow has made it, or to reproduce one:
-
-```bash
-python3 deploy/ci/upstream/follow.py plan --out /tmp/plan.json   # the target, its tag's commit and its image digests
-
-cd backend
-go get github.com/NVIDIA/OpenShell/sdk/go@<the tag's commit>
-go mod tidy
-go build ./... && go vet ./... && go test ./...   # the source link: SDK <-> BFF
-```
-
-Do not commit that to a branch of your own. If the pins do have to be changed
-by hand (a release branch, or the workflow is broken), all of it moves in one
-commit and CI holds the pieces together:
-`python3 deploy/ci/upstream/follow.py validate-pins --go-mod backend/go.mod`,
-`node scripts/gateway-range.mjs --check` and
-`node scripts/readme-gateway-range.mjs --write`. Only `next` may pin a
-pre-release; the `pins a stable release` check refuses one anywhere else.
-
-There is no local proto regeneration flow anymore. If you need to inspect an
-RPC or type shape, read the vendored SDK package (`openshell/v1`, `types/*`) or
-use `go doc`. `pkg/models/policyproto.go` intentionally uses the SDK's
-vendored `proto/sandboxv1` package only to preserve the frontend's protojson
-policy contract; do not reintroduce `backend/proto/`, `backend/gen/`, or an
-`backend/internal/` wrapper layer.
+To inspect an RPC or a type, read the SDK package (`openshell/v1`, `types/*`)
+in the module cache or use `go doc`. `pkg/models` imports the SDK's proto
+packages where the frontend's contract is protojson: policies
+(`policyproto.go`) and provider profiles (`provider_profile.go`). Do not add
+`backend/proto/`, `backend/gen/` or a `backend/internal/` wrapper layer.

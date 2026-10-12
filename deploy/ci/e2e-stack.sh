@@ -16,7 +16,7 @@
 #
 # This script only ever changes the GATEWAY side. Which SDK the BFF is built
 # against is whatever backend/go.mod says. A branch pins the two from one
-# upstream release (ADR 0009); running another gateway here is a way to ask
+# upstream release (ADR 0005); running another gateway here is a way to ask
 # about one, not to move to it.
 set -euo pipefail
 
@@ -83,9 +83,6 @@ as_root() {
   fi
 }
 
-# wait_for POLLS a URL until it answers 200 or the budget runs out. Written in
-# plain bash because `timeout` is GNU coreutils and is not installed on stock
-# macOS, where this script is expected to work for local runs.
 # wait_for_gateway waits for health, but gives up as soon as the gateway
 # container has exited. A rejected config kills it in under a second, so
 # without this the auto fallback would burn the full health budget before
@@ -106,6 +103,9 @@ wait_for_gateway() {
   return 1
 }
 
+# wait_for POLLS a URL until it answers 200 or the budget runs out. Written in
+# plain bash because `timeout` is GNU coreutils and is not installed on stock
+# macOS, where this script is expected to work for local runs.
 wait_for() {
   local url="$1" budget="$2" waited=0
   while [ "$waited" -lt "$budget" ]; do
@@ -129,8 +129,8 @@ render_config() {
   fi
   echo "e2e-stack: config schema=${schema} ($tmpl)"
   echo "e2e-stack: supervisor callback=${OPENSHELL_GRPC_ENDPOINT}"
-  # envsubst would be another dependency; restrict substitution to the two
-  # image placeholders so nothing else in the TOML is touched.
+  # envsubst would be another dependency; substitute the three placeholders the
+  # templates use and nothing else, so the rest of the TOML is not touched.
   sed -e "s|\${OPENSHELL_SUPERVISOR_IMAGE}|${OPENSHELL_SUPERVISOR_IMAGE}|g" \
       -e "s|\${COMPAT_SANDBOX_IMAGE}|${COMPAT_SANDBOX_IMAGE}|g" \
       -e "s|\${OPENSHELL_GRPC_ENDPOINT}|${OPENSHELL_GRPC_ENDPOINT}|g" \
@@ -184,8 +184,7 @@ up() {
 # if the gateway never reports healthy. Leaves the stack down on failure so the
 # next attempt starts clean - and prints the gateway's log BEFORE doing so,
 # because `docker compose logs` has nothing to show once the containers are
-# gone. A job whose gateway never started used to end with two status lines
-# and a report telling the reader to "read the stack log".
+# gone.
 try_schema() {
   local schema="$1" logs
   render_config "$schema"

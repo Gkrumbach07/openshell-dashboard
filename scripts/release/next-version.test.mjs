@@ -1,9 +1,9 @@
 // node --test "scripts/**/*.test.mjs"
 //
-// The version of a release is computed (ADR 0009): the line of the pinned
-// OpenShell release, then one more than the highest patch tagged on that
-// line. These tests are the arithmetic alone; cut-release.test.mjs runs it
-// against repositories.
+// The version of a release is computed (ADR 0005, decision 11): the line of
+// the pinned OpenShell release, then one more than the highest patch tagged
+// on that line. These tests are the arithmetic alone; cut-release.test.mjs
+// runs it against repositories.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -99,8 +99,8 @@ test('anything else that is not a stable release is refused too', () => {
   }
 });
 
-// The repository as it stood on 2026-10-09: tags from before releases were
-// numbered by gateway release line. They are not removed by anything here.
+// Release tags this pipeline did not cut, none of them numbered by gateway
+// release line. They stand for tags pushed back from an old clone.
 const OLD_TAGS = ['v0.1.3', 'v0.2.0', 'v0.3.0', 'v1.0.0', 'v1.0.1', 'v1.0.2', 'v1.0.3', 'v1.1.0', 'v1.1.1', 'v1.2.0'];
 
 test('the old tags: v0.1.3 collides with the 0.1 line and is counted; the rest are not', () => {
@@ -113,7 +113,7 @@ test('the old tags: v0.1.3 collides with the 0.1 line and is counted; the rest a
 
 test('with the old tags deleted the first release is 0.1.0', () => {
   assert.equal(version('0.1.3', []), '0.1.0');
-  // The other old tags would collide later, as the gateway reaches their lines.
+  // Each of the others is counted on the line it is numbered for.
   assert.equal(version('0.2.0', OLD_TAGS), '0.2.1');
   assert.equal(version('1.2.0', OLD_TAGS), '1.2.1');
 });

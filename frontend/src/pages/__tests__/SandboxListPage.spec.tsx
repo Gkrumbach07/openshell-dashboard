@@ -47,9 +47,6 @@ jest.mock('../../api/auth', () => ({
     credentialRefresh: true,
     services: true,
     draftPolicy: true,
-    deploymentContext: 'standalone',
-    workspaceBinding: false,
-    resourceLinks: false,
   })),
 }));
 
@@ -161,7 +158,7 @@ describe('SandboxListPage', () => {
     expect(screen.getByText('test-sandbox')).toBeInTheDocument();
   });
 
-  it('renders downstream toolbar content and filters by sandbox name', () => {
+  it('renders toolbarStart content and filters by sandbox name', () => {
     mockUseSandboxes.mockReturnValue({
       isLoading: false,
       isError: false,

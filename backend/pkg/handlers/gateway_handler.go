@@ -21,8 +21,8 @@ type GatewayHandler struct {
 }
 
 // NewGatewayHandler returns a handler that judges gateways against the release
-// line compiled into this build (models.BuiltInGatewayReleaseLine), so a
-// caller that configures nothing still gets a verdict.
+// line compiled into this build (models.BuiltInGatewayReleaseLine) until
+// SetGatewayReleaseLine replaces it.
 func NewGatewayHandler(svc services.GatewayServiceInterface, authMiddleware auth.MiddlewareInterface, authConfig models.AuthConfigResponse) *GatewayHandler {
 	// The constant always parses: its unit test holds it to that. If it ever
 	// did not, the zero value reports "unknown", never a wrong verdict.
@@ -32,8 +32,8 @@ func NewGatewayHandler(svc services.GatewayServiceInterface, authMiddleware auth
 
 // SetGatewayReleaseLine replaces the built-in release line that GetGateway and
 // GetGatewayCompatibility compare the gateway's reported version against. It
-// is a setter rather than a NewGatewayHandler parameter so that existing
-// callers of the constructor keep compiling. Call it before the handler
+// is a setter, not a NewGatewayHandler parameter: a handler it was never
+// called on judges against the built-in line. Call it before the handler
 // serves requests.
 func (h *GatewayHandler) SetGatewayReleaseLine(line models.GatewayReleaseLine) {
 	h.line = line
@@ -43,8 +43,9 @@ func (h *GatewayHandler) SetGatewayReleaseLine(line models.GatewayReleaseLine) {
 // dashboard's own verdict on whether that version is one it supports.
 //
 // The verdict only informs. A gateway on another release line is still served
-// in full — the BFF relays and never blocks (ADR 0002) — so the UI can explain
-// the errors a mismatched gateway produces instead of leaving them unexplained.
+// in full — the verdict blocks nothing (ADR 0005, decision 9) — so the UI can
+// explain the errors a mismatched gateway produces instead of leaving them
+// unexplained.
 //
 // A gateway that enforces roles answers GetGatewayInfo only for platform
 // admins, so there this route is a 403 for everyone else.
@@ -60,9 +61,9 @@ func (h *GatewayHandler) GetGateway(w http.ResponseWriter, r *http.Request) {
 		apiutils.WriteJSON(w, http.StatusOK, info)
 		return
 	}
-	// Judged here rather than in the service so the verdict survives a
-	// downstream replacing GatewayServiceInterface. Copy first: the service
-	// owns the value it returned.
+	// Judged here rather than in the service: the service reports what the
+	// gateway said, and the handler holds the release line. Copy first: the
+	// service owns the value it returned.
 	out := *info
 	compatibility := h.line.Check(info.GatewayVersion)
 	out.Compatibility = &compatibility
@@ -99,16 +100,15 @@ func (h *GatewayHandler) GetGatewayCompatibility(w http.ResponseWriter, r *http.
 
 // gatewayHealth reads the gateway's version and health the way the fewest
 // callers are refused: through the health check when the service offers it,
-// and through GetGatewayInfo — admins only — when a downstream service does
-// not. healthy is nil when the source reports no health: a service that offers
-// only the version, or one that answers with nothing.
+// and through GetGatewayInfo — admins only — when it does not. healthy is nil
+// when the source reports no health: a service that offers only the version,
+// or one that answers with nothing.
 //
-// The upstream GatewayService answers both from one health check. A
-// downstream type that embeds it and answers the version itself (the way
-// services.GatewayServiceInterface says to layer logic on top) inherits
-// GetGatewayHealth without having written it, so for any other type the
-// version is still asked of GetGatewayVersion, the method it did write, and
-// only the health is taken from the health check.
+// services.GatewayService answers both from one health check. Any other type
+// with both methods is asked for the version through GetGatewayVersion, and
+// only its health is taken from GetGatewayHealth: a type that embeds
+// GatewayService and overrides GetGatewayVersion inherits a GetGatewayHealth
+// that does not know of the override.
 func (h *GatewayHandler) gatewayHealth(ctx context.Context) (string, *bool, error) {
 	versionReader, readsVersion := h.svc.(services.GatewayVersionReader)
 	healthReader, readsHealth := h.svc.(services.GatewayHealthReader)

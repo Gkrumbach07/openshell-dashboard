@@ -1,14 +1,14 @@
-# Local dev stack — unauthenticated mode (default).
+# The default service builds the dashboard image and runs it with
+# AUTH_DISABLED=true against a gateway on the host, port 50051:
 #
 #   docker compose -f deploy/docker-compose.yml up
 #
-# For auth-enabled mode with Keycloak + oauth2-proxy, use:
+# Three things to know about the "auth" profile below. It runs oauth2-proxy
+# v7.9.0, where the Helm chart runs v7.15.2. It passes a client secret, so it
+# needs a confidential client. Its issuer, http://keycloak:8080, is a name a
+# browser on the host cannot open.
 #
-#   docker compose -f deploy/docker-compose.yml --profile auth up
-#
-# Keycloak dev credentials: admin/admin at http://localhost:8081
-# Create a realm "openshell" with a public client "openshell-dashboard"
-# (redirect URI http://localhost:4180/oauth2/callback).
+# For sign-in, install with the Helm chart: docs/install.md.
 services:
   dashboard:
     build:

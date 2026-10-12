@@ -29,7 +29,7 @@ func TestGatewayReleaseLineCheck(t *testing.T) {
 		// Releases of the line: any patch, whichever one this build was
 		// tested on.
 		{name: "first release of the line", reported: "0.1.0", want: GatewaySupported},
-		{name: "a release between the lanes", reported: "0.1.1", want: GatewaySupported},
+		{name: "a patch release this build was not tested on", reported: "0.1.1", want: GatewaySupported},
 		{name: "the release this build is tested on", reported: "0.1.3", want: GatewaySupported},
 		{name: "a later patch of the line", reported: "0.1.9", want: GatewaySupported},
 		{name: "numbers compare as numbers, not text", reported: "0.1.10", want: GatewaySupported},
@@ -45,15 +45,15 @@ func TestGatewayReleaseLineCheck(t *testing.T) {
 		{name: "build metadata on a release", reported: "0.1.2+build.5", want: GatewaySupported},
 		{name: "build metadata containing a dash is not a suffix", reported: "0.1.2+g-abc", want: GatewaySupported},
 
-		// A downstream rebuild (x.y.z-rhaiv.N is how the RHOAI midstream
-		// tags its gateways) is the release it rebuilds.
-		{name: "downstream rebuild", reported: "0.1.2-rhaiv.5", want: GatewaySupported},
-		{name: "downstream rebuild carrying build metadata", reported: "0.1.2-rhaiv.5+g1a2b3c4", want: GatewaySupported},
+		// A rebuild that adds a suffix of its own (x.y.z-vendor.N) is the
+		// release it rebuilds.
+		{name: "rebuild with a suffix", reported: "0.1.2-vendor.5", want: GatewaySupported},
+		{name: "rebuild carrying build metadata", reported: "0.1.2-vendor.5+g1a2b3c4", want: GatewaySupported},
 
 		// Every other line, older or newer.
-		{name: "older line (the 0.2.x dashboard's gateway)", reported: "0.0.116", want: GatewayUnsupported},
+		{name: "older line (the gateway the gateway-0.0.116 release is for)", reported: "0.0.116", want: GatewayUnsupported},
 		{name: "dev build of an older line", reported: "0.0.117-dev.259+gbed9e5eaf", want: GatewayUnsupported},
-		{name: "downstream rebuild of an older line", reported: "0.0.116-rhaiv.12", want: GatewayUnsupported},
+		{name: "rebuild of an older line", reported: "0.0.116-vendor.12", want: GatewayUnsupported},
 		{name: "next minor release", reported: "0.2.0", want: GatewayUnsupported},
 		{name: "pre-release of the next minor", reported: "0.2.0-pre.1", want: GatewayUnsupported},
 		{name: "dev build of the next minor", reported: "0.2.0-dev.3+gabc1234", want: GatewayUnsupported},
@@ -64,10 +64,10 @@ func TestGatewayReleaseLineCheck(t *testing.T) {
 		// forms would otherwise read as line 0.0 and be reported as
 		// unsupported, whatever the gateway really is.
 		{name: "unstamped build reports the Cargo placeholder", reported: "0.0.0", want: GatewayUnknown},
-		{name: "placeholder with a suffix", reported: "0.0.0-rhaiv.3", want: GatewayUnknown},
+		{name: "placeholder with a suffix", reported: "0.0.0-vendor.3", want: GatewayUnknown},
 		{name: "build with no release tag reachable", reported: "0.0.1-dev.7+gabcdef123", want: GatewayUnknown},
 		{name: "0.0.1 is a real release number", reported: "0.0.1", want: GatewayUnsupported},
-		{name: "a rebuild of 0.0.1 is a real release too", reported: "0.0.1-rhaiv.2", want: GatewayUnsupported},
+		{name: "a rebuild of 0.0.1 is a real release too", reported: "0.0.1-vendor.2", want: GatewayUnsupported},
 		{name: "dev build after a real release is a real version", reported: "0.0.2-dev.3+gabc1234", want: GatewayUnsupported},
 
 		// Never a guess: a version that cannot be read.
@@ -107,7 +107,7 @@ func TestGatewayReleaseLineCheckOtherLines(t *testing.T) {
 		{line: "0.2", reported: "0.2.0-pre.1", want: GatewaySupported},
 		{line: "0.2", reported: "0.1.3", want: GatewayUnsupported},
 		{line: "0.2", reported: "0.3.0", want: GatewayUnsupported},
-		{line: "1.0", reported: "1.0.4-rhaiv.1", want: GatewaySupported},
+		{line: "1.0", reported: "1.0.4-vendor.1", want: GatewaySupported},
 		{line: "1.0", reported: "0.0.116", want: GatewayUnsupported},
 		// 0.0.5 is a real release of line 0.0, but a gateway with no version
 		// of its own is unknown on every line, 0.0 included.

@@ -20,8 +20,7 @@
 // outside the markers and is a no-op when the block is already right, so it
 // is safe to run every time.
 //
-// Only the part between the markers is generated. The prose around it —
-// including the hand-written facts about older dashboard releases — is never
+// Only the part between the markers is generated. The prose around it is never
 // touched. The markers still say "gateway-range", from when a build declared a
 // range of gateway versions.
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';

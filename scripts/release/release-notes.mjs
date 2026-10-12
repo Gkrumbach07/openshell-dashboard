@@ -36,9 +36,9 @@ export function isCiCommit(subject) {
 }
 
 /**
- * The line a pins document declares, in either shape the file has had: one
- * pinned release, or (before 2026-10-09) a list of lanes. Null when it is
- * neither.
+ * The line a pins document declares, in either shape: one pinned release, or
+ * a list of lanes, which a tag pushed back from an old clone can still point
+ * at. Null when it is neither.
  */
 export function lineDeclaredBy(pins) {
   try {
@@ -50,7 +50,7 @@ export function lineDeclaredBy(pins) {
 
 /**
  * What the commit a tag points at declared, or null when it cannot be known:
- * no such tag, or a commit from before the pins named releases.
+ * no such tag, or a commit whose pins file is missing or declares no line.
  */
 export function declaredAtTag(tag, cwd) {
   if (!tag) {

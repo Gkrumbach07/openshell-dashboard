@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Cuts a console release from the checked-out commit, or says what it would cut.
+// Cuts a dashboard release from the checked-out commit, or says what it would
+// cut.
 //
 // publish.yml runs this: for a person who started the workflow on main or on
 // release/<major>.<minor>, and for the merge of `next`. Whether to release was
@@ -34,8 +35,9 @@
 //     looks like, and a release branch that main has released past.
 //
 // A real run, and only a real run, stops for one more: a counted release tag
-// whose commit was not built for the line, which is what a tag from before
-// this numbering is. A dry run shows the number it leads to and warns.
+// whose commit was not built for the line. That is a tag this script did not
+// cut: one pushed by hand, or pushed back from an old clone. A dry run shows
+// the number it leads to and warns.
 //
 // A commit that already carries a release tag of its line is released: the
 // script says so and succeeds. That makes a workflow run safe to re-run after
@@ -56,7 +58,7 @@ import { compareReleases, nextVersion, parseReleaseTag } from './next-version.mj
 import { declaredAtTag, isCiCommit, releaseNotes, repositoryUrl } from './release-notes.mjs';
 
 // The line before main's is maintained from release/<major>.<minor>
-// (ADR 0009, decision 5). No other branch is released.
+// (ADR 0005, decision 5). No other branch is released.
 const MAIN = 'main';
 const RELEASE_BRANCH = /^release\/((?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/;
 

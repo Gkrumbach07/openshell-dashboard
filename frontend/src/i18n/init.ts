@@ -20,7 +20,8 @@ export const defaultI18nOptions: InitOptions = {
 
 function mergeEnglishCatalogs(): void {
   for (const ns of NAMESPACES) {
-    // overwrite: false — host English keys win; we only fill gaps.
+    // overwrite is false: keys the i18next instance already holds win, and
+    // only the gaps are filled.
     i18n.addResourceBundle('en', ns, catalogs.en[ns], true, false);
   }
 }

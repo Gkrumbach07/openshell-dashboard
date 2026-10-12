@@ -31,7 +31,7 @@ type ConfigureProviderRefreshBody struct {
 
 // The profile a client writes, for import, update and lint, is
 // models.ProviderProfileInput: every field of the gateway's ProviderProfile.
-// These names predate it and are kept for the code that uses them.
+// These names are aliases of it and of its parts, for the code that uses them.
 type (
 	ImportProfileCredentialBody = models.ProfileCredential
 	ImportProfileBody           = models.ProviderProfileInput
@@ -67,8 +67,8 @@ func NewProvidersHandler(svc services.ProviderServiceInterface) *ProvidersHandle
 // endpoint is refused rather than stored without it, and an update still
 // replaces whatever the stored profile's endpoints held (see
 // services.SDKProviderProfileStore). Like SetCredentialKeyReader it is a
-// setter so that existing callers of the constructor keep compiling. Call it
-// before the handler serves requests.
+// setter, not a NewProvidersHandler parameter. Call it before the handler
+// serves requests.
 func (h *ProvidersHandler) SetProfileStore(profiles services.ProviderProfileStore) {
 	h.profiles = profiles
 }
@@ -89,9 +89,8 @@ func (h *ProvidersHandler) profileStore() (store services.ProviderProfileStore, 
 // SetCredentialKeyReader gives the handler the way to read which credentials
 // each provider holds. The gateway reports those keys and the SDK drops them,
 // so without a reader every provider is returned with whatever the SDK
-// carries, which against gateways 0.1.x is none. It is a setter rather than a
-// NewProvidersHandler parameter so that existing callers of the constructor
-// keep compiling. Call it before the handler serves requests.
+// carries, which against gateways 0.1.x is none. It is a setter, not a
+// NewProvidersHandler parameter. Call it before the handler serves requests.
 func (h *ProvidersHandler) SetCredentialKeyReader(keys services.ProviderCredentialKeyReader) {
 	h.keys = keys
 }

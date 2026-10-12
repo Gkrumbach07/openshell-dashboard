@@ -2,13 +2,13 @@
 
 Everything `.github/workflows/follow-upstream.yml` decides, and the pins
 validation `ci.yml` runs on every PR, lives here as plain Python so it can be
-run and tested without a runner, a network or a container. The decision behind
-it is [ADR 0009](../../../docs/adrs/0009-console-release-policy.md), decisions
-6 to 8.
+run and tested without a runner, a network or a container. The decision
+behind it is
+[ADR 0005](../../../docs/adrs/0005-gateway-compatibility-and-releases.md), decisions 6 to 8.
 
 Standard library only. Works on Python 3.9 and newer. The tests need `git`.
 
-```bash
+```sh
 python3 -m unittest discover -s deploy/ci/upstream -v     # the tests
 python3 deploy/ci/upstream/follow.py validate-pins        # check gateway-pins.json
 python3 deploy/ci/upstream/follow.py format-pins          # rewrite it in canonical form after a hand edit
@@ -69,11 +69,11 @@ of its own so that it is not read as a compatibility failure.
    by digest, run the compatibility suite. A failure goes to one issue,
    labelled `compat-migrate`, rewritten in place and closed when it passes.
 4. **Check B** has no job here. It is `ci.yml` running on the `next` pull
-   request: the console built on the target's SDK against the target's gateway.
+   request: the dashboard built on the target's SDK against the target's gateway.
 
-| | Console | Gateway | Tells you |
+| | Dashboard | Gateway | Tells you |
 |---|---|---|---|
-| check A | `main`, on the SDK it ships with | the target | whether a console that is installed today keeps working |
+| check A | `main`, on the SDK it ships with | the target | whether a dashboard that is installed today keeps working |
 | check B | `next`, on the target's SDK | the target | whether the move will pass on release day |
 
 ## A pin move
@@ -133,7 +133,7 @@ matches a fork's branch of the same name; `publish.py` picks ours.
 
 Merging `next` into `main` cuts a release by itself once CI has passed on
 `main` (`scripts/release/next-merge.mjs`, [docs/releasing.md](../../../docs/releasing.md)).
-Its version is worked out from the pin: the console's next patch, or `X.Y.0`
+Its version is worked out from the pin: the dashboard's next patch, or `X.Y.0`
 when the move starts a new gateway minor.
 
 A manual run is a dry run unless its box is cleared, and a run from any branch
@@ -163,4 +163,4 @@ but `main` is always one: it prints what it would push, open and edit.
 - **A silent drop is still invisible.** The compatibility suite proves what it
   varies. A release that silently drops a request field the suite does not
   vary would pass both checks; the field-by-field diff of the request messages
-  that found the last one is not run automatically (ADR 0006, Consequences).
+  that would show it is not run automatically (ADR 0005, Consequences).

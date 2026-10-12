@@ -97,7 +97,7 @@ type SandboxStatus struct {
 // SandboxSpecTemplate is the dashboard view of openshell.v1.SandboxTemplate,
 // the compute template inline in a sandbox's spec. It is not SandboxTemplate
 // below, which is the reusable resource a sandbox can be created from. The
-// image stays where it has always been, at SandboxSpec.Image.
+// template's image is not here: it is SandboxSpec.Image.
 //
 // Resources and DriverConfig are free-form structs on the wire and are passed
 // on as the gateway holds them. The dashboard and the CLI both write a CPU or
@@ -324,13 +324,12 @@ type ProfileCredential struct {
 // it. ProviderProfileInput (provider_profile.go) is the same profile as a
 // client writes it.
 //
-// Endpoints is a host:port summary of each endpoint and predates
-// NetworkEndpoints, which carries each endpoint whole: one protojson
-// openshell.sandbox.v1.NetworkEndpoint per entry, the contract sandbox
-// policies already use. NetworkEndpoints is left out when the profile was read
-// through a client that cannot see a whole endpoint (see
-// services.ProviderProfileStore); a profile that has Endpoints and no
-// NetworkEndpoints must not be written back as if it were complete.
+// Endpoints is a host:port summary of each endpoint. NetworkEndpoints carries
+// each endpoint whole: one protojson openshell.sandbox.v1.NetworkEndpoint per
+// entry, the contract sandbox policies already use. NetworkEndpoints is left
+// out when the profile was read through a client that cannot see a whole
+// endpoint (see services.ProviderProfileStore); a profile that has Endpoints
+// and no NetworkEndpoints must not be written back as if it were complete.
 type ProviderProfile struct {
 	Discovery        *ProfileDiscovery   `json:"discovery,omitempty"`
 	Annotations      map[string]string   `json:"annotations,omitempty"`

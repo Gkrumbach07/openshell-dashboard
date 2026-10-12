@@ -1,22 +1,20 @@
 ---
 name: proto-sync
-description: Legacy alias for the SDK update workflow. Use when upstream OpenShell API definitions have changed and the dashboard has to follow a new SDK, or the vendored Go SDK needs auditing.
+description: What to do after the pinned OpenShell Go SDK has moved to a new OpenShell release. Use when the OpenShell API has changed and the dashboard has to follow the new SDK, or when the SDK's surface needs auditing.
 ---
 
 # SDK Sync
 
-This repo no longer copies upstream proto files or regenerates local stubs.
-When OpenShell changes upstream, the pinned Go SDK moves to the new release
-and the affected handlers and models are audited.
-
-> **Note:** `proto-sync` remains only as a discoverable alias for older prompts.
-> The live workflow is SDK-first per ADR 0003.
+The BFF reaches the gateway through the OpenShell Go SDK, and this repository
+holds no copy of the gateway's proto files and no generated stubs (ADR 0003).
+So there is nothing to regenerate: when OpenShell changes, the pinned SDK
+moves to the new release, and the handlers and models it affects are audited.
 
 ## Before you start
 
 You do not move the SDK. It moves together with the gateway the branch pins,
 to the commit of an upstream release tag, and a workflow makes that move
-(ADR 0009, decision 7; hard facts 17 and 20 in
+(ADR 0005, decision 7; hard facts 17 and 20 in
 `.claude/rules/openshell-api.md`):
 
 - `.github/workflows/follow-upstream.yml` reads upstream's tags every hour. It
@@ -42,7 +40,7 @@ one.
 
 ```bash
 git fetch origin
-git log --oneline origin/main..origin/next        # the first commit is the pin move
+git log --oneline --reverse origin/main..origin/next   # the first line is the pin move
 git diff origin/main origin/next -- deploy/ci/gateway-pins.json backend/go.mod
 ```
 
@@ -63,14 +61,16 @@ git checkout -b fix/sdk-<release> origin/next
 - DTO shaping belongs in `backend/pkg/models/sdk_converters.go`
 - Policy JSON compatibility belongs in `backend/pkg/models/policyproto.go`
 - Test doubles live in `backend/pkg/handlers/mock_sdk_test.go`; `go vet` compiles them, so a changed SDK interface fails there even when `go build` passes
-- Only keep `backend/pkg/clients/rawexec.go` if the public SDK still lacks non-TTY stdin exec
-- Only keep `backend/pkg/clients/rawprovider.go` if the SDK's provider type still drops the keys of the gateway's redacted `credentials` map
+- Each of the three direct gRPC calls in `backend/pkg/clients` exists for a named gap in the SDK. Check whether the new SDK closes the gap, and delete the call if it does:
+  - `rawexec.go`: an exec with stdin and without a terminal
+  - `rawprovider.go` (with `rawprovider_allworkspaces.go`): the keys of the gateway's redacted `credentials` map, which the SDK's provider type drops
+  - `rawprofile.go`: a profile endpoint in full, where the SDK's type keeps only the host, port and protocol
 
 ### 4. Check for new user-facing capabilities
 
 Compare upstream capabilities with the dashboard surface to see whether we
-should expose anything new. Prefer the public SDK. If a feature is missing in
-the SDK, document the exact gap before adding any workaround.
+should expose anything new. Prefer the SDK. If it is missing a feature, name
+the exact gap before adding a direct gRPC call (ADR 0003, decision 4).
 
 ### 5. Prove both links
 
@@ -81,7 +81,7 @@ cd backend && go build ./... && go vet ./... && go test ./...
 
 The wire link (gateway <-> SDK) is proven by `backend/test/compat` against the
 gateway the branch pins. CI runs it on the pull request. Locally (needs
-Docker), with nothing set it runs that same gateway, by digest:
+Docker and `jq`), with nothing set it runs that same gateway, by digest:
 
 ```bash
 make compat
