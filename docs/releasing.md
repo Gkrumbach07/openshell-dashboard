@@ -68,21 +68,17 @@ the arithmetic, and
 [`scripts/release/cut-release.mjs`](../scripts/release/cut-release.mjs) reads
 the pins and the tags and runs it.
 
-**Tags from before this numbering.** `v0.1.3`, `v0.2.0`, `v0.3.0` and `v1.0.0`
-to `v1.2.0` were numbered from commit titles, by the pipeline this one
-replaced. The rule above cannot tell them from its own: `v0.1.3` is a release
-tag on the `0.1` line, so while it exists the next release from a branch on
-that line is `0.1.4`, not `0.1.0`. The others collide the same way when the
-gateway reaches `0.2`, `0.3` and `1.x`. Nothing in the pipeline deletes or
-moves a tag. What it can tell is that the commit such a tag points at was not
-built for the line: a dry run lists every tag it counted and warns about that
-one, and a real run refuses to release while it is counted.
+Every `vX.Y.Z` tag in this repository was cut by this rule, starting with
+`v0.1.0`.
 
-The old tags on other lines do not change the number, but they are not
-without effect while they exist. No new release is marked *Latest* on GitHub,
-because `v1.2.0` is a higher version than any `0.x`. And the notes of the
-first release list the changes since `v1.2.0`, the nearest release in its
-history, where a repository with no earlier release gets a fixed sentence.
+**A tag that should not be there.** The rule counts every tag `vX.Y.Z` of the
+line, whoever pushed it and wherever it points. A tag pushed by hand raises
+the number. So does one of the
+[tag names withdrawn on 2026-10-10](../README.md#which-dashboard-for-which-gateway),
+pushed back from a clone that still has it. Nothing in the pipeline deletes or
+moves a tag. What it can tell is whether the commit a counted tag points at
+was built for the line. When it was not, a dry run warns about the tag, and a
+real run refuses to release while it is counted.
 
 ## Cutting a release
 
@@ -289,15 +285,6 @@ gateway release line it is for, which the BFF serves, and the commit it is
 built from, which CI passes to the image build as `DASHBOARD_COMMIT`. An image
 built without that build arg shows the line and no commit.
 
-**Releases cut before this numbering do not follow it.** `1.0.0` to `1.2.0`
-are for gateway `0.1.x`, `0.2.0` is for gateway `0.0.116`, and `0.3.0` should
-not be used (see *Compatibility* in the README). Release `1.2.0` declares a
-range of gateway versions instead of a line: its notes state a range, and its
-image carries env `GATEWAY_SUPPORTED_MIN` / `GATEWAY_SUPPORTED_MAX` and labels
-`.gateway.min` / `.gateway.max`. Releases up to and including `1.1.1` have none
-of this: no *Supported OpenShell gateways* section, nothing on the image, and
-no `X.Y.Z` or `X.Y` image tag. Nothing here changes a release after the fact.
-
 ## When something fails
 
 **Retry by re-running the run, not by starting a new one.** *Re-run all jobs*
@@ -317,9 +304,10 @@ without its image tags and its chart.
   there is nothing to do, or it is a release branch that `main` released past;
   see [The line before `main`'s](#the-line-before-mains).
 - *A counted release tag was not built for the line* (a real run only; a dry
-  run warns and carries on). The tag is from before this numbering, or was
-  pushed by hand at the wrong commit, and the version would come out too
-  high. A release cannot be renumbered once it is out, so the run stops.
+  run warns and carries on). The tag was not cut by this pipeline (see
+  [What decides the version](#what-decides-the-version)), and the version
+  would come out too high. A release cannot be renumbered once it is out, so
+  the run stops.
   Delete the tag, then re-run the run. The merge of `next` is stopped the
   same way, and its run is re-run the same way once the tag is gone.
 
@@ -330,9 +318,8 @@ that run: with neither it cuts the release, and with both it finds the tag and
 carries on.
 
 **The version it shows is not the one you expected.** Look at the tags the run
-says it counted. A release tag on the line that should not exist (one pushed by
-hand, or one from before this numbering) raises the number. Deleting a tag is
-a person's decision and is done by hand.
+says it counted. A release tag on the line that should not exist raises the
+number. Deleting a tag is a person's decision and is done by hand.
 
 **`tag-image` failed, the release itself went out.** Use *Re-run failed jobs* on
 that run. The job only needs the registry, and it is repeatable: it finds the
@@ -392,13 +379,13 @@ the merge.
 
 - **It does not let anyone choose a version.** A number that should be
   different means a tag that should not exist, or a pin on the wrong line.
-- **It does not delete or move a git tag,** including the ones from before this
-  numbering.
+- **It does not delete or move a git tag.**
 - **It releases from `main` and from `release/<major>.<minor>` only.** The
-  dashboard for gateway `0.0.116` lives on the `0.2.x` branch, which predates
-  that scheme, has its own copy of this workflow and is also released by hand;
-  nothing described on this page releases it. (`0.3.0` is not that line: see
-  *Compatibility* in the README for why it must not be used.)
+  dashboard for gateway `0.0.116` is the one-off release
+  [`gateway-0.0.116`](https://github.com/Gkrumbach07/openshell-dashboard/releases/tag/gateway-0.0.116),
+  made by hand. It has no version: its tag is not a `vX.Y.Z` tag, so nothing
+  here counts it. No further release is planned for it (see *Compatibility* in
+  the README).
 - **It does not rebuild images for a release.** The version is decided after
   the image exists, so the image's own `org.opencontainers.image.version` label
   names the branch it was built from (`main`), not `X.Y.Z`. The tag is what
