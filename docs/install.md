@@ -18,7 +18,7 @@ Two things here are called a gateway. "The gateway" is the OpenShell gateway, wh
 
 Import [`deploy/keycloak/openshell-realm.json`](../deploy/keycloak/openshell-realm.json) ([about the file](../deploy/keycloak/README.md)): in the admin console, *Create realm*, then *Resource file*; or start Keycloak with `--import-realm`. Then, in realm `openshell`:
 
-1. Client `openshell-dashboard`, *Settings*: set *Valid redirect URIs* to `https://dashboard.example.com/oauth2/callback` and *Valid post logout redirect URIs* to `https://dashboard.example.com/*`.
+1. Client `openshell-dashboard`, *Settings*: set *Valid redirect URIs* to `https://dashboard.example.com/oauth2/callback`.
 2. Client `openshell-dashboard`, *Credentials*: copy the client secret.
 3. Create the users: each with an email address, *Email verified* on, and membership of `openshell-admins` or `openshell-users`. A new user has *Email verified* off, and oauth2-proxy refuses the sign-in of a user whose email is not verified.
 
@@ -107,13 +107,10 @@ networkPolicy:
 For sign-out to end the Keycloak session too, add:
 
 ```yaml
-dashboard:
-  # /oauth2/sign_out?rd=<URL-encoded Keycloak logout URL, which returns to the dashboard>
-  logoutURL: "/oauth2/sign_out?rd=https%3A%2F%2Fkeycloak.example.com%2Frealms%2Fopenshell%2Fprotocol%2Fopenid-connect%2Flogout%3Fclient_id%3Dopenshell-dashboard%26post_logout_redirect_uri%3Dhttps%3A%2F%2Fdashboard.example.com%2F"
+oidc:
+  backendLogoutURL: "https://keycloak.example.com/realms/openshell/protocol/openid-connect/logout?id_token_hint={id_token}"
 authProxy:
   whitelistDomains: [keycloak.example.com]
-  # the chart leaves this flag out once whitelistDomains is set
-  extraArgs: ["--skip-provider-button=true"]
 ```
 
 - `allowedRoles` decides who reaches the UI. Without it any realm user gets in, and the gateway refuses their calls.
@@ -153,7 +150,7 @@ A role lets a user sign in. A standard user also needs a membership in each work
 
 ## Sign-out
 
-With the chart defaults, signing out ends the dashboard session only, and the next visit signs the same user in without a password. The sign-out lines of step 5 end the Keycloak session too, after a confirmation page at Keycloak. If Keycloak's URL has a port, the `whitelistDomains` entry needs it.
+With the chart defaults, signing out ends the dashboard session only, and the next visit signs the same user in without a password. The sign-out lines of step 5 end the Keycloak session too by calling the Keycloak logout URL and redirecting the user to the `/oauth2/sign_in` url. If Keycloak's URL has a port, the `whitelistDomains` entry needs it.
 
 ## OpenShift
 
@@ -192,7 +189,7 @@ kubectl -n openshell delete secret openshell-dashboard-oidc
 ## Troubleshooting
 
 | Symptom | Cause and fix |
-|---|---|
+| --- | --- |
 | Keycloak answers `Invalid parameter: redirect_uri` | The client's *Valid redirect URIs* lack the callback `helm get notes` prints |
 | 403 or 500 from the auth proxy after signing in | 403: the user has neither `openshell-api` role. 500: the user's *Email verified* is off |
 | Every call fails with an `invalid token` error about `aud` | The access token's `aud` lacks the gateway's audience: repeat step 2 |
