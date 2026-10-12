@@ -1,36 +1,56 @@
-# Auto-source dev environment config if available (written by scripts/dev-env.sh).
--include scripts/.env.dev
-export OPENSHELL_DIR OPENSHELL_GATEWAY_URL GATEWAY_CA_CERT OIDC_ISSUER OIDC_CLIENT_ID
-
 IMAGE_NAME ?= openshell-dashboard
 TAG ?= latest
 PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: setup dev dev-full dev-backend dev-frontend build build-frontend build-backend test lint lint-go typecheck format format-check clean buildx
+.PHONY: help setup gateway dev dev-full dev-backend dev-frontend dev-proxy dev-logs dev-down dev-reset build build-frontend build-backend test lint lint-go typecheck format format-check clean buildx
+
+help: ## List the targets
+	@awk -F ':.*## ' '/^[a-zA-Z0-9_-]+:.*## / {printf "  %-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 setup: ## Install frontend deps and Go deps
 	cd frontend && npm install
 	cd backend && go mod download
 
-dev-full: ## Start Keycloak + gateway, then frontend + BFF (one command)
-	./scripts/dev-env.sh start
-	@$(MAKE) dev
+gateway: ## Start the OpenShell gateway this branch pins, in Docker, for make dev
+	scripts/dev-env.sh up
 
-dev: ## Start frontend dev server (:3000) and Go BFF (:8080)
-	@$(MAKE) -j2 dev-backend dev-frontend
+dev: ## Frontend dev server (:3000) and Go BFF (:8080), without sign-in
+	@scripts/dev-env.sh ports
+	@eval "$$(scripts/dev-env.sh env)" && $(MAKE) -j2 dev-backend dev-frontend
 
-# Default auth-off for plain make dev. Override: AUTH_DISABLED=false make dev
-# (or export AUTH_DISABLED=false). Ignores stale AUTH_DISABLED in scripts/.env.dev
-# because that file is included as a make var but not exported to the shell.
+dev-full: ## The same behind sign-in: starts the gateway, Keycloak and the auth proxy (:4180)
+	@scripts/dev-env.sh ports --sign-in
+	@scripts/dev-env.sh proxy --build
+	scripts/dev-env.sh up --sign-in
+	@eval "$$(scripts/dev-env.sh env --sign-in)" && $(MAKE) -j3 dev-backend dev-frontend dev-proxy
+
+# Sign-in is off unless the caller says otherwise: AUTH_DISABLED=false make dev.
+# make dev-full does, and adds what the BFF needs behind the auth proxy.
+#
+# The BFF listens on this machine's loopback address only: with sign-in off,
+# whoever reaches it is a platform admin of the gateway behind it.
+# LISTEN_ADDRESS=0.0.0.0 make dev opens it to the network.
 #
 # Nothing is passed for the compatibility notice: the gateway release line the
 # BFF is for is compiled in. To see the notice against a gateway of that line,
 # start the BFF for another one: GATEWAY_RELEASE_LINE=9.9 make dev
 dev-backend:
-	cd backend && AUTH_DISABLED=$${AUTH_DISABLED:-true} go run ./cmd/server
+	cd backend && AUTH_DISABLED=$${AUTH_DISABLED:-true} LISTEN_ADDRESS=$${LISTEN_ADDRESS:-127.0.0.1} go run ./cmd/server
 
 dev-frontend:
 	cd frontend && npm start
+
+dev-proxy:
+	scripts/dev-env.sh proxy
+
+dev-logs: ## Follow the logs of the gateway and Keycloak
+	scripts/dev-env.sh logs
+
+dev-down: ## Stop what make gateway or make dev-full started; the gateway's data stays
+	scripts/dev-env.sh down
+
+dev-reset: ## Stop it and delete its data and its sandboxes' containers
+	scripts/dev-env.sh reset
 
 build: ## Build the container image (BFF + static frontend)
 	docker build -t openshell-dashboard:latest -f deploy/Dockerfile .
@@ -62,15 +82,32 @@ test-frontend:
 # another release by its tag.
 export OPENSHELL_VERSION
 
+# For the compat targets only: where the compat gateway keeps its data, and
+# where a sandbox's supervisor calls it back (its published port, on the
+# Docker host). The environment overrides both. The data in the default
+# directory is removed when the gateway is. CI calls deploy/ci/e2e-stack.sh
+# itself, with its own values.
+compat compat-up compat-down: export OPENSHELL_STATE_DIR ?= $(CURDIR)/scripts/.state/compat
+compat compat-up compat-down: export OPENSHELL_GRPC_ENDPOINT ?= http://127.0.0.1:8080
+
 .PHONY: compat compat-up compat-down
 compat: ## Gateway compat suite vs the pinned gateway (another: OPENSHELL_VERSION=0.1.2 make compat)
-	deploy/ci/e2e-stack.sh run
+	@scripts/dev-env.sh ports --compat
+	@mkdir -p "$$OPENSHELL_STATE_DIR" 2>/dev/null || true
+	deploy/ci/e2e-stack.sh run; status=$$?; scripts/dev-env.sh compat-clean; exit $$status
 
-compat-up: ## Bring up just the gateway stack (leaves it running)
+# compat-up leaves the compat suite's gateway running on port 8080, to run
+# single tests against. They go through a BFF on port 9080, in backend/:
+#   AUTH_DISABLED=true OPENSHELL_GATEWAY_URL=localhost:8080 PORT=9080 go run ./cmd/server
+#   BFF_URL=http://localhost:9080 go test -tags compat -count=1 -run <Test> ./test/compat/...
+compat-up:
+	@scripts/dev-env.sh ports --compat
+	@mkdir -p "$$OPENSHELL_STATE_DIR" 2>/dev/null || true
 	deploy/ci/e2e-stack.sh up
 
-compat-down: ## Tear down the gateway stack
+compat-down: ## Remove the compat suite's gateway, if make compat-up or a stopped run left it
 	deploy/ci/e2e-stack.sh down
+	@scripts/dev-env.sh compat-clean
 
 .PHONY: helm-lint helm-test helm-docs
 helm-lint: ## Lint and render Helm charts and their example values

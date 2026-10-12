@@ -8,7 +8,7 @@ Thank you for your interest in contributing.
 git clone https://github.com/Gkrumbach07/openshell-dashboard.git && cd openshell-dashboard
 ```
 
-Then follow [Run it locally](docs/development.md#run-it-locally): `make setup`, the address and certificates of a running OpenShell gateway, and `make dev`.
+Then follow [Run it locally](docs/development.md#run-it-locally): `make setup`, `make gateway` and `make dev`.
 
 ## Before you contribute
 

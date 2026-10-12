@@ -2,6 +2,8 @@
 
 [`keycloak.yaml`](keycloak.yaml) runs Keycloak in dev mode with the realm of [`../openshell-realm.json`](../openshell-realm.json), so that the dashboard can be tried with sign-in on a throwaway cluster. It has no database and keeps nothing across a restart. It is not for production.
 
+To run a checkout behind sign-in without a cluster, use `make dev-full` ([Run it locally](../../../docs/development.md#run-it-locally)).
+
 Start in the repository root. The first block moves to a new temporary directory and leaves a throwaway CA and certificate there, outside the repository: `ca.crt`, `ca.key`, `ca.srl`, `san.ext`, `tls.crt`, `tls.csr` and `tls.key`. Run the later commands in the same shell: they read `ca.crt` from that directory.
 
 ## Start it

@@ -21,8 +21,8 @@ backend/            Go BFF; the compat suite is in test/compat/ (make compat, ne
   pkg/auth/         Reads the bearer from the request (proxy.go)
   pkg/clients/      Bearer forwarding (auth.go) and the direct gRPC calls (raw*.go)
   pkg/models/       Response DTOs (From*() converters) and request builders
-scripts/            Release and CI tooling (gateway-range.mjs, release/, retag-image.sh) and dev-env.sh
-deploy/             Dockerfile, Helm chart (helm/openshell-dashboard), Keycloak realm (keycloak/), compat stack and gateway pins (ci/)
+scripts/            Release and CI tooling (gateway-range.mjs, release/, retag-image.sh) and dev-env.sh (the local stack)
+deploy/             Dockerfile, Helm chart (helm/openshell-dashboard), Keycloak realm (keycloak/), local stack (dev/), compat stack and gateway pins (ci/)
 docs/               Guides (install, authentication, configuration, compatibility, development, architecture, releasing) and ADRs (adrs/)
 ```
 
@@ -30,6 +30,7 @@ docs/               Guides (install, authentication, configuration, compatibilit
 
 ```bash
 make setup          # install frontend + go deps
+make gateway        # the pinned OpenShell gateway in Docker, for make dev
 make dev            # frontend dev server (:3000, hot reload) + BFF (:8080, restart after Go changes)
 make test           # frontend unit tests + go tests
 make lint           # eslint + prettier check + golangci-lint
@@ -37,7 +38,7 @@ make typecheck      # tsc --noEmit
 make build          # build the container image
 ```
 
-`make dev` needs a running OpenShell gateway of the supported release line ([installing OpenShell](https://github.com/NVIDIA/OpenShell/blob/main/docs/about/installation.mdx)). Point `OPENSHELL_GATEWAY_URL` and the TLS variables at it ([docs/configuration.md](docs/configuration.md#connecting-to-a-gateway-outside-the-chart)); the rest is in [docs/development.md](docs/development.md).
+`make dev` talks to the gateway `make gateway` starts. `make dev-full` adds Keycloak and the auth proxy and serves the UI behind sign-in on `http://localhost:4180`. For a gateway of your own, point `OPENSHELL_GATEWAY_URL` and the TLS variables at it ([docs/configuration.md](docs/configuration.md#connecting-to-a-gateway-outside-the-chart)); the rest is in [docs/development.md](docs/development.md).
 
 ## Architecture rules
 
