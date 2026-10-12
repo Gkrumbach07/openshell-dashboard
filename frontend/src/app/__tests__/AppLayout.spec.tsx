@@ -46,7 +46,7 @@ const mockUseGatewayCompatibility = useGatewayCompatibility as jest.Mock;
 const mockUseCurrentUser = useCurrentUser as jest.Mock;
 const mockUseAuthConfig = useAuthConfig as jest.Mock;
 
-/** Drive the real useUserRole hook via whoami roles (adminRole stays "admin"). */
+/** Drive the real useUserRole hook via whoami roles (admin/user roles stay defaults). */
 const mockUser = (
   user: {
     roles?: string[] | null;
@@ -54,7 +54,7 @@ const mockUser = (
   } = {},
 ) => {
   mockUseAuthConfig.mockReturnValue({
-    data: { adminRole: 'admin' },
+    data: { adminRole: 'admin', userRole: 'user' },
   });
   mockUseCurrentUser.mockReturnValue({
     data: {
@@ -132,6 +132,13 @@ describe('AppLayout role badge', () => {
 
   it('hides the badge when roles are empty', () => {
     mockUser({ roles: [] });
+    renderShell('/workspaces', page);
+
+    expect(screen.queryByTestId('role-badge')).not.toBeInTheDocument();
+  });
+
+  it('hides the badge when roles are only IdP defaults', () => {
+    mockUser({ roles: ['offline_access', 'default-roles-openshell'] });
     renderShell('/workspaces', page);
 
     expect(screen.queryByTestId('role-badge')).not.toBeInTheDocument();

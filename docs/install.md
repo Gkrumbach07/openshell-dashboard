@@ -88,6 +88,7 @@ oidc:
   issuer: https://keycloak.example.com/realms/openshell
   codeChallengeMethod: S256
   adminRole: openshell-admin
+  userRole: openshell-user
   allowedRoles:
     - openshell-api:openshell-admin
     - openshell-api:openshell-user
@@ -105,7 +106,7 @@ networkPolicy:
 ```
 
 - `allowedRoles` decides who reaches the UI. Without it any realm user gets in, and the gateway refuses their calls.
-- `adminRole` must equal the gateway's admin role.
+- `adminRole` and `userRole` must equal the gateway's admin and user roles. The UI treats a signed-in account with neither as unentitled.
 - With `provider: keycloak-oidc`, signing out ends the Keycloak session too; see [Sign-out](#sign-out).
 - `sectionName` is the Gateway's HTTPS listener (`kubectl -n <namespace> get gateway <name> -o jsonpath='{.spec.listeners[*].name}'` lists the names). Without it the route attaches to every listener that admits it, a plain-HTTP one included, where sign-in cannot complete.
 - `networkPolicy.ingressNamespace` is where the Gateway's data-plane pods run, often not the namespace of the `Gateway` resource.

@@ -126,6 +126,11 @@ tests:
     asserts:
       - notExists:
           path: spec.template.spec.containers[0].env[?(@.name == 'ADMIN_ROLE')]
+  - it: omits the user role override unless explicitly configured
+    template: templates/deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == 'USER_ROLE')]
   - it: passes a configured admin role to the dashboard only
     template: templates/deployment.yaml
     set:
@@ -138,6 +143,18 @@ tests:
             value: platform-admin
       - notExists:
           path: spec.template.spec.containers[1].env[?(@.name == 'ADMIN_ROLE')]
+  - it: passes a configured user role to the dashboard only
+    template: templates/deployment.yaml
+    set:
+      oidc.userRole: platform-user
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: USER_ROLE
+            value: platform-user
+      - notExists:
+          path: spec.template.spec.containers[1].env[?(@.name == 'USER_ROLE')]
   - it: applies per-container resources and image pull policies
     template: templates/deployment.yaml
     set:

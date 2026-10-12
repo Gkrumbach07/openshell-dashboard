@@ -864,6 +864,7 @@ export type FeatureFlags = {
 export type AuthConfig = {
   authDisabled: boolean;
   adminRole?: string;
+  userRole?: string;
   logoutUrl?: string;
   features: FeatureFlags;
 };

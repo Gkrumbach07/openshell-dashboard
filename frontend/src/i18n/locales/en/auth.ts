@@ -26,4 +26,8 @@ export default {
   requiredDevServerNote:
     '— note that the Vite dev server is not behind an auth proxy, so browser sign-in is not available without',
   requiredProxyNote: 'and a fronting proxy.',
+  entitlementTitle: 'Your account has no OpenShell role',
+  entitlementBody:
+    'You are signed in, but the gateway has not granted you an OpenShell role. Ask a platform admin to grant you access, then sign out and sign back in.',
+  entitlementSignOut: 'Sign out',
 } as const;
