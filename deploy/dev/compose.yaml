@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
+# SPDX-License-Identifier: Apache-2.0
+# The local development stack. Start it with scripts/dev-env.sh (make gateway,
+# make dev-full), not with docker compose: the script sets every variable
+# below (the images, the ports, the realm's name) and writes the gateway's
+# config, its keys and Keycloak's realm into the state directory first.
+#
+# One of two profiles runs at a time, on the same data:
+#
+#   plain     the gateway alone
+#   sign-in   Keycloak and the same gateway, told to trust its realm
+#
+# The gateway takes a plain-HTTP issuer only at a numeric loopback address, so
+# in the sign-in profile it joins Keycloak's network namespace: there
+# 127.0.0.1 at Keycloak's port is Keycloak, as it is for the browser and the
+# auth proxy on this machine. Keycloak owns the namespace and publishes the
+# gateway's ports.
+#
+# Every port is published on 127.0.0.1 only: this gateway accepts calls
+# without a token.
+
+x-gateway: &gateway
+  image: ${OPENSHELL_GATEWAY_IMAGE:?start the stack with scripts/dev-env.sh}
+  command: []
+  user: "0"
+  volumes:
+    # The gateway creates each sandbox as a container on this Docker daemon.
+    - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+    # The database. A volume, so that nothing in the checkout belongs to root.
+    - gateway-data:/var/lib/openshell
+    - ${DEV_STATE_DIR:?start the stack with scripts/dev-env.sh}/gateway.toml:/etc/openshell/gateway.toml:ro
+    - ${DEV_STATE_DIR}/jwt:/var/lib/openshell/jwt:ro
+  environment: &gateway-env
+    OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
+    OPENSHELL_DB_URL: "sqlite:/var/lib/openshell/gateway.db?mode=rwc"
+    XDG_DATA_HOME: /var/lib/openshell
+    HOME: /var/lib/openshell
+
+services:
+  gateway:
+    <<: *gateway
+    profiles: [plain]
+    ports:
+      - "127.0.0.1:${DEV_GATEWAY_PORT}:8080"
+      - "127.0.0.1:${DEV_HEALTH_PORT}:8081"
+
+  keycloak:
+    profiles: [sign-in]
+    # The image deploy/keycloak/dev/keycloak.yaml runs.
+    image: ${DEV_KEYCLOAK_IMAGE}
+    command: [start-dev, --import-realm]
+    environment:
+      # The same port inside and outside, so that the issuer is one address.
+      KC_HTTP_PORT: "${DEV_KEYCLOAK_PORT}"
+      # Pins the issuer, whoever asks and under whatever name.
+      KC_HOSTNAME: http://127.0.0.1:${DEV_KEYCLOAK_PORT}
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${DEV_KEYCLOAK_ADMIN_PASSWORD:-}
+    volumes:
+      - ${DEV_STATE_DIR}/keycloak:/opt/keycloak/data/import:ro
+    ports:
+      - "127.0.0.1:${DEV_KEYCLOAK_PORT}:${DEV_KEYCLOAK_PORT}"
+      - "127.0.0.1:${DEV_GATEWAY_PORT}:8080"
+      - "127.0.0.1:${DEV_HEALTH_PORT}:8081"
+    healthcheck:
+      # Healthy when the imported realm answers. The image has bash and no curl.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/${DEV_KEYCLOAK_PORT} &&
+          printf 'GET /realms/${DEV_REALM}/.well-known/openid-configuration HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n' >&3 &&
+          read -r status <&3 && [[ $$status == *" 200 "* ]]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
+
+  gateway-sign-in:
+    <<: *gateway
+    profiles: [sign-in]
+    network_mode: "service:keycloak"
+    # The gateway exits when it cannot read the issuer, so it starts once the
+    # realm answers.
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      <<: *gateway-env
+      # These override the config file. The audience, the roles claim and the
+      # two role names are the ones of deploy/keycloak/openshell-realm.json.
+      OPENSHELL_OIDC_ISSUER: http://127.0.0.1:${DEV_KEYCLOAK_PORT}/realms/${DEV_REALM}
+      OPENSHELL_OIDC_DANGEROUSLY_ALLOW_INSECURE_HTTP: "true"
+      OPENSHELL_OIDC_AUDIENCE: openshell-api
+      OPENSHELL_OIDC_ROLES_CLAIM: resource_access.openshell-api.roles
+      OPENSHELL_OIDC_ADMIN_ROLE: openshell-admin
+      OPENSHELL_OIDC_USER_ROLE: openshell-user
+
+volumes:
+  gateway-data:

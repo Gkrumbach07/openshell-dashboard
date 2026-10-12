@@ -13,20 +13,20 @@ tests:
   - it: image digest and component registry override tags and global registry
     template: templates/deployment.yaml
     set:
-      dashboard.image.registry: registry.redhat.io
-      dashboard.image.repository: rhoai/openshell-dashboard
+      dashboard.image.registry: registry.example.com
+      dashboard.image.repository: mirror/openshell-dashboard
       dashboard.image.tag: ignored
       dashboard.image.digest: sha256:abcdef
-      authProxy.image.registry: registry.redhat.io
-      authProxy.image.repository: rhoai/oauth2-proxy
+      authProxy.image.registry: registry.example.com
+      authProxy.image.repository: mirror/oauth2-proxy
       authProxy.image.digest: sha256:123456
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: registry.redhat.io/rhoai/openshell-dashboard@sha256:abcdef
+          value: registry.example.com/mirror/openshell-dashboard@sha256:abcdef
       - equal:
           path: spec.template.spec.containers[1].image
-          value: registry.redhat.io/rhoai/oauth2-proxy@sha256:123456
+          value: registry.example.com/mirror/oauth2-proxy@sha256:123456
   - it: global tag overrides chart appVersion when component tag is empty
     template: templates/deployment.yaml
     set:

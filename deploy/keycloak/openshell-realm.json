@@ -1,0 +1,91 @@
+{
+  "realm": "openshell",
+  "enabled": true,
+  "roles": {
+    "client": {
+      "openshell-api": [
+        {
+          "name": "openshell-admin",
+          "description": "Platform admin of the OpenShell gateway"
+        },
+        {
+          "name": "openshell-user",
+          "description": "Standard user of the OpenShell gateway"
+        }
+      ]
+    }
+  },
+  "groups": [
+    {
+      "name": "openshell-admins",
+      "clientRoles": {
+        "openshell-api": ["openshell-admin"]
+      }
+    },
+    {
+      "name": "openshell-users",
+      "clientRoles": {
+        "openshell-api": ["openshell-user"]
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "openshell-api",
+      "description": "The OpenShell gateway: the audience of access tokens and the client that holds the two roles. Nothing signs in through it.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "openshell-dashboard",
+      "description": "OpenShell Dashboard: the confidential client its auth proxy (oauth2-proxy) signs users in with.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "redirectUris": ["https://dashboard.example.com/oauth2/callback"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://dashboard.example.com/*"
+      }
+    },
+    {
+      "clientId": "openshell-cli",
+      "description": "The openshell command-line client: a public client with the device authorization grant.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "redirectUris": ["http://127.0.0.1/*"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "oauth2.device.authorization.grant.enabled": "true"
+      }
+    }
+  ],
+  "clientScopeMappings": {
+    "openshell-api": [
+      {
+        "client": "openshell-dashboard",
+        "roles": ["openshell-admin", "openshell-user"]
+      },
+      {
+        "client": "openshell-cli",
+        "roles": ["openshell-admin", "openshell-user"]
+      }
+    ]
+  }
+}

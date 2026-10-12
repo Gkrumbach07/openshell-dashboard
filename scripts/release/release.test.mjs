@@ -1,26 +1,29 @@
 // node --test "scripts/**/*.test.mjs"
 //
-// The release pipeline only runs for real on main, and its last step talks to a
-// container registry. These tests cover the parts that decide things — what the
-// notes say, whether a release was cut, which tags move and
-// which never may — with no network, no registry and no docker daemon:
-// retag-image.sh is run against a stand-in `docker` that keeps a registry in a
-// file, and branch-tip.sh against a throwaway git remote on disk.
+// The release pipeline only runs for real on main and on release branches, and
+// its last step talks to a container registry. These tests cover the parts
+// that decide things — what the notes say, whether a release was cut, which
+// tags move and which never may — with no network, no registry and no docker
+// daemon: retag-image.sh is run against a stand-in `docker` that keeps a
+// registry in a file, and branch-tip.sh against a throwaway git remote on
+// disk. What version a release gets is in next-version.test.mjs, and cutting
+// one is in cut-release.test.mjs.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { formatLine, readGatewayLine } from '../gateway-range.mjs';
-import { generateNotes, supportedGatewaysNotes } from './gateway-range-plugin.mjs';
+import { changesNotes, isCiCommit, lineDeclaredBy, releaseNotes, supportedGatewaysNotes } from './release-notes.mjs';
 import { releaseAt } from './released-version.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SDK = 'v0.0.0-20260928030816-6648bd0c290e';
-const declared = { line: '0.1', tested: ['0.1.0', '0.1.2'], sdk: SDK };
+const declared = { line: '0.1', release: '0.1.2', sdk: SDK };
+// What is known about an earlier release: the line it was for.
+const previous = { line: '0.1' };
 
 function tempDir(t) {
   const dir = mkdtempSync(join(tmpdir(), 'openshell-dashboard-release-'));
@@ -33,71 +36,154 @@ function tempDir(t) {
 test('the notes state the line, what it was tested on and the SDK, and link the README of that release', () => {
   const notes = supportedGatewaysNotes({
     declared,
-    previous: declared,
-    previousTag: 'v1.1.0',
-    readmeUrl: 'https://github.com/o/r/blob/v1.2.0/README.md#compatibility',
+    previous,
+    previousTag: 'v0.1.0',
+    readmeUrl: 'https://github.com/o/r/blob/v0.1.1/README.md#compatibility',
   });
   assert.match(notes, /^### Supported OpenShell gateways\n/);
-  assert.ok(
-    notes.includes(`**0.1.x**, tested on 0.1.0 and 0.1.2, built against OpenShell Go SDK \`${SDK}\`.`),
-    notes,
-  );
-  assert.match(notes, /\[Compatibility\]\(https:\/\/github\.com\/o\/r\/blob\/v1\.2\.0\/README\.md#compatibility\)/);
+  assert.ok(notes.includes(`**0.1.x**, tested on 0.1.2, built against OpenShell Go SDK \`${SDK}\`.`), notes);
+  assert.match(notes, /\[Compatibility\]\(https:\/\/github\.com\/o\/r\/blob\/v0\.1\.1\/README\.md#compatibility\)/);
   assert.doesNotMatch(notes, /release line changed/);
 });
 
-test('the releases a line was tested on read as a list, however many there are', () => {
-  const tested = (releases) =>
-    supportedGatewaysNotes({ declared: { ...declared, tested: releases }, previous: null, readmeUrl: null });
-  assert.ok(tested(['0.1.3']).includes('**0.1.x**, tested on 0.1.3, built against'));
-  assert.ok(tested(['0.1.0', '0.1.2', '0.1.3']).includes('**0.1.x**, tested on 0.1.0, 0.1.2 and 0.1.3, built against'));
+test('a release is tested on one gateway release, the one its branch pins', () => {
+  const notes = supportedGatewaysNotes({ declared, previous: null, readmeUrl: null });
+  assert.ok(notes.includes('The release named above is the one this commit is built on'));
+  assert.doesNotMatch(notes, / and 0\.1\./);
 });
 
 test('a new release line is called out, because a patch number will not say so', () => {
   const notes = supportedGatewaysNotes({
-    declared: { line: '0.2', tested: ['0.2.0'], sdk: SDK },
-    previous: declared,
-    previousTag: 'v1.1.0',
+    declared: { line: '0.2', release: '0.2.0', sdk: SDK },
+    previous,
+    previousTag: 'v0.1.0',
     readmeUrl: null,
   });
   assert.match(
     notes,
-    /> \*\*The supported gateway release line changed in this release\.\*\* v1\.1\.0 supported 0\.1\.x\./,
+    /> \*\*The supported gateway release line changed in this release\.\*\* v0\.1\.0 supported 0\.1\.x\./,
   );
 });
 
 test('a newer patch of the same line is not a change of line', () => {
   const notes = supportedGatewaysNotes({
-    declared: { ...declared, tested: ['0.1.0', '0.1.3'] },
-    previous: declared,
-    previousTag: 'v1.1.0',
+    declared: { ...declared, release: '0.1.3' },
+    previous,
+    previousTag: 'v0.1.0',
     readmeUrl: null,
   });
   assert.doesNotMatch(notes, /release line changed/);
 });
 
 test('nothing is claimed about a previous release whose line is unknown', () => {
-  const notes = supportedGatewaysNotes({ declared, previous: null, previousTag: 'v1.1.0', readmeUrl: null });
+  const notes = supportedGatewaysNotes({ declared, previous: null, previousTag: 'v0.1.0', readmeUrl: null });
   assert.doesNotMatch(notes, /release line changed/);
 });
 
-test('generateNotes reads the committed pins and tolerates a first release', async () => {
-  const committed = readGatewayLine();
-  const notes = await generateNotes(
-    { pkgRoot: 'frontend' },
-    { cwd: repoRoot, lastRelease: {}, nextRelease: { gitTag: 'v9.9.9', version: '9.9.9' } },
+// A tag pushed back from an old clone may point at a pins file that lists lanes.
+test('the line of the previous release is read from a pins file of either shape', () => {
+  assert.equal(lineDeclaredBy({ release: '0.1.3', sdk: SDK }), '0.1');
+  const lanes = [
+    { version: '0.1.3', required: true },
+    { version: '0.1.0', required: true },
+  ];
+  assert.equal(lineDeclaredBy({ sdk: SDK, lanes }), '0.1');
+  assert.equal(lineDeclaredBy({ sdk: SDK, lanes: [{ version: 'dev', required: true }] }), null);
+  assert.equal(lineDeclaredBy({}), null);
+});
+
+// --- the changes -----------------------------------------------------------
+
+const REPO_URL = 'https://github.com/o/r';
+const sha = (letter) => letter.repeat(40);
+const commits = [
+  { sha: sha('a'), subject: 'feat: add provider profile detail page (#101)' },
+  { sha: sha('b'), subject: 'ci: pin the runners (#102)' },
+  { sha: sha('c'), subject: 'fix(bff)!: send the workspace scope (#103)' },
+  { sha: sha('d'), subject: 'fix(ci): unbreak the build job' },
+  { sha: sha('e'), subject: 'UI Helm Charts (#97)' },
+];
+
+test('the changes are the commit titles since the previous release, as merged, oldest first', () => {
+  const notes = changesNotes({ commits, previousTag: 'v0.1.3', tag: 'v0.1.4', repoUrl: REPO_URL });
+  assert.deepEqual(notes.split('\n'), [
+    '### Changes since v0.1.3',
+    '',
+    `- feat: add provider profile detail page (#101) ([aaaaaaa](${REPO_URL}/commit/${sha('a')}))`,
+    `- fix(bff)!: send the workspace scope (#103) ([ccccccc](${REPO_URL}/commit/${sha('c')}))`,
+    // A title that is not a Conventional Commit is listed as it is.
+    `- UI Helm Charts (#97) ([eeeeeee](${REPO_URL}/commit/${sha('e')}))`,
+    '',
+    `[Everything between v0.1.3 and v0.1.4](${REPO_URL}/compare/v0.1.3...v0.1.4)`,
+  ]);
+});
+
+test('a commit about CI is left out of the changes, by type or by scope', () => {
+  for (const subject of ['ci: x', 'ci!: x', 'fix(ci): x', 'feat(ci)!: x', 'ci(deps): x', 'ci: revert "x"']) {
+    assert.equal(isCiCommit(subject), true, subject);
+  }
+  // git's own title for a revert has no type and no scope, so it is listed.
+  for (const subject of ['fix: x', 'feat(bff): x', 'docs: ci notes', 'build(ci-image): x', 'Revert "ci: x"', 'Add foo']) {
+    assert.equal(isCiCommit(subject), false, subject);
+  }
+});
+
+test('a release of nothing but CI commits says so instead of listing nothing', () => {
+  const onlyCi = changesNotes({ commits: [commits[1], commits[3]], previousTag: 'v0.1.3', tag: 'v0.1.4', repoUrl: null });
+  assert.equal(onlyCi, '### Changes since v0.1.3\n\nNothing is listed: every commit since v0.1.3 is about CI.');
+  const none = changesNotes({ commits: [], previousTag: 'v0.1.3', tag: 'v0.1.4', repoUrl: null });
+  assert.equal(none, '### Changes since v0.1.3\n\nNo commits since v0.1.3.');
+});
+
+test('with no earlier release the changes are a fixed opening, not the whole history', () => {
+  const notes = changesNotes({ commits, previousTag: null, tag: 'v0.1.0', repoUrl: REPO_URL });
+  assert.equal(
+    notes,
+    '### Changes\n\nNo earlier release exists to compare this one with, so its changes are not listed.',
   );
-  assert.ok(notes.includes(`**${formatLine(committed.line)}**`) && notes.includes(committed.sdk));
-  assert.ok(committed.tested.every((release) => notes.includes(release)));
-  assert.match(notes, /\/blob\/v9\.9\.9\/README\.md#compatibility\)/);
-  // The URL comes from package.json, never from the credentialed push URL.
-  assert.match(notes, /\(https:\/\/github\.com\/Gkrumbach07\/openshell-dashboard\/blob\//);
+});
+
+test('the notes of a release are its changes, then the gateways it supports', () => {
+  const notes = releaseNotes({
+    tag: 'v0.1.4',
+    previousTag: 'v0.1.3',
+    commits,
+    declared,
+    previous,
+    repoUrl: REPO_URL,
+  });
+  const changes = notes.indexOf('### Changes since v0.1.3');
+  const gateways = notes.indexOf('### Supported OpenShell gateways');
+  assert.equal(changes, 0);
+  assert.ok(gateways > changes, notes);
+  assert.ok(notes.includes(`**0.1.x**, tested on 0.1.2, built against OpenShell Go SDK \`${SDK}\`.`), notes);
+  // The README as of this release, so the link stays right after main moves on.
+  assert.ok(notes.includes(`[Compatibility](${REPO_URL}/blob/v0.1.4/README.md#compatibility)`), notes);
+  assert.ok(notes.endsWith('\n'));
+
+  const first = releaseNotes({ tag: 'v0.1.0', previousTag: null, commits: [], declared, previous: null, repoUrl: null });
+  assert.ok(first.startsWith('### Changes\n\nNo earlier release exists'), first);
+  assert.ok(first.includes('### Supported OpenShell gateways'), first);
+  assert.ok(first.includes('see Compatibility in the README'), first);
+});
+
+test('the first release of a new line says the line changed, next to the changes since the old one', () => {
+  const notes = releaseNotes({
+    tag: 'v0.2.0',
+    previousTag: 'v0.1.7',
+    commits: [commits[0]],
+    declared: { line: '0.2', release: '0.2.0', sdk: SDK },
+    previous,
+    repoUrl: null,
+  });
+  assert.ok(notes.startsWith('### Changes since v0.1.7\n\n- feat: add provider profile detail page (#101) (aaaaaaa)'), notes);
+  assert.match(notes, /> \*\*The supported gateway release line changed in this release\.\*\* v0\.1\.7 supported 0\.1\.x\./);
 });
 
 // --- nothing goes to npm ---------------------------------------------------
 
-// The npm package is retired (ADR 0008). `private` is what makes `npm publish`
-// refuse the package, whoever runs it and from wherever.
+// frontend/package.json is an application's manifest, not a published
+// package. `private` is what makes `npm publish` refuse it.
 test('frontend/package.json is private, so it cannot be published', () => {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'frontend', 'package.json'), 'utf8'));
   assert.equal(pkg.private, true);
@@ -106,21 +192,40 @@ test('frontend/package.json is private, so it cannot be published', () => {
 // --- was a release cut? ----------------------------------------------------
 
 test('no release tag at the commit means nothing to tag', () => {
-  assert.equal(releaseAt([], ['v1.0.0', 'v1.1.0']), null);
-  assert.equal(releaseAt(['some-other-tag', 'v1.2.0-beta.1'], ['v1.1.0']), null);
+  assert.equal(releaseAt([], ['v0.1.0', 'v0.1.1'], '0.1'), null);
+  assert.equal(releaseAt(['some-other-tag', 'v0.1.2-beta.1'], ['v0.1.1'], '0.1'), null);
 });
 
-test('a release gets X.Y.Z, and X.Y when it is the newest patch of that minor', () => {
-  assert.deepEqual(releaseAt(['v1.2.0'], ['v1.0.0', 'v1.1.0', 'v1.2.0']), {
-    version: '1.2.0',
-    tag: 'v1.2.0',
-    imageTags: ['1.2.0', '1.2'],
+test('a release gets X.Y.Z, and X.Y when it is the newest patch of that line', () => {
+  assert.deepEqual(releaseAt(['v0.1.2'], ['v0.1.0', 'v0.1.1', 'v0.1.2'], '0.1'), {
+    version: '0.1.2',
+    tag: 'v0.1.2',
+    imageTags: ['0.1.2', '0.1'],
   });
-  assert.deepEqual(releaseAt(['v1.2.10'], ['v1.2.9', 'v1.2.10', 'v1.3.0', 'v2.0.0']).imageTags, ['1.2.10', '1.2']);
+  assert.deepEqual(releaseAt(['v1.2.10'], ['v1.2.9', 'v1.2.10', 'v1.3.0', 'v2.0.0'], '1.2').imageTags, ['1.2.10', '1.2']);
 });
 
 test('re-running for an older release does not pull X.Y back', () => {
-  assert.deepEqual(releaseAt(['v1.2.0'], ['v1.2.0', 'v1.2.1']).imageTags, ['1.2.0']);
+  assert.deepEqual(releaseAt(['v0.1.0'], ['v0.1.0', 'v0.1.1'], '0.1').imageTags, ['0.1.0']);
+});
+
+// A patch from release/0.1 after main moved to 0.2: the 0.1 tag moves, and
+// nothing about 0.2 is touched or consulted.
+test('a release moves the tag of its own line and no other', () => {
+  const all = ['v0.1.0', 'v0.1.1', 'v0.1.2', 'v0.2.0', 'v0.2.1'];
+  assert.deepEqual(releaseAt(['v0.1.2'], all, '0.1').imageTags, ['0.1.2', '0.1']);
+  assert.deepEqual(releaseAt(['v0.2.1'], all, '0.2').imageTags, ['0.2.1', '0.2']);
+});
+
+// A release tag this pipeline did not cut can sit on a commit whose pins are
+// for another line. It is not that commit's release.
+test('a release tag of another line on the commit is not its release', () => {
+  assert.equal(releaseAt(['v1.2.0'], ['v0.1.3', 'v1.2.0'], '0.1'), null);
+  assert.deepEqual(releaseAt(['v1.2.0', 'v0.1.4'], ['v0.1.3', 'v0.1.4', 'v1.2.0'], '0.1'), {
+    version: '0.1.4',
+    tag: 'v0.1.4',
+    imageTags: ['0.1.4', '0.1'],
+  });
 });
 
 // --- retag by digest -------------------------------------------------------
@@ -201,19 +306,19 @@ if (args[2] === 'create') {
 }
 
 test('a release gets its tags in one push, at the digest of the source tag', { skip: !canRunRetag }, (t) => {
-  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '1.2.0', '1.2'], {
+  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '0.1.0', '0.1'], {
     registry: { [SOURCE]: DIGEST },
   });
   assert.equal(status, 0, stderr);
   assert.deepEqual(calls, [
     inspected(SOURCE),
     // Is the version tag free? It is looked up before anything is pushed.
-    inspected('1.2.0'),
-    `buildx imagetools create --tag ${IMAGE}:1.2.0 --tag ${IMAGE}:1.2 ${IMAGE}@${DIGEST}`,
-    inspected('1.2.0'),
-    inspected('1.2'),
+    inspected('0.1.0'),
+    `buildx imagetools create --tag ${IMAGE}:0.1.0 --tag ${IMAGE}:0.1 ${IMAGE}@${DIGEST}`,
+    inspected('0.1.0'),
+    inspected('0.1'),
   ]);
-  assert.deepEqual(registry, { [SOURCE]: DIGEST, '1.2.0': DIGEST, '1.2': DIGEST });
+  assert.deepEqual(registry, { [SOURCE]: DIGEST, '0.1.0': DIGEST, '0.1': DIGEST });
 });
 
 test('DRY_RUN=1 resolves the digest and prints the command without pushing', { skip: !canRunRetag }, (t) => {
@@ -228,19 +333,19 @@ test('DRY_RUN=1 resolves the digest and prints the command without pushing', { s
 });
 
 test('an image CI never built is an error that says so', { skip: !canRunRetag }, (t) => {
-  const { status, calls, stderr } = retag(t, [IMAGE, SOURCE, '1.2.0']);
+  const { status, calls, stderr } = retag(t, [IMAGE, SOURCE, '0.1.0']);
   assert.equal(status, 1);
   assert.deepEqual(calls, [inspected(SOURCE)], 'nothing else is asked of the registry, and nothing is pushed');
   assert.match(stderr, /sha-0a1b2c3 is not in the registry/);
 });
 
 test('a new tag that does not carry the source digest fails the step', { skip: !canRunRetag }, (t) => {
-  const { status, stderr } = retag(t, [IMAGE, SOURCE, '1.2.0'], {
+  const { status, stderr } = retag(t, [IMAGE, SOURCE, '0.1.0'], {
     registry: { [SOURCE]: DIGEST },
     env: { STUB_CREATE_DIGEST: REBUILT },
   });
   assert.equal(status, 1);
-  assert.match(stderr, /1\.2\.0 is sha256:b+, expected sha256:a+/);
+  assert.match(stderr, /0\.1\.0 is sha256:b+, expected sha256:a+/);
 });
 
 test('retag refuses to run without a source and at least one new tag', { skip: !canRunRetag }, (t) => {
@@ -252,33 +357,33 @@ test('retag refuses to run without a source and at least one new tag', { skip: !
 // A full re-run of a released commit's CI run builds the commit again and
 // re-points sha-<commit> at the new build. The release must not follow it.
 test('a version tag is write-once: a rebuilt commit cannot move it, and nothing else moves', { skip: !canRunRetag }, (t) => {
-  const before = { [SOURCE]: REBUILT, '1.2.0': DIGEST, '1.2': DIGEST, latest: DIGEST };
-  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '1.2.0', '1.2'], { registry: before });
+  const before = { [SOURCE]: REBUILT, '0.1.0': DIGEST, '0.1': DIGEST, latest: DIGEST };
+  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '0.1.0', '0.1'], { registry: before });
   assert.equal(status, 1);
-  assert.match(stderr, /1\.2\.0 already names sha256:a+, and a version tag is never moved/);
+  assert.match(stderr, /0\.1\.0 already names sha256:a+, and a version tag is never moved/);
   assert.match(stderr, /sha-0a1b2c3 is now sha256:b+/);
-  assert.deepEqual(pushes(calls), [], 'not even the movable 1.2 is pushed');
+  assert.deepEqual(pushes(calls), [], 'not even the movable 0.1 is pushed');
   assert.deepEqual(registry, before);
 });
 
 test('the refusal does not depend on the order the tags are given in', { skip: !canRunRetag }, (t) => {
-  const before = { [SOURCE]: REBUILT, '1.2.0': DIGEST, '1.2': DIGEST };
-  const { status, calls, registry } = retag(t, [IMAGE, SOURCE, '1.2', '1.2.0'], { registry: before });
+  const before = { [SOURCE]: REBUILT, '0.1.0': DIGEST, '0.1': DIGEST };
+  const { status, calls, registry } = retag(t, [IMAGE, SOURCE, '0.1', '0.1.0'], { registry: before });
   assert.equal(status, 1);
   assert.deepEqual(pushes(calls), []);
   assert.deepEqual(registry, before);
 });
 
 test('tagging a release again with the image it already has is not an error', { skip: !canRunRetag }, (t) => {
-  const before = { [SOURCE]: DIGEST, '1.2.0': DIGEST, '1.2': DIGEST };
-  const again = retag(t, [IMAGE, SOURCE, '1.2.0', '1.2'], { registry: before });
+  const before = { [SOURCE]: DIGEST, '0.1.0': DIGEST, '0.1': DIGEST };
+  const again = retag(t, [IMAGE, SOURCE, '0.1.0', '0.1'], { registry: before });
   assert.equal(again.status, 0, again.stderr);
   // The version tag is left alone; only the movable one is pushed.
-  assert.deepEqual(pushes(again.calls), [`buildx imagetools create --tag ${IMAGE}:1.2 ${IMAGE}@${DIGEST}`]);
-  assert.match(again.stdout, /1\.2\.0 already names sha256:a+; leaving it/);
+  assert.deepEqual(pushes(again.calls), [`buildx imagetools create --tag ${IMAGE}:0.1 ${IMAGE}@${DIGEST}`]);
+  assert.match(again.stdout, /0\.1\.0 already names sha256:a+; leaving it/);
   assert.deepEqual(again.registry, before);
 
-  const alone = retag(t, [IMAGE, SOURCE, '1.2.0'], { registry: before });
+  const alone = retag(t, [IMAGE, SOURCE, '0.1.0'], { registry: before });
   assert.equal(alone.status, 0, alone.stderr);
   assert.deepEqual(pushes(alone.calls), []);
   assert.match(alone.stdout, /nothing to push/);
@@ -286,13 +391,13 @@ test('tagging a release again with the image it already has is not an error', { 
 
 test('a version tag is not pushed while the registry cannot say whether it exists', { skip: !canRunRetag }, (t) => {
   const before = { [SOURCE]: DIGEST };
-  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '1.2.0', '1.2'], {
+  const { status, calls, registry, stderr } = retag(t, [IMAGE, SOURCE, '0.1.0', '0.1'], {
     registry: before,
-    env: { STUB_UNREADABLE_TAG: '1.2.0' },
+    env: { STUB_UNREADABLE_TAG: '0.1.0' },
   });
   assert.equal(status, 1);
   assert.match(stderr, /503 Service Unavailable/, 'the registry answer is shown');
-  assert.match(stderr, /could not tell whether quay\.io\/example\/dashboard:1\.2\.0 already exists/);
+  assert.match(stderr, /could not tell whether quay\.io\/example\/dashboard:0\.1\.0 already exists/);
   assert.deepEqual(pushes(calls), []);
   assert.deepEqual(registry, before);
 });
@@ -306,12 +411,12 @@ test('latest and X.Y are meant to move, and still do', { skip: !canRunRetag }, (
     `buildx imagetools create --tag ${IMAGE}:latest ${IMAGE}@${REBUILT}`,
   ]);
 
-  // The next patch release: 1.2 moves to it, 1.2.0 stays where it was.
-  const patch = retag(t, [IMAGE, SOURCE, '1.2.1', '1.2'], {
-    registry: { [SOURCE]: REBUILT, '1.2.0': DIGEST, '1.2': DIGEST },
+  // The next patch release: 0.1 moves to it, 0.1.0 stays where it was.
+  const patch = retag(t, [IMAGE, SOURCE, '0.1.1', '0.1'], {
+    registry: { [SOURCE]: REBUILT, '0.1.0': DIGEST, '0.1': DIGEST },
   });
   assert.equal(patch.status, 0, patch.stderr);
-  assert.deepEqual(patch.registry, { [SOURCE]: REBUILT, '1.2.0': DIGEST, '1.2.1': REBUILT, '1.2': REBUILT });
+  assert.deepEqual(patch.registry, { [SOURCE]: REBUILT, '0.1.0': DIGEST, '0.1.1': REBUILT, '0.1': REBUILT });
 });
 
 // --- latest only moves forward ---------------------------------------------
@@ -425,8 +530,12 @@ test('released-version.mjs reports the release at HEAD, and nothing when there i
     );
 
   git('init', '--quiet', '--initial-branch=main');
-  git('commit', '--quiet', '--allow-empty', '-m', 'feat: one');
-  git('tag', 'v1.0.0');
+  // The line comes from the pins of the commit that is checked out.
+  mkdirSync(join(repo, 'deploy', 'ci'), { recursive: true });
+  writeFileSync(join(repo, 'deploy', 'ci', 'gateway-pins.json'), JSON.stringify({ release: '0.1.3', sdk: SDK }));
+  git('add', '.');
+  git('commit', '--quiet', '-m', 'feat: one');
+  git('tag', 'v0.1.0');
   git('commit', '--quiet', '--allow-empty', '-m', 'ci: two');
   const head = git('rev-parse', 'HEAD');
 
@@ -438,11 +547,15 @@ test('released-version.mjs reports the release at HEAD, and nothing when there i
     sha: head,
   });
 
-  git('tag', 'v1.0.1');
+  // A tag of another line on this commit changes nothing.
+  git('tag', 'v1.2.0');
+  assert.equal(detect().version, '');
+
+  git('tag', 'v0.1.1');
   assert.deepEqual(detect(), {
-    version: '1.0.1',
-    git_tag: 'v1.0.1',
-    image_tags: '1.0.1 1.0',
+    version: '0.1.1',
+    git_tag: 'v0.1.1',
+    image_tags: '0.1.1 0.1',
     source_tag: `sha-${head.slice(0, 7)}`,
     sha: head,
   });

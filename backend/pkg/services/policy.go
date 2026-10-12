@@ -15,5 +15,3 @@ type PolicyService struct {
 func NewPolicyService(client openshell.PolicyInterface) *PolicyService {
 	return &PolicyService{PolicyInterface: client}
 }
-
-// sdk overrides or additions here. if needed can wrap the sdk into a custom client as well

@@ -15,8 +15,9 @@ import (
 // It exists beside the SDK's ProfileInterface because that one narrows a
 // profile: of each endpoint it carries a host, a port and a protocol, and the
 // rest of an endpoint is what bounds a provider's traffic. clients.RawExecClient
-// implements it whole. NewSDKProviderProfileStore implements it over the SDK,
-// for a BFF that has nothing else, and is narrow in the same way.
+// implements it whole. NewSDKProviderProfileStore implements it over the SDK
+// and is narrow in the same way; the handler uses it when no other store was
+// set.
 type ProviderProfileStore interface {
 	ListProviderProfiles(ctx context.Context, workspace string) ([]*pb.ProviderProfile, error)
 	GetProviderProfile(ctx context.Context, workspace, id string) (*pb.ProviderProfile, error)

@@ -539,8 +539,8 @@ func TestProfileRoutesPassOnTheGatewaysAnswer(t *testing.T) {
 		{name: "not a platform admin", err: status.Error(codes.PermissionDenied, "platform admin required"), wantStatus: http.StatusForbidden, wantCode: "permission_denied"},
 		{name: "stale version", err: status.Error(codes.Aborted, "provider profile was modified concurrently"), wantStatus: http.StatusConflict, wantCode: "conflict"},
 		{name: "no such profile", err: status.Error(codes.NotFound, "provider profile not found"), wantStatus: http.StatusNotFound, wantCode: "not_found"},
-		// What these routes answered while they went through the SDK, which
-		// reads a failed precondition as a conflict.
+		// A failed precondition is a conflict on these routes, as the SDK's
+		// typed error for it is.
 		{name: "a workspace that is being deleted", err: status.Error(codes.FailedPrecondition, "workspace is being deleted"), wantStatus: http.StatusConflict, wantCode: "conflict"},
 		{name: "through the SDK", err: &openshell.StatusError{Code: openshell.ErrorPermissionDenied, Message: "platform admin required"}, wantStatus: http.StatusForbidden, wantCode: "permission_denied"},
 	}

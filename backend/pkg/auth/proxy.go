@@ -3,14 +3,14 @@
 // The middleware only decides where the bearer for a request comes from, in
 // precedence order:
 //
-//  1. The auth-proxy header (oauth2-proxy / kube-auth-proxy injects
+//  1. The auth-proxy header (oauth2-proxy injects
 //     `x-forwarded-access-token`).
 //  2. An explicit `Authorization: Bearer` header (API clients, tests).
 //
 // There is deliberately no third source: the BFF holds no sessions and runs
-// no OIDC flows (ADR 0002). Deployments that need browser login put an auth
-// proxy in front; the proxy authenticates WebSocket upgrades too, since it
-// injects the token header on the upgrade request like any other.
+// no OIDC flows (ADR 0002). A deployment puts an auth proxy in front; the
+// proxy authenticates WebSocket upgrades too, since it injects the token
+// header on the upgrade request like any other.
 package auth
 
 import (
@@ -57,7 +57,8 @@ func New(cfg Config) *Middleware {
 	return &Middleware{cfg: cfg}
 }
 
-// Disabled reports whether auth validation is turned off.
+// Disabled reports whether auth is turned off (AUTH_DISABLED, for local
+// development).
 func (m *Middleware) Disabled() bool {
 	return m.cfg.Disabled
 }

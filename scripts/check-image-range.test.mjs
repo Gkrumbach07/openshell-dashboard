@@ -59,8 +59,8 @@ test('an image built without the args, or with the wrong ones, is reported per p
   assert.ok(problems.every((problem) => problem.startsWith('linux/arm64: ')));
   assert.ok(problems.includes(`linux/arm64: label ${LABEL_PREFIX}.gateway.line is "", expected "0.1"`));
 
-  // An image from before the labels existed has neither. The range labels it
-  // may carry instead (gateway.min, gateway.max) do not stand in for the line.
+  // An image without the labels has neither. Labels under other names
+  // (gateway.min, gateway.max) do not stand in for the line.
   assert.equal(declarationProblems(imageConfig({}), declared).length, 2);
   const ranged = imageConfig({
     [`${LABEL_PREFIX}.gateway.min`]: '0.1.0',
@@ -95,8 +95,8 @@ test('the label keys the checker expects are the ones deploy/Dockerfile sets', (
 
 // The line a running BFF uses is compiled into the binary, so that an image
 // built by another Dockerfile, or with no build args, still knows it. An ENV
-// here would put a second copy in the image, and the range variables it
-// replaces must not come back.
+// here would put a second copy in the image. The BFF reads no range of
+// gateway versions either, so no GATEWAY_SUPPORTED_ variable belongs here.
 test('the Dockerfile hands the BFF no line and no range through the environment', () => {
   const instructions = readFileSync(join(repoRoot, 'deploy', 'Dockerfile'), 'utf8')
     .split('\n')

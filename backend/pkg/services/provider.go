@@ -18,8 +18,6 @@ func NewProviderService(client openshell.ProviderInterface) *ProviderService {
 	return &ProviderService{ProviderInterface: client}
 }
 
-// sdk overrides or additions here. if needed can wrap the sdk into a custom client as well
-
 // ProviderCredentialKeyReader reads the keys of the credentials providers
 // hold. The gateway reports them on every provider it returns and the SDK
 // drops them, so they are read beside the SDK call that returns the provider

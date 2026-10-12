@@ -36,7 +36,13 @@ export default {
     productName: 'OpenShell Dashboard',
     trademark: 'Apache-2.0 license.',
     brandAlt: 'OpenShell Dashboard',
-    dashboardVersion: 'Dashboard version',
+    // What identifies a build. It has no version number of its own to show:
+    // it is for one gateway release line, and it is made from one commit.
+    builtForGateway: 'Built for gateway',
+    // {{line}} is the gateway release line as major.minor, so this reads
+    // "0.1.x": every gateway release whose version starts with those numbers.
+    gatewayLine: '{{line}}.x',
+    dashboardCommit: 'Dashboard commit',
     gatewayVersion: 'Gateway version',
     gatewayStatus: 'Gateway status',
     computeDriver: 'Compute driver',

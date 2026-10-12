@@ -28,7 +28,7 @@ const (
 // that to the release line it was built for and says whether they match.
 //
 // It informs and nothing else. The BFF never refuses a request because of it
-// (ADR 0002: relay only).
+// (ADR 0005, decision 9).
 type GatewayCompatibility struct {
 	Status GatewayCompatibilityStatus `json:"status"`
 	// SupportedLine echoes the release line, major.minor, so the UI can name
@@ -38,7 +38,7 @@ type GatewayCompatibility struct {
 
 // GatewayReleaseLine is a gateway minor release line, major.minor: every
 // release that shares those two numbers. A build supports exactly one
-// (ADR 0009), and the patch number plays no part.
+// (ADR 0005), and the patch number plays no part.
 //
 // The zero value is "no line", and Check then answers GatewayUnknown for
 // every gateway. A build's own line is BuiltInGatewayReleaseLine.
@@ -94,8 +94,8 @@ func (l GatewayReleaseLine) String() string {
 //     (0.1.0, 0.1.9);
 //   - upstream's builds before a release of the line: a tagged pre-release
 //     (0.1.4-pre.2) and a dev build (0.1.3-dev.114+g3fc93e282);
-//   - a downstream rebuild of a release (0.1.2-rhaiv.5, which is how the
-//     RHOAI midstream tags its gateways).
+//   - a rebuild of a release that carries a suffix of its own
+//     (0.1.2-vendor.5).
 //
 // Every other line is GatewayUnsupported, older (0.0.116) or newer (0.2.0),
 // and so is a pre-release of one (0.2.0-pre.1).
@@ -123,8 +123,8 @@ func (l GatewayReleaseLine) Check(reported string) GatewayCompatibility {
 // release line. Build metadata is dropped while parsing.
 type gatewayVersion struct {
 	// suffix holds the dot-separated identifiers after the "-": an upstream
-	// pre-release ("dev.84", "pre.8") or a downstream rebuild counter
-	// ("rhaiv.5"). Empty for a plain release.
+	// pre-release ("dev.84", "pre.8") or the counter of a rebuild
+	// ("vendor.5"). Empty for a plain release.
 	suffix []string
 	major  uint64
 	minor  uint64
@@ -157,7 +157,7 @@ func (v gatewayVersion) unstamped() bool {
 }
 
 // parseGatewayVersion parses a version as a gateway reports it: "0.1.2",
-// "0.0.116", "0.1.3-dev.84+ge7fdd6bee", "0.1.2-rhaiv.5". One leading "v" is
+// "0.0.116", "0.1.3-dev.84+ge7fdd6bee", "0.1.2-vendor.5". One leading "v" is
 // accepted because upstream's tags carry it even though the gateway does not
 // report it.
 func parseGatewayVersion(raw string) (gatewayVersion, error) {

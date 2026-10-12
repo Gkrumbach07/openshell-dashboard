@@ -110,9 +110,8 @@ func TestDraftSummary(t *testing.T) {
 		agrees(t, "/api/v1/draft-summary?workspace="+ws)
 	})
 
-	// Without a workspace the old route answers what it did before there was
-	// a real summary: nothing, and without asking the gateway. Frontends
-	// older than the workspace route poll it for every user.
+	// Without a workspace the route answers an empty summary and does not
+	// ask the gateway.
 	t.Run("the route outside a workspace, without a workspace, is empty", func(t *testing.T) {
 		summary := readDraftSummary(t, "/api/v1/draft-summary")
 		if len(summary.Sandboxes) != 0 || summary.TotalPending != 0 {

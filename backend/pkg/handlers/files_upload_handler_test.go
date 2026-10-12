@@ -310,7 +310,8 @@ func TestUploadRelativePath(t *testing.T) {
 }
 
 // An upload without a relative path keeps the name of the file, and only the
-// name: this is the request the Files tab has always sent.
+// name: this is the request the Files tab sends for a file that is not in a
+// folder.
 func TestUploadWithoutRelativePath(t *testing.T) {
 	tests := []struct { //nolint:govet // fieldalignment: test readability
 		name       string
@@ -371,8 +372,7 @@ func TestUploadSeveralFiles(t *testing.T) {
 	if !reflect.DeepEqual(got.Files, wantFiles) {
 		t.Errorf("files = %+v\nwant    %+v", got.Files, wantFiles)
 	}
-	// The fields an upload of one file has always answered with describe the
-	// first file.
+	// The fields beside files describe the first file.
 	if got.Path != wantFiles[0].Path || got.Size != wantFiles[0].Size || !got.Success || got.Stdout == "" {
 		t.Errorf("first-file fields = path %q size %d success %v stdout %q", got.Path, got.Size, got.Success, got.Stdout)
 	}
@@ -433,7 +433,7 @@ func TestUploadOneOfSeveralFails(t *testing.T) {
 	}
 }
 
-// One file failing is the 502 it has always been.
+// One file failing is a 502.
 func TestUploadOneFileFails(t *testing.T) {
 	f := &uploadFixture{uploader: &streamUploader{failures: map[string]string{
 		"/usr/x.txt": "dd: failed to open '/usr/x.txt': Permission denied\n",

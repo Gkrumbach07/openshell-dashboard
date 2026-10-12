@@ -13,8 +13,8 @@ export const interceptGateway = () => {
     fixture: 'gateway.json',
   }).as('gateway');
 
-  // The shell asks for the verdict on every page. A BFF that was given no
-  // range answers "unknown", which shows no notice.
+  // The shell asks for the verdict on every page. This stub answers
+  // "unknown", which shows no notice.
   cy.intercept('GET', '/api/v1/gateway/compatibility', {
     statusCode: 200,
     body: { gatewayVersion: '0.0.92', compatibility: { status: 'unknown' } },

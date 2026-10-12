@@ -15,5 +15,3 @@ type ConfigService struct {
 func NewConfig(client openshell.ConfigInterface) *ConfigService {
 	return &ConfigService{ConfigInterface: client}
 }
-
-// sdk overrides or additions here. if needed can wrap the sdk into a custom client as well

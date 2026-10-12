@@ -16,8 +16,8 @@ import (
 )
 
 // ApproveDraftChunkRequest optionally carries the chunk's review token, which
-// the frontend already has from its last GetDraftPolicy fetch. Absent for
-// older clients or the approve-from-notification path.
+// the frontend has from its last GetDraftPolicy fetch. Without one the handler
+// reads the chunk's token from the gateway (resolveDraftReviewToken).
 type ApproveDraftChunkRequest struct {
 	ReviewToken string `json:"reviewToken,omitempty"`
 }
@@ -38,10 +38,9 @@ func NewDraftsHandler(svc services.PolicyServiceInterface) *DraftsHandler {
 }
 
 // SetSandboxService gives the handler the sandbox lists the draft summaries
-// are built from. It is a method rather than a NewDraftsHandler parameter so
-// that downstream callers of the constructor keep compiling; without it the
-// summaries are empty, which is what they were before there was anything to
-// build them from. Call it before the handler serves requests.
+// are built from. It is a method rather than a NewDraftsHandler parameter, so
+// a handler can be built without one; its summaries are then empty. Call it
+// before the handler serves requests.
 func (h *DraftsHandler) SetSandboxService(sandboxes services.SandboxServiceInterface) {
 	h.sandboxes = sandboxes
 }
@@ -71,11 +70,9 @@ func (h *DraftsHandler) GetWorkspaceDraftSummary(w http.ResponseWriter, r *http.
 // GetDraftSummary is the summary outside a workspace route. With ?workspace=
 // it is that workspace's, the same answer as GetWorkspaceDraftSummary.
 //
-// Without one it is empty, as it has always been. Frontends older than the
-// workspace route poll this URL without a workspace, every few seconds and
-// for every user. Answering them with a summary of every workspace would be
-// one draft read per sandbox on the gateway per poll, and a 403 for everyone
-// who is not a platform admin, where they have always had a 200.
+// Without one it answers an empty summary. A summary of every workspace would
+// be one draft read per sandbox on the gateway, and a 403 for everyone who is
+// not a platform admin.
 func (h *DraftsHandler) GetDraftSummary(w http.ResponseWriter, r *http.Request) {
 	workspace := r.URL.Query().Get("workspace")
 	if workspace == "" {
@@ -295,8 +292,9 @@ type DraftChunkApproval struct {
 
 // ApproveAllDraftChunksRequest mirrors ApproveAllDraftChunksRequest: the
 // chunks the reviewer saw, each with its review token, and whether the
-// security-flagged ones among them are approved too. Approvals is absent for
-// older clients.
+// security-flagged ones among them are approved too. Approvals may be absent:
+// the BFF then approves the pending chunks it reads (see
+// ApproveAllDraftChunks).
 type ApproveAllDraftChunksRequest struct {
 	Approvals              []DraftChunkApproval `json:"approvals,omitempty"`
 	IncludeSecurityFlagged bool                 `json:"includeSecurityFlagged,omitempty"`

@@ -1,6 +1,6 @@
 {
   "name": "openshell-dashboard",
-  "version": "0.0.0-semantically-released",
+  "version": "0.0.0",
   "private": true,
   "description": "OpenShell Dashboard frontend — React + PatternFly 6 admin UI for the OpenShell gateway",
   "license": "Apache-2.0",

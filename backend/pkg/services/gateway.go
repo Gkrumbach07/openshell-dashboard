@@ -1,4 +1,6 @@
-// Package services is the business-logic layer for all operations
+// Package services holds the interfaces the handlers depend on: thin wrappers
+// over the OpenShell Go SDK's sub-clients, and readers for what the SDK does
+// not carry.
 package services
 
 import (
@@ -8,9 +10,9 @@ import (
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
-// GatewayServiceInterface is the contract GatewayHandler depends on. Downstream can satisfy
-// it with its own type, or embed Service and shadow individual methods to
-// layer custom logic on top of the upstream default.
+// GatewayServiceInterface is what GatewayHandler depends on. GatewayService
+// is the implementation the BFF runs with; a test satisfies it with a type of
+// its own.
 //
 // CheckHealth and GetCurrentUser cover the SDK's HealthInterface
 // (client.Health()); GetGatewayInfo also doubles as
@@ -28,10 +30,9 @@ type GatewayServiceInterface interface {
 // The health check carries the same version string and is declared
 // "unauthenticated", so it is the one source every signed-in user can read.
 //
-// It is an interface of its own, rather than a method added to
-// GatewayServiceInterface, so that a downstream type written against that
-// interface keeps compiling. GatewayHandler uses it when the service has it —
-// GatewayService does — and falls back to GetGatewayInfo when it does not.
+// It is an interface of its own, not a method of GatewayServiceInterface.
+// GatewayService implements it. GatewayHandler falls back to GetGatewayInfo
+// for a service that does not, which only the handler's unit tests have.
 type GatewayVersionReader interface {
 	GetGatewayVersion(ctx context.Context) (string, error)
 }
@@ -40,20 +41,20 @@ type GatewayVersionReader interface {
 // the version GatewayVersionReader returns, and whether the gateway called
 // itself healthy. It is one call, so a handler that wants both asks here.
 //
-// Like GatewayVersionReader it is an interface of its own so that a downstream
-// service written before it existed keeps compiling. GatewayHandler prefers it
-// and falls back to GatewayVersionReader, which reports no health.
+// Like GatewayVersionReader it is an interface of its own, and GatewayService
+// implements it. GatewayHandler prefers it and falls back to
+// GatewayVersionReader, which reports no health.
 type GatewayHealthReader interface {
 	GetGatewayHealth(ctx context.Context) (*models.GatewayHealth, error)
 }
 
 type GatewayService struct {
-	// clients openshell.Factory
 	sdk openshell.ClientInterface
 }
 
-// NewService builds the default upstream implementation. clients mints an
-// OpenShell SDK client per request (see pkg/clients/openshell).
+// NewGatewayService builds the GatewayService the BFF runs with, over the
+// shared SDK client. Each call carries its own request's bearer
+// (clients.ContextAuthProvider).
 func NewGatewayService(sdk openshell.ClientInterface) *GatewayService {
 	return &GatewayService{sdk: sdk}
 }

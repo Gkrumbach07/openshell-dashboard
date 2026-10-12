@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 OpenShell Dashboard contributors
 # SPDX-License-Identifier: Apache-2.0
-# Only pair with upstream server.disableTls=true, on a trusted network.
+# Only for a gateway that runs without TLS (server.disableTls=true in the
+# OpenShell gateway chart), on a trusted network.
 gateway:
   tls:
     enabled: false

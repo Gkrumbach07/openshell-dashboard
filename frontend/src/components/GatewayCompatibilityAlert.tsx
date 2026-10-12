@@ -31,14 +31,13 @@ type GatewayCompatibilityAlertProps = {
 // The verdict comes from the BFF (GET /gateway/compatibility), which every
 // signed-in user can read; this only presents it. Nothing is shown while the
 // gateway is supported, while the answer is unknown, and while the request is
-// loading or has failed, so it is safe to mount once at the top of an app and
-// forget.
+// loading or has failed.
 //
 // It always renders an empty live region, and the alert appears inside it.
 // That is what makes a screen reader announce the notice when it arrives after
 // the page has loaded: a region only announces what is added to it once it
-// exists. Mount the component where it stays mounted across navigation (an app
-// shell, not a page) and the notice is announced once, when it appears, and
+// exists. AppLayout mounts it once, above the routes, so it stays mounted
+// across navigation and the notice is announced once, when it appears, and
 // not again on every route change.
 const GatewayCompatibilityAlert: React.FC<GatewayCompatibilityAlertProps> = ({
   className,
@@ -72,8 +71,9 @@ const GatewayCompatibilityAlert: React.FC<GatewayCompatibilityAlertProps> = ({
 
   // PatternFly's way to have an alert that appears later announced: an alert
   // group that is a polite live region and is in the DOM from the start.
-  // Animations are switched off rather than inherited from the host: the
-  // group's slide-in and slide-out are made for a stack of toasts.
+  // Animations are switched off rather than inherited from an
+  // AnimationsProvider: the group's slide-in and slide-out are made for a
+  // stack of toasts.
   return (
     <AlertGroup
       isLiveRegion

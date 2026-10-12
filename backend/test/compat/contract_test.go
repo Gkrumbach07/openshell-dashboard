@@ -48,8 +48,8 @@ func assertDeleted(t *testing.T, method, path string) string {
 }
 
 // TestDeleteEnvelopeContract pins the shape every delete endpoint returns.
-// PR #63 reported {"deleted": true} unconditionally, which misreports an
-// asynchronous (accepted) deletion as a completed one.
+// Reporting {"deleted": true} unconditionally would misreport an asynchronous
+// (accepted) deletion as a completed one.
 func TestDeleteEnvelopeContract(t *testing.T) {
 	name := randName("cd")
 	mustJSON(t, http.MethodPost, "/api/v1/workspaces", map[string]any{"name": name}, nil, http.StatusCreated)

@@ -15,7 +15,8 @@ import (
 type gatewayClients struct {
 	sdk openshell.ClientInterface
 	// raw is the direct gRPC client for what the SDK's own client does not
-	// offer: binary-safe uploads and the keys of a provider's credentials.
+	// offer: binary-safe uploads, the keys of a provider's credentials, and
+	// provider profiles with their endpoints whole.
 	raw *clients.RawExecClient
 }
 

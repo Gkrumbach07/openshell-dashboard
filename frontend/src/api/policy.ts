@@ -358,8 +358,7 @@ export const useRejectDraftChunk = (workspace: string, name: string) =>
       rejectDraftChunk(workspace, name, chunkId, reason),
   );
 
-// Takes the bare flag, as it always has, or the flag together with the
-// approvals to send.
+// Takes the bare flag, or the flag together with the approvals to send.
 export const useApproveAllDraftChunks = (workspace: string, name: string) =>
   useDraftMutation(
     workspace,
@@ -443,10 +442,9 @@ export const useDraftHistory = (workspace: string, name: string) =>
   });
 
 // The route outside a workspace. With a workspace it is that workspace's
-// summary. Without one the BFF answers an empty summary, as it did before
-// there was a real one: it is kept for embedders that still poll it. A page
-// reads one workspace's pending chunks with useWorkspaceDraftSummary
-// (draftSummary.ts).
+// summary. Without one the BFF answers an empty summary. Nothing in the app
+// calls it: a page reads one workspace's pending chunks with
+// useWorkspaceDraftSummary (draftSummary.ts).
 const getDraftSummary = (workspace?: string): Promise<DraftSummary> =>
   get<DraftSummary>(
     `/api/v1/draft-summary${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ''}`,

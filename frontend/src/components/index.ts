@@ -1,5 +1,5 @@
-// Barrel of the shared components (ADR 0001; not published, ADR 0008).
-// Internal code imports directly from the source modules.
+// The shared components and a few helpers, re-exported from one place.
+// Nothing in the app imports from here: each import names the source module.
 export { default as PhaseLabel } from './PhaseLabel';
 export { default as LabelsList } from './LabelsList';
 export { default as ConfirmDeleteModal } from './ConfirmDeleteModal';

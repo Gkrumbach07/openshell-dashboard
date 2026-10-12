@@ -182,7 +182,7 @@ describe('GatewayOverviewPage', () => {
     }
   });
 
-  // A gateway without extensions, and a BFF that predates the field, both
+  // A gateway without extensions, and a response without the field, both
   // leave the card saying so instead of breaking the page.
   it.each([
     ['an empty list', []],

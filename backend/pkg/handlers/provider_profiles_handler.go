@@ -62,9 +62,9 @@ func writeProfileError(w http.ResponseWriter, err error) {
 		return
 	}
 	// Profiles are read and written on the generated client, whose errors
-	// are bare gRPC statuses. These routes answered a failed precondition (a
-	// workspace that is being deleted, say) as a conflict while they went
-	// through the SDK, and still do.
+	// are bare gRPC statuses. A failed precondition (a workspace that is being
+	// deleted, say) is answered as a conflict, as the SDK's typed error for it
+	// is; apiutils.WriteSDKError would make a bare one a bad request.
 	if st, ok := status.FromError(err); ok && st.Code() == codes.FailedPrecondition {
 		slog.Warn("gateway error", "code", st.Code().String(), "message", st.Message())
 		apiutils.WriteError(w, http.StatusConflict, apiutils.Conflict, st.Message())

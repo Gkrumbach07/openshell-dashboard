@@ -78,7 +78,7 @@ func WriteError(w http.ResponseWriter, statusCode int, code ResponseCode, messag
 	WriteJSON(w, statusCode, ErrorResponse{Code: code, Message: message})
 }
 
-// writeSDKError maps an SDK StatusError onto a safe HTTP error response.
+// WriteSDKError maps an SDK StatusError onto a safe HTTP error response.
 // Uses the SDK's typed error helpers for classification and extracts the
 // clean message from StatusError.Message (no error chain prefix).
 func WriteSDKError(w http.ResponseWriter, err error) {
@@ -133,10 +133,9 @@ type rawStatusResponse struct {
 // through the SDK to an HTTP response. The raw clients in pkg/clients return
 // such errors, and so do the statuses the SDK's typed helpers do not cover.
 // A status gets the response the SDK's typed error for it gets above, so a
-// call answers the same whichever client made it, with two exceptions that
-// predate the table and are kept as they were: the SDK reads
-// FailedPrecondition as a conflict and ResourceExhausted as an unavailable
-// gateway, and here they stay a bad request and a rate limit.
+// call answers the same whichever client made it, with two exceptions: the
+// SDK reads FailedPrecondition as a conflict and ResourceExhausted as an
+// unavailable gateway, and here they are a bad request and a rate limit.
 var rawStatusResponses = map[codes.Code]rawStatusResponse{
 	codes.NotFound:           {status: http.StatusNotFound, code: NotFound},
 	codes.AlreadyExists:      {status: http.StatusConflict, code: AlreadyExists},
@@ -189,7 +188,7 @@ var dns1123Label = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
 const maxDNS1123LabelLength = 63
 
-// validDNS1123 reports whether name is a valid DNS-1123 label (workspace and
+// ValidDNS1123 reports whether name is a valid DNS-1123 label (workspace and
 // sandbox names).
 func ValidDNS1123(name string) bool {
 	return len(name) <= maxDNS1123LabelLength && dns1123Label.MatchString(name)

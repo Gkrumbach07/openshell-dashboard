@@ -1,6 +1,5 @@
-// Barrel of the page components (ADR 0001; not published, ADR 0008). Each page
-// is self-contained: takes props, fetches via internal API hooks, renders
-// pure PatternFly — no external context required.
+// The page components, re-exported from one place. Nothing in the app
+// imports from here: the routes import each page from its own module.
 export { default as LoginPage } from './LoginPage';
 export { default as GatewayOverviewPage } from './GatewayOverviewPage';
 export { default as WorkspaceListPage } from './WorkspaceListPage';

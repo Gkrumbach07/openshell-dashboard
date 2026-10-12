@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "Upstream on 2026-10-09, captured from the real `git ls-remote --tags`",
+    "and the real ghcr.io digests. A subset of the tags, chosen to hold one of",
+    "each kind: stable releases, pre-releases (one of them annotated, so it is",
+    "listed twice), a pre-release on the same commit as its stable release,",
+    "and two tags that are neither (`dev`, `vm-runtime`). Upstream had already",
+    "removed the 0.1.4-pre.1 images that day, although the tag was still there.",
+    "Tests layer made-up releases on top; their hashes and digests are",
+    "obviously made up."
+  ],
+  "tags": [
+    "ebd9a46bbbd4699c595a6c481335dc448a507ec4\trefs/tags/dev",
+    "d789ec613b829044e4580f6cda7f5d4648a31285\trefs/tags/dev^{}",
+    "d1155aa70042d3e2ee49dbfa15346b108b7c1d92\trefs/tags/v0.0.116",
+    "496ebba293f5cc2bb2753444dddd534f0b4aeb6a\trefs/tags/v0.1.0",
+    "0ba004e79fb3923133e0c1e288b08ced075a29be\trefs/tags/v0.1.0-pre.1",
+    "f54a7a617760295cc101d6ec7f31df1dba50fc23\trefs/tags/v0.1.0-pre.1^{}",
+    "d3480d2a7efab3fd0217ab67828655617b9af777\trefs/tags/v0.1.0-pre.8",
+    "4ce767fc0cadad773c398e15109c0286f4b7aa30\trefs/tags/v0.1.1",
+    "6648bd0c290efbc41ba131ee9831ee45cd431f94\trefs/tags/v0.1.2",
+    "e1f3c82caa3ed3b65de22889ae7ef32a774878ef\trefs/tags/v0.1.3",
+    "e1f3c82caa3ed3b65de22889ae7ef32a774878ef\trefs/tags/v0.1.3-pre.8",
+    "5ab677eb3dc7732e20cb931bd406b4e34cb02c32\trefs/tags/v0.1.4-pre.1",
+    "4c1b16a4a104581fb0afe8675feff34f00cc2ca8\trefs/tags/v0.1.4-pre.2",
+    "8d1720688581751c3bf895218bee02dca2a1f0f4\trefs/tags/vm-runtime",
+    "96c08f111b7ccf3d048a876c23e724014babb585\trefs/tags/vm-runtime^{}"
+  ],
+  "images": {
+    "gateway:0.1.3": "sha256:ea14aa4db0980fab4769fb6b5509ac42ae3dc8495e645b1ba1fe1ada49892fa6",
+    "supervisor:0.1.3": "sha256:4ab2b970cdb02c7518ba4ccbbadb4861ae9a8d0b8770e5b160697f0453b0a8e4",
+    "gateway:0.1.4-pre.2": "sha256:7eaaa328795e84aa4ad2e61d4eede8354d0a6073cd833d68c1d9568739e3093c",
+    "supervisor:0.1.4-pre.2": "sha256:4bc453d87bed9bbfa24d139ac167170fcc69adac5429bc96182165ab43282aac"
+  }
+}

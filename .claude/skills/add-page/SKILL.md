@@ -1,6 +1,6 @@
 ---
 name: add-page
-description: Add a new page/view to the OpenShell Dashboard. Creates the page component, route, navigation entry, and any needed API hooks. Use when adding a new view to the dashboard.
+description: Add a new page/view to OpenShell Dashboard. Creates the page component, route, navigation entry, and any needed API hooks. Use when adding a new view to the dashboard.
 ---
 
 # Add Page
@@ -22,51 +22,103 @@ frontend/src/pages/<PageName>.tsx
 ```
 
 Rules:
-- Self-contained: takes props, uses internal API hooks
-- No `@odh-dashboard/*` imports — this must work standalone
+- Self-contained: takes props, loads its data through the `src/api/` hooks
 - PatternFly 6 components only
+- UI text through `useI18n` from `../i18n`, with the keys in a catalog under `frontend/src/i18n/locales/en/` (see `frontend/src/i18n/README.md`)
 - Export as default
 - Use relative imports (not `~/` alias)
 
+For example, a page that shows one sandbox template:
+
 ```tsx
-import { useState } from 'react';
-import { PageSection, Title } from '@patternfly/react-core';
-import { useSandboxes } from '../api/sandboxes';
-import { sandboxKeys } from '../api/queryKeys';
+import {
+  Alert,
+  Bullseye,
+  PageSection,
+  Spinner,
+  Title,
+} from '@patternfly/react-core';
+import { Link } from 'react-router-dom';
 
-type SandboxListPageProps = {
+import { useTemplate } from '../api/templates';
+import { useI18n } from '../i18n';
+
+type TemplateDetailPageProps = {
   workspace: string;
-  onSelect?: (name: string) => void;
+  templateName: string;
 };
 
-const SandboxListPage: React.FC<SandboxListPageProps> = ({ workspace, onSelect }) => {
-  const { data, isLoading, error } = useSandboxes(workspace);
+const TemplateDetailPage: React.FC<TemplateDetailPageProps> = ({
+  workspace,
+  templateName,
+}) => {
+  const { t } = useI18n('workspaces');
+  const template = useTemplate(workspace, templateName);
 
-  const handleSelect = (name: string) => {
-    if (onSelect) {
-      onSelect(name);
-    } else {
-      navigate(`/workspaces/${workspace}/sandboxes/${name}`);
-    }
-  };
+  if (template.isLoading) {
+    return (
+      <Bullseye>
+        <Spinner aria-label={t('template.loading')} />
+      </Bullseye>
+    );
+  }
+  if (template.isError) {
+    return (
+      <Alert variant="danger" title={t('template.loadFailed')}>
+        {(template.error as Error).message}
+      </Alert>
+    );
+  }
 
-  // ...
+  return (
+    <PageSection>
+      <Title headingLevel="h1" data-testid="template-name">
+        {templateName}
+      </Title>
+      <Link to={`/workspaces/${workspace}`}>
+        {t('template.backToWorkspace')}
+      </Link>
+    </PageSection>
+  );
 };
 
-export default SandboxListPage;
+export default TemplateDetailPage;
 ```
 
+The three `template.*` keys are new: add them to the catalog the page reads, here `frontend/src/i18n/locales/en/workspaces.ts`.
+
 Key patterns:
-- Optional navigation callbacks (`onSelect`, `onViewSandbox`, `onTabChange`) that fall back to `useNavigate` when not provided (see ADR 0001)
+- Navigate with `<Link>`; use `useNavigate` only for a redirect after an action
 - `data-testid` on interactive elements
 - No breadcrumbs in pages — the app shell adds its own
 
 ### 2. Add the route
 
-Routes are defined in `frontend/src/app/AuthenticatedRoutes.tsx` inside the `<Routes>` block (not `AppRoutes.tsx` — that handles auth mode switching):
+Routes are defined in `frontend/src/app/AuthenticatedRoutes.tsx` inside the `<Routes>` block (not `AppRoutes.tsx`, which decides between the developer sign-in page, the session check and these routes). A page that takes props gets a small route wrapper in the same file, which reads the URL parameters, passes them on and adds the breadcrumbs:
 
 ```tsx
-<Route path="/workspaces/:workspace/sandboxes" element={<SandboxListPage />} />
+const TemplateDetailRoute: React.FC = () => {
+  const { workspace, template } = useParams<{
+    workspace: string;
+    template: string;
+  }>();
+  if (!workspace || !template) {
+    return <Navigate to="/workspaces" replace />;
+  }
+  return (
+    <>
+      <WorkspaceCrumbs workspace={workspace} leaf={template} />
+      <TemplateDetailPage workspace={workspace} templateName={template} />
+    </>
+  );
+};
+```
+
+```tsx
+<Route
+  path="/workspaces/:workspace/templates/:template"
+  element={<TemplateDetailRoute />}
+/>
 ```
 
 For admin-only pages, wrap with `AdminRoute`:
@@ -77,33 +129,32 @@ For admin-only pages, wrap with `AdminRoute`:
 
 ### 3. Add navigation
 
-In `frontend/src/app/AppLayout.tsx`, add a `NavItem` to the sidebar with appropriate role gating:
+A page under a workspace, like the one above, is reached from a link and gets no sidebar item. A top-level page gets one: the sidebar is rendered from the `navEntries` array in `frontend/src/app/AppLayout.tsx`, and a new item is one more entry. The Settings entry, for example:
 
 ```tsx
-<NavItem isActive={location.pathname === '/settings'}>
-  <Link to="/settings">Settings</Link>
-</NavItem>
+{
+  path: '/settings',
+  labelKey: 'nav.settings',
+  adminOnly: true,
+  featureKey: 'settings',
+},
 ```
 
-### 4. Add it to the pages barrel
+- `labelKey` is an i18n key. Add it to the `labelKey` union of the `NavEntry` type above the array, and add the label under `nav` in `frontend/src/i18n/locales/en/common.ts`.
+- `adminOnly` shows the item to platform admins only.
+- `featureKey` hides the item when that feature flag is off.
 
-Add to `frontend/src/pages/index.ts`:
+Hiding an item is not access control: the gateway decides what a user may do.
 
-```tsx
-export { default as SandboxListPage } from './SandboxListPage';
-```
-
-The barrel lists every page. Nothing is published from it (the npm package is retired, ADR 0008), so this keeps the list complete rather than releasing an API.
-
-### 5. Add API hooks if needed
+### 4. Add API hooks if needed
 
 If the page needs data not yet wired up, use the `add-rpc` skill first.
 
-### 6. Verify
+### 5. Verify
 
 ```bash
 make lint
 make typecheck
 make test
-make dev  # verify in browser
+make dev  # verify in browser (make gateway first)
 ```

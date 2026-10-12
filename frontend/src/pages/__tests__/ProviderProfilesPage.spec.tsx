@@ -36,8 +36,8 @@ describe('ProviderProfilesPage', () => {
     );
   });
 
-  // The route is for platform admins and the gateway refuses anyone else; a
-  // consumer that renders the page for another user gets no write actions.
+  // The route is for platform admins and the gateway refuses anyone else;
+  // rendered for another user, the page offers no write actions.
   it('offers no management to a user who is not a platform admin', () => {
     mockIsPlatformAdmin = false;
     render(<ProviderProfilesPage />);

@@ -24,14 +24,14 @@ export default SandboxList;
 - PascalCase files for components, camelCase for hooks
 - `data-testid` on interactive and testable elements
 - Pages are flat files in `src/pages/` (no subdirectories)
-- Barrel exports in `src/pages/index.ts` and `src/components/index.ts` list what each directory offers; keep them current. They are no longer published as an npm package (ADR 0008)
+- `src/pages/index.ts` and `src/components/index.ts` are re-export lists that nothing imports; import from the source module
 
-## Page components must be exportable
+## Pages are self-contained
 
-Every page under `src/pages/` is designed to be imported by a downstream consumer and wrapped. Rules:
+Every page under `src/pages/` gets what it needs as props and renders inside the app shell. Rules:
 - Takes explicit props (workspace name, sandbox name, etc.)
-- Uses internal `src/api/` hooks for data — never assumes external context providers
-- No `ApplicationsPage` wrapper, no `ProjectSelector`, no dashboard-specific chrome
+- Loads its data through the `src/api/` hooks
+- No app-shell chrome in a page (masthead, navigation, breadcrumbs): `src/app/` adds it
 - Pure PatternFly components only
 
 ## Hooks
@@ -69,14 +69,14 @@ Custom hooks for shared UI patterns live in `src/hooks/` (e.g., `useBulkDelete`,
 
 - Barrel imports: `import { Button, Modal } from '@patternfly/react-core'`
 - No MUI, no custom design system
-- No co-located CSS files (break Module Federation theming)
-- No inline styles
+- No project CSS files
+- A `style` prop only for what PatternFly has no prop or utility class for
 
 ### Styling hierarchy (prefer top, fallback down)
 
 1. **PF component props** — `<Flex gap={{ default: 'gapSm' }}>`, `<FlexItem flex={{ default: 'flex_1' }}>`, `<Content component="p">`, `<Title size={TitleSizes.md}>`. Always the first choice.
-2. **PF utility classes** — `pf-v6-u-text-truncate`, `pf-v6-u-font-family-monospace`, etc. Use only when no component prop exists for the style (e.g., `min-width: 0` for flex truncation).
-3. Never write custom CSS files, inline styles, or `style={{}}` props.
+2. **PF utility classes** — `pf-v6-u-text-truncate`, `pf-v6-u-font-family-monospace`, etc. Use only when no component prop exists for the style.
+3. **A `style` prop** — only for what PatternFly has no prop or utility class for, such as `minWidth: 0` for flex truncation. Never a CSS file of the project's own.
 
 ## Navigation
 

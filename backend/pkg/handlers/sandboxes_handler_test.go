@@ -321,8 +321,8 @@ func TestCreateSandboxReturnsServiceURLs(t *testing.T) {
 	}
 }
 
-// A create that sets none of the options calls the gateway exactly as it did
-// before they existed: no create options, no command, an image-only template.
+// A create that sets none of the options calls the gateway with no create
+// options, no command and an image-only template.
 func TestCreateSandboxWithoutOptions(t *testing.T) {
 	w, spec, _, opts := postSandbox(t, `{"image":"base","policy":{"version":1}}`, nil)
 	if w.Code != http.StatusCreated {

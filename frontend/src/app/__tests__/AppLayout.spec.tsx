@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import type { GatewayCompatibility } from '../../types';
@@ -26,6 +26,15 @@ jest.mock('~/assets/openshell-logo.svg', () => ({
 jest.mock('~/assets/openshell-logo-dark.svg', () => ({
   __esModule: true,
   default: 'openshell-logo-dark.svg',
+}));
+// The commit a build is made from is compiled in by Vite, so here it is set
+// per test: '' is a build nobody told, which is also what Jest sees.
+const mockBuild = { commit: '' };
+jest.mock('../../constants', () => ({
+  ...jest.requireActual('../../constants'),
+  get BUILD_COMMIT() {
+    return mockBuild.commit;
+  },
 }));
 
 import AppLayout from '../AppLayout';
@@ -318,5 +327,109 @@ describe('AppLayout gateway compatibility notice', () => {
     expect(changes).toHaveLength(0);
     expect(screen.getByTestId('gateway-compatibility-region')).toBe(region);
     expect(screen.getByTestId('gateway-compatibility-alert')).toBe(alert);
+  });
+});
+
+// What identifies a build to the person looking at it. An image is built
+// before any release is cut, so it has no version number of its own.
+describe('AppLayout About dialog', () => {
+  const openAbout = async () => {
+    // The menu positions itself a tick after it opens and again after it
+    // closes; act() waits for both, so neither lands outside the test.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('help-menu'));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'About' }));
+    });
+    return screen.getByRole('dialog');
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBuild.commit = '';
+    refuseGatewayInfo();
+    mockVerdict('0.1.3', { status: 'supported', ...line });
+    mockUser({ roles: ['user'] });
+  });
+
+  it('shows the gateway release line the dashboard is built for', async () => {
+    renderShell('/workspaces', page);
+    const about = await openAbout();
+
+    expect(within(about).getByText('Built for gateway')).toBeInTheDocument();
+    expect(within(about).getByTestId('about-gateway-line')).toHaveTextContent(
+      /^0\.1\.x$/,
+    );
+  });
+
+  it('shows the commit the build is made from when the build knows it', async () => {
+    mockBuild.commit = 'a3d90c7';
+    renderShell('/workspaces', page);
+    const about = await openAbout();
+
+    expect(within(about).getByText('Dashboard commit')).toBeInTheDocument();
+    expect(
+      within(about).getByTestId('about-dashboard-commit'),
+    ).toHaveTextContent(/^a3d90c7$/);
+  });
+
+  // An image built with no build args: the line still comes from the BFF,
+  // and nothing is said about a commit.
+  it('says nothing about a commit when the build was not told one', async () => {
+    renderShell('/workspaces', page);
+    const about = await openAbout();
+
+    expect(within(about).getByTestId('about-gateway-line')).toHaveTextContent(
+      '0.1.x',
+    );
+    expect(
+      within(about).queryByText('Dashboard commit'),
+    ).not.toBeInTheDocument();
+    expect(
+      within(about).queryByTestId('about-dashboard-commit'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('never shows a made-up version number', async () => {
+    mockBuild.commit = 'a3d90c7';
+    renderShell('/workspaces', page);
+    const about = await openAbout();
+
+    expect(
+      within(about).queryByText('Dashboard version'),
+    ).not.toBeInTheDocument();
+    expect(about).not.toHaveTextContent(/semantically-released|0\.0\.0/);
+  });
+
+  it('says the line is unknown when the BFF has none, or has not answered', async () => {
+    mockVerdict('0.1.3', { status: 'unknown' });
+    const { unmount } = renderShell('/workspaces', page);
+    expect(
+      within(await openAbout()).getByTestId('about-gateway-line'),
+    ).toHaveTextContent('Unknown');
+    unmount();
+
+    mockUseGatewayCompatibility.mockReturnValue({
+      isLoading: true,
+      isError: false,
+      data: undefined,
+    });
+    renderShell('/workspaces', page);
+    expect(
+      within(await openAbout()).getByTestId('about-gateway-line'),
+    ).toHaveTextContent('Unknown');
+  });
+
+  // The gateway refuses GET /gateway to anyone but a platform admin. The line
+  // is read from the route every signed-in user may call.
+  it('shows the line to a user whose gateway-info request is refused', async () => {
+    renderShell('/workspaces', page);
+    const about = await openAbout();
+
+    expect(mockUseGatewayInfo).toHaveBeenCalled();
+    expect(within(about).getByTestId('about-gateway-line')).toHaveTextContent(
+      '0.1.x',
+    );
   });
 });

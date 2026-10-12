@@ -41,7 +41,12 @@ export const ROUTES = {
 export const COMMUNITY_REGISTRY =
   'ghcr.io/nvidia/openshell-community/sandboxes';
 
-// Dashboard version — injected by Vite define in vite.config.ts.
-declare const __APP_VERSION__: string;
-export const APP_VERSION =
-  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.0';
+// The commit this build is made from, shortened the way the image's sha-<7>
+// tag shortens it, or '' when the build was not told. Injected by Vite's
+// define (vite.config.ts) from DASHBOARD_COMMIT, which CI passes to the image
+// build. A build does not know a version number: the image exists before any
+// release is cut and is only given more tags afterwards.
+declare const __DASHBOARD_COMMIT__: string;
+export const BUILD_COMMIT = (
+  typeof __DASHBOARD_COMMIT__ !== 'undefined' ? __DASHBOARD_COMMIT__ : ''
+).slice(0, 7);

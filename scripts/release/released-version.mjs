@@ -1,67 +1,60 @@
 #!/usr/bin/env node
 // Is the checked-out commit a release, and which image tags does that earn?
 //
-// publish.yml runs this right after semantic-release, to decide whether the
+// publish.yml runs this right after cut-release.mjs, to decide whether the
 // image CI built for this commit should also be tagged X.Y.Z and X.Y.
 //
 // The question it answers is "does a release tag point at this commit", not
-// "did semantic-release just say it published". The tag is the one durable fact
+// "did the step before just say it released". The tag is the one durable fact
 // a release leaves in the repository, and asking the repository makes the step
 // repeatable: if tagging the image fails after a release was cut, running the
-// workflow again finds the same tag and finishes the job, where semantic-release
-// itself would report "no release" the second time. When no release tag points
-// here — nothing releasable was merged, or main had already moved on and
-// semantic-release stood down — every output is empty and nothing gets tagged.
+// workflow again finds the same tag and finishes the job, where cut-release.mjs
+// reports "already released" the second time. When no release tag points here
+// (a dry run, or a commit nobody asked to release) every output is empty and
+// nothing gets tagged.
+//
+// Only a tag on the line this commit pins counts, as everywhere else: a
+// release is numbered for the gateway release line its commit is built on
+// (next-version.mjs), so a tag of another line on this commit is not this
+// commit's release.
 //
 //   node scripts/release/released-version.mjs >> "$GITHUB_OUTPUT"
 import { execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// semantic-release's default tagFormat, for a plain release. A pre-release tag
-// (v1.2.0-beta.1) must not move the X.Y image tag, so it does not match.
-const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
-
-function parse(tag) {
-  const match = RELEASE_TAG.exec(tag);
-  return match ? { tag, parts: match.slice(1).map(Number) } : null;
-}
-
-function compare(a, b) {
-  for (let i = 0; i < 3; i += 1) {
-    if (a.parts[i] !== b.parts[i]) {
-      return a.parts[i] - b.parts[i];
-    }
-  }
-  return 0;
-}
+import { PINS_FILE, readGatewayLine } from '../gateway-range.mjs';
+import { compareReleases, parseReleaseTag } from './next-version.mjs';
 
 /**
  * @param {string[]} tagsAtHead every tag pointing at the checked-out commit
  * @param {string[]} allTags    every tag in the repository
+ * @param {string} line         the gateway release line this commit pins, such as "0.1"
  * @returns {{version: string, tag: string, imageTags: string[]} | null}
  */
-export function releaseAt(tagsAtHead, allTags) {
-  const here = tagsAtHead.map(parse).filter(Boolean).sort(compare);
+export function releaseAt(tagsAtHead, allTags, line) {
+  const onLine = (tags) =>
+    tags
+      .map(parseReleaseTag)
+      .filter((release) => release && release.line === line)
+      .sort(compareReleases);
+  const here = onLine(tagsAtHead);
   if (here.length === 0) {
     return null;
   }
   const release = here[here.length - 1];
-  const [major, minor] = release.parts;
-  const version = release.parts.join('.');
 
   // X.Y means "the newest X.Y.z". Re-running the workflow for an older release
   // must not pull it back, so it only moves when this is the newest patch.
-  const newestInMinor = allTags
-    .map(parse)
-    .filter((candidate) => candidate && candidate.parts[0] === major && candidate.parts[1] === minor)
-    .sort(compare)
-    .pop();
-  const imageTags = [version];
-  if (!newestInMinor || compare(newestInMinor, release) === 0) {
-    imageTags.push(`${major}.${minor}`);
+  // That is also all that ever moves: a release moves its own line's tag, and
+  // never another line's.
+  const newestOnLine = onLine(allTags).pop();
+  const imageTags = [release.version];
+  if (!newestOnLine || compareReleases(newestOnLine, release) === 0) {
+    imageTags.push(line);
   }
-  return { version, tag: release.tag, imageTags };
+  return { version: release.version, tag: release.tag, imageTags };
 }
 
 function git(...args) {
@@ -74,14 +67,15 @@ function lines(text) {
 
 function main() {
   const sha = git('rev-parse', 'HEAD');
-  const release = releaseAt(lines(git('tag', '--points-at', 'HEAD')), lines(git('tag', '--list')));
+  const { line } = readGatewayLine(join(git('rev-parse', '--show-toplevel'), PINS_FILE));
+  const release = releaseAt(lines(git('tag', '--points-at', 'HEAD')), lines(git('tag', '--list')), line);
 
   if (release) {
     process.stderr.write(
       `${release.tag} points at ${sha}: its image gets the tags ${release.imageTags.join(', ')}\n`,
     );
   } else {
-    process.stderr.write(`no release tag points at ${sha}: nothing to tag\n`);
+    process.stderr.write(`no release tag of the ${line} line points at ${sha}: nothing to tag\n`);
   }
 
   process.stdout.write(

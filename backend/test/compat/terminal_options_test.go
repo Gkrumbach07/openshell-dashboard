@@ -54,8 +54,8 @@ func TestTerminalSessionOptions(t *testing.T) {
 		}
 	})
 
-	// A start message that chooses nothing runs the default shell, which is
-	// what a socket opened without ?start=message has always done.
+	// A start message that chooses nothing runs the default shell, as a
+	// socket opened without ?start=message does.
 	t.Run("an empty start message runs the default shell", func(t *testing.T) {
 		tm := openTerminalWith(t, ws, name, `{"type":"start"}`)
 		tm.run("echo shell-$((1+1))-$0; exit 0")

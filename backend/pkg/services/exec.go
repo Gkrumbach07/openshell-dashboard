@@ -15,5 +15,3 @@ type ExecService struct {
 func NewExecService(client openshell.ExecInterface) *ExecService {
 	return &ExecService{ExecInterface: client}
 }
-
-// sdk overrides or additions here. if needed can wrap the sdk into a custom client as well

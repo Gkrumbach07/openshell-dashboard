@@ -2,12 +2,13 @@
 // (optionally) the built static assets, talking to the OpenShell gateway over
 // gRPC with per-request bearer token forwarding.
 //
-// The BFF is a token relay (ADR 0002): authentication is owned by an external
-// auth proxy (oauth2-proxy, kube-auth-proxy, ...) which injects the user's
-// bearer token as an HTTP header. The BFF reads that header — or an explicit
-// Authorization: Bearer from API clients — and forwards the token to the
-// gateway, which validates it against its own OIDC JWKS. The BFF never runs
-// OIDC flows, never holds sessions, and never validates tokens.
+// The BFF is a token relay (ADR 0002): authentication is owned by the auth
+// proxy in front of it (oauth2-proxy, which the Helm chart runs as a sidecar).
+// The proxy injects the user's bearer token as an HTTP header. The BFF reads
+// that header — or an explicit Authorization: Bearer from API clients — and
+// forwards the token to the gateway, which validates it against its own OIDC
+// JWKS. The BFF never runs OIDC flows, never holds sessions, and never
+// validates tokens.
 package main
 
 import (

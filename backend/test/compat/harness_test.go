@@ -5,7 +5,7 @@
 // depends on.
 //
 // It is build-tagged so `go test ./...` never picks it up — it needs a live
-// stack. CI runs it once per gateway version in a matrix; see
+// stack. CI runs it against the one gateway the branch pins; see
 // .github/workflows/ci.yml and deploy/ci/.
 //
 //	BFF_URL=http://localhost:9080 go test -tags compat -count=1 ./test/compat/... -v
@@ -15,13 +15,13 @@
 // crosses the wire proves that the SDK we pin still speaks the protocol of a
 // given gateway. So the map below is organized by what crosses the wire.
 //
-// # What a green lane looks like
+// # What a green run looks like
 //
 // Almost every test drives the gateway through the BFF's real routes. The ones
 // in guard_test.go do not: they check the suite's own guards against canned
 // answers and send the gateway nothing.
 //
-// A green lane on gateways 0.1.0 to 0.1.2 has no test that SKIPs. The skips
+// A green run on a gateway of line 0.1 has no test that SKIPs. The skips
 // the suite can produce all say why: a known bug (see the end of this comment,
 // none at present), a gateway that is not this run's own (the writing subtests
 // of TestGlobalSettings, TestGlobalPolicy and TestSandboxSettings, and all of
@@ -65,10 +65,11 @@
 //	               from it; a template without an image and a
 //	               sandbox made from it                        sandbox_create_defaults_test.go
 //	               the pending draft chunks of a workspace's
-//	               sandboxes, and of every workspace's         draft_summary_test.go
+//	               sandboxes, and the empty summary outside
+//	               a workspace                                 draft_summary_test.go
 //	exec           file upload, including one larger than a
 //	               gRPC message the gateway accepts, and
-//	               download (the raw proto escape hatch in
+//	               download (the direct gRPC call in
 //	               pkg/clients/rawexec.go and the SDK's
 //	               non-interactive Exec().Run), the terminal
 //	               websocket (interactive exec)                exec_test.go
@@ -123,7 +124,7 @@
 //
 // Deliberately not covered, and why:
 //
-//   - Inference routes and a standalone exec endpoint: the BFF has no such
+//   - Inference routes and an exec endpoint of its own: the BFF has no such
 //     routes. Non-interactive exec is reachable only through file transfer,
 //     which is where it is covered.
 //   - auth/whoami: the BFF answers it without calling the gateway, because
@@ -214,7 +215,8 @@ var (
 	httpClient = &http.Client{Timeout: 30 * time.Second}
 
 	// gatewayVersion is resolved once in TestMain and reported in failures, so
-	// a matrix run says which version broke without cross-referencing logs.
+	// a failure says which gateway it was against: the pinned one in ci.yml, or
+	// the upcoming release in follow-upstream.yml's check A.
 	gatewayVersion = "unknown"
 )
 
@@ -495,10 +497,9 @@ func mustDownload(t *testing.T, workspace, sandboxName, filePath string) ([]byte
 	return raw, header
 }
 
-// requireSandboxes skips tests that boot a sandbox when -short is set, the
-// same switch TestSandboxLifecycle has always honored, and fails them at once
-// when an earlier test has already shown that sandboxes do not boot on this
-// gateway (see bootFailure).
+// requireSandboxes skips tests that boot a sandbox when -short is set, and
+// fails them at once when an earlier test has already shown that sandboxes do
+// not boot on this gateway (see bootFailure).
 func requireSandboxes(t *testing.T) {
 	t.Helper()
 	if testing.Short() {

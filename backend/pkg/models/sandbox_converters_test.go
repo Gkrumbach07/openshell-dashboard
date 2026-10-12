@@ -169,9 +169,9 @@ func TestFromSDKSandboxCarriesEveryField(t *testing.T) {
 	}
 }
 
-// A sandbox as it is before any of the optional fields is set answers with the
-// fields it always had and none of the new ones: an empty template, an absent
-// admission and no GPU request are left out rather than sent as zero values.
+// A sandbox with none of the optional fields set answers without them: an
+// empty template, an absent admission and no GPU request are left out rather
+// than sent as zero values.
 func TestFromSDKSandboxOmitsWhatIsNotSet(t *testing.T) {
 	raw, err := json.Marshal(FromSDKSandbox(&openshell.Sandbox{
 		Name: "plain",
@@ -319,8 +319,8 @@ func TestBuildSDKSandboxSpecCarriesCreateOptions(t *testing.T) {
 	}
 }
 
-// A request that sets none of the options sends the spec it always sent: no
-// command, no terminal and a template that holds only the image.
+// A request that sets none of the options sends a spec with no command, no
+// terminal and a template that holds only the image.
 func TestBuildSDKSandboxSpecWithoutCreateOptions(t *testing.T) {
 	spec, err := BuildSDKSandboxSpec(CreateSandboxRequest{Image: "base", Policy: json.RawMessage(`{"version":1}`)})
 	if err != nil {

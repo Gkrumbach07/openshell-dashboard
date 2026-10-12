@@ -1,143 +1,80 @@
 # Contributing to OpenShell Dashboard
 
-Thank you for your interest in contributing. This project is part of the [OpenShell](https://github.com/NVIDIA/OpenShell) ecosystem and follows similar contribution practices.
+Thank you for your interest in contributing.
 
 ## Getting started
 
-```bash
-git clone https://github.com/Gkrumbach07/openshell-dashboard.git
-cd openshell-dashboard
-make setup
-make dev        # starts frontend (:3000) + BFF (:8080)
+```sh
+git clone https://github.com/Gkrumbach07/openshell-dashboard.git && cd openshell-dashboard
 ```
 
-You need a running OpenShell gateway. Either `openshell gateway start` (Podman) or set `OPENSHELL_GATEWAY_URL` to an existing one. For the full OIDC dev stack with Keycloak, use `make dev-full` (see README).
+Then follow [Run it locally](docs/development.md#run-it-locally): `make setup`, `make gateway` and `make dev`.
 
 ## Before you contribute
 
-- **Read the ADRs.** Architecture decisions are documented in `docs/adrs/`. These are load-bearing — if your change conflicts with an ADR, open a discussion before coding.
-- **Read `CLAUDE.md`.** It has the project rules, structure, and conventions.
-- **Check existing issues.** If your change is non-trivial, open an issue first to discuss the approach.
+- **Read the ADRs** in [`docs/adrs/`](docs/adrs/README.md). If your change conflicts with one, open a discussion before coding.
+- **Read [docs/architecture.md](docs/architecture.md)** for the components and principles.
+- **Check existing issues,** and open one first for a non-trivial change.
 
 ## Contribution workflow
 
-1. Fork the repo and create a branch from `main`
-2. Make your changes
-3. Run the full check suite locally:
-   ```bash
-   make lint        # eslint + golangci-lint + prettier
-   make typecheck   # tsc --noEmit
-   make test        # jest + go test
-   ```
-4. Open a pull request against `main`
+1. Fork the repository and branch from `main`.
+2. Make your changes, and run `make lint`, `make typecheck` and `make test`.
+3. Open a pull request against `main`.
+
+### Where a pull request goes
+
+**`main`, by default.** `main` is built on one released OpenShell gateway, and CI tests every pull request against it.
+
+**`next`, only if it cannot build or pass on `main`.** `next` is `main` moved to upstream's newest pre-release: its gateway in CI, and its Go SDK. Work that needs something only that release has (a new SDK method, an RPC the released gateway does not serve) branches from `next` and targets it, and reaches `main` when `next` merges on the day upstream releases. A workflow rebases `next` onto `main` and force-pushes it, so rebase your branch afterwards (`git fetch origin && git rebase --fork-point origin/next`). If there is no `next`, upstream has nothing ahead of `main`.
+
+**`release/X.Y`**, for a critical or security fix to the release line before `main`'s. Nothing else is backported ([ADR 0005](docs/adrs/0005-gateway-compatibility-and-releases.md), decision 5).
+
+Do not move the pinned gateway or the SDK yourself ([The pinned OpenShell release](#the-pinned-openshell-release)).
 
 ### Commit conventions
 
-Use [Conventional Commits](https://www.conventionalcommits.org/):
+Use [Conventional Commits](https://www.conventionalcommits.org/), such as `fix: handle an empty workspace list`. A feature or behavior pull request should link an accepted issue.
 
-```
-feat: add provider profile detail page
-fix: handle empty workspace list in sidebar
-docs: add ADR for polling strategy
-refactor: extract common table columns
-test: add sandbox create form tests
-```
+#### Merging does not release; the title is the release note
 
-Feature and behavior PRs should link an accepted issue.
+Merging a pull request releases nothing. A person starts a release with the `Release` workflow ([docs/releasing.md](docs/releasing.md)); the one exception is the pull request from `next`, which is released once it is merged. Nobody chooses the version, and no title changes it ([ADR 0005](docs/adrs/0005-gateway-compatibility-and-releases.md), decision 11): a `feat:` does not make a minor, and a `!` does not make a major.
 
-#### Merging does not release; the title still matters
+The title still matters: it is the release note. With a squash merge the pull request **title** is the commit message, and a release's notes list the title of every commit since the release before, as written. Only a commit whose type or scope is `ci` (`ci: …`, `fix(ci): …`) is left out; `isCiCommit` in [`scripts/release/release-notes.mjs`](scripts/release/release-notes.mjs) decides.
 
-Merging a pull request publishes nothing. A release is cut by a person, who starts the `Release` workflow on `main` and chooses patch, minor or major ([docs/releasing.md](docs/releasing.md)). The one exception is a pull request opened by the compat sweep, which is released as a patch once it is merged.
+- **Workflow changes use the `ci:` type.** A change to `.github/workflows/`, or to the scripts CI and the release pipeline run, alters nothing in the image.
+- **A revert of a CI change is titled `ci: revert …`.** The title `git revert` writes, `Revert "…"`, has no type, so it is listed.
+- **`fix:` and `feat:` are for what a user of the dashboard would notice.** Mark a breaking change with a `!` (`fix(bff)!: …`).
 
-The commit message still does two jobs, so write it as carefully as before. With a squash merge the pull request **title** is the commit message. It is what the release notes are written from, and it is what the person cutting the release is told the commits suggest:
+### The pinned OpenShell release
 
-| Commit | Release it suggests |
-|--------|-----------------|
-| `fix: …`, `perf: …` | patch |
-| `feat: …` | minor |
-| a `!` after the type or scope (`feat!: …`, `fix(bff)!: …`), or a `BREAKING CHANGE:` footer | major |
-| `docs:`, `test:`, `chore:`, `build:`, `refactor:`, `style:` | none |
-| anything whose type or scope is `ci` (`ci: …`, `fix(ci): …`, `feat(ci): …`), even when marked breaking | none |
-| a `git revert` under the title git gives it, `Revert "…"`, **whatever it reverts** | patch |
-| any other title that is not a Conventional Commit, such as `Add foo (#74)` | none |
+`deploy/ci/gateway-pins.json` names the one OpenShell release a branch is built on: the gateway and supervisor images CI runs, and the Go SDK in `backend/go.mod`. The three come from one upstream release tag and move together, in one commit ([ADR 0005](docs/adrs/0005-gateway-compatibility-and-releases.md), decision 7).
 
-**Workflow changes use the `ci:` type.** A change to `.github/workflows/`, or to the scripts CI and the release pipeline run, alters nothing in the image, so it does not belong in the release notes and must not make the commits look like they call for a release. When releases were automatic, `fix(ci):` and `feat(ci):` did worse than that: releases 1.0.1, 1.0.2, 1.0.3 and 1.1.0 were each published by a commit that changed nothing we ship. A `ci` scope is treated the same as the `ci` type, but write `ci:` so the title says what the change is.
-
-A commit whose type or scope is `ci` is left out of the release notes and suggests no release, even when it is marked breaking.
-
-**Reverting a CI change: title it `ci: revert …`.** The title `git revert` writes, `Revert "ci: pin the runners"`, has no type and no scope, so nothing can tell that the commit it undoes was about CI. Left as it is, the revert is listed in the next release's notes and counts as suggesting a patch. Retitle the commit, or the pull request if it is squash-merged:
-
-```
-ci: revert "pin the runners"
-```
-
-Use `fix:` or `feat:` only for something a user of the dashboard would notice. The rules live in [`release.config.cjs`](release.config.cjs); CI runs sample commits through them on every pull request (`scripts/release/check-release-config.mjs`), and [docs/releasing.md](docs/releasing.md) describes the rest of the pipeline.
-
-#### If you move a gateway lane or the SDK pin
-
-The OpenShell gateway release line a release is for, and the releases it is tested on, are derived from the required lanes in `deploy/ci/gateway-pins.json`, never written by hand. The README restates them in one generated table, which has to be regenerated in the same change that moves the pins:
-
-```bash
-node scripts/readme-gateway-range.mjs --write
-```
-
-The compat sweep's automated pull requests run this themselves, so their table is already up to date when they are opened. Run it yourself when you change the pins file by hand, and commit the result with the pins.
-
-Two things have to agree between the pins file and the code, and `node scripts/gateway-range.mjs --check` fails when either does not:
-
-- The `sdk` field must equal the OpenShell SDK version in `backend/go.mod`.
-- The gateway release line compiled into the BFF (`BuiltInGatewayReleaseLine` in `backend/pkg/models/gateway_release_line.go`) must be the major and minor number of the newest required lane. Moving that lane to a newer patch release changes nothing here. Moving it to a new minor is a new release line, and the constant changes in the same pull request ([ADR 0009](docs/adrs/0009-console-release-policy.md)).
-
-Nothing else is tied together. The SDK and the gateway lanes are separate changes with separate evidence: one pull request moves the SDK (`go.mod`, `go.sum` and the `sdk` field), another moves a gateway lane, and neither needs the other ([ADR 0006](docs/adrs/0006-compat-links-and-sweep-axes.md)).
+You do not move it. The [Follow upstream](.github/workflows/follow-upstream.yml) workflow finds new releases from upstream's tags and makes the move on `next`; merging `next` is how `main` gets it. A pull request into `main` or `release/**` that pins a pre-release fails the `pins a stable release` check. [`deploy/ci/upstream/README.md`](deploy/ci/upstream/README.md#a-pin-move) lists every file a pin move changes.
 
 ### Developer Certificate of Origin (DCO)
 
-All commits must include a `Signed-off-by` line certifying you have the right to submit the code under the project's license. Use `git commit -s` to add it automatically:
+Every commit needs a `Signed-off-by` line: your statement, under the [Developer Certificate of Origin](https://developercertificate.org/), that you may submit the code under the project's license. `git commit -s` adds it:
 
 ```
 Signed-off-by: Your Name <your.email@example.com>
 ```
 
-This is a legal requirement for Apache 2.0 licensed projects. CI will reject unsigned commits.
-
 ## Code standards
 
-### Frontend (React + TypeScript)
+The conventions are in [`.claude/rules/`](.claude/rules/): written for coding agents, and the reference for people too. [docs/development.md](docs/development.md#layout) shows where things live.
 
-- Functional components only; `type` for props (not `interface`)
-- PatternFly 6 exclusively — no MUI, no custom design system, no inline styles with hardcoded values
-- Data fetching via React Query (`@tanstack/react-query`)
-- `data-testid` on interactive elements
-- Pages must be self-contained and exportable (see ADR 0001)
-
-### Backend (Go BFF)
-
-- `go-chi/chi` for routing
-- Table-driven tests
-- Handler signature: `func (app *App) HandlerName(w http.ResponseWriter, r *http.Request)`
-- Prefer the vendored OpenShell Go SDK; keep any adapter code thin and justified by a concrete SDK gap
-
-### API rules
-
-**The vendored OpenShell Go SDK is the source of truth** (see `.claude/rules/openshell-api.md`). Do not invent RPCs, fields, or lifecycle states. If a UI concept has no backing RPC, open an issue — do not fabricate an endpoint.
-
-Common mistakes to avoid:
-- Sandbox stop/start exists (v0.0.113+); still no suspend/restart (lifecycle is create → ready/error → stop ⇄ start → delete)
-- No workspace-level policy CRUD (policy is per-sandbox or gateway-global)
-- No events API (use GetSandboxLogs + polling)
-- Provider credentials are write-only — never return secrets to the frontend
+- **Frontend**: PatternFly 6 only. Pages are self-contained: explicit props, data through the `src/api/` hooks.
+- **Backend**: one handler struct per resource, as in `func (h *SandboxHandler) ListSandboxes(w http.ResponseWriter, r *http.Request)`.
+- **API**: the pinned OpenShell Go SDK is the source of truth. Do not invent RPCs, fields or lifecycle states, and never return a provider credential to the browser.
 
 ## AI-assisted contributions
 
-AI-assisted code is welcome — this project was built agent-first. However:
-
-- **You must understand every line you submit.** If you cannot explain a change during review, the PR will be closed.
-- **AI-generated commit messages are fine** but must accurately describe the change.
-- **Do not submit AI-generated code that fabricates API endpoints.** This is the most common AI failure mode in this project. The vendored Go SDK is the source of truth.
+AI-assisted code is welcome. You must understand every line you submit: if you cannot explain a change in review, the pull request is closed. AI-generated commit messages are fine, but must describe the change accurately. Do not submit code that fabricates an API endpoint.
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for reporting vulnerabilities. Do not open public issues for security bugs.
+Report a vulnerability as [SECURITY.md](SECURITY.md) says, not in a public issue.
 
 ## License
 
