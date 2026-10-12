@@ -156,6 +156,28 @@ describe('apiFetch', () => {
     });
     expect(onExpired).not.toHaveBeenCalled();
   });
+
+  it('keeps the gateway message on 403', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      json: () =>
+        Promise.resolve({
+          code: 'permission_denied',
+          message: "role 'openshell-admin' required",
+        }),
+    });
+
+    try {
+      await apiFetch('/api/v1/gateway');
+      fail('should have thrown');
+    } catch (e) {
+      const err = e as ApiError;
+      expect(err.status).toBe(403);
+      expect(err.code).toBe('permission_denied');
+      expect(err.message).toBe("role 'openshell-admin' required");
+    }
+  });
 });
 
 describe('convenience methods', () => {

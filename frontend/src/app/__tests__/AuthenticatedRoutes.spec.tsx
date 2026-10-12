@@ -2,7 +2,21 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-let mockRole = { isPlatformAdmin: false, isLoading: false };
+type MockRole = {
+  isPlatformAdmin: boolean;
+  isUser: boolean;
+  isUnentitled: boolean;
+  isLoading: boolean;
+};
+
+const entitledUser = (): MockRole => ({
+  isPlatformAdmin: false,
+  isUser: true,
+  isUnentitled: false,
+  isLoading: false,
+});
+
+let mockRole: MockRole = entitledUser();
 jest.mock('../../api/rbac', () => ({
   useUserRole: () => mockRole,
 }));
@@ -18,6 +32,7 @@ const mockPage = (testId: string) => ({
   default: () => <div data-testid={testId} />,
 });
 jest.mock('../../pages/AllWorkspacesPage', () => mockPage('all-workspaces'));
+jest.mock('../../pages/EntitlementPage', () => mockPage('entitlement-screen'));
 jest.mock('../../pages/GatewayOverviewPage', () => mockPage('gateway'));
 jest.mock('../../pages/WorkspaceListPage', () => mockPage('workspace-list'));
 jest.mock('../../pages/WorkspaceDetailPage', () => mockPage('workspace'));
@@ -40,14 +55,14 @@ const renderAt = (route: string) =>
 
 describe('AuthenticatedRoutes', () => {
   beforeEach(() => {
-    mockRole = { isPlatformAdmin: false, isLoading: false };
+    mockRole = entitledUser();
   });
 
   // The gateway answers the lists across workspaces for platform admins
   // only. The route does not decide that: it just does not send anyone else
   // to a page that could only show them a refusal.
   it('shows the all-workspaces page to a platform admin', () => {
-    mockRole = { isPlatformAdmin: true, isLoading: false };
+    mockRole = { ...entitledUser(), isPlatformAdmin: true };
     renderAt('/all-workspaces');
 
     expect(screen.getByTestId('all-workspaces')).toBeInTheDocument();
@@ -61,7 +76,7 @@ describe('AuthenticatedRoutes', () => {
   });
 
   it('decides nothing while the role is still loading', () => {
-    mockRole = { isPlatformAdmin: false, isLoading: true };
+    mockRole = { ...entitledUser(), isLoading: true };
     renderAt('/all-workspaces');
 
     expect(screen.queryByTestId('all-workspaces')).not.toBeInTheDocument();
@@ -71,7 +86,7 @@ describe('AuthenticatedRoutes', () => {
   // It sits beside /workspaces, not under it: a workspace named
   // "all-workspaces" would otherwise be shadowed, and the reverse.
   it('keeps the workspace routes where they were', () => {
-    mockRole = { isPlatformAdmin: true, isLoading: false };
+    mockRole = { ...entitledUser(), isPlatformAdmin: true };
 
     const { unmount } = renderAt('/workspaces');
     expect(screen.getByTestId('workspace-list')).toBeInTheDocument();
@@ -80,5 +95,31 @@ describe('AuthenticatedRoutes', () => {
     renderAt('/workspaces/all-workspaces');
     expect(screen.getByTestId('workspace')).toBeInTheDocument();
     expect(screen.queryByTestId('all-workspaces')).not.toBeInTheDocument();
+  });
+
+  it('shows the entitlement screen instead of routes when unentitled', () => {
+    mockRole = {
+      isPlatformAdmin: false,
+      isUser: false,
+      isUnentitled: true,
+      isLoading: false,
+    };
+    renderAt('/workspaces');
+
+    expect(screen.getByTestId('entitlement-screen')).toBeInTheDocument();
+    expect(screen.queryByTestId('workspace-list')).not.toBeInTheDocument();
+  });
+
+  it('does not treat a missing whoami as unentitled', () => {
+    mockRole = {
+      isPlatformAdmin: false,
+      isUser: false,
+      isUnentitled: false,
+      isLoading: false,
+    };
+    renderAt('/workspaces');
+
+    expect(screen.queryByTestId('entitlement-screen')).not.toBeInTheDocument();
+    expect(screen.getByTestId('workspace-list')).toBeInTheDocument();
   });
 });

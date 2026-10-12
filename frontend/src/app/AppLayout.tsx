@@ -97,7 +97,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
   const { t } = useI18n('common');
   const location = useLocation();
   const user = useCurrentUser({ notifySessionExpired: false });
-  const { isPlatformAdmin, isUser, isLoading: isRoleLoading } = useUserRole();
+  const {
+    isPlatformAdmin,
+    isUser,
+    isUnentitled,
+    isLoading: isRoleLoading,
+  } = useUserRole();
   const features = useFeatureFlags();
   const gateway = useGatewayInfo();
   // The release line this build is for comes from the BFF, which has it
@@ -119,11 +124,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
       className="pf-v6-u-align-items-center"
     >
       <MastheadMain>
-        <MastheadToggle>
-          <PageToggleButton variant="plain" aria-label={t('nav.global')}>
-            <BarsIcon />
-          </PageToggleButton>
-        </MastheadToggle>
+        {!isUnentitled && (
+          <MastheadToggle>
+            <PageToggleButton variant="plain" aria-label={t('nav.global')}>
+              <BarsIcon />
+            </PageToggleButton>
+          </MastheadToggle>
+        )}
         <MastheadBrand>
           <MastheadLogo
             component={(props) => (
@@ -145,10 +152,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
       <MastheadContent>
         <Toolbar isFullHeight isStatic aria-label={t('header.actions')}>
           <ToolbarContent>
-            <ToolbarItem align={{ default: 'alignEnd' }} alignSelf="center">
-              <GatewayStatusIndicator />
-            </ToolbarItem>
-            <ToolbarItem>
+            {!isUnentitled && (
+              <ToolbarItem align={{ default: 'alignEnd' }} alignSelf="center">
+                <GatewayStatusIndicator />
+              </ToolbarItem>
+            )}
+            <ToolbarItem
+              align={isUnentitled ? { default: 'alignEnd' } : undefined}
+            >
               <Button
                 variant="plain"
                 onClick={toggleTheme}
@@ -285,7 +296,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
   );
 
   return (
-    <Page masthead={masthead} sidebar={sidebar} isManagedSidebar>
+    <Page
+      masthead={masthead}
+      sidebar={isUnentitled ? undefined : sidebar}
+      isManagedSidebar={!isUnentitled}
+    >
       {sessionAlert && <PageSection>{sessionAlert}</PageSection>}
       {/* Above every route, so an unsupported gateway is explained on the
           same screen as the errors it causes, for every signed-in user. It

@@ -139,6 +139,8 @@ oidc:
   rolesClaim: ""
   # -- Role name for admin access. Must be the same as the openshell gateway admin name. Defaults to "admin"
   adminRole: ""
+  # -- Role name for standard user access. Must be the same as the openshell gateway user role. Defaults to "user"
+  userRole: ""
   # -- ConfigMap with ca.crt to trust private issuer TLS (also set on gateway).
   caConfigMapName: ""
   # -- OAuth2-proxy OIDC client ID.

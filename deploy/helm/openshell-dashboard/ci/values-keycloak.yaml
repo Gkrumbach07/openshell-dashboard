@@ -7,6 +7,7 @@
 # What has to agree with the gateway's OIDC settings:
 #   issuer        the gateway's issuer, at a URL browsers and pods both reach
 #   adminRole     the gateway's admin role
+#   userRole      the gateway's user role
 #   allowedRoles  the gateway's admin role and user role, each written as
 #                 <the client that holds the role>:<role>
 #
@@ -24,6 +25,7 @@ oidc:
   existingSecret: openshell-dashboard-oidc
   codeChallengeMethod: S256
   adminRole: openshell-admin
+  userRole: openshell-user
   allowedRoles:
     - openshell-api:openshell-admin
     - openshell-api:openshell-user
