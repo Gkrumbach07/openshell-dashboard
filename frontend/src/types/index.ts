@@ -868,7 +868,6 @@ export type AuthConfig = {
 export type CurrentUser = {
   subject: string;
   displayName?: string;
-  email?: string;
   roles: string[];
   scopes?: string[];
   identityProvider?: string;
