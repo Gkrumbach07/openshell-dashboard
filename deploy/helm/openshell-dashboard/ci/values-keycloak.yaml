@@ -14,7 +14,9 @@
 #   clientId, and its client secret in the Secret named by existingSecret
 #   codeChallengeMethod: the client requires PKCE with S256
 #   https://<dashboard host>/oauth2/callback is a valid redirect URI
-#   https://<dashboard host>/* is a valid post logout redirect URI
+#
+# Signing out ends the Keycloak session too: with provider keycloak-oidc the
+# chart derives oidc.backendLogoutURL from the issuer.
 oidc:
   provider: keycloak-oidc
   issuer: https://keycloak.example.com/realms/openshell
@@ -22,14 +24,6 @@ oidc:
   existingSecret: openshell-dashboard-oidc
   codeChallengeMethod: S256
   adminRole: openshell-admin
-  backendLogoutURL: "https://keycloak.example.com/realms/openshell/protocol/openid-connect/logout?id_token_hint={id_token}"
   allowedRoles:
     - openshell-api:openshell-admin
     - openshell-api:openshell-user
-
-# Allows sign-out that ends the Keycloak session as well as the dashboard's.
-# oidc.backendLogoutURL handles logout for keycloak backend while dashboard
-# redirects to its own /oauth2/sign_in endpoint
-# With values-port-forward.yaml, leave the authProxy blocks out.
-authProxy:
-  whitelistDomains: [keycloak.example.com]

@@ -16,3 +16,10 @@ Verify the IdP access token includes audience {{ .Values.oidc.audience | quote }
 {{- if .Values.gateway.preflight.enabled }}
 Gateway Service existence was checked in the release namespace.
 {{- end }}
+{{- if not (or (include "openshell-dashboard.backendLogoutURL" .) (contains "rd=http" (.Values.dashboard.logoutURL | default ""))) }}
+
+Sign-out ends only the dashboard session. The identity provider's session stays,
+so the next visit signs the same user in again without a password. Set
+oidc.backendLogoutURL to the provider's logout URL (derived from the issuer for
+provider keycloak-oidc), or see "Sign-out" in docs/install.md.
+{{- end }}

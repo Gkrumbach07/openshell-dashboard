@@ -161,7 +161,7 @@ These files are in the repository, not in the packaged chart. CI renders each on
 | oidc.allowedGroups | list | `[]` | Allowed groups for generic OIDC or other providers; empty allows any authenticated user. |
 | oidc.allowedRoles | list | `[]` | Allowed Keycloak roles (realm role or client:role); requires provider=keycloak-oidc. Multiple roles are alternatives. |
 | oidc.audience | string | `"openshell-api"` | Expected audience claim for the API resource server. IdP must add it to token aud. Purely informational: the chart only prints it in the post-install notes. |
-| oidc.backendLogoutURL | string | `""` | Optional IdP logout URL called by oauth2-proxy from the pod on sign-out (HTTP GET); {id_token} is replaced with the session ID token. Empty disables backend logout. Separate from dashboard.logoutURL. |
+| oidc.backendLogoutURL | string | `"auto"` | IdP logout URL oauth2-proxy calls from the pod when a user signs out (HTTP GET), so the IdP session ends too; {id_token} is replaced with the session ID token. `auto` derives it from the issuer for provider keycloak-oidc (`<issuer>/protocol/openid-connect/logout?id_token_hint={id_token}`) and sets none for other providers. Empty disables backend logout. Separate from dashboard.logoutURL. |
 | oidc.caConfigMapName | string | `""` | ConfigMap with ca.crt to trust private issuer TLS (also set on gateway). |
 | oidc.clientId | string | `"openshell-dashboard"` | OAuth2-proxy OIDC client ID. |
 | oidc.clientIdSecretKey | string | `""` | Optional key in oidc.existingSecret holding client ID; when set, takes precedence over oidc.clientId. |
