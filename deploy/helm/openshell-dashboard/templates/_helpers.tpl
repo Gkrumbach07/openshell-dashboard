@@ -92,11 +92,17 @@ Sets the dashboard OIDC redirect URL
 {{- end -}}
 
 {{/*
-Sets the optional proxy-to-provider logout URL
+The IdP logout URL oauth2-proxy calls on sign-out. "auto" derives Keycloak's from
+the issuer and sets none for other providers; empty sets none.
 */}}
 {{- define "openshell-dashboard.backendLogoutURL" -}}
-{{- with .Values.oidc.backendLogoutURL -}}
-{{- . -}}
+{{- $url := .Values.oidc.backendLogoutURL | default "" | toString -}}
+{{- if eq $url "auto" -}}
+{{- if and (eq .Values.oidc.provider "keycloak-oidc") .Values.oidc.issuer -}}
+{{- printf "%s/protocol/openid-connect/logout?id_token_hint={id_token}" (trimSuffix "/" .Values.oidc.issuer) -}}
+{{- end -}}
+{{- else -}}
+{{- $url -}}
 {{- end -}}
 {{- end -}}
 

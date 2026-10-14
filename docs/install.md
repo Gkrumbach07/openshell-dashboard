@@ -104,17 +104,9 @@ networkPolicy:
   ingressNamespace: <namespace of the Gateway's data-plane pods>
 ```
 
-For sign-out to end the Keycloak session too, add:
-
-```yaml
-oidc:
-  backendLogoutURL: "https://keycloak.example.com/realms/openshell/protocol/openid-connect/logout?id_token_hint={id_token}"
-authProxy:
-  whitelistDomains: [keycloak.example.com]
-```
-
 - `allowedRoles` decides who reaches the UI. Without it any realm user gets in, and the gateway refuses their calls.
 - `adminRole` must equal the gateway's admin role.
+- With `provider: keycloak-oidc`, signing out ends the Keycloak session too; see [Sign-out](#sign-out).
 - `sectionName` is the Gateway's HTTPS listener (`kubectl -n <namespace> get gateway <name> -o jsonpath='{.spec.listeners[*].name}'` lists the names). Without it the route attaches to every listener that admits it, a plain-HTTP one included, where sign-in cannot complete.
 - `networkPolicy.ingressNamespace` is where the Gateway's data-plane pods run, often not the namespace of the `Gateway` resource.
 
@@ -150,7 +142,9 @@ A role lets a user sign in. A standard user also needs a membership in each work
 
 ## Sign-out
 
-With the chart defaults, signing out ends the dashboard session only, and the next visit signs the same user in without a password. The sign-out lines of step 5 end the Keycloak session too by calling the Keycloak logout URL and redirecting the user to the `/oauth2/sign_in` url. If Keycloak's URL has a port, the `whitelistDomains` entry needs it.
+With `provider: keycloak-oidc`, signing out ends the user's Keycloak session as well as the dashboard's: oauth2-proxy calls Keycloak's logout endpoint with the session's ID token, and the next visit asks for a password. The chart derives that URL from the issuer (`oidc.backendLogoutURL`, default `auto`). Ending the Keycloak session also signs the user out of other applications that share it. To keep it, set `oidc.backendLogoutURL: ""`.
+
+For another provider the chart cannot derive the URL. Set `oidc.backendLogoutURL` to the provider's logout URL if a request from the pod ends its session. Otherwise send the browser there: set `dashboard.logoutURL` to `/oauth2/sign_out?rd=` followed by the URL-encoded logout URL, and put the provider's host in `authProxy.whitelistDomains`. That list switches off `--skip-provider-button`; add it back with `authProxy.extraArgs`. Without either, signing out ends only the dashboard session, the next visit signs the same user in again, and the post-install notes say so.
 
 ## OpenShift
 
@@ -166,7 +160,7 @@ securityContext:
 ```
 
 - The Route terminates TLS at the edge and redirects HTTP. Its timeouts are 300s, and 1h for WebSockets.
-- Set `host`. The callback is `https://<route host>/oauth2/callback`, and the chart cannot derive it from a host the router assigns. Use the same host in the client's redirect URIs and in `logoutURL`.
+- Set `host`. The callback is `https://<route host>/oauth2/callback`, and the chart cannot derive it from a host the router assigns. Use the same host in the client's redirect URIs.
 - The two `null` values let the `restricted-v2` SCC assign the user and group.
 - The NetworkPolicy admits namespace `openshift-ingress` by default. A router on the host network needs `networkPolicy.ingressFrom`.
 - For reencrypt, see [`values-route-reencrypt.yaml`](../deploy/helm/openshell-dashboard/ci/values-route-reencrypt.yaml).
@@ -179,7 +173,7 @@ securityContext:
 
 ## Upgrade and uninstall
 
-To upgrade, run the command of step 6 with a newer `<dashboard version>` of the same release line. `dashboard.image.digest` pins the image by digest. To uninstall:
+To upgrade, run the command of step 6 with a newer `<dashboard version>` of the same release line. `dashboard.image.digest` pins the image by digest. Do not upgrade with `--reuse-values`: it keeps the defaults of the chart version you upgrade from, so a new default, such as the Keycloak sign-out, does not apply. Pass your values file again, or use `--reset-then-reuse-values`. To uninstall:
 
 ```sh
 helm -n openshell uninstall openshell-dashboard
