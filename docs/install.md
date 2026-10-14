@@ -173,7 +173,7 @@ securityContext:
 
 ## Upgrade and uninstall
 
-To upgrade, run the command of step 6 with a newer `<dashboard version>` of the same release line. `dashboard.image.digest` pins the image by digest. To uninstall:
+To upgrade, run the command of step 6 with a newer `<dashboard version>` of the same release line. `dashboard.image.digest` pins the image by digest. Do not upgrade with `--reuse-values`: it keeps the defaults of the chart version you upgrade from, so a new default, such as the Keycloak sign-out, does not apply. Pass your values file again, or use `--reset-then-reuse-values`. To uninstall:
 
 ```sh
 helm -n openshell uninstall openshell-dashboard
