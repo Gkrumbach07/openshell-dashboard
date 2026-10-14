@@ -799,6 +799,7 @@ const readCredential = (
     ...compact<Partial<ProfileCredential>>({
       description: mapping.string('description', ''),
       envVars: mapping.strings('env_vars'),
+      stablePlaceholder: mapping.boolean('stable_placeholder'),
       authStyle: mapping.string('auth_style', ''),
       headerName: mapping.string('header_name', ''),
       queryParam: mapping.string('query_param', ''),
@@ -1244,12 +1245,16 @@ const writeTokenGrant = (grant: ProfileTokenGrant): Doc => {
 };
 
 const writeCredential = (credential: ProfileCredential): Doc => {
-  // Upstream writes these seven whether or not they hold anything.
+  // Upstream writes these seven whether or not they hold anything, and
+  // stable_placeholder only when it is set.
   const doc: Doc = {
     name: credential.name,
     description: credential.description ?? '',
     env_vars: credential.envVars ?? [],
     required: credential.required,
+    ...(credential.stablePlaceholder === true
+      ? { stable_placeholder: true }
+      : {}),
     auth_style: credential.authStyle ?? '',
     header_name: credential.headerName ?? '',
     query_param: credential.queryParam ?? '',
