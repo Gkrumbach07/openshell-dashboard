@@ -380,6 +380,41 @@ describe('upstream provider profiles', () => {
 
 // --- The fields that are not plain data ---
 
+describe('stable placeholder', () => {
+  it('reads stable_placeholder, and leaves it out when it is not set', () => {
+    expect(
+      withCredential('    env_vars: [TOKEN]\n    stable_placeholder: true\n')
+        ?.stablePlaceholder,
+    ).toBe(true);
+    expect(withCredential('    env_vars: [TOKEN]\n')).not.toHaveProperty(
+      'stablePlaceholder',
+    );
+  });
+
+  it('writes it after required, and only when it is set', () => {
+    const written = (yaml: string) =>
+      profileToDocument(
+        read(
+          `${MINIMAL}credentials:\n  - name: token\n    env_vars: [TOKEN]\n${yaml}`,
+        ),
+      ).credentials as Array<Record<string, unknown>>;
+    expect(
+      Object.keys(written('    stable_placeholder: true\n')[0]).slice(0, 6),
+    ).toEqual([
+      'name',
+      'description',
+      'env_vars',
+      'required',
+      'stable_placeholder',
+      'auth_style',
+    ]);
+    expect(
+      written('    stable_placeholder: true\n')[0].stable_placeholder,
+    ).toBe(true);
+    expect(written('')[0]).not.toHaveProperty('stable_placeholder');
+  });
+});
+
 describe('durations', () => {
   const refresh = (yaml: string) =>
     withCredential(`    refresh:\n      strategy: static\n${yaml}`)?.refresh;

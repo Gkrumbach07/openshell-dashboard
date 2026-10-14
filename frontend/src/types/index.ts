@@ -559,6 +559,9 @@ export type ProfileCredential = {
   // obtain the credential's token grant. Ignored when written, and kept so
   // that a profile that was read can be sent back as it is.
   tokenGrantOwners?: string[];
+  // OpenShell 0.1.4 and newer: one opaque, identity-bound placeholder for the
+  // credential across value-only provider updates. Absent when false.
+  stablePlaceholder?: boolean;
 };
 
 // openshell.sandbox.v1.McpOptions (protojson camelCase).
