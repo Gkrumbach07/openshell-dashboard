@@ -128,14 +128,15 @@ func ProviderProfileFromSDK(profile *openshell.ProviderProfile) *pb.ProviderProf
 
 func sdkCredentialToProto(credential *openshell.ProfileCredential) *pb.ProviderProfileCredential {
 	out := &pb.ProviderProfileCredential{
-		Name:         credential.Name,
-		Description:  credential.Description,
-		EnvVars:      credential.EnvVars,
-		Required:     credential.Required,
-		AuthStyle:    credential.AuthStyle,
-		HeaderName:   credential.HeaderName,
-		QueryParam:   credential.QueryParam,
-		PathTemplate: credential.PathTemplate,
+		Name:              credential.Name,
+		Description:       credential.Description,
+		EnvVars:           credential.EnvVars,
+		Required:          credential.Required,
+		AuthStyle:         credential.AuthStyle,
+		HeaderName:        credential.HeaderName,
+		QueryParam:        credential.QueryParam,
+		PathTemplate:      credential.PathTemplate,
+		StablePlaceholder: credential.StablePlaceholder,
 	}
 	if refresh := credential.Refresh; refresh != nil {
 		out.Refresh = &pb.ProviderCredentialRefresh{
@@ -248,15 +249,16 @@ func ProviderProfileToSDK(profile *pb.ProviderProfile) (openshell.ProviderProfil
 
 func sdkCredentialFromProto(credential *pb.ProviderProfileCredential) openshell.ProfileCredential {
 	out := openshell.ProfileCredential{
-		Name:         credential.GetName(),
-		Description:  credential.GetDescription(),
-		EnvVars:      credential.GetEnvVars(),
-		Required:     credential.GetRequired(),
-		AuthStyle:    credential.GetAuthStyle(),
-		HeaderName:   credential.GetHeaderName(),
-		QueryParam:   credential.GetQueryParam(),
-		PathTemplate: credential.GetPathTemplate(),
-		TokenGrant:   sdkTokenGrantFromProto(credential.GetTokenGrant()),
+		Name:              credential.GetName(),
+		Description:       credential.GetDescription(),
+		EnvVars:           credential.GetEnvVars(),
+		Required:          credential.GetRequired(),
+		AuthStyle:         credential.GetAuthStyle(),
+		HeaderName:        credential.GetHeaderName(),
+		QueryParam:        credential.GetQueryParam(),
+		PathTemplate:      credential.GetPathTemplate(),
+		TokenGrant:        sdkTokenGrantFromProto(credential.GetTokenGrant()),
+		StablePlaceholder: credential.GetStablePlaceholder(),
 	}
 	if refresh := credential.GetRefresh(); refresh != nil {
 		out.Refresh = &types.ProfileCredentialRefresh{
