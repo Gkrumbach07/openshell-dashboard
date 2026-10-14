@@ -55,8 +55,8 @@ GATEWAY_PORT=50051
 HEALTH_PORT=50053
 KEYCLOAK_PORT=8180
 PROXY_PORT=4180
-UI_PORT=3000                # frontend/vite.config.ts
-BFF_PORT="${PORT:-8080}"    # the BFF reads PORT itself
+UI_PORT=3000             # frontend/vite.config.ts
+BFF_PORT="${PORT:-8080}" # the BFF reads PORT itself
 
 # What deploy/keycloak/openshell-realm.json calls its realm and the
 # dashboard's client. prepare_sign_in stops when the file says otherwise.
@@ -383,10 +383,8 @@ logs() {
 # default.
 #
 # make dev-full: always the local gateway, the only one that trusts the local
-# Keycloak, and what the BFF needs behind the auth proxy. Sign-out goes on to
-# Keycloak, so that the next sign-in asks for a user again:
-# /oauth2/sign_out?rd=<URL-encoded Keycloak logout URL, which returns to the
-# auth proxy>.
+# Keycloak, and what the BFF needs behind the auth proxy. The proxy logs out
+# of Keycloak before clearing its cookie and returning to its sign-in page.
 bff_env() {
   if [ "${1:-}" != "--sign-in" ]; then
     printf 'export OPENSHELL_GATEWAY_URL=%q\n' "${OPENSHELL_GATEWAY_URL:-127.0.0.1:${GATEWAY_PORT}}"
@@ -395,7 +393,7 @@ bff_env() {
   echo "export OPENSHELL_GATEWAY_URL=127.0.0.1:${GATEWAY_PORT}"
   echo "unset GATEWAY_CA_CERT GATEWAY_CLIENT_CERT GATEWAY_CLIENT_KEY"
   echo "export AUTH_DISABLED=false ADMIN_ROLE=openshell-admin AUTH_USER_HEADER=x-forwarded-user"
-  echo "export LOGOUT_URL='/oauth2/sign_out?rd=http%3A%2F%2F127.0.0.1%3A${KEYCLOAK_PORT}%2Frealms%2F${REALM_NAME}%2Fprotocol%2Fopenid-connect%2Flogout%3Fclient_id%3D${CLIENT_ID}%26post_logout_redirect_uri%3Dhttp%3A%2F%2Flocalhost%3A${PROXY_PORT}%2F'"
+  echo "export LOGOUT_URL='/oauth2/sign_out?rd=/oauth2/sign_in'"
 }
 
 # proxy_binary prints the path of oauth2-proxy at the version the Helm chart
@@ -461,6 +459,7 @@ proxy() {
     --upstream="http://localhost:${UI_PORT}/" \
     --http-address="127.0.0.1:${PROXY_PORT}" \
     --redirect-url="${HOME_URL}/oauth2/callback" \
+    --backend-logout-url="${ISSUER}/protocol/openid-connect/logout?id_token_hint={id_token}" \
     --code-challenge-method=S256 \
     --allowed-role=openshell-api:openshell-admin \
     --allowed-role=openshell-api:openshell-user \

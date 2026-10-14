@@ -122,6 +122,7 @@ func (h *SandboxHandler) GetSandbox(w http.ResponseWriter, r *http.Request) {
 ```
 
 Key patterns:
+
 - `apiutils.DecodeBody(w, r, &dst)` — handles MaxBytesReader, DisallowUnknownFields, writes error response on failure, returns false
 - `apiutils.WriteJSON(w, statusCode, payload)` — marshals and writes
 - `apiutils.WriteError(w, statusCode, code, message)` — writes ErrorResponse envelope; `code` is an `apiutils.ResponseCode` constant, never a bare string. Add a new constant rather than inlining a literal.
@@ -155,7 +156,7 @@ Before adding anything auth-adjacent, check ADR 0002 (no auth termination, no JW
 Every setting is a CLI flag with an environment variable, read in `cmd/server/main.go`. The exceptions are the `FEATURE_*` variables, which have no flag, and `--healthcheck`, which has no variable. The full table is in [docs/configuration.md](../../docs/configuration.md#bff-flags-and-environment-variables). The three you need most often:
 
 | Env var | Flag | Default | Description |
-|---------|------|---------|-------------|
+| --------- | ------ | --------- | ------------- |
 | `OPENSHELL_GATEWAY_URL` | `-gateway-url` | `localhost:50051` | Gateway gRPC endpoint. `grpcs://` or `https://` for TLS; `grpc://`, `http://` or no scheme for plaintext |
 | `AUTH_DISABLED` | `-auth-disabled` | `false` | Local development only: every request is a synthetic `dev-user`, and no token is forwarded to the gateway |
 | `GATEWAY_RELEASE_LINE` | `-gateway-release-line` | compiled in | Gateway release line this build is for, written `major.minor` (`0.1`). A gateway whose version starts with those two numbers is `supported` (any patch, pre-release, dev build or rebuild), any other line is `unsupported`, and a gateway with no usable version is `unknown` (ADR 0005, decision 9). The default is `models.BuiltInGatewayReleaseLine`, the line of the release `deploy/ci/gateway-pins.json` names; `node scripts/gateway-range.mjs --check` fails in CI when the two disagree. Override it only for tests and local development: no image or chart sets it, and a value that is not a line turns the status into `unknown`. The verdict only informs; the BFF never blocks on it |

@@ -130,6 +130,9 @@ spec:
             {{- with (include "openshell-dashboard.redirectURL" .) }}
             - --redirect-url={{ . }}
             {{- end }}
+            {{- with (include "openshell-dashboard.backendLogoutURL" .) }}
+            - {{ printf "--backend-logout-url=%s" . | quote }}
+            {{- end }}
             {{- with .Values.oidc.scope }}
             - {{ printf "--scope=%s" . | quote }}
             {{- end }}

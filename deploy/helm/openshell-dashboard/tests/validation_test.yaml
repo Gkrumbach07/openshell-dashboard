@@ -10,6 +10,7 @@ release:
   namespace: tenant-a
 set:
   oidc.issuer: https://idp.example.com/realms/openshell
+  networkPolicy.ingressNamespace: gateway-data-plane
 tests:
   - it: omits the HPA by default
     template: templates/hpa.yaml
@@ -150,6 +151,15 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: httpRoute.hostnames or oidc.redirectURL is required for OIDC callback
+  - it: requires explicit Gateway data-plane ingress peers with HTTPRoute
+    template: templates/deployment.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.hostnames: [dashboard.example.com]
+      networkPolicy.ingressNamespace: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: httpRoute with NetworkPolicy requires networkPolicy.ingressNamespace or networkPolicy.ingressFrom for Gateway data-plane ingress
   - it: requires HTTPRoute to create a Gateway
     template: templates/deployment.yaml
     set:
