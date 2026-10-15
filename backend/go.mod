@@ -3,7 +3,7 @@ module github.com/Gkrumbach07/openshell-dashboard/backend
 go 1.26.7
 
 require (
-	github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20261013191600-5a7728c304b5
+	github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20261020123705-bdb956f2cd65
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
 	google.golang.org/grpc v1.83.2
