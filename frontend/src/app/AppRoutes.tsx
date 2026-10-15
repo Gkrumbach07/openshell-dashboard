@@ -142,6 +142,8 @@ const AppRoutes: React.FC = () => {
       return <AuthRequiredPage />;
     }
     const unauthorized = apiError?.status === 401;
+    const accessDenied = apiError?.status === 403;
+    const signOut = unauthorized || accessDenied;
     const rejected = unauthorized && apiError?.code === 'unauthenticated';
     const message = rejected
       ? apiError.message
@@ -152,10 +154,10 @@ const AppRoutes: React.FC = () => {
           : t('sessionBffUnreachable');
     const guidance = unauthorized
       ? t('sessionRejectedBody')
-      : apiError?.code === 'gateway_unavailable'
-        ? t('sessionGatewayUnavailableHelp')
-        : apiError?.code === 'permission_denied'
-          ? t('sessionPermissionDeniedHelp')
+      : accessDenied
+        ? t('sessionPermissionDeniedHelp')
+        : apiError?.code === 'gateway_unavailable'
+          ? t('sessionGatewayUnavailableHelp')
           : null;
     sessionAlert = (
       <Alert
@@ -166,12 +168,12 @@ const AppRoutes: React.FC = () => {
           <Button
             variant="link"
             onClick={
-              unauthorized
+              signOut
                 ? () => redirectToProxySignOut(config.logoutUrl)
                 : () => void refetchWhoami()
             }
           >
-            {unauthorized ? t('sessionSignOut') : tCommon('actions.retry')}
+            {signOut ? t('sessionSignOut') : tCommon('actions.retry')}
           </Button>
         }
       >

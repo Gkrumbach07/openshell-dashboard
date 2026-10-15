@@ -227,8 +227,9 @@ describe('AppRoutes', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it('advises users to contact an administrator for permission errors', () => {
-    requireAuth();
+  it('advises users to contact an administrator and sign out for permission errors', () => {
+    const refetch = jest.fn();
+    requireAuth('/custom/sign_out');
     mockUseCurrentUser.mockReturnValue({
       ...idleWhoami,
       isError: true,
@@ -237,6 +238,7 @@ describe('AppRoutes', () => {
         code: 'permission_denied',
         message: 'Access denied',
       },
+      refetch,
     });
 
     renderGate();
@@ -246,8 +248,13 @@ describe('AppRoutes', () => {
       screen.getByText(catalogs.en.auth.sessionPermissionDeniedHelp),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: catalogs.en.common.actions.retry }),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: catalogs.en.common.actions.retry }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: catalogs.en.auth.sessionSignOut }),
+    );
+    expect(mockSignOut).toHaveBeenCalledWith('/custom/sign_out');
+    expect(refetch).not.toHaveBeenCalled();
     expect(screen.queryByTestId('authenticated-shell')).not.toBeInTheDocument();
   });
 

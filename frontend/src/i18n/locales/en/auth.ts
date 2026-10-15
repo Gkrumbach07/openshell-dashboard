@@ -14,7 +14,8 @@ export default {
   sessionSignOut: 'Sign out',
   sessionGatewayUnavailableHelp:
     'Retry in a moment. If the problem persists, contact your administrator.',
-  sessionPermissionDeniedHelp: 'Ask your administrator to check your access.',
+  sessionPermissionDeniedHelp:
+    'Ask your administrator to check your access. Once access is granted, sign out and sign in again.',
   sessionBffUnreachable:
     'Check your network connection and retry. If the problem persists, contact your administrator.',
   requiredTitle: 'Authentication required',
