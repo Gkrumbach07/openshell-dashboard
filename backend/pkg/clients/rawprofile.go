@@ -3,6 +3,9 @@ package clients
 import (
 	"context"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	dm "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
 	pb "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 )
@@ -75,6 +78,9 @@ func (r *RawExecClient) GetProviderProfile(ctx context.Context, workspace, id st
 // ImportProviderProfiles creates the profiles in the scope. A refusal is not
 // an error: the response says so and carries the diagnostics.
 func (r *RawExecClient) ImportProviderProfiles(ctx context.Context, workspace string, items []*pb.ProviderProfileImportItem) (*pb.ImportProviderProfilesResponse, error) {
+	if err := r.checkStablePlaceholder(ctx, workspace, items); err != nil {
+		return nil, err
+	}
 	return r.client.ImportProviderProfiles(ctx, &pb.ImportProviderProfilesRequest{
 		Profiles:       items,
 		WorkspaceScope: profileScope(workspace),
@@ -83,6 +89,9 @@ func (r *RawExecClient) ImportProviderProfiles(ctx context.Context, workspace st
 
 // UpdateProviderProfile replaces the stored profile with the one given.
 func (r *RawExecClient) UpdateProviderProfile(ctx context.Context, workspace, id string, expectedResourceVersion uint64, item *pb.ProviderProfileImportItem) (*pb.UpdateProviderProfilesResponse, error) {
+	if err := r.checkStablePlaceholder(ctx, workspace, []*pb.ProviderProfileImportItem{item}); err != nil {
+		return nil, err
+	}
 	return r.client.UpdateProviderProfiles(ctx, &pb.UpdateProviderProfilesRequest{
 		Id:                      id,
 		Profile:                 item,
@@ -98,4 +107,36 @@ func (r *RawExecClient) LintProviderProfiles(ctx context.Context, workspace stri
 		Profiles:       items,
 		WorkspaceScope: profileScope(workspace),
 	})
+}
+
+// checkStablePlaceholder does what the SDK's profile client does before it
+// writes a profile in which a credential sets stable_placeholder (OpenShell
+// 0.1.4): it lints the profiles first and refuses the write unless the
+// gateway says it supports the field. A gateway older than 0.1.4 does not
+// know the field and would store the profile without it, saying nothing.
+// Profiles that do not set it are written without the extra call.
+func (r *RawExecClient) checkStablePlaceholder(ctx context.Context, workspace string, items []*pb.ProviderProfileImportItem) error {
+	if !setsStablePlaceholder(items) {
+		return nil
+	}
+	resp, err := r.LintProviderProfiles(ctx, workspace, items)
+	if err != nil {
+		return err
+	}
+	if !resp.GetSupportsStablePlaceholder() {
+		return status.Error(codes.FailedPrecondition,
+			"gateway does not support stable_placeholder; upgrade the gateway before enabling it")
+	}
+	return nil
+}
+
+func setsStablePlaceholder(items []*pb.ProviderProfileImportItem) bool {
+	for _, item := range items {
+		for _, credential := range item.GetProfile().GetCredentials() {
+			if credential.GetStablePlaceholder() {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -79,7 +79,7 @@ Sets the gateway URL
 {{- end -}}
 
 {{/*
-Sets the dashboard oidc redirect URL 
+Sets the dashboard OIDC redirect URL
 */}}
 {{- define "openshell-dashboard.redirectURL" -}}
 {{- if .Values.oidc.redirectURL -}}
@@ -88,6 +88,21 @@ Sets the dashboard oidc redirect URL
 {{- printf "https://%s/oauth2/callback" .Values.openshiftRoute.host -}}
 {{- else if .Values.httpRoute.enabled -}}
 {{- printf "https://%s/oauth2/callback" (first .Values.httpRoute.hostnames) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The IdP logout URL oauth2-proxy calls on sign-out. "auto" derives Keycloak's from
+the issuer and sets none for other providers; empty sets none.
+*/}}
+{{- define "openshell-dashboard.backendLogoutURL" -}}
+{{- $url := .Values.oidc.backendLogoutURL | default "" | toString -}}
+{{- if eq $url "auto" -}}
+{{- if and (eq .Values.oidc.provider "keycloak-oidc") .Values.oidc.issuer -}}
+{{- printf "%s/protocol/openid-connect/logout?id_token_hint={id_token}" (trimSuffix "/" .Values.oidc.issuer) -}}
+{{- end -}}
+{{- else -}}
+{{- $url -}}
 {{- end -}}
 {{- end -}}
 
@@ -113,6 +128,9 @@ Value validation
 {{- end -}}
 {{- if and .Values.openshiftRoute.enabled .Values.httpRoute.enabled -}}
 {{- fail "enable only one of openshiftRoute and httpRoute" -}}
+{{- end -}}
+{{- if and .Values.httpRoute.enabled .Values.networkPolicy.enabled (not .Values.networkPolicy.ingressNamespace) (not .Values.networkPolicy.ingressFrom) -}}
+{{- fail "httpRoute with NetworkPolicy requires networkPolicy.ingressNamespace or networkPolicy.ingressFrom for Gateway data-plane ingress" -}}
 {{- end -}}
 {{- if and .Values.openshiftRoute.enabled (not (has .Values.openshiftRoute.termination (list "edge" "reencrypt"))) -}}
 {{- fail "openshiftRoute.termination must be edge or reencrypt (not passthrough)" -}}

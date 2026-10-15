@@ -391,17 +391,18 @@ func appendEndpointSummary(summaries []string, endpoint *sbv1.NetworkEndpoint) [
 
 func profileCredentialFromProto(credential *pb.ProviderProfileCredential) ProfileCredential {
 	return ProfileCredential{
-		Name:             credential.GetName(),
-		Description:      credential.GetDescription(),
-		EnvVars:          credential.GetEnvVars(),
-		Required:         credential.GetRequired(),
-		AuthStyle:        credential.GetAuthStyle(),
-		HeaderName:       credential.GetHeaderName(),
-		QueryParam:       credential.GetQueryParam(),
-		PathTemplate:     credential.GetPathTemplate(),
-		Refresh:          profileRefreshFromProto(credential.GetRefresh()),
-		TokenGrant:       profileTokenGrantFromProto(credential.GetTokenGrant()),
-		TokenGrantOwners: credential.GetTokenGrantOwners(),
+		Name:              credential.GetName(),
+		Description:       credential.GetDescription(),
+		EnvVars:           credential.GetEnvVars(),
+		Required:          credential.GetRequired(),
+		AuthStyle:         credential.GetAuthStyle(),
+		HeaderName:        credential.GetHeaderName(),
+		QueryParam:        credential.GetQueryParam(),
+		PathTemplate:      credential.GetPathTemplate(),
+		Refresh:           profileRefreshFromProto(credential.GetRefresh()),
+		TokenGrant:        profileTokenGrantFromProto(credential.GetTokenGrant()),
+		TokenGrantOwners:  credential.GetTokenGrantOwners(),
+		StablePlaceholder: credential.GetStablePlaceholder(),
 	}
 }
 
@@ -574,17 +575,18 @@ func profileCredentialToProto(credential *ProfileCredential) (*pb.ProviderProfil
 		return nil, fmt.Errorf("tokenGrant.%w", err)
 	}
 	return &pb.ProviderProfileCredential{
-		Name:             credential.Name,
-		Description:      credential.Description,
-		EnvVars:          credential.EnvVars,
-		Required:         credential.Required,
-		AuthStyle:        credential.AuthStyle,
-		HeaderName:       credential.HeaderName,
-		QueryParam:       credential.QueryParam,
-		PathTemplate:     credential.PathTemplate,
-		Refresh:          refresh,
-		TokenGrant:       grant,
-		TokenGrantOwners: credential.TokenGrantOwners,
+		Name:              credential.Name,
+		Description:       credential.Description,
+		EnvVars:           credential.EnvVars,
+		Required:          credential.Required,
+		AuthStyle:         credential.AuthStyle,
+		HeaderName:        credential.HeaderName,
+		QueryParam:        credential.QueryParam,
+		PathTemplate:      credential.PathTemplate,
+		Refresh:           refresh,
+		TokenGrant:        grant,
+		TokenGrantOwners:  credential.TokenGrantOwners,
+		StablePlaceholder: credential.StablePlaceholder,
 	}, nil
 }
 

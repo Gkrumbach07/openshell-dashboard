@@ -57,6 +57,9 @@ type fakeProfileServer struct {
 	requests   []string
 	received   []*pb.ProviderProfileImportItem
 	mu         sync.Mutex
+	// supportsStablePlaceholder is what lint answers: true for a gateway of
+	// OpenShell 0.1.4 or newer.
+	supportsStablePlaceholder bool
 }
 
 func (f *fakeProfileServer) record(request string, items ...*pb.ProviderProfileImportItem) {
@@ -121,7 +124,8 @@ func (f *fakeProfileServer) UpdateProviderProfiles(_ context.Context, req *pb.Up
 func (f *fakeProfileServer) LintProviderProfiles(_ context.Context, req *pb.LintProviderProfilesRequest) (*pb.LintProviderProfilesResponse, error) {
 	f.record("lint "+scopeOf(req.GetWorkspaceScope()), req.GetProfiles()...)
 	return &pb.LintProviderProfilesResponse{
-		Valid: false,
+		SupportsStablePlaceholder: f.supportsStablePlaceholder,
+		Valid:                     false,
 		Diagnostics: []*pb.ProviderProfileDiagnostic{
 			{Source: req.GetProfiles()[0].GetSource(), ProfileId: "github", Field: "id", Message: "already exists", Severity: "error"},
 		},
@@ -234,6 +238,50 @@ func TestUpdateProviderProfileReturnsTheGatewayStatus(t *testing.T) {
 		&pb.ProviderProfileImportItem{Profile: wholeProfile("github")})
 	if status.Code(err) != codes.Aborted {
 		t.Fatalf("error = %v, want the gateway's Aborted", err)
+	}
+}
+
+// A profile in which a credential sets stable_placeholder is written only
+// once the gateway has said it supports the field, as the SDK does: a gateway
+// that does not know it would store the profile without it. A profile that
+// does not set it is written without asking.
+func TestStablePlaceholderIsWrittenOnlyToAGatewayThatSupportsIt(t *testing.T) {
+	ctx := context.Background()
+	stable := wholeProfile("github")
+	stable.Credentials[0].StablePlaceholder = true
+	item := &pb.ProviderProfileImportItem{Profile: stable, Source: "github.yaml"}
+
+	older := &fakeProfileServer{}
+	rc := newTestRawExec(t, older)
+	_, err := rc.ImportProviderProfiles(ctx, "team-a", []*pb.ProviderProfileImportItem{item})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Errorf("import to an older gateway: error = %v, want FailedPrecondition", err)
+	}
+	_, err = rc.UpdateProviderProfile(ctx, "team-a", "github", 7, item)
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Errorf("update on an older gateway: error = %v, want FailedPrecondition", err)
+	}
+	if requests, _ := older.seen(); !reflect.DeepEqual(requests, []string{"lint workspace team-a", "lint workspace team-a"}) {
+		t.Errorf("an older gateway saw %v, want two lints and no write", requests)
+	}
+
+	newer := &fakeProfileServer{supportsStablePlaceholder: true}
+	rc = newTestRawExec(t, newer)
+	if _, err := rc.ImportProviderProfiles(ctx, "team-a", []*pb.ProviderProfileImportItem{item}); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if _, err := rc.UpdateProviderProfile(ctx, "team-a", "github", 7, item); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	requests, received := newer.seen()
+	want := []string{"lint workspace team-a", "import workspace team-a", "lint workspace team-a", "update workspace team-a github"}
+	if !reflect.DeepEqual(requests, want) {
+		t.Errorf("requests = %v\nwant       %v", requests, want)
+	}
+	for i, got := range received {
+		if !got.GetProfile().GetCredentials()[0].GetStablePlaceholder() {
+			t.Errorf("item %d reached the gateway without stable_placeholder", i)
+		}
 	}
 }
 

@@ -18,7 +18,7 @@ Two things here are called a gateway. "The gateway" is the OpenShell gateway, wh
 
 Import [`deploy/keycloak/openshell-realm.json`](../deploy/keycloak/openshell-realm.json) ([about the file](../deploy/keycloak/README.md)): in the admin console, *Create realm*, then *Resource file*; or start Keycloak with `--import-realm`. Then, in realm `openshell`:
 
-1. Client `openshell-dashboard`, *Settings*: set *Valid redirect URIs* to `https://dashboard.example.com/oauth2/callback` and *Valid post logout redirect URIs* to `https://dashboard.example.com/*`.
+1. Client `openshell-dashboard`, *Settings*: set *Valid redirect URIs* to `https://dashboard.example.com/oauth2/callback`.
 2. Client `openshell-dashboard`, *Credentials*: copy the client secret.
 3. Create the users: each with an email address, *Email verified* on, and membership of `openshell-admins` or `openshell-users`. A new user has *Email verified* off, and oauth2-proxy refuses the sign-in of a user whose email is not verified.
 
@@ -104,20 +104,9 @@ networkPolicy:
   ingressNamespace: <namespace of the Gateway's data-plane pods>
 ```
 
-For sign-out to end the Keycloak session too, add:
-
-```yaml
-dashboard:
-  # /oauth2/sign_out?rd=<URL-encoded Keycloak logout URL, which returns to the dashboard>
-  logoutURL: "/oauth2/sign_out?rd=https%3A%2F%2Fkeycloak.example.com%2Frealms%2Fopenshell%2Fprotocol%2Fopenid-connect%2Flogout%3Fclient_id%3Dopenshell-dashboard%26post_logout_redirect_uri%3Dhttps%3A%2F%2Fdashboard.example.com%2F"
-authProxy:
-  whitelistDomains: [keycloak.example.com]
-  # the chart leaves this flag out once whitelistDomains is set
-  extraArgs: ["--skip-provider-button=true"]
-```
-
 - `allowedRoles` decides who reaches the UI. Without it any realm user gets in, and the gateway refuses their calls.
 - `adminRole` must equal the gateway's admin role.
+- With `provider: keycloak-oidc`, signing out ends the Keycloak session too; see [Sign-out](#sign-out).
 - `sectionName` is the Gateway's HTTPS listener (`kubectl -n <namespace> get gateway <name> -o jsonpath='{.spec.listeners[*].name}'` lists the names). Without it the route attaches to every listener that admits it, a plain-HTTP one included, where sign-in cannot complete.
 - `networkPolicy.ingressNamespace` is where the Gateway's data-plane pods run, often not the namespace of the `Gateway` resource.
 
@@ -153,7 +142,9 @@ A role lets a user sign in. A standard user also needs a membership in each work
 
 ## Sign-out
 
-With the chart defaults, signing out ends the dashboard session only, and the next visit signs the same user in without a password. The sign-out lines of step 5 end the Keycloak session too, after a confirmation page at Keycloak. If Keycloak's URL has a port, the `whitelistDomains` entry needs it.
+With `provider: keycloak-oidc`, signing out ends the user's Keycloak session as well as the dashboard's: oauth2-proxy calls Keycloak's logout endpoint with the session's ID token, and the next visit asks for a password. The chart derives that URL from the issuer (`oidc.backendLogoutURL`, default `auto`). Ending the Keycloak session also signs the user out of other applications that share it. To keep it, set `oidc.backendLogoutURL: ""`.
+
+For another provider the chart cannot derive the URL. Set `oidc.backendLogoutURL` to the provider's logout URL if a request from the pod ends its session. Otherwise send the browser there: set `dashboard.logoutURL` to `/oauth2/sign_out?rd=` followed by the URL-encoded logout URL, and put the provider's host in `authProxy.whitelistDomains`. That list switches off `--skip-provider-button`; add it back with `authProxy.extraArgs`. Without either, signing out ends only the dashboard session, the next visit signs the same user in again, and the post-install notes say so.
 
 ## OpenShift
 
@@ -169,7 +160,7 @@ securityContext:
 ```
 
 - The Route terminates TLS at the edge and redirects HTTP. Its timeouts are 300s, and 1h for WebSockets.
-- Set `host`. The callback is `https://<route host>/oauth2/callback`, and the chart cannot derive it from a host the router assigns. Use the same host in the client's redirect URIs and in `logoutURL`.
+- Set `host`. The callback is `https://<route host>/oauth2/callback`, and the chart cannot derive it from a host the router assigns. Use the same host in the client's redirect URIs.
 - The two `null` values let the `restricted-v2` SCC assign the user and group.
 - The NetworkPolicy admits namespace `openshift-ingress` by default. A router on the host network needs `networkPolicy.ingressFrom`.
 - For reencrypt, see [`values-route-reencrypt.yaml`](../deploy/helm/openshell-dashboard/ci/values-route-reencrypt.yaml).
@@ -182,7 +173,7 @@ securityContext:
 
 ## Upgrade and uninstall
 
-To upgrade, run the command of step 6 with a newer `<dashboard version>` of the same release line. `dashboard.image.digest` pins the image by digest. To uninstall:
+To upgrade, run the command of step 6 with a newer `<dashboard version>` of the same release line. `dashboard.image.digest` pins the image by digest. Do not upgrade with `--reuse-values`: it keeps the defaults of the chart version you upgrade from, so a new default, such as the Keycloak sign-out, does not apply. Pass your values file again, or use `--reset-then-reuse-values`. To uninstall:
 
 ```sh
 helm -n openshell uninstall openshell-dashboard
@@ -192,7 +183,7 @@ kubectl -n openshell delete secret openshell-dashboard-oidc
 ## Troubleshooting
 
 | Symptom | Cause and fix |
-|---|---|
+| --- | --- |
 | Keycloak answers `Invalid parameter: redirect_uri` | The client's *Valid redirect URIs* lack the callback `helm get notes` prints |
 | 403 or 500 from the auth proxy after signing in | 403: the user has neither `openshell-api` role. 500: the user's *Email verified* is off |
 | Every call fails with an `invalid token` error about `aud` | The access token's `aud` lacks the gateway's audience: repeat step 2 |

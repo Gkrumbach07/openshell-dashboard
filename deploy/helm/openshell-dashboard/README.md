@@ -8,6 +8,8 @@ Deploys one stateless dashboard Deployment alongside an [OpenShell gateway](http
 
 ## Install
 
+**Prerequisites:**
+
 - A running OpenShell gateway of the dashboard's release line, installed as release `openshell`. The dashboard goes into the same namespace, because the chart mounts the gateway's CA from the Secret `openshell-client-tls` there.
 - A confidential OIDC client for oauth2-proxy at the issuer the gateway trusts, with the callback `https://<dashboard host>/oauth2/callback`.
 - A Secret with that client's secret and a cookie secret. The chart does not create it:
@@ -93,6 +95,7 @@ These files are in the repository, not in the packaged chart. CI renders each on
   - The dashboard's probes run `probes.*.dashboardCommand`; the default is the binary's own `--healthcheck`.
 
 ## Values
+## Values
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -123,7 +126,7 @@ These files are in the repository, not in the packaged chart. CI renders each on
 | dashboard.image.registry | string | `""` | Dashboard image registry; empty uses global.image.registry. |
 | dashboard.image.repository | string | `"gkrumbach07/openshell-dashboard"` | Dashboard image repository. |
 | dashboard.image.tag | string | `""` | Dashboard image tag; empty uses global.image.tag then Chart.appVersion. |
-| dashboard.logoutURL | string | `"/oauth2/sign_out"` | Sign-out endpoint exposed by oauth2-proxy. |
+| dashboard.logoutURL | string | `"/oauth2/sign_out?rd=/oauth2/sign_in"` | Browser-facing sign-out URL; rd returns to oauth2-proxy sign-in after clearing the session. |
 | dashboard.port | int | `8080` | Dashboard container port (loopback only; never exposed via Service). |
 | fullnameOverride | string | `""` | Full resource name override. |
 | gateway.caKey | string | `"ca.crt"` | CA key in the Secret. |
@@ -152,12 +155,13 @@ These files are in the repository, not in the packaged chart. CI renders each on
 | nameOverride | string | `"openshell-dashboard"` | Resource name override; pod identity label remains openshell-dashboard. |
 | networkPolicy.enabled | bool | `true` | Restrict ingress to the proxy port from the ingress controller namespace. |
 | networkPolicy.ingressFrom | list | `[]` | Optional ingress peers replacing the default namespace selector (e.g. host-network routers or Gateway data-plane pods). |
-| networkPolicy.ingressNamespace | string | `""` | Namespace of ingress data-plane pods. Empty uses openshift-ingress for Routes or httpRoute.gateway.namespace for HTTPRoute. |
+| networkPolicy.ingressNamespace | string | `""` | Namespace of ingress data-plane pods. Defaults to openshift-ingress for Routes; required for HTTPRoute unless ingressFrom is set. |
 | nodeSelector | object | `{}` | Node selector. |
 | oidc.adminRole | string | `""` | Role name for admin access. Must be the same as the openshell gateway admin name. Defaults to "admin" |
 | oidc.allowedGroups | list | `[]` | Allowed groups for generic OIDC or other providers; empty allows any authenticated user. |
 | oidc.allowedRoles | list | `[]` | Allowed Keycloak roles (realm role or client:role); requires provider=keycloak-oidc. Multiple roles are alternatives. |
 | oidc.audience | string | `"openshell-api"` | Expected audience claim for the API resource server. IdP must add it to token aud. Purely informational: the chart only prints it in the post-install notes. |
+| oidc.backendLogoutURL | string | `"auto"` | IdP logout URL oauth2-proxy calls from the pod when a user signs out (HTTP GET), so the IdP session ends too; {id_token} is replaced with the session ID token. `auto` derives it from the issuer for provider keycloak-oidc (`<issuer>/protocol/openid-connect/logout?id_token_hint={id_token}`) and sets none for other providers. Empty disables backend logout. Separate from dashboard.logoutURL. |
 | oidc.caConfigMapName | string | `""` | ConfigMap with ca.crt to trust private issuer TLS (also set on gateway). |
 | oidc.clientId | string | `"openshell-dashboard"` | OAuth2-proxy OIDC client ID. |
 | oidc.clientIdSecretKey | string | `""` | Optional key in oidc.existingSecret holding client ID; when set, takes precedence over oidc.clientId. |

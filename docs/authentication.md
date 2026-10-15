@@ -16,7 +16,7 @@ OpenShell gateway ── checks the token against the issuer's keys
 ```
 
 | Part | What it does |
-|---|---|
+| --- | --- |
 | Keycloak | Holds users, groups and roles; issues the tokens |
 | oauth2-proxy | The auth proxy, which the Helm chart runs as a sidecar. It runs the sign-in, keeps the session in a cookie, refreshes the token and adds the **access token** to every request it passes on |
 | BFF | Takes the token from `x-forwarded-access-token`, or else from `Authorization: Bearer`, and sends it with every gateway call; with no token it answers 401. It validates nothing and authorizes nothing |
@@ -54,7 +54,7 @@ Keep `oidc.provider: oidc`, the default, and leave `oidc.allowedRoles` unset: th
 - The session is oauth2-proxy's cookie, Secure and HttpOnly. The BFF keeps none.
 - oauth2-proxy refreshes the access token every `authProxy.cookie.refresh` (default `2m`). Keep that below the provider's access-token lifetime, or the gateway refuses an expired token while the UI still looks signed in.
 - On a 401 the UI reloads the page once, so the auth proxy can sign the user in again.
-- Signing out sends the browser to `LOGOUT_URL` (`dashboard.logoutURL` in the chart, default `/oauth2/sign_out`), which ends the proxy's session only; see [Sign-out](install.md#sign-out) to end the provider's too.
+- Signing out sends the browser to `LOGOUT_URL` (`dashboard.logoutURL` in the chart, default `/oauth2/sign_out?rd=/oauth2/sign_in`), which ends the proxy's session. With provider `keycloak-oidc` the proxy also ends the Keycloak session; for other providers see [Sign-out](install.md#sign-out).
 
 ## The proxy is the only path to the BFF
 

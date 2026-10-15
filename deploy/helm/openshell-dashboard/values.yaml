@@ -27,8 +27,8 @@ dashboard:
     pullPolicy: null
   # -- Dashboard container port (loopback only; never exposed via Service).
   port: 8080
-  # -- Sign-out endpoint exposed by oauth2-proxy.
-  logoutURL: /oauth2/sign_out
+  # -- Browser-facing sign-out URL; rd returns to oauth2-proxy sign-in after clearing the session.
+  logoutURL: /oauth2/sign_out?rd=/oauth2/sign_in
 
 authProxy:
   image:
@@ -149,6 +149,8 @@ oidc:
   existingSecret: openshell-dashboard-oidc
   # -- Full public callback URL; required when host is dynamically allocated. Empty derives from Route/HTTPRoute host.
   redirectURL: ""
+  # -- IdP logout URL oauth2-proxy calls from the pod when a user signs out (HTTP GET), so the IdP session ends too; {id_token} is replaced with the session ID token. `auto` derives it from the issuer for provider keycloak-oidc (`<issuer>/protocol/openid-connect/logout?id_token_hint={id_token}`) and sets none for other providers. Empty disables backend logout. Separate from dashboard.logoutURL.
+  backendLogoutURL: auto
   # -- OAuth2 scopes; empty uses the provider default (openid email profile for generic OIDC).
   scope: ""
   # -- PKCE challenge method (e.g. S256); empty disables PKCE for providers that do not support it.
@@ -209,7 +211,7 @@ autoscaling:
 networkPolicy:
   # -- Restrict ingress to the proxy port from the ingress controller namespace.
   enabled: true
-  # -- Namespace of ingress data-plane pods. Empty uses openshift-ingress for Routes or httpRoute.gateway.namespace for HTTPRoute.
+  # -- Namespace of ingress data-plane pods. Defaults to openshift-ingress for Routes; required for HTTPRoute unless ingressFrom is set.
   ingressNamespace: ""
   # -- Optional ingress peers replacing the default namespace selector (e.g. host-network routers or Gateway data-plane pods).
   ingressFrom: []
@@ -239,7 +241,7 @@ httpRoute:
     # -- Create a Gateway in the release namespace; else use an existing one.
     create: false
     # -- GatewayClass for created Gateway.
-    className: eg
+    className: "eg"
     # -- Gateway resource name; empty uses dashboard fullname.
     name: ""
     # -- Existing Gateway namespace; empty uses release namespace.

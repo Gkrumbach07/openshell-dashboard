@@ -12,6 +12,7 @@ release:
   namespace: tenant-a
 set:
   oidc.issuer: https://idp.example.com/realms/openshell
+  networkPolicy.ingressNamespace: gateway-data-plane
 tests:
   - it: omits the OpenShift Route by default
     template: templates/route.yaml
@@ -186,7 +187,7 @@ tests:
       - equal:
           path: spec.parentRefs[0].sectionName
           value: http
-  - it: uses release namespace for HTTPRoute NetworkPolicy by default
+  - it: uses the explicitly selected Gateway data-plane namespace
     template: templates/networkpolicy.yaml
     set:
       httpRoute.enabled: true
@@ -194,4 +195,4 @@ tests:
     asserts:
       - equal:
           path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
-          value: tenant-a
+          value: gateway-data-plane

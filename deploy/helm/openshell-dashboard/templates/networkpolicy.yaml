@@ -19,7 +19,7 @@ spec:
         {{- else }}
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace | default (ternary (.Values.httpRoute.gateway.namespace | default .Release.Namespace) "openshift-ingress" .Values.httpRoute.enabled) }}
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace | default "openshift-ingress" }}
         {{- end }}
       ports:
         - protocol: TCP

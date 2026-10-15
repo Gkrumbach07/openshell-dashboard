@@ -8,6 +8,8 @@ Deploys one stateless dashboard Deployment alongside an [OpenShell gateway](http
 
 ## Install
 
+**Prerequisites:**
+
 - A running OpenShell gateway of the dashboard's release line, installed as release `openshell`. The dashboard goes into the same namespace, because the chart mounts the gateway's CA from the Secret `openshell-client-tls` there.
 - A confidential OIDC client for oauth2-proxy at the issuer the gateway trusts, with the callback `https://<dashboard host>/oauth2/callback`.
 - A Secret with that client's secret and a cookie secret. The chart does not create it:
@@ -92,4 +94,5 @@ These files are in the repository, not in the packaged chart. CI renders each on
   - Pin an image with `dashboard.image.digest` or `authProxy.image.digest`. For a registry mirror, set `global.image.registry` and each `repository`.
   - The dashboard's probes run `probes.*.dashboardCommand`; the default is the binary's own `--healthcheck`.
 
+## Values
 {{ template "chart.valuesSection" . }}

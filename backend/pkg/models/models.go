@@ -306,18 +306,24 @@ type CredentialRefreshStatus struct {
 // endpoints it lets obtain the credential's token grant. It is ignored when
 // written and accepted so that a profile that was read can be sent back
 // unchanged.
+//
+// StablePlaceholder (OpenShell 0.1.4 and newer) opts the credential in to one
+// opaque, identity-bound placeholder across value-only provider updates. An
+// update replaces a stored profile whole, so it is carried both ways like
+// every other field.
 type ProfileCredential struct {
-	Refresh          *ProfileCredentialRefresh `json:"refresh,omitempty"`
-	TokenGrant       *ProfileTokenGrant        `json:"tokenGrant,omitempty"`
-	Name             string                    `json:"name"`
-	Description      string                    `json:"description,omitempty"`
-	AuthStyle        string                    `json:"authStyle,omitempty"`
-	HeaderName       string                    `json:"headerName,omitempty"`
-	QueryParam       string                    `json:"queryParam,omitempty"`
-	PathTemplate     string                    `json:"pathTemplate,omitempty"`
-	EnvVars          []string                  `json:"envVars,omitempty"`
-	TokenGrantOwners []string                  `json:"tokenGrantOwners,omitempty"`
-	Required         bool                      `json:"required"`
+	Refresh           *ProfileCredentialRefresh `json:"refresh,omitempty"`
+	TokenGrant        *ProfileTokenGrant        `json:"tokenGrant,omitempty"`
+	Name              string                    `json:"name"`
+	Description       string                    `json:"description,omitempty"`
+	AuthStyle         string                    `json:"authStyle,omitempty"`
+	HeaderName        string                    `json:"headerName,omitempty"`
+	QueryParam        string                    `json:"queryParam,omitempty"`
+	PathTemplate      string                    `json:"pathTemplate,omitempty"`
+	EnvVars           []string                  `json:"envVars,omitempty"`
+	TokenGrantOwners  []string                  `json:"tokenGrantOwners,omitempty"`
+	Required          bool                      `json:"required"`
+	StablePlaceholder bool                      `json:"stablePlaceholder,omitempty"`
 }
 
 // ProviderProfile mirrors openshell.v1.ProviderProfile as the gateway returns
@@ -381,7 +387,6 @@ type LintProviderProfilesResult struct {
 type CurrentUser struct {
 	Subject          string   `json:"subject"`
 	DisplayName      string   `json:"displayName,omitempty"`
-	Email            string   `json:"email,omitempty"`
 	IdentityProvider string   `json:"identityProvider,omitempty"`
 	Roles            []string `json:"roles"`
 	Scopes           []string `json:"scopes,omitempty"`
