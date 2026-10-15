@@ -23,25 +23,34 @@ const fetchCurrentUser = (notifySessionExpired?: boolean) =>
 
 export const getCurrentUser = (): Promise<CurrentUser> => fetchCurrentUser();
 
+const getCurrentUserWithoutSessionExpiredCallback = (): Promise<CurrentUser> =>
+  fetchCurrentUser(false);
+
 type UseCurrentUserOptions = {
   enabled?: boolean;
   /**
-   * Notify the shared session-expired handler for 401 responses. Defaults to true.
+   * Notify the shared session-expired handler for 401 responses. Defaults to
+   * true. The opt-out uses a separate query key so observers with different
+   * notification behavior cannot replace one another's query function.
    */
   notifySessionExpired?: boolean;
 };
 
-export const useCurrentUser = (options: UseCurrentUserOptions = {}) =>
-  useQuery({
-    queryKey: authKeys.whoami,
-    queryFn:
-      options.notifySessionExpired === undefined
-        ? getCurrentUser
-        : () => fetchCurrentUser(options.notifySessionExpired),
+export const useCurrentUser = (options: UseCurrentUserOptions = {}) => {
+  const notifySessionExpired = options.notifySessionExpired ?? true;
+
+  return useQuery({
+    queryKey: notifySessionExpired
+      ? authKeys.whoami
+      : authKeys.whoamiWithoutSessionExpiredCallback,
+    queryFn: notifySessionExpired
+      ? getCurrentUser
+      : getCurrentUserWithoutSessionExpiredCallback,
     staleTime: STALE_5_MIN,
     retry: false,
     enabled: options.enabled ?? true,
   });
+};
 
 export const useFeatureFlags = () => {
   const { data } = useAuthConfig();

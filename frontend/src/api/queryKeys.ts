@@ -116,6 +116,11 @@ export const gatewayKeys = {
 export const authKeys = {
   config: ['auth', 'config'] as const,
   whoami: ['auth', 'whoami'] as const,
+  whoamiWithoutSessionExpiredCallback: [
+    'auth',
+    'whoami',
+    'without-session-expired-callback',
+  ] as const,
 };
 
 export const settingsKeys = {
