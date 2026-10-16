@@ -3,7 +3,9 @@ import { useMembers } from './workspaces';
 
 export const useUserRole = () => {
   const { data: config } = useAuthConfig();
-  const { data: user, isLoading } = useCurrentUser();
+  const { data: user, isLoading } = useCurrentUser({
+    notifySessionExpired: false,
+  });
   const roles = user?.roles ?? [];
   const adminRole = config?.adminRole ?? 'admin';
   return {
@@ -16,7 +18,7 @@ export const useUserRole = () => {
 };
 
 export const useWorkspaceRole = (workspace: string) => {
-  const { data: user } = useCurrentUser();
+  const { data: user } = useCurrentUser({ notifySessionExpired: false });
   const members = useMembers(workspace);
   const { isPlatformAdmin } = useUserRole();
 

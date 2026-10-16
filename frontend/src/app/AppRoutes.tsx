@@ -1,5 +1,11 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { Alert, Bullseye, Button, Spinner } from '@patternfly/react-core';
+import {
+  Alert,
+  Bullseye,
+  Button,
+  Content,
+  Spinner,
+} from '@patternfly/react-core';
 import { Route, Routes } from 'react-router-dom';
 
 import LoginPage from '../pages/LoginPage';
@@ -14,14 +20,22 @@ import {
   clearProxyReauthReloadFlag,
   reloadOnceForProxyReauth,
 } from './authSession';
+import { redirectToProxySignOut } from './logout';
 
-const isUnauthorized = (error: unknown): boolean =>
-  (error as ApiError)?.status === 401;
+const isTransientWhoamiError = (error: unknown): boolean => {
+  const status = (error as ApiError)?.status;
+  return (
+    typeof status !== 'number' ||
+    status === 408 ||
+    status === 429 ||
+    status >= 500
+  );
+};
 
 const AuthBootstrapLoading: React.FC = () => {
   const { t } = useI18n('auth');
   return (
-    <Bullseye style={{ minHeight: '100vh' }}>
+    <Bullseye className="pf-v6-u-h-100vh">
       <Spinner aria-label={t('sessionLoading')} />
     </Bullseye>
   );
@@ -36,10 +50,17 @@ const AppRoutes: React.FC = () => {
   const {
     data: user,
     isPending: whoamiPending,
+    isFetching: whoamiFetching,
     isError: whoamiError,
     error: whoamiQueryError,
     refetch: refetchWhoami,
-  } = useCurrentUser({ enabled: authRequired });
+  } = useCurrentUser({
+    enabled: authRequired,
+    notifySessionExpired: false,
+  });
+  const cachedTransientError = Boolean(
+    user && whoamiError && isTransientWhoamiError(whoamiQueryError),
+  );
 
   // Stale dev-mode flag from a prior `make dev` run must not trigger 401 redirects.
   useLayoutEffect(() => {
@@ -61,15 +82,25 @@ const AppRoutes: React.FC = () => {
       return () => setSessionExpiredHandler(null);
     }
 
-    if (!authRequired || !user) {
+    if (!authRequired || !user || (whoamiError && !cachedTransientError)) {
       setSessionExpiredHandler(null);
       return;
     }
 
-    clearProxyReauthReloadFlag();
+    if (!whoamiError && !whoamiFetching) {
+      clearProxyReauthReloadFlag();
+    }
     setSessionExpiredHandler(reloadOnceForProxyReauth);
     return () => setSessionExpiredHandler(null);
-  }, [config?.authDisabled, devAuthenticated, authRequired, user]);
+  }, [
+    config?.authDisabled,
+    devAuthenticated,
+    authRequired,
+    user,
+    whoamiError,
+    whoamiFetching,
+    cachedTransientError,
+  ]);
 
   if (configLoading) {
     return <AuthBootstrapLoading />;
@@ -104,31 +135,62 @@ const AppRoutes: React.FC = () => {
     return <AuthBootstrapLoading />;
   }
 
-  if (!user) {
-    if (whoamiError && isUnauthorized(whoamiQueryError)) {
+  let sessionAlert: React.ReactNode;
+  if (whoamiError) {
+    const apiError = whoamiQueryError as ApiError | null;
+    if (apiError?.status === 401 && apiError.code === 'unauthorized') {
       return <AuthRequiredPage />;
     }
-    if (whoamiError) {
-      return (
-        <Bullseye style={{ minHeight: '100vh' }}>
-          <Alert
-            variant="danger"
-            title={t('sessionVerifyFailed')}
-            actionLinks={
-              <Button variant="link" onClick={() => void refetchWhoami()}>
-                {tCommon('actions.retry')}
-              </Button>
+    const unauthorized = apiError?.status === 401;
+    const accessDenied = apiError?.status === 403;
+    const signOut = unauthorized || accessDenied;
+    const rejected = unauthorized && apiError?.code === 'unauthenticated';
+    const message = rejected
+      ? apiError.message
+      : unauthorized
+        ? t('sessionUnknownUnauthorizedBody')
+        : typeof apiError?.status === 'number'
+          ? apiError.message
+          : t('sessionBffUnreachable');
+    const guidance = unauthorized
+      ? t('sessionRejectedBody')
+      : accessDenied
+        ? t('sessionPermissionDeniedHelp')
+        : apiError?.code === 'gateway_unavailable'
+          ? t('sessionGatewayUnavailableHelp')
+          : null;
+    sessionAlert = (
+      <Alert
+        variant="danger"
+        isInline={cachedTransientError}
+        title={rejected ? t('sessionRejectedTitle') : t('sessionVerifyFailed')}
+        actionLinks={
+          <Button
+            variant="link"
+            onClick={
+              signOut
+                ? () => redirectToProxySignOut(config.logoutUrl)
+                : () => void refetchWhoami()
             }
           >
-            {t('sessionBffUnreachable')}
-          </Alert>
-        </Bullseye>
-      );
+            {signOut ? t('sessionSignOut') : tCommon('actions.retry')}
+          </Button>
+        }
+      >
+        <Content component="p">{message}</Content>
+        {guidance && <Content component="p">{guidance}</Content>}
+      </Alert>
+    );
+    if (!cachedTransientError) {
+      return <Bullseye className="pf-v6-u-h-100vh">{sessionAlert}</Bullseye>;
     }
+  }
+
+  if (!user) {
     return null;
   }
 
-  return <AuthenticatedRoutes />;
+  return <AuthenticatedRoutes sessionAlert={sessionAlert} />;
 };
 
 export default AppRoutes;

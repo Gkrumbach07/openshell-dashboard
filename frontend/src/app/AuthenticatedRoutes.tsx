@@ -131,8 +131,10 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
-const AuthenticatedRoutes: React.FC = () => (
-  <AppLayout>
+const AuthenticatedRoutes: React.FC<{ sessionAlert?: React.ReactNode }> = ({
+  sessionAlert,
+}) => (
+  <AppLayout sessionAlert={sessionAlert}>
     <Routes>
       <Route
         path="/gateway"

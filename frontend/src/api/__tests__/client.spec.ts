@@ -120,6 +120,26 @@ describe('apiFetch', () => {
     expect(onExpired).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps whoami 401 visible without triggering an automatic reload', async () => {
+    const onExpired = jest.fn();
+    setSessionExpiredHandler(onExpired);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: () =>
+        Promise.resolve({ code: 'unauthenticated', message: 'token rejected' }),
+    });
+
+    await expect(
+      get('/api/v1/auth/whoami', { notifySessionExpired: false }),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: 'unauthenticated',
+      message: 'token rejected',
+    });
+    expect(onExpired).not.toHaveBeenCalled();
+  });
+
   it('clears session handler when set to null', async () => {
     const onExpired = jest.fn();
     setSessionExpiredHandler(onExpired);

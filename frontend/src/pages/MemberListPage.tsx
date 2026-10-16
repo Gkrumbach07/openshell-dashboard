@@ -42,7 +42,9 @@ type MemberListPageProps = {
 // role-update RPC, so a role change is remove + re-add.
 const MemberListPage: React.FC<MemberListPageProps> = ({ workspace }) => {
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
-  const { data: currentUser } = useCurrentUser();
+  const { data: currentUser } = useCurrentUser({
+    notifySessionExpired: false,
+  });
   const members = useMembers(workspace);
   const removeMember = useRemoveMember(workspace);
   const [isAddOpen, setAddOpen] = useState(false);

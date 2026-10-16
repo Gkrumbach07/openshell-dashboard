@@ -54,6 +54,7 @@ import { useTheme } from './theme';
 
 type AppLayoutProps = {
   children: React.ReactNode;
+  sessionAlert?: React.ReactNode;
 };
 
 type NavEntry = {
@@ -92,10 +93,10 @@ const navEntries: NavEntry[] = [
   },
 ];
 
-const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
+const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
   const { t } = useI18n('common');
   const location = useLocation();
-  const user = useCurrentUser();
+  const user = useCurrentUser({ notifySessionExpired: false });
   const { isPlatformAdmin, isUser, isLoading: isRoleLoading } = useUserRole();
   const features = useFeatureFlags();
   const gateway = useGatewayInfo();
@@ -285,6 +286,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   return (
     <Page masthead={masthead} sidebar={sidebar} isManagedSidebar>
+      {sessionAlert && <PageSection>{sessionAlert}</PageSection>}
       {/* Above every route, so an unsupported gateway is explained on the
           same screen as the errors it causes, for every signed-in user. It
           lives here rather than in a page so that it stays mounted across

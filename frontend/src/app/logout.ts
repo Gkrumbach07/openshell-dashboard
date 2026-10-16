@@ -1,6 +1,10 @@
 import { getAuthConfig } from '../api/auth';
 import { clearDevSession } from './authStore';
 
+export const redirectToProxySignOut = (logoutUrl?: string): void => {
+  window.location.assign(logoutUrl || '/oauth2/sign_out?rd=/oauth2/sign_in');
+};
+
 // Logout per auth mode (ADR 0002):
 // - Dev (AUTH_DISABLED): the "session" is a client-side flag; clear it.
 // - Proxied: the auth proxy owns the session and redirects after sign-out.
@@ -16,9 +20,7 @@ export const logout = async (): Promise<void> => {
       return;
     }
 
-    window.location.assign(
-      config.logoutUrl || '/oauth2/sign_out?rd=/oauth2/sign_in',
-    );
+    redirectToProxySignOut(config.logoutUrl);
   } catch {
     window.location.assign('/login');
   }
