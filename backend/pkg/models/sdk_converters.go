@@ -12,6 +12,7 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
+	pb "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sbv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -994,6 +995,22 @@ func FromSDKSandboxLogs(result *openshell.LogResult) SandboxLogs {
 			Source:      line.Source,
 			Fields:      line.Fields,
 		})
+	}
+	return out
+}
+
+// FromProtoSandboxLogLine converts a protobuf SandboxLogLine to the JSON DTO
+func FromProtoSandboxLogLine(line *pb.SandboxLogLine) LogLine {
+	out := LogLine{
+		SandboxID: line.GetSandboxId(),
+		Level:     line.GetLevel(),
+		Target:    line.GetTarget(),
+		Message:   line.GetMessage(),
+		Source:    line.GetSource(),
+		Fields:    line.GetFields(),
+	}
+	if ts := line.GetEventTime(); ts != nil {
+		out.TimestampMs = ts.AsTime().UnixMilli()
 	}
 	return out
 }

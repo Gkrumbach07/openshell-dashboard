@@ -1,11 +1,17 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	pb "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/apiutils"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
@@ -67,6 +73,156 @@ func (h *LogsHandler) GetSandboxLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiutils.WriteJSON(w, http.StatusOK, models.FromSDKSandboxLogs(result))
+}
+
+func (h *LogsHandler) StreamSandboxLogs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := w.(http.Flusher); !ok {
+		apiutils.WriteError(w, http.StatusInternalServerError,
+			apiutils.Internal, "streaming is unavailable")
+		return
+	}
+
+	query := r.URL.Query()
+
+	logTailLines := uint32(200)
+	source := query["source"]
+	logMinLevel := query.Get("level")
+
+	if raw := query.Get("lines"); raw != "" {
+		n, err := strconv.ParseUint(raw, 10, 32)
+		if err != nil {
+			apiutils.WriteError(w, http.StatusBadRequest,
+				apiutils.InvalidArgument, "invalid lines")
+			return
+		}
+		logTailLines = uint32(n)
+	}
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	stream, err := h.sandboxSvc.StreamSandboxLogs(
+		ctx,
+		r.PathValue("workspace"),
+		r.PathValue("name"),
+		logTailLines,
+		source,
+		logMinLevel,
+	)
+	if err != nil {
+		apiutils.WriteSDKError(w, err)
+		return
+	}
+
+	first, err := stream.Recv()
+	if err != nil {
+		apiutils.WriteSDKError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	rc := http.NewResponseController(w)
+	defer func() { _ = rc.SetWriteDeadline(time.Time{}) }()
+
+	write := func(frame string) error {
+		// Prevent a stalled browser from retaining this handler forever.
+		if err := rc.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil &&
+			!errors.Is(err, http.ErrNotSupported) {
+			return err
+		}
+		if _, err := io.WriteString(w, frame); err != nil {
+			return err
+		}
+		return rc.Flush()
+	}
+
+	send := func(kind string, payload any) error {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		return write(fmt.Sprintf("event: %s\ndata: %s\n\n", kind, data))
+	}
+
+	forward := func(event *pb.SandboxStreamEvent) error {
+		if line := event.GetLog(); line != nil {
+			return send("log", models.FromProtoSandboxLogLine(line))
+		}
+		if warning := event.GetWarning(); warning != nil {
+			return send("warning", struct {
+				Message string `json:"message"`
+			}{Message: warning.GetMessage()})
+		}
+		return nil
+	}
+
+	if err := write(": connected\n\n"); err != nil {
+		return
+	}
+	if err := forward(first); err != nil {
+		return
+	}
+
+	type received struct {
+		event *pb.SandboxStreamEvent
+		err   error
+	}
+	incoming := make(chan received, 1)
+
+	// handle events from sandbox logs
+	go func() {
+		for {
+			event, err := stream.Recv()
+			select {
+			case incoming <- received{event: event, err: err}:
+			case <-ctx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	// handle http server sent events
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-heartbeat.C:
+			if err := write(": keepalive\n\n"); err != nil {
+				return
+			}
+
+		case next := <-incoming:
+			if next.err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				if errors.Is(next.err, io.EOF) {
+					_ = send("end", struct{}{})
+				} else {
+					// HTTP headers are committed: send an SSE error,
+					// never append a normal JSON error response.
+					_ = send("stream-error", apiutils.ErrorResponse{
+						Code:    apiutils.GatewayUnavailable,
+						Message: "Live logs disconnected",
+					})
+				}
+				return
+			}
+			if err := forward(next.event); err != nil {
+				return
+			}
+		}
+	}
 }
 
 // ListSandboxProviders lists provider records attached to a sandbox.

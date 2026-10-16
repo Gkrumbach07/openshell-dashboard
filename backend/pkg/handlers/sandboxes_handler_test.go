@@ -51,7 +51,7 @@ func TestListSandboxes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.listFn = tc.listFn
-			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes(), nil))
 			r := chi.NewRouter()
 			r.Get("/workspaces/{workspace}/sandboxes", handler.ListSandboxes)
 
@@ -78,7 +78,7 @@ func TestListSandboxesBody(t *testing.T) {
 			},
 		}, nil
 	}
-	handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
+	handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes(), nil))
 	r := chi.NewRouter()
 	r.Get("/workspaces/{workspace}/sandboxes", handler.ListSandboxes)
 
@@ -180,7 +180,7 @@ func TestCreateSandbox(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.createFn = tc.createFn
-			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes(), nil))
 			r := chi.NewRouter()
 			r.Post("/workspaces/{workspace}/sandboxes", handler.CreateSandbox)
 
@@ -226,7 +226,7 @@ func postSandbox(t *testing.T, body string, createErr error) (*httptest.Response
 			ServiceURLs: map[string]string{"": "https://sandbox.example.test"},
 		}, nil
 	}
-	handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
+	handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes(), nil))
 	r := chi.NewRouter()
 	r.Post("/workspaces/{workspace}/sandboxes", handler.CreateSandbox)
 
@@ -356,7 +356,7 @@ func TestCreateSandboxWithoutImage(t *testing.T) {
 				resolved.Template = &openshell.SandboxTemplate{Image: defaultImage}
 				return &openshell.Sandbox{Name: name, Spec: resolved}, nil
 			}
-			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes(), nil))
 			r := chi.NewRouter()
 			r.Post("/workspaces/{workspace}/sandboxes", handler.CreateSandbox)
 
@@ -471,7 +471,7 @@ func TestGetSandboxBody(t *testing.T) {
 			},
 		}, nil
 	}
-	handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
+	handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes(), nil))
 	r := chi.NewRouter()
 	r.Get("/workspaces/{workspace}/sandboxes/{name}", handler.GetSandbox)
 
@@ -538,7 +538,7 @@ func TestGetSandbox(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.getFn = tc.getFn
-			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes(), nil))
 			r := chi.NewRouter()
 			r.Get("/workspaces/{workspace}/sandboxes/{name}", handler.GetSandbox)
 
@@ -585,7 +585,7 @@ func TestStopSandbox(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.stopFn = tc.stopFn
-			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes(), nil))
 			r := chi.NewRouter()
 			r.Post("/workspaces/{workspace}/sandboxes/{name}/stop", handler.StopSandbox)
 
@@ -625,7 +625,7 @@ func TestStartSandbox(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.startFn = tc.startFn
-			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes(), nil))
 			r := chi.NewRouter()
 			r.Post("/workspaces/{workspace}/sandboxes/{name}/start", handler.StartSandbox)
 
@@ -672,7 +672,7 @@ func TestDeleteSandbox(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.deleteFn = tc.deleteFn
-			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes()))
+			handler := NewSandboxHandler(services.NewSandboxService(sdk.Sandboxes(), nil))
 			r := chi.NewRouter()
 			r.Delete("/workspaces/{workspace}/sandboxes/{name}", handler.DeleteSandbox)
 

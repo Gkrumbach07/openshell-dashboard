@@ -14,6 +14,7 @@ import (
 
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/apiutils"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/auth"
+	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/clients"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/handlers"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
@@ -50,7 +51,7 @@ type App struct { //nolint:govet // fieldalignment: readability over padding
 // NewApp builds the application.
 func NewApp(
 	sdkClient openshell.ClientInterface,
-	execUpload services.StdinExecer,
+	exec clients.RawExecClientInterface,
 	authMiddleware auth.MiddlewareInterface,
 	staticDir string,
 	authCfg models.AuthConfigResponse,
@@ -64,14 +65,14 @@ func NewApp(
 		execTimeout:   30,
 	}
 
-	sandboxSvc := services.NewSandboxService(sdkClient.Sandboxes())
+	sandboxSvc := services.NewSandboxService(sdkClient.Sandboxes(), exec)
 	configSvc := services.NewConfig(sdkClient.Config())
 	execSvc := services.NewExecService(sdkClient.Exec())
 	policySvc := services.NewPolicyService(sdkClient.Policy())
 
 	app.drafts = handlers.NewDraftsHandler(policySvc)
 	app.drafts.SetSandboxService(sandboxSvc)
-	app.files = handlers.NewFilesHandler(services.NewFileService(execUpload), execSvc, sandboxSvc, handlers.FilesHandlerConfig{ExecTimeout: app.execTimeout, MaxUploadSize: app.maxUploadSize})
+	app.files = handlers.NewFilesHandler(services.NewFileService(exec), execSvc, sandboxSvc, handlers.FilesHandlerConfig{ExecTimeout: app.execTimeout, MaxUploadSize: app.maxUploadSize})
 	app.gateway = handlers.NewGatewayHandler(services.NewGatewayService(sdkClient), authMiddleware, authCfg)
 	app.logs = handlers.NewLogsHandler(sandboxSvc)
 	app.policies = handlers.NewPoliciesHandler(policySvc, configSvc)
@@ -219,6 +220,7 @@ func (app *App) Routes() http.Handler {
 					r.Get("/sandboxes/{name}/settings", app.settings.GetSandboxSettings)
 					r.Put("/sandboxes/{name}/settings", app.settings.SetSandboxSetting)
 					r.Delete("/sandboxes/{name}/settings", app.settings.DeleteSandboxSetting)
+					r.Get("/sandboxes/{name}/logs/stream", app.logs.StreamSandboxLogs)
 					r.Get("/sandboxes/{name}/logs", app.logs.GetSandboxLogs)
 					r.Get("/sandboxes/{name}/terminal", app.terminal.Terminal)
 					r.Get("/sandboxes/{name}/providers", app.logs.ListSandboxProviders)
