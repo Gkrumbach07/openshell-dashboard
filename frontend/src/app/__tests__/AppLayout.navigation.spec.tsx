@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router-dom';
 import type { CurrentUser } from '../../types';
 
 let mockIsPlatformAdmin = false;
+let mockIsUser = true;
+let mockIsUnentitled = false;
 let mockUser: CurrentUser | undefined;
 
 jest.mock('../../api/gateway', () => ({
@@ -20,7 +22,11 @@ jest.mock('../../api/auth', () => ({
   useFeatureFlags: () => ({ globalPolicy: true, settings: true }),
 }));
 jest.mock('../../api/rbac', () => ({
-  useUserRole: () => ({ isPlatformAdmin: mockIsPlatformAdmin }),
+  useUserRole: () => ({
+    isPlatformAdmin: mockIsPlatformAdmin,
+    isUser: mockIsUser,
+    isUnentitled: mockIsUnentitled,
+  }),
 }));
 jest.mock('../theme', () => ({
   useTheme: () => ({ theme: 'light', toggleTheme: jest.fn() }),
@@ -81,6 +87,8 @@ const pickFromUserMenu = async (testId: string) => {
 describe('AppLayout navigation', () => {
   beforeEach(() => {
     mockIsPlatformAdmin = false;
+    mockIsUser = true;
+    mockIsUnentitled = false;
     mockUser = { subject: 'user-1', roles: [] };
   });
 
@@ -120,10 +128,43 @@ describe('AppLayout navigation', () => {
   });
 });
 
+// Unentitled users keep the masthead (theme, identity, sign-out) but must not
+// see side nav, the nav toggle, or the gateway health chip.
+describe('AppLayout entitlement chrome', () => {
+  beforeEach(() => {
+    mockIsPlatformAdmin = false;
+    mockIsUser = false;
+    mockIsUnentitled = true;
+    mockUser = { subject: 'user-1', roles: [] };
+  });
+
+  it('hides side nav, nav toggle, and gateway health when unentitled', () => {
+    renderShell('/workspaces');
+
+    expect(
+      screen.queryByRole('navigation', {
+        name: 'Primary navigation',
+        hidden: true,
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Global navigation' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('gateway-status-region'),
+    ).not.toBeInTheDocument();
+
+    expect(screen.getByTestId('theme-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('current-user')).toBeInTheDocument();
+  });
+});
+
 // What `openshell whoami` prints, for the session the dashboard is using.
 describe('AppLayout identity', () => {
   beforeEach(() => {
     mockIsPlatformAdmin = false;
+    mockIsUser = true;
+    mockIsUnentitled = false;
     mockUser = {
       subject: 'f3b1c2d4',
       displayName: 'Ada Lovelace',

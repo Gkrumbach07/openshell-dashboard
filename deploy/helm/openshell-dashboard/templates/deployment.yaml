@@ -58,6 +58,10 @@ spec:
             - name: ADMIN_ROLE
               value: {{ .Values.oidc.adminRole | quote }}
             {{- end }}
+            {{- if .Values.oidc.userRole }}
+            - name: USER_ROLE
+              value: {{ .Values.oidc.userRole | quote }}
+            {{- end }}
             - name: LOGOUT_URL
               value: {{ .Values.dashboard.logoutURL | quote }}
             - name: OPENSHELL_GATEWAY_URL

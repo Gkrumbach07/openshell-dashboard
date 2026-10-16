@@ -13,7 +13,11 @@ jest.mock('../../api/auth', () => ({
   useFeatureFlags: () => ({ globalPolicy: true, settings: true }),
 }));
 jest.mock('../../api/rbac', () => ({
-  useUserRole: () => ({ isPlatformAdmin: mockIsPlatformAdmin }),
+  useUserRole: () => ({
+    isPlatformAdmin: mockIsPlatformAdmin,
+    isUser: true,
+    isUnentitled: false,
+  }),
 }));
 jest.mock('../theme', () => ({
   useTheme: () => ({ theme: 'light', toggleTheme: jest.fn() }),

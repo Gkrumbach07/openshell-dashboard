@@ -28,6 +28,7 @@ oidc:
   issuer: https://keycloak.example.com/realms/openshell
   codeChallengeMethod: S256
   adminRole: openshell-admin
+  userRole: openshell-user
   allowedRoles:
     - openshell-api:openshell-admin
     - openshell-api:openshell-user
@@ -172,6 +173,7 @@ These files are in the repository, not in the packaged chart. CI renders each on
 | oidc.redirectURL | string | `""` | Full public callback URL; required when host is dynamically allocated. Empty derives from Route/HTTPRoute host. |
 | oidc.rolesClaim | string | `""` | Roles claim path, the same as the gateway's roles claim. Informational: the chart does not read it. |
 | oidc.scope | string | `""` | OAuth2 scopes; empty uses the provider default (openid email profile for generic OIDC). |
+| oidc.userRole | string | `""` | Role name for standard user access. Must be the same as the openshell gateway user role. Defaults to "user" |
 | openshiftRoute.annotations | object | `{"haproxy.router.openshift.io/timeout":"300s","haproxy.router.openshift.io/timeout-tunnel":"1h"}` | Route annotations; the timeouts cover long-lived terminal WebSockets. |
 | openshiftRoute.destinationCACertificate | string | `""` | CA PEM for reencrypt backend validation (requires a separate TLS-enabled proxy configuration). |
 | openshiftRoute.enabled | bool | `false` | Create an edge/reencrypt OpenShift Route (never passthrough). |

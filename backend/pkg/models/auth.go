@@ -4,6 +4,7 @@ package models
 // features are available.
 type AuthConfigResponse struct {
 	AdminRole    string       `json:"adminRole,omitempty"`
+	UserRole     string       `json:"userRole,omitempty"`
 	LogoutURL    string       `json:"logoutUrl,omitempty"`
 	Features     FeatureFlags `json:"features"`
 	AuthDisabled bool         `json:"authDisabled"`

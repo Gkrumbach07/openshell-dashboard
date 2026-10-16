@@ -29,6 +29,11 @@ tests:
           content:
             name: ADMIN_ROLE
             value: openshell-admin
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: USER_ROLE
+            value: openshell-user
   - it: keeps browser sign-out separate from optional provider backend logout
     template: templates/deployment.yaml
     set:

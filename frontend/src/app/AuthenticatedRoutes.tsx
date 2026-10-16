@@ -13,6 +13,7 @@ import {
 } from 'react-router-dom';
 
 import AllWorkspacesPage from '../pages/AllWorkspacesPage';
+import EntitlementPage from '../pages/EntitlementPage';
 import GatewayOverviewPage from '../pages/GatewayOverviewPage';
 import WorkspaceListPage from '../pages/WorkspaceListPage';
 import WorkspaceDetailPage from '../pages/WorkspaceDetailPage';
@@ -133,8 +134,16 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const AuthenticatedRoutes: React.FC<{ sessionAlert?: React.ReactNode }> = ({
   sessionAlert,
-}) => (
-  <AppLayout sessionAlert={sessionAlert}>
+}) => {
+  const { isUnentitled, isLoading } = useUserRole();
+
+  if (isLoading) {
+    return null;
+  }
+
+  const content = isUnentitled ? (
+    <EntitlementPage />
+  ) : (
     <Routes>
       <Route
         path="/gateway"
@@ -188,7 +197,9 @@ const AuthenticatedRoutes: React.FC<{ sessionAlert?: React.ReactNode }> = ({
       />
       <Route path="*" element={<Navigate to="/workspaces" replace />} />
     </Routes>
-  </AppLayout>
-);
+  );
+
+  return <AppLayout sessionAlert={sessionAlert}>{content}</AppLayout>;
+};
 
 export default AuthenticatedRoutes;

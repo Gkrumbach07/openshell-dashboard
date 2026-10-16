@@ -7,11 +7,15 @@ let mockIsPlatformAdmin = true;
 jest.mock('../../api/rbac', () => ({
   useUserRole: () => ({
     isPlatformAdmin: mockIsPlatformAdmin,
+    isUser: true,
+    isUnentitled: false,
     isLoading: false,
   }),
 }));
 jest.mock('../../api/auth', () => ({
-  useCurrentUser: () => ({ data: { subject: 'user-1', roles: [] } }),
+  useCurrentUser: () => ({
+    data: { subject: 'user-1', roles: ['openshell-user'] },
+  }),
   useFeatureFlags: () => ({ globalPolicy: true, settings: true }),
 }));
 jest.mock('../../api/gateway', () => ({

@@ -392,7 +392,7 @@ bff_env() {
   fi
   echo "export OPENSHELL_GATEWAY_URL=127.0.0.1:${GATEWAY_PORT}"
   echo "unset GATEWAY_CA_CERT GATEWAY_CLIENT_CERT GATEWAY_CLIENT_KEY"
-  echo "export AUTH_DISABLED=false ADMIN_ROLE=openshell-admin AUTH_USER_HEADER=x-forwarded-user"
+  echo "export AUTH_DISABLED=false ADMIN_ROLE=openshell-admin USER_ROLE=openshell-user AUTH_USER_HEADER=x-forwarded-user"
   echo "export LOGOUT_URL='/oauth2/sign_out?rd=/oauth2/sign_in'"
 }
 
