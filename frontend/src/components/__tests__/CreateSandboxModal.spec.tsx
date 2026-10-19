@@ -12,6 +12,7 @@ const mockFormSetters = {
   setMemory: jest.fn(),
   setPolicyText: jest.fn(),
   setPolicyExpanded: jest.fn(),
+  setGeneratedExpanded: jest.fn(),
   applyTemplate: jest.fn(),
   toggleProvider: jest.fn(),
   reset: jest.fn(),
@@ -52,6 +53,8 @@ const defaultFormState = {
   policyText: '{}',
   selectedProviders: [] as string[],
   isPolicyExpanded: false,
+  isGeneratedExpanded: false,
+  hasGeneratedError: false,
   policyError: null as string | null,
   parsedPolicy: {},
   labels: {} as Record<string, string> | null,
@@ -202,5 +205,41 @@ describe('CreateSandboxModal', () => {
     expect(
       screen.getByText('GPU count must be a whole number'),
     ).toBeInTheDocument();
+  });
+
+  // The fields the gateway generates or defaults. The form opens on the
+  // policy, the image and the providers, and these are a fold below them.
+  describe('the generated fields', () => {
+    it('opens on the policy, the image and the providers', () => {
+      render(<CreateSandboxModal {...defaultProps} />);
+      expect(
+        screen.getByTestId('sandbox-policy-template-select'),
+      ).toBeVisible();
+      expect(screen.getByTestId('sandbox-image-input')).toBeVisible();
+      expect(screen.getByTestId('sandbox-name-input')).not.toBeVisible();
+      expect(screen.getByTestId('sandbox-labels-input')).not.toBeVisible();
+      expect(screen.getByTestId('sandbox-gpu-input')).not.toBeVisible();
+    });
+
+    it('shows them when the section is opened', () => {
+      currentFormState = { ...defaultFormState, isGeneratedExpanded: true };
+      render(<CreateSandboxModal {...defaultProps} />);
+      expect(screen.getByTestId('sandbox-name-input')).toBeVisible();
+    });
+
+    // Otherwise a value typed into one of them blocks the form from
+    // somewhere nobody can see.
+    it('opens by itself around a field that needs correcting', () => {
+      currentFormState = {
+        ...defaultFormState,
+        labels: null,
+        hasGeneratedError: true,
+      };
+      render(<CreateSandboxModal {...defaultProps} />);
+      expect(screen.getByTestId('sandbox-labels-input')).toBeVisible();
+      expect(
+        screen.getByText('Labels must be comma-separated key=value pairs'),
+      ).toBeVisible();
+    });
   });
 });

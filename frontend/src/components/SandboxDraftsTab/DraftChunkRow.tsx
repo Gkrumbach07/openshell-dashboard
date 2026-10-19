@@ -12,6 +12,7 @@ import {
   Flex,
   FlexItem,
   Label,
+  LabelGroup,
   Popover,
   Stack,
   StackItem,
@@ -21,7 +22,12 @@ import {
 import { ExpandableRowContent, Tbody, Td, Tr } from '@patternfly/react-table';
 
 import { formatTimestamp } from '../../utils/formatters';
-import { approvalAnnotation, chunkStatusColor, chunkStatusIcon } from './utils';
+import {
+  approvalAnnotation,
+  approveOutlineStyle,
+  chunkStatusColor,
+  chunkStatusIcon,
+} from './utils';
 import type { useDraftActions } from './useDraftActions';
 import type { PolicyChunk } from '../../types';
 
@@ -88,24 +94,12 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
           <Stack>
             <StackItem>
               {chunk.ruleName || chunk.id}
+              {/* The one label that stays in the table: it marks the chunks
+                  the gateway skips on an approve-all, so it has to be
+                  readable without opening the row. */}
               {chunk.securityNotes && (
                 <Label isCompact color="red" className="pf-v6-u-ml-sm">
                   flagged
-                </Label>
-              )}
-              {annotation && (
-                <Label
-                  isCompact
-                  color={annotation.color}
-                  className="pf-v6-u-ml-sm"
-                  data-testid={`chunk-annotation-${chunk.id}`}
-                >
-                  {annotation.label}
-                </Label>
-              )}
-              {chunk.stage && (
-                <Label isCompact className="pf-v6-u-ml-sm">
-                  {chunk.stage}
                 </Label>
               )}
             </StackItem>
@@ -159,8 +153,9 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
               {canApprove && (
                 <FlexItem>
                   <Button
-                    variant="primary"
+                    variant="secondary"
                     size="sm"
+                    style={approveOutlineStyle}
                     onClick={() =>
                       approve.mutate({
                         chunkId: chunk.id,
@@ -203,7 +198,8 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
               {canReject && (
                 <FlexItem>
                   <Button
-                    variant="danger"
+                    variant="secondary"
+                    isDanger
                     size="sm"
                     onClick={startRejecting}
                     data-testid={`reject-chunk-${chunk.id}`}
@@ -286,19 +282,58 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
                   </Alert>
                 </StackItem>
               )}
-              {chunk.securityNotes && (
-                <StackItem>
-                  <Alert variant="warning" isInline title="Security notes">
-                    {chunk.securityNotes}
-                  </Alert>
-                </StackItem>
-              )}
               <StackItem>
                 <DescriptionList
                   isCompact
                   isHorizontal
                   data-testid={`chunk-details-${chunk.id}`}
                 >
+                  {/* What the row used to carry beside the rule name, less
+                      the security flag, which stays in the table. */}
+                  {(annotation || chunk.stage) && (
+                    <DescriptionListGroup>
+                      <DescriptionListTerm>Labels</DescriptionListTerm>
+                      <DescriptionListDescription>
+                        <LabelGroup numLabels={2}>
+                          {annotation && (
+                            <Label
+                              isCompact
+                              color={annotation.color}
+                              data-testid={`chunk-annotation-${chunk.id}`}
+                            >
+                              {annotation.label}
+                            </Label>
+                          )}
+                          {chunk.stage && (
+                            <Label isCompact>{chunk.stage}</Label>
+                          )}
+                        </LabelGroup>
+                      </DescriptionListDescription>
+                    </DescriptionListGroup>
+                  )}
+                  {chunk.securityNotes && (
+                    <DescriptionListGroup>
+                      <DescriptionListTerm>Security notes</DescriptionListTerm>
+                      <DescriptionListDescription>
+                        {/* The same label the row carries, repeated against
+                            the note it stands for: the table says which
+                            proposals are flagged, this says what the flag
+                            was raised about. */}
+                        <Flex
+                          gap={{ default: 'gapSm' }}
+                          alignItems={{ default: 'alignItemsFlexStart' }}
+                          flexWrap={{ default: 'nowrap' }}
+                        >
+                          <FlexItem>
+                            <Label isCompact color="red">
+                              flagged
+                            </Label>
+                          </FlexItem>
+                          <FlexItem>{chunk.securityNotes}</FlexItem>
+                        </Flex>
+                      </DescriptionListDescription>
+                    </DescriptionListGroup>
+                  )}
                   {annotation && (
                     <DescriptionListGroup>
                       <DescriptionListTerm>Review</DescriptionListTerm>

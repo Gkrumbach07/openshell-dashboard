@@ -16,6 +16,7 @@ import {
 } from '@patternfly/react-core';
 import { CodeEditor, Language } from '@patternfly/react-code-editor';
 
+import { useTheme } from '../../app/theme';
 import { usePolicyText } from '../../hooks/usePolicyText';
 import { hasGatewayMarks, policyToText } from '../../utils/policyFile';
 import type { PolicyFileFormat } from '../../utils/policyFile';
@@ -94,6 +95,7 @@ const PolicyDocumentEditor: React.FC<PolicyDocumentEditorProps> = ({
   error,
   notSentReason,
 }) => {
+  const { theme } = useTheme();
   const [view, setView] = useState<DocumentView>('own');
   const [format, setFormat] = useState<PolicyFileFormat>('json');
   const [ownDraft, setOwnDraft] = useState<PolicyDocumentDraft | null>(null);
@@ -246,6 +248,7 @@ const PolicyDocumentEditor: React.FC<PolicyDocumentEditorProps> = ({
           </Alert>
         ) : (
           <CodeEditor
+            isDarkTheme={theme === 'dark'}
             isReadOnly
             isLanguageLabelVisible
             isCopyEnabled

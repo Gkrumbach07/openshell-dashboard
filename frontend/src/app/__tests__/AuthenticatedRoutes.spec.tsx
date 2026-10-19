@@ -31,6 +31,7 @@ const mockPage = (testId: string) => ({
   __esModule: true,
   default: () => <div data-testid={testId} />,
 });
+jest.mock('../../pages/AllSandboxesPage', () => mockPage('sandboxes'));
 jest.mock('../../pages/AllWorkspacesPage', () => mockPage('all-workspaces'));
 jest.mock('../../pages/EntitlementPage', () => mockPage('entitlement-screen'));
 jest.mock('../../pages/GatewayOverviewPage', () => mockPage('gateway'));
@@ -75,12 +76,44 @@ describe('AuthenticatedRoutes', () => {
     expect(screen.getByTestId('workspace-list')).toBeInTheDocument();
   });
 
+  it('shows the sandboxes page to a platform admin', () => {
+    mockRole = { ...entitledUser(), isPlatformAdmin: true };
+    renderAt('/sandboxes');
+
+    expect(screen.getByTestId('sandboxes')).toBeInTheDocument();
+  });
+
+  it('sends anyone else away from sandboxes', () => {
+    renderAt('/sandboxes');
+
+    expect(screen.queryByTestId('sandboxes')).not.toBeInTheDocument();
+    expect(screen.getByTestId('workspace-list')).toBeInTheDocument();
+  });
+
   it('decides nothing while the role is still loading', () => {
     mockRole = { ...entitledUser(), isLoading: true };
     renderAt('/all-workspaces');
 
     expect(screen.queryByTestId('all-workspaces')).not.toBeInTheDocument();
     expect(screen.queryByTestId('workspace-list')).not.toBeInTheDocument();
+  });
+
+  // Breadcrumb puts the divider on each child after the first, and it counts
+  // its children without looking inside a fragment. Grouping the deeper two
+  // in one left a sandbox's trail reading "Workspaces default sb" with
+  // nothing between the names.
+  it('divides every crumb of a sandbox from the one before it', () => {
+    const { container } = renderAt('/workspaces/team-a/sandboxes/sb');
+
+    const crumbs = screen.getAllByRole('listitem');
+    expect(crumbs.map((crumb) => crumb.textContent)).toEqual([
+      'Workspaces',
+      'team-a',
+      'sb',
+    ]);
+    expect(
+      container.querySelectorAll('.pf-v6-c-breadcrumb__item-divider'),
+    ).toHaveLength(2);
   });
 
   // It sits beside /workspaces, not under it: a workspace named
@@ -92,9 +125,23 @@ describe('AuthenticatedRoutes', () => {
     expect(screen.getByTestId('workspace-list')).toBeInTheDocument();
     unmount();
 
-    renderAt('/workspaces/all-workspaces');
+    const { unmount: unmountAllWorkspaces } = renderAt(
+      '/workspaces/all-workspaces',
+    );
     expect(screen.getByTestId('workspace')).toBeInTheDocument();
     expect(screen.queryByTestId('all-workspaces')).not.toBeInTheDocument();
+    unmountAllWorkspaces();
+
+    // Beside /workspaces, not under it: a workspace named "sandboxes" is
+    // still that workspace, and a sandbox detail path is still a sandbox.
+    const { unmount: unmountWorkspace } = renderAt('/workspaces/sandboxes');
+    expect(screen.getByTestId('workspace')).toBeInTheDocument();
+    expect(screen.queryByTestId('sandboxes')).not.toBeInTheDocument();
+    unmountWorkspace();
+
+    renderAt('/workspaces/team-a/sandboxes/agent');
+    expect(screen.getByTestId('sandbox')).toBeInTheDocument();
+    expect(screen.queryByTestId('sandboxes')).not.toBeInTheDocument();
   });
 
   it('shows the entitlement screen instead of routes when unentitled', () => {

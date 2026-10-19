@@ -259,12 +259,14 @@ export const useMergeSandboxPolicy = (workspace: string, name: string) => {
 };
 
 // Polled: another platform admin, or the CLI, may set or delete the global
-// policy while the page is open.
-export const useGlobalPolicy = () =>
+// policy while the page is open. Pass enabled=false where the global policy
+// feature is switched off: nothing is requested.
+export const useGlobalPolicy = (enabled = true) =>
   useQuery({
     queryKey: policyKeys.global,
     queryFn: getGlobalPolicy,
     refetchInterval: CONFIG_POLL_MS,
+    enabled,
   });
 
 // The global policy replaces the policy of every sandbox, so setting or

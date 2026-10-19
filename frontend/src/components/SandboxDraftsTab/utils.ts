@@ -7,6 +7,27 @@ import {
 
 import type { DraftChunkApproval, PolicyChunk } from '../../types';
 
+// A green outline button, for approving. PatternFly has no success variant: a
+// secondary button takes its outline from the brand token (the blue), and
+// isDanger is the one status modifier it offers. This is PatternFly's own
+// danger-outline mapping with the success tokens in place of the danger ones,
+// so the button keeps every state the component defines and follows the
+// theme. Shared so the row's Approve and the toolbar's Approve all match.
+export const approveOutlineStyle = {
+  '--pf-v6-c-button--m-secondary--Color':
+    'var(--pf-t--global--text--color--status--success--default)',
+  '--pf-v6-c-button--m-secondary--BorderColor':
+    'var(--pf-t--global--border--color--status--success--default)',
+  '--pf-v6-c-button--m-secondary--hover--Color':
+    'var(--pf-t--global--text--color--status--success--hover)',
+  '--pf-v6-c-button--m-secondary--hover--BorderColor':
+    'var(--pf-t--global--border--color--status--success--hover)',
+  '--pf-v6-c-button--m-secondary--m-clicked--Color':
+    'var(--pf-t--global--text--color--status--success--clicked)',
+  '--pf-v6-c-button--m-secondary--m-clicked--BorderColor':
+    'var(--pf-t--global--border--color--status--success--clicked)',
+} as React.CSSProperties;
+
 export const eventColor = (
   eventType: string,
 ): 'green' | 'red' | 'blue' | 'orange' | 'grey' => {
@@ -23,16 +44,12 @@ export const eventColor = (
   return 'grey';
 };
 
-export const chunkStatusColor = (
-  status: string,
-): 'green' | 'red' | 'blue' | 'grey' => {
+export const chunkStatusColor = (status: string): 'green' | 'red' | 'grey' => {
   switch (status) {
     case 'approved':
       return 'green';
     case 'rejected':
       return 'red';
-    case 'pending':
-      return 'blue';
     default:
       return 'grey';
   }
@@ -56,7 +73,9 @@ export const chunkStatusIcon = (
 // The statuses `openshell draft get --status` filters by. The empty one is no
 // filter at all.
 export const CHUNK_STATUS_FILTERS = [
-  { value: '', label: 'All' },
+  // Shut, the toggle is the only thing saying what is being filtered, so the
+  // one option that is not itself a status has to name it.
+  { value: '', label: 'All statuses' },
   { value: 'pending', label: 'Pending' },
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },

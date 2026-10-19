@@ -2,19 +2,35 @@ export default {
   nav: {
     gateway: 'Gateway',
     workspaces: 'Workspaces',
-    allWorkspaces: 'All workspaces',
-    providerProfiles: 'Provider profiles',
+    // Providers, templates and services across every workspace — resources,
+    // not workspaces, which is the question "what is the difference between
+    // Workspaces and All workspaces?" that the old label invited. Sandboxes
+    // are their own entry.
+    allWorkspaces: 'Resources',
+    proposals: 'Proposals',
+    sandboxes: 'Sandboxes',
+    providerProfiles: 'Providers',
     globalPolicy: 'Global policy',
     settings: 'Settings',
     primary: 'Primary navigation',
     global: 'Global navigation',
+    // The sidebar's sections are told apart by a rule and no longer named.
+    // Kept all the same — a locale is published API.
+    groupWorkspaces: 'Workspaces',
+    groupPlatform: 'Platform',
   },
   header: {
     actions: 'Header actions',
     themeToLight: 'Switch to light theme',
     themeToDark: 'Switch to dark theme',
+    // No longer used, and kept all the same — a locale is published API.
+    // The About modal retired into the Gateway page, which says everything
+    // it did, and the help menu went with the last item it had left.
     help: 'Help',
+    documentation: 'Documentation',
     about: 'About',
+    // What the badge beside it is the value of — same form as gatewayHealth.label.
+    roleLabel: 'Role:',
     roleAdmin: 'Platform admin',
     roleUser: 'Standard user',
     userFallback: 'User',
@@ -32,6 +48,10 @@ export default {
     none: 'None',
     close: 'Close',
   },
+  // Only brandAlt is still shown, on the masthead logo. The rest belonged to
+  // the About modal, which retired into the Gateway page. The keys stay: a
+  // locale is published API (ADR 0004), and a consumer may have overridden
+  // them.
   about: {
     productName: 'OpenShell Dashboard',
     trademark: 'Apache-2.0 license.',
@@ -44,8 +64,6 @@ export default {
     gatewayLine: '{{line}}.x',
     dashboardCommit: 'Dashboard commit',
     gatewayVersion: 'Gateway version',
-    gatewayStatus: 'Gateway status',
-    computeDriver: 'Compute driver',
     unknown: 'Unknown',
   },
   gatewayCompatibility: {
@@ -58,10 +76,14 @@ export default {
   },
   // What the gateway's own health check says, shown in the masthead.
   gatewayHealth: {
-    healthy: 'Gateway healthy',
-    notHealthy: 'Gateway not healthy',
-    unreachable: 'Gateway unreachable',
-    unknown: 'Gateway status unknown',
+    // What the label beside it is the value of. The states no longer name
+    // the gateway themselves, and they are cased as the Gateway page cases
+    // the same status, which is as the gateway itself sends it.
+    label: 'Gateway status:',
+    healthy: 'HEALTHY',
+    notHealthy: 'NOT HEALTHY',
+    unreachable: 'UNREACHABLE',
+    unknown: 'UNKNOWN',
   },
   logs: {
     autoRefresh: 'Auto-refresh',

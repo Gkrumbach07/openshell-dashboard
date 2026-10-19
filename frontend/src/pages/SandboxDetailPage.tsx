@@ -283,11 +283,23 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
         draftSummary={draftSummary}
         policyView={policyQuery.data}
         providerExpiry={providerExpiry}
-        onReviewDrafts={() => setActiveTab('proposals')}
+        // The banner sits above the tabs, so on the Proposals tab the link
+        // leads to the page the reader is already on. No link then: the
+        // count is what the banner is for, and the proposals are below it.
+        onReviewDrafts={
+          resolvedTab === 'proposals'
+            ? undefined
+            : () => setActiveTab('proposals')
+        }
         onViewLogs={() => setActiveTab('logs')}
         mode="detail"
+        // No padding of its own: the banner then sits the heading's bottom
+        // padding below the heading and the tabs' top padding above the
+        // tabs, which are the same, so it is centred between the two. Its
+        // own padding on either side added to one of those and not the
+        // other, which is what put it against the heading.
         wrapper={(children) => (
-          <PageSection style={{ paddingTop: 0 }}>{children}</PageSection>
+          <PageSection className="pf-v6-u-py-0">{children}</PageSection>
         )}
       />
       <PageSection>

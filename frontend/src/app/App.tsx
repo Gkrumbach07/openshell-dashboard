@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { SlotProvider } from '../slots';
 import { AlertProvider } from './AlertContext';
 import AppRoutes from './AppRoutes';
+import { ThemeProvider } from './theme';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -14,13 +15,15 @@ const queryClient = new QueryClient({
 const App: React.FC = () => (
   <QueryClientProvider client={queryClient}>
     <SlotProvider slots={{}}>
-      <AlertProvider>
-        <BrowserRouter
-          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-        >
-          <AppRoutes />
-        </BrowserRouter>
-      </AlertProvider>
+      <ThemeProvider>
+        <AlertProvider>
+          <BrowserRouter
+            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+          >
+            <AppRoutes />
+          </BrowserRouter>
+        </AlertProvider>
+      </ThemeProvider>
     </SlotProvider>
   </QueryClientProvider>
 );

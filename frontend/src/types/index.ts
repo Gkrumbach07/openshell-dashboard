@@ -1065,13 +1065,15 @@ export type DraftHistoryEntry = {
 
 // The pending draft chunks of one sandbox. unavailable marks a sandbox whose
 // inbox could not be read: its count is unknown, which is not none pending,
-// and pendingCount is then 0 and means nothing.
+// and pendingCount is then 0 and means nothing. latestRationale is the
+// rationale of the newest pending chunk, when it has one.
 export type DraftSandboxSummary = {
   workspace: string;
   sandboxName: string;
   pendingCount: number;
   hasSecurityFlags: boolean;
   latestDraftMs: number;
+  latestRationale?: string;
   unavailable?: boolean;
 };
 

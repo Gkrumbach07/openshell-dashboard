@@ -6,15 +6,24 @@ import {
   Button,
   Checkbox,
   Content,
+  Dropdown,
+  DropdownItem,
+  DropdownList,
+  Flex,
+  FlexItem,
+  MenuToggle,
+  Panel,
+  PanelMain,
+  PanelMainBody,
+  Popover,
   Spinner,
   Stack,
   StackItem,
-  ToggleGroup,
-  ToggleGroupItem,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
 } from '@patternfly/react-core';
+import { InfoCircleIcon } from '@patternfly/react-icons';
 import { Table, Th, Thead, Tr } from '@patternfly/react-table';
 
 import { useDraftPolicy, useEffectiveSandboxPolicy } from '../../api/policy';
@@ -25,7 +34,11 @@ import DraftChunkRow from './DraftChunkRow';
 import DraftHistorySection from './DraftHistorySection';
 import EditDraftModal from './EditDraftModal';
 import { useDraftActions } from './useDraftActions';
-import { CHUNK_STATUS_FILTERS, pendingApprovals } from './utils';
+import {
+  approveOutlineStyle,
+  CHUNK_STATUS_FILTERS,
+  pendingApprovals,
+} from './utils';
 import type { ApiError } from '../../api/client';
 import type { ApproveAllResult, PolicyChunk } from '../../types';
 
@@ -40,6 +53,7 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
 }) => {
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const [statusFilter, setStatusFilter] = useState('');
+  const [isStatusOpen, setStatusOpen] = useState(false);
   // The whole inbox drives the pending count and the bulk approval whatever
   // the table is narrowed to; the table reads the gateway's filtered answer.
   const inbox = useDraftPolicy(workspace, sandboxName);
@@ -118,6 +132,25 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
   const chunks = drafts.data?.chunks ?? [];
   const approvals = pendingApprovals(inbox.data?.chunks ?? []);
   const columns = isWorkspaceAdmin ? 7 : 6;
+  // What the toggle says while it is shut, which is the one of the four the
+  // gateway is being asked for.
+  const statusLabel =
+    CHUNK_STATUS_FILTERS.find((filter) => filter.value === statusFilter)
+      ?.label ?? 'All statuses';
+
+  // Where the draft stands and when the analysis behind it finished. It
+  // comes back in the same read as the summary, and it is what says as of
+  // when the summary is true, so it goes inside the panel with it. The
+  // gateway writes no summary in mechanistic mode, and then this is all
+  // there is to say, on its own line above the proposals.
+  const analysedAt = (
+    <Content component="small" data-testid="draft-version">
+      Draft version {inbox.data?.draftVersion ?? 0}
+      {inbox.data?.lastAnalyzedAtMs
+        ? ` · last analyzed ${formatTimestamp(inbox.data.lastAnalyzedAtMs)}`
+        : ''}
+    </Content>
+  );
 
   return (
     <Stack hasGutter>
@@ -149,13 +182,6 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
           </Alert>
         </StackItem>
       )}
-      {inbox.data?.rollingSummary && (
-        <StackItem>
-          <Alert variant="info" isInline title="Analysis summary">
-            {inbox.data.rollingSummary}
-          </Alert>
-        </StackItem>
-      )}
       {actions.mutationError && (
         <StackItem>
           <Alert variant="danger" isInline title="Draft action failed">
@@ -181,27 +207,98 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
           </Alert>
         </StackItem>
       )}
+      {/* What the analysis has made of this sandbox so far, in the words of
+          the model that wrote it (`rolling_summary`: "LLM-generated summary
+          of all analysis"). Not an alert: the others in this tab are each
+          something that happened and may need acting on, and this is neither
+          — it is the standing context the proposals are read in. A raised
+          panel sets it off as its own block without colouring it as a
+          condition, and the popover says whose words they are. */}
+      {inbox.data?.rollingSummary && (
+        // More than the stack's own gutter beneath it: what follows is the
+        // proposals and the actions on them, and the summary is the context
+        // they are read in rather than the first of them.
+        <StackItem className="pf-v6-u-mb-md">
+          <Panel variant="raised" data-testid="draft-summary">
+            <PanelMain>
+              <PanelMainBody>
+                <Flex
+                  gap={{ default: 'gapSm' }}
+                  alignItems={{ default: 'alignItemsFlexStart' }}
+                  flexWrap={{ default: 'nowrap' }}
+                >
+                  <FlexItem flex={{ default: 'flex_1' }}>
+                    <Content component="p" className="pf-v6-u-mb-sm">
+                      {inbox.data.rollingSummary}
+                    </Content>
+                    {analysedAt}
+                  </FlexItem>
+                  {/* Whose words these are is asked once and not wanted on
+                      screen after that, so the question sits out of the way
+                      of them, in the corner of the panel. */}
+                  <FlexItem>
+                    <Popover bodyContent="An LLM-generated analysis of the activity that generated the proposals.">
+                      <Button
+                        variant="plain"
+                        isInline
+                        aria-label="Where the analysis summary comes from"
+                        data-testid="draft-summary-help"
+                        // Plain rather than status-coloured: PatternFly's info
+                        // status is purple, which on a panel that reports no
+                        // condition would read as one.
+                        icon={<InfoCircleIcon />}
+                      />
+                    </Popover>
+                  </FlexItem>
+                </Flex>
+              </PanelMainBody>
+            </PanelMain>
+          </Panel>
+        </StackItem>
+      )}
       <StackItem>
         <Toolbar aria-label="Draft actions">
           <ToolbarContent>
             <ToolbarItem>
-              <ToggleGroup aria-label="Proposal status">
-                {CHUNK_STATUS_FILTERS.map((filter) => (
-                  <ToggleGroupItem
-                    key={filter.value || 'all'}
-                    text={filter.label}
-                    isSelected={statusFilter === filter.value}
-                    onChange={() => setStatusFilter(filter.value)}
-                    data-testid={`draft-status-${filter.value || 'all'}`}
-                  />
-                ))}
-              </ToggleGroup>
+              <Dropdown
+                isOpen={isStatusOpen}
+                onOpenChange={setStatusOpen}
+                onSelect={(_event, value) => {
+                  setStatusFilter(value as string);
+                  setStatusOpen(false);
+                }}
+                toggle={(toggleRef) => (
+                  <MenuToggle
+                    ref={toggleRef}
+                    isExpanded={isStatusOpen}
+                    onClick={() => setStatusOpen(!isStatusOpen)}
+                    data-testid="draft-status-toggle"
+                  >
+                    {statusLabel}
+                  </MenuToggle>
+                )}
+              >
+                <DropdownList>
+                  {CHUNK_STATUS_FILTERS.map((filter) => (
+                    <DropdownItem
+                      key={filter.value || 'all'}
+                      value={filter.value}
+                      isSelected={statusFilter === filter.value}
+                      data-testid={`draft-status-${filter.value || 'all'}`}
+                    >
+                      {filter.label}
+                    </DropdownItem>
+                  ))}
+                </DropdownList>
+              </Dropdown>
             </ToolbarItem>
             {isWorkspaceAdmin && (
               <>
                 {!isGlobalPolicy && (
                   <ToolbarItem>
                     <Button
+                      variant="secondary"
+                      style={approveOutlineStyle}
                       onClick={() =>
                         actions.approveAll.mutate(
                           { includeSecurityFlagged: includeFlagged, approvals },
@@ -246,12 +343,7 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
             )}
           </ToolbarContent>
         </Toolbar>
-        <Content component="small" data-testid="draft-version">
-          Draft version {inbox.data?.draftVersion ?? 0}
-          {inbox.data?.lastAnalyzedAtMs
-            ? ` · last analyzed ${formatTimestamp(inbox.data.lastAnalyzedAtMs)}`
-            : ''}
-        </Content>
+        {!inbox.data?.rollingSummary && analysedAt}
       </StackItem>
       {drafts.isError && !filterRefreshFailed && (
         <StackItem>

@@ -306,18 +306,13 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
 
   const list = (
     <>
+      {/* PatternFly's toolbar order, as `.claude/rules/react.md` sets it out:
+          filters, then the view toggle as an icon group, then the buttons,
+          then the overflow menu, and the pagination last. createActionPosition
+          chooses which end of the action group the create button sits at; it
+          never moves past the pagination. */}
       <Toolbar aria-label="Sandbox actions">
         <ToolbarContent>
-          {createActionPosition === 'start' && (
-            <ToolbarItem>
-              <Button
-                onClick={() => setCreateOpen(true)}
-                data-testid="create-sandbox"
-              >
-                Create sandbox
-              </Button>
-            </ToolbarItem>
-          )}
           {toolbarStart && <ToolbarItem>{toolbarStart}</ToolbarItem>}
           <ToolbarToggleGroup toggleIcon={<FilterIcon />} breakpoint="lg">
             <ToolbarItem>
@@ -370,6 +365,44 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
           </ToolbarToggleGroup>
           {!compactToolbar && (
             <ToolbarItem>
+              <ToggleGroup aria-label="View type" data-testid="view-toggle">
+                <ToggleGroupItem
+                  text=""
+                  icon={<ListIcon />}
+                  aria-label="List view"
+                  isSelected={viewMode === 'list'}
+                  onChange={() => {
+                    setViewMode('list');
+                    localStorage.setItem(VIEW_MODE_KEY, 'list');
+                  }}
+                  data-testid="view-toggle-list"
+                />
+                <ToggleGroupItem
+                  text=""
+                  icon={<ThIcon />}
+                  aria-label="Card view"
+                  isSelected={viewMode === 'cards'}
+                  onChange={() => {
+                    setViewMode('cards');
+                    localStorage.setItem(VIEW_MODE_KEY, 'cards');
+                  }}
+                  data-testid="view-toggle-cards"
+                />
+              </ToggleGroup>
+            </ToolbarItem>
+          )}
+          {createActionPosition === 'start' && (
+            <ToolbarItem>
+              <Button
+                onClick={() => setCreateOpen(true)}
+                data-testid="create-sandbox"
+              >
+                Create sandbox
+              </Button>
+            </ToolbarItem>
+          )}
+          {!compactToolbar && (
+            <ToolbarItem>
               <Dropdown
                 isOpen={isActionsOpen}
                 onOpenChange={setActionsOpen}
@@ -398,34 +431,6 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
                   </DropdownItem>
                 </DropdownList>
               </Dropdown>
-            </ToolbarItem>
-          )}
-          {!compactToolbar && (
-            <ToolbarItem>
-              <ToggleGroup aria-label="View type" data-testid="view-toggle">
-                <ToggleGroupItem
-                  text=""
-                  icon={<ListIcon />}
-                  aria-label="List view"
-                  isSelected={viewMode === 'list'}
-                  onChange={() => {
-                    setViewMode('list');
-                    localStorage.setItem(VIEW_MODE_KEY, 'list');
-                  }}
-                  data-testid="view-toggle-list"
-                />
-                <ToggleGroupItem
-                  text=""
-                  icon={<ThIcon />}
-                  aria-label="Card view"
-                  isSelected={viewMode === 'cards'}
-                  onChange={() => {
-                    setViewMode('cards');
-                    localStorage.setItem(VIEW_MODE_KEY, 'cards');
-                  }}
-                  data-testid="view-toggle-cards"
-                />
-              </ToggleGroup>
             </ToolbarItem>
           )}
           {createActionPosition === 'end' && (

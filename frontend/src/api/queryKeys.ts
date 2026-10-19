@@ -96,6 +96,10 @@ export const allWorkspacesKeys = {
   templates: (labelSelector = '') =>
     ['all-workspaces', 'templates', labelSelector] as const,
   services: ['all-workspaces', 'services'] as const,
+  // The pending draft chunks of every workspace's sandboxes, in one request.
+  // Here and not under policyKeys: there a second segment is a workspace
+  // name, and a workspace may be called anything.
+  draftSummary: ['all-workspaces', 'draft-summary'] as const,
 };
 
 export const providerKeys = {

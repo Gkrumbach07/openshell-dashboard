@@ -3,6 +3,8 @@ import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+import mockApiPlugin from './mock/mockPlugin';
+
 // The commit the build is made from, when whatever runs the build says so:
 // CI passes DASHBOARD_COMMIT to the image build (deploy/Dockerfile). The About
 // dialog shows it. Nothing else identifies a build: the image exists before
@@ -19,8 +21,10 @@ if (commit !== '' && !/^[0-9a-f]{7,40}$/.test(commit)) {
   );
 }
 
+const useMockApi = process.env.MOCK_API === 'true';
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), ...(useMockApi ? [mockApiPlugin()] : [])],
   base: '/',
   resolve: {
     alias: {

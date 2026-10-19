@@ -27,6 +27,11 @@ type AttentionItem = {
   title: string;
   description?: string;
   action?: { label: string; onClick: () => void };
+  // Most of these are a state of the sandbox the reader can only be told
+  // about, so closing one is the only thing to do with it. An item that
+  // counts work waiting is not: it goes when the work is done, and a close
+  // button would take the count away while the proposals were still there.
+  isPermanent?: boolean;
 };
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
@@ -111,7 +116,12 @@ export const buildAttentionItems = (
     const n = draftSummary.pendingCount;
     items.push({
       key: 'drafts',
-      variant: draftSummary.hasSecurityFlags ? 'warning' : 'info',
+      // Informational whether or not any of them is flagged: this is a count
+      // of work waiting to be read, not a condition of the sandbox, and the
+      // rest of the page keeps warning and danger for conditions. That some
+      // of them carry findings is said in the title, where the reader is
+      // already looking, rather than in the colour.
+      variant: 'info',
       title: draftSummary.hasSecurityFlags
         ? `${n} rule${n > 1 ? 's' : ''} proposed, with findings`
         : `${n} rule${n > 1 ? 's' : ''} proposed`,
@@ -121,6 +131,9 @@ export const buildAttentionItems = (
             onClick: () => callbacks.onReviewDrafts!(metadata.name),
           }
         : undefined,
+      // It is the count of what is waiting, so it goes when the proposals
+      // have been decided and not before.
+      isPermanent: true,
     });
   }
 
@@ -168,29 +181,48 @@ export const buildAttentionItems = (
 const renderAlert = (
   item: AttentionItem,
   opts?: { dismissable?: boolean; onDismiss?: () => void },
-) => (
-  <Alert
-    key={item.key}
-    variant={item.variant}
-    isInline
-    title={item.title}
-    actionClose={
-      opts?.dismissable ? (
-        <AlertActionCloseButton onClose={opts.onDismiss} />
-      ) : undefined
-    }
-    actionLinks={
-      item.action ? (
-        <AlertActionLink onClick={item.action.onClick}>
-          {item.action.label}
-        </AlertActionLink>
-      ) : undefined
-    }
-    data-testid={`attention-${item.key}`}
-  >
-    {item.description && <Content component="p">{item.description}</Content>}
-  </Alert>
-);
+) => {
+  const action = item.action;
+  const isDismissable = opts?.dismissable;
+  return (
+    <Alert
+      key={item.key}
+      variant={item.variant}
+      isInline
+      title={item.title}
+      // Both of these go in the alert's action slot, which PatternFly lays on
+      // the title's own row at the far end of it ("icon title action" in the
+      // grid). The action here is what to do about what the title says, so it
+      // belongs opposite the title and not on a line of its own below the
+      // message, where actionLinks would put it.
+      actionClose={
+        action || isDismissable ? (
+          <Flex
+            gap={{ default: 'gapSm' }}
+            alignItems={{ default: 'alignItemsCenter' }}
+            flexWrap={{ default: 'nowrap' }}
+          >
+            {action && (
+              <FlexItem>
+                <AlertActionLink onClick={action.onClick}>
+                  {action.label}
+                </AlertActionLink>
+              </FlexItem>
+            )}
+            {isDismissable && (
+              <FlexItem>
+                <AlertActionCloseButton onClose={opts?.onDismiss} />
+              </FlexItem>
+            )}
+          </Flex>
+        ) : undefined
+      }
+      data-testid={`attention-${item.key}`}
+    >
+      {item.description && <Content component="p">{item.description}</Content>}
+    </Alert>
+  );
+};
 
 // ── Card mode: single alert with prev/next pagination in top-right ──
 
@@ -243,7 +275,8 @@ const CardAttention: React.FC<{ items: AttentionItem[] }> = ({ items }) => {
   );
 };
 
-// ── Detail mode: stacked AlertGroupInline, each dismissable ──
+// ── Detail mode: stacked AlertGroupInline, dismissable but for the ones
+// that count work waiting ──
 
 const DetailAttention: React.FC<{ items: AttentionItem[] }> = ({ items }) => {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -254,7 +287,7 @@ const DetailAttention: React.FC<{ items: AttentionItem[] }> = ({ items }) => {
     <AlertGroup>
       {visible.map((item) =>
         renderAlert(item, {
-          dismissable: true,
+          dismissable: !item.isPermanent,
           onDismiss: () => setDismissed((prev) => new Set(prev).add(item.key)),
         }),
       )}

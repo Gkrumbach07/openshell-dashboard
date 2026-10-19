@@ -23,6 +23,8 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { getApiBasePath } from '../../api/client';
+import { useTheme } from '../../app/theme';
+import type { Theme } from '../../app/theme';
 import KeyValueEditor from '../KeyValueEditor';
 import { isUnsplitCommand, parseCommand } from '../../utils/sandboxOptions';
 import {
@@ -35,9 +37,17 @@ import type {
 } from '../../utils/terminalSession';
 import '@xterm/xterm/css/xterm.css';
 
-// xterm.js theme requires literal color values (rendered on canvas, not CSS).
-const TERMINAL_BG = '#1e1e1e';
-const TERMINAL_FG = '#d4d4d4';
+// xterm.js theme requires literal color values (rendered on canvas, not CSS),
+// so the dashboard's two themes are two literal pairs rather than tokens. The
+// cursor goes with them because xterm's own default cursor is white, which on
+// a light background is no cursor at all.
+const TERM_COLOURS: Record<
+  Theme,
+  { background: string; foreground: string; cursor: string }
+> = {
+  dark: { background: '#1e1e1e', foreground: '#d4d4d4', cursor: '#d4d4d4' },
+  light: { background: '#ffffff', foreground: '#151515', cursor: '#151515' },
+};
 
 type SandboxTerminalTabProps = {
   workspace: string;
@@ -49,6 +59,11 @@ const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({
   sandboxName,
 }) => {
   const termRef = useRef<HTMLDivElement>(null);
+  // The terminal of the session that is open, so that a theme toggle can
+  // recolour it where it stands instead of cutting the session to rebuild it.
+  const terminalRef = useRef<Terminal | null>(null);
+  const { theme } = useTheme();
+  const colours = TERM_COLOURS[theme];
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exitCode, setExitCode] = useState<number | null>(null);
@@ -89,11 +104,9 @@ const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({
       lineHeight: 1.35,
       letterSpacing: 0,
       fontFamily: "'JetBrains Mono', var(--pf-t--global--font--family--mono)",
-      theme: {
-        background: TERMINAL_BG,
-        foreground: TERMINAL_FG,
-      },
+      theme: colours,
     });
+    terminalRef.current = terminal;
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new WebLinksAddon());
@@ -176,6 +189,9 @@ const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({
       resizeObserver.disconnect();
       ws.close();
       terminal.dispose();
+      if (terminalRef.current === terminal) {
+        terminalRef.current = null;
+      }
     };
   };
 
@@ -184,6 +200,14 @@ const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({
     return disconnect;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace, sandboxName]);
+
+  // Toggling the theme recolours the session that is open. Reconnecting for
+  // it would throw away whatever is on the screen and whatever is running.
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.options.theme = colours;
+    }
+  }, [colours]);
 
   const startSession = () => {
     const { message, error: startError } = terminalStartMessage(options);
@@ -371,7 +395,7 @@ const SandboxTerminalTab: React.FC<SandboxTerminalTabProps> = ({
           data-testid="terminal-container"
           style={{
             height: TAB_CONTENT_HEIGHT,
-            backgroundColor: TERMINAL_BG,
+            backgroundColor: colours.background,
             borderRadius: 'var(--pf-t--global--border--radius--small)',
             padding: 'var(--pf-t--global--spacer--xs)',
           }}

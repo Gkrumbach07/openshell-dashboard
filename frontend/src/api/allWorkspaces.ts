@@ -60,12 +60,18 @@ export const listAllServices = (): Promise<ServiceEndpoint[]> =>
 // when someone changes them, in a workspace this page is not looking at, and
 // are read again at the slower pace of such lists.
 
-export const useAllSandboxes = (labelSelector?: string) =>
+// `enabled` is for the shell, which counts sandboxes on every page and must
+// not ask a user the gateway will refuse. The Sandboxes page leaves it on.
+export const useAllSandboxes = (
+  labelSelector?: string,
+  options: { enabled?: boolean } = {},
+) =>
   useQuery({
     queryKey: allWorkspacesKeys.sandboxes(labelSelector),
     queryFn: () => listAllSandboxes(labelSelector),
     refetchInterval: SANDBOX_POLL_MS,
     placeholderData: keepPreviousData,
+    enabled: options.enabled ?? true,
   });
 
 export const useAllProviders = () =>

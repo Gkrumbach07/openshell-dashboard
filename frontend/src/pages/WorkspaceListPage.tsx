@@ -4,6 +4,7 @@ import {
   Alert,
   Bullseye,
   Button,
+  Content,
   Dropdown,
   DropdownItem,
   DropdownList,
@@ -255,7 +256,10 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
   return (
     <>
       <PageSection>
-        <Title headingLevel="h1">{t('title')}</Title>
+        <Title headingLevel="h1" className="pf-v6-u-mb-sm">
+          {t('title')}
+        </Title>
+        <Content component="p">{t('description')}</Content>
       </PageSection>
       {renderWorkspaceHeader && (
         <PageSection>{renderWorkspaceHeader()}</PageSection>
@@ -301,6 +305,21 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
           <>
             <Toolbar aria-label={t('actionsToolbar')}>
               <ToolbarContent>
+                <ToolbarToggleGroup toggleIcon={<FilterIcon />} breakpoint="lg">
+                  <ToolbarItem>
+                    <SearchInput
+                      aria-label={t('filter.label')}
+                      placeholder={t('filter.placeholder')}
+                      value={selectorInput}
+                      onChange={(_event, value) => setSelectorInput(value)}
+                      onSearch={(_event, value) => applySelector(value)}
+                      onClear={() => applySelector('')}
+                      submitSearchButtonLabel={t('filter.apply')}
+                      resetButtonLabel={t('filter.clear')}
+                      data-testid="workspace-label-filter"
+                    />
+                  </ToolbarItem>
+                </ToolbarToggleGroup>
                 {isPlatformAdmin && (
                   <ToolbarItem>
                     <Button
@@ -349,21 +368,6 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
                     </Dropdown>
                   </ToolbarItem>
                 )}
-                <ToolbarToggleGroup toggleIcon={<FilterIcon />} breakpoint="lg">
-                  <ToolbarItem>
-                    <SearchInput
-                      aria-label={t('filter.label')}
-                      placeholder={t('filter.placeholder')}
-                      value={selectorInput}
-                      onChange={(_event, value) => setSelectorInput(value)}
-                      onSearch={(_event, value) => applySelector(value)}
-                      onClear={() => applySelector('')}
-                      submitSearchButtonLabel={t('filter.apply')}
-                      resetButtonLabel={t('filter.clear')}
-                      data-testid="workspace-label-filter"
-                    />
-                  </ToolbarItem>
-                </ToolbarToggleGroup>
                 <ToolbarItem
                   variant="pagination"
                   align={{ default: 'alignEnd' }}

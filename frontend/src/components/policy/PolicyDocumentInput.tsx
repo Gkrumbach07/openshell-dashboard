@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Content, Flex, FlexItem } from '@patternfly/react-core';
 import { CodeEditor, Language } from '@patternfly/react-code-editor';
 
+import { useTheme } from '../../app/theme';
 import { policyToText } from '../../utils/policyFile';
 import type { PolicyFileFormat } from '../../utils/policyFile';
 import type { PolicyTextState } from '../../hooks/usePolicyText';
@@ -37,6 +38,7 @@ const PolicyDocumentInput: React.FC<PolicyDocumentInputProps> = ({
   height,
   'data-testid': testId,
 }) => {
+  const { theme } = useTheme();
   // The format an empty document is taken to be in.
   const [preferred, setPreferred] = useState<PolicyFileFormat>(reading.format);
   const format = text.trim() ? reading.format : preferred;
@@ -78,6 +80,7 @@ const PolicyDocumentInput: React.FC<PolicyDocumentInputProps> = ({
         </FlexItem>
       </Flex>
       <CodeEditor
+        isDarkTheme={theme === 'dark'}
         isLanguageLabelVisible
         isUploadEnabled
         isCopyEnabled

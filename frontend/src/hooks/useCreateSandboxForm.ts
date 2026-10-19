@@ -54,6 +54,12 @@ export const useCreateSandboxForm = () => {
   );
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
   const [isPolicyExpanded, setPolicyExpanded] = useState(false);
+  // The fields the gateway fills in for a form that leaves them alone: a
+  // generated name, no labels, and the compute driver's own resource
+  // defaults. They start folded away so that the form opens on the three
+  // things a sandbox is actually made of — its policy, its image and its
+  // providers.
+  const [isGeneratedExpanded, setGeneratedExpanded] = useState(false);
 
   // Advanced options. All of them are optional, and a form that leaves them
   // alone sends the request it always sent.
@@ -91,6 +97,11 @@ export const useCreateSandboxForm = () => {
   const hasAdvancedError =
     Boolean(envError || annotationsError || driverConfigError) ||
     !launch.isValid;
+
+  // The folded section opens by itself around a field that needs
+  // correcting, so that a value typed into it cannot block the form from
+  // somewhere nobody can see.
+  const hasGeneratedError = labels === null || gpuInvalid;
 
   const activeTemplate = policyTemplates.find(
     (candidate) => candidate.id === templateId,
@@ -133,6 +144,7 @@ export const useCreateSandboxForm = () => {
     setMemory('');
     setSelectedProviders([]);
     setPolicyExpanded(false);
+    setGeneratedExpanded(false);
     setEnvRows([]);
     setAnnotationRows([]);
     setLogLevel('');
@@ -203,6 +215,9 @@ export const useCreateSandboxForm = () => {
     selectedProviders,
     isPolicyExpanded,
     setPolicyExpanded,
+    isGeneratedExpanded,
+    setGeneratedExpanded,
+    hasGeneratedError,
     policyError,
     parsedPolicy,
     labels,

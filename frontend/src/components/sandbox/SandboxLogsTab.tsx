@@ -26,6 +26,7 @@ import { ArrowDownIcon } from '@patternfly/react-icons';
 import { LogViewer, LogViewerSearch } from '@patternfly/react-log-viewer';
 
 import { useSandboxLogs, watchSandboxLogs } from '../../api/sandboxes';
+import { useTheme } from '../../app/theme';
 import { useI18n } from '../../i18n';
 import LogLineDetailModal from '../LogLineDetailModal';
 import RefreshErrorAlert from '../RefreshErrorAlert';
@@ -108,6 +109,9 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
   const [transport, setTransport] = useState<Transport>(Transport.Stream);
   const viewerList = useRef<LogViewerList | null>(null);
   const lineHelpId = useId();
+  // The viewer was fixed to its dark theme, which on a light page is a black
+  // slab. It takes exactly the two values the dashboard theme has.
+  const { theme } = useTheme();
   const sinceDurationMs = parseSinceDuration(since);
   const sinceIsInvalid = since.trim() !== '' && sinceDurationMs === undefined;
 
@@ -665,7 +669,7 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
         {isActive && (
           <LogViewer
             data={viewerText}
-            theme="dark"
+            theme={theme}
             height={TAB_CONTENT_HEIGHT}
             toolbar={toolbar}
             footer={footer}

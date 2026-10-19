@@ -65,7 +65,10 @@ describe('buildAttentionItems', () => {
     expect(items[0].title).toContain('3 rules proposed');
   });
 
-  it('returns warning for drafts with security flags', () => {
+  // Still informational with findings among them: the count is work waiting,
+  // not a condition of the sandbox, and the findings are said in the title
+  // rather than in the colour.
+  it('says in the title, not the colour, that drafts carry findings', () => {
     const draft: DraftSandboxSummary = {
       workspace: 'default',
       sandboxName: 'test-sandbox',
@@ -74,7 +77,7 @@ describe('buildAttentionItems', () => {
       latestDraftMs: Date.now(),
     };
     const items = buildAttentionItems(makeSandbox(), draft, undefined);
-    expect(items[0].variant).toBe('warning');
+    expect(items[0].variant).toBe('info');
     expect(items[0].title).toContain('with findings');
   });
 

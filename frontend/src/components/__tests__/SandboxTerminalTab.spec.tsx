@@ -11,6 +11,9 @@ jest.mock('@xterm/xterm', () => ({
     return {
       cols: 80,
       rows: 24,
+      // The real terminal's live settings, which the tab writes the theme
+      // into when the theme is toggled.
+      options: {},
       loadAddon: jest.fn(),
       open: jest.fn(),
       write: jest.fn(),

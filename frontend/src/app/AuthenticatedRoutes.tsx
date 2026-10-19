@@ -12,6 +12,7 @@ import {
   useParams,
 } from 'react-router-dom';
 
+import AllSandboxesPage from '../pages/AllSandboxesPage';
 import AllWorkspacesPage from '../pages/AllWorkspacesPage';
 import EntitlementPage from '../pages/EntitlementPage';
 import GatewayOverviewPage from '../pages/GatewayOverviewPage';
@@ -21,6 +22,7 @@ import SandboxDetailPage from '../pages/SandboxDetailPage';
 import ProviderDetailPage from '../pages/ProviderDetailPage';
 import ProviderProfilesPage from '../pages/ProviderProfilesPage';
 import GlobalPolicyPage from '../pages/GlobalPolicyPage';
+import ProposalsPage from '../pages/ProposalsPage';
 import SettingsPage from '../pages/SettingsPage';
 import { useUserRole } from '../api/rbac';
 import { useI18n } from '../i18n';
@@ -38,6 +40,9 @@ const WorkspaceCrumbs: React.FC<{ workspace: string; leaf?: string }> = ({
   leaf,
 }) => {
   const { t } = useI18n('common');
+  // Flat children, never a fragment: Breadcrumb puts the divider on each
+  // child after the first with Children.map, which does not look inside a
+  // fragment, so grouping the deeper two left both of them without one.
   return (
     <PageBreadcrumb>
       <Breadcrumb>
@@ -48,20 +53,16 @@ const WorkspaceCrumbs: React.FC<{ workspace: string; leaf?: string }> = ({
             </Link>
           )}
         />
-        {leaf ? (
-          <>
-            <BreadcrumbItem
-              render={({ className }) => (
-                <Link className={className} to={`/workspaces/${workspace}`}>
-                  {workspace}
-                </Link>
-              )}
-            />
-            <BreadcrumbItem isActive>{leaf}</BreadcrumbItem>
-          </>
-        ) : (
-          <BreadcrumbItem isActive>{workspace}</BreadcrumbItem>
+        {leaf && (
+          <BreadcrumbItem
+            render={({ className }) => (
+              <Link className={className} to={`/workspaces/${workspace}`}>
+                {workspace}
+              </Link>
+            )}
+          />
         )}
+        <BreadcrumbItem isActive>{leaf ?? workspace}</BreadcrumbItem>
       </Breadcrumb>
     </PageBreadcrumb>
   );
@@ -170,6 +171,14 @@ const AuthenticatedRoutes: React.FC<{ sessionAlert?: React.ReactNode }> = ({
         }
       />
       <Route
+        path="/sandboxes"
+        element={
+          <AdminRoute>
+            <AllSandboxesPage />
+          </AdminRoute>
+        }
+      />
+      <Route
         path="/all-workspaces"
         element={
           <AdminRoute>
@@ -185,6 +194,11 @@ const AuthenticatedRoutes: React.FC<{ sessionAlert?: React.ReactNode }> = ({
           </AdminRoute>
         }
       />
+      {/* Not behind AdminRoute: proposals are a sandbox's, and a standard
+          user reviews the ones in the workspaces they are a member of. Only
+          the cross-workspace rollup needs a platform admin, and the page
+          falls back to a request per workspace without one. */}
+      <Route path="/proposals" element={<ProposalsPage />} />
       <Route path="/workspaces" element={<WorkspaceListRoute />} />
       <Route path="/workspaces/:workspace" element={<WorkspaceDetailRoute />} />
       <Route

@@ -1,10 +1,14 @@
 export default {
   title: 'Workspaces',
+  description:
+    'Workspaces are hard isolation boundaries for sandboxes, providers, and members.',
   loading: 'Loading workspaces',
   loadFailed: 'Failed to load workspaces',
   empty: {
     title: 'No workspaces',
-    body: 'Workspaces are hard isolation boundaries for sandboxes, providers, and members.',
+    // The sentence that was here is now the page description, which the empty
+    // state is shown under. This one says what to do instead of repeating it.
+    body: 'Create one to give a team sandboxes, providers and members of its own.',
   },
   create: 'Create workspace',
   actionsToolbar: 'Workspace actions',

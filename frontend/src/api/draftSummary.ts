@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 
 import { DRAFT_SUMMARY_POLL_MS } from '../constants';
 import { get } from './client';
-import { policyKeys } from './queryKeys';
+import { allWorkspacesKeys, policyKeys } from './queryKeys';
 import type { DraftSandboxSummary, DraftSummary } from '../types';
 
 // The pending draft chunks of every sandbox in a workspace, which is what the
@@ -54,4 +54,85 @@ export const useWorkspaceDraftSummary = (
     isLoading: query.isLoading,
     isError: query.isError,
   };
+};
+
+// The same summary across every workspace, in one request. The gateway
+// answers an all-workspaces list for platform admins only and refuses
+// everyone else, so this is for a caller that knows it is one; the Proposals
+// page reads each workspace separately otherwise. The scope is named: the
+// same route without it answers empty, for embedders that still poll it.
+export const getAllWorkspacesDraftSummary = (): Promise<DraftSummary> =>
+  get<DraftSummary>('/api/v1/draft-summary?allWorkspaces=true');
+
+export const useAllWorkspacesDraftSummary = (enabled = true) => {
+  const query = useQuery({
+    queryKey: allWorkspacesKeys.draftSummary,
+    queryFn: getAllWorkspacesDraftSummary,
+    refetchInterval: DRAFT_SUMMARY_POLL_MS,
+    enabled,
+  });
+
+  return {
+    items: query.data?.sandboxes ?? [],
+    totalPending: query.data?.totalPending ?? 0,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+  };
+};
+
+// The summaries of the named workspaces, one request each, merged in the
+// order the workspaces were given. This is how a user who is not a platform
+// admin reads across the workspaces they are in: the gateway refuses them the
+// all-workspaces list, but each workspace they are a member of is theirs to
+// read. A workspace whose summary fails is counted as one that could not be
+// read, not as one with nothing pending.
+export const useWorkspacesDraftSummaries = (
+  workspaces: string[],
+  enabled = true,
+) => {
+  const queries = useQueries({
+    queries: workspaces.map((workspace) => ({
+      queryKey: policyKeys.workspaceDraftSummary(workspace),
+      queryFn: () => getWorkspaceDraftSummary(workspace),
+      refetchInterval: DRAFT_SUMMARY_POLL_MS,
+      enabled,
+    })),
+  });
+
+  // useQueries returns a new array every render, so the merge is keyed on
+  // what actually changed: when each query last produced data, and whether
+  // it is in error.
+  const fingerprint = queries
+    .map((query) => `${query.dataUpdatedAt}:${query.isError}`)
+    .join(',');
+
+  return useMemo(() => {
+    const items: DraftSandboxSummary[] = [];
+    const failed: string[] = [];
+    let totalPending = 0;
+    queries.forEach((query, i) => {
+      if (query.isError) {
+        failed.push(workspaces[i]);
+        return;
+      }
+      items.push(...(query.data?.sandboxes ?? []));
+      totalPending += query.data?.totalPending ?? 0;
+    });
+    return {
+      items,
+      totalPending,
+      // Every workspace is read at once, so the list is worth showing once
+      // the first of them has answered.
+      isLoading: queries.length > 0 && queries.every((q) => q.isLoading),
+      // Only a user with no readable workspace at all has no list; one
+      // workspace that failed is a gap in it, named by `failedWorkspaces`.
+      isError: queries.length > 0 && failed.length === queries.length,
+      error: queries.find((query) => query.isError)?.error,
+      failedWorkspaces: failed,
+      refetch: () => queries.forEach((query) => void query.refetch()),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fingerprint, workspaces.join(',')]);
 };
