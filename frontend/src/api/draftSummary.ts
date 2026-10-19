@@ -108,10 +108,15 @@ export const useWorkspacesDraftSummaries = (
   });
 
   // useQueries returns a new array every render, so the merge is keyed on
-  // what actually changed: when each query last produced data, and whether
-  // it is in error.
+  // what actually changed: each query's status (pending, error or success),
+  // when it last produced data, and when it last failed. The status is in
+  // the key so that the render on which the reads start, after a render
+  // with them disabled, is not answered from that disabled render.
   const fingerprint = queries
-    .map((query) => `${query.dataUpdatedAt}:${query.isError}`)
+    .map(
+      (query) =>
+        `${query.status}:${query.fetchStatus}:${query.dataUpdatedAt}:${query.errorUpdatedAt}`,
+    )
     .join(',');
 
   return useMemo(() => {
@@ -129,9 +134,10 @@ export const useWorkspacesDraftSummaries = (
     return {
       items,
       totalPending,
-      // Every workspace is read at once, so the list is worth showing once
-      // the first of them has answered.
-      isLoading: queries.length > 0 && queries.every((q) => q.isLoading),
+      // Loading until every workspace has answered, one way or the other: a
+      // list built from some of them would say "nothing waiting" about the
+      // ones still being read. A read that is switched off is not loading.
+      isLoading: enabled && queries.some((query) => query.isPending),
       // Only a user with no readable workspace at all has no list; one
       // workspace that failed is a gap in it, named by `failedWorkspaces`.
       isError: queries.length > 0 && failed.length === queries.length,
@@ -140,5 +146,5 @@ export const useWorkspacesDraftSummaries = (
       refetch: () => queries.forEach((query) => void query.refetch()),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fingerprint, workspaces.join(',')]);
+  }, [fingerprint, enabled, workspaces.join(',')]);
 };

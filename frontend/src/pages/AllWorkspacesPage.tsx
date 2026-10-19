@@ -28,7 +28,9 @@ import LabelsList from '../components/LabelsList';
 import ResourceTable from '../components/ResourceTable';
 import type { ResourceTableColumn } from '../components/ResourceTable';
 import ServiceEndpointsTable from '../components/ServiceEndpointsTable';
+import ImageReference from '../components/sandbox/ImageReference';
 import { formatAge } from '../utils/formatters';
+import { scopedName, workspaceOf } from '../utils/workspaceNames';
 import type { Provider, SandboxTemplate } from '../types';
 
 type AllWorkspacesPageProps = {

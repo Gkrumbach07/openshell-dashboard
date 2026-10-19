@@ -1,92 +1,59 @@
 import { useState } from 'react';
-import { Button, Content, PageSection, Title } from '@patternfly/react-core';
-import { useNavigate } from 'react-router-dom';
+import { Content, PageSection, Title } from '@patternfly/react-core';
+import { Link } from 'react-router-dom';
 
 import { useAllSandboxes } from '../api/allWorkspaces';
+import { useI18n } from '../i18n';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
 import ResourceTable from '../components/ResourceTable';
 import type { ResourceTableColumn } from '../components/ResourceTable';
+import ImageReference from '../components/sandbox/ImageReference';
 import { formatAge } from '../utils/formatters';
+import {
+  sandboxPath,
+  scopedName,
+  workspaceOf,
+  workspacePath,
+} from '../utils/workspaceNames';
 import type { Sandbox } from '../types';
-
-type AllSandboxesPageProps = {
-  onSelectWorkspace?: (workspace: string) => void;
-  onSelectSandbox?: (workspace: string, name: string) => void;
-};
-
-const workspaceOf = (item: { metadata: { workspace?: string } }): string =>
-  item.metadata.workspace ?? '';
-
-// A name is only unique within its workspace, so rows are keyed, and
-// filtered, on both.
-const scopedName = (item: {
-  metadata: { workspace?: string; name: string };
-}): string => `${workspaceOf(item)}/${item.metadata.name}`;
-
-// An image reference pinned by digest is far wider than its column, which
-// truncates it. The title keeps the whole reference within reach.
-const ImageReference: React.FC<{ image?: string }> = ({ image }) =>
-  image ? (
-    <span className="pf-v6-u-font-family-monospace" title={image}>
-      {image}
-    </span>
-  ) : (
-    <>-</>
-  );
 
 // The sandboxes of every workspace on the gateway: `openshell sandbox list
 // --all-workspaces`. The gateway answers this for platform admins only, and
 // its refusal is shown as it is. Each row names its workspace and leads to
 // the workspace-scoped sandbox, which is where it is acted on.
-const AllSandboxesPage: React.FC<AllSandboxesPageProps> = ({
-  onSelectWorkspace,
-  onSelectSandbox,
-}) => {
-  const navigate = useNavigate();
+const AllSandboxesPage: React.FC = () => {
+  const { t } = useI18n('crossWorkspace');
   const [sandboxSelector, setSandboxSelector] = useState('');
   const sandboxes = useAllSandboxes(sandboxSelector || undefined);
 
-  const selectWorkspace =
-    onSelectWorkspace ??
-    ((workspace: string) => navigate(`/workspaces/${workspace}`));
-  const selectSandbox =
-    onSelectSandbox ??
-    ((workspace: string, name: string) =>
-      navigate(`/workspaces/${workspace}/sandboxes/${name}`));
-
   const columns: ResourceTableColumn<Sandbox>[] = [
     {
-      title: 'Name',
+      title: t('sandboxes.columns.name'),
       modifier: 'nowrap',
       render: (sandbox) => (
-        <Button
-          variant="link"
-          isInline
-          onClick={() =>
-            selectSandbox(workspaceOf(sandbox), sandbox.metadata.name)
-          }
+        <Link
+          to={sandboxPath(workspaceOf(sandbox), sandbox.metadata.name)}
           data-testid={`sandbox-link-${scopedName(sandbox)}`}
         >
           {sandbox.metadata.name}
-        </Button>
+        </Link>
       ),
     },
     {
-      title: 'Workspace',
+      title: t('sandboxes.columns.workspace'),
       modifier: 'nowrap',
       render: (sandbox) => (
-        <Button
-          variant="link"
-          isInline
-          onClick={() => selectWorkspace(workspaceOf(sandbox))}
+        <Link
+          to={workspacePath(workspaceOf(sandbox))}
+          data-testid={`workspace-link-${scopedName(sandbox)}`}
         >
           {workspaceOf(sandbox)}
-        </Button>
+        </Link>
       ),
     },
     {
-      title: 'Status',
+      title: t('sandboxes.columns.status'),
       render: (sandbox) => (
         <PhaseLabel
           phase={sandbox.status.phase}
@@ -95,18 +62,18 @@ const AllSandboxesPage: React.FC<AllSandboxesPageProps> = ({
       ),
     },
     {
-      title: 'Image',
+      title: t('sandboxes.columns.image'),
       modifier: 'truncate',
       render: (sandbox) => <ImageReference image={sandbox.spec.image} />,
     },
     {
-      title: 'Labels',
+      title: t('sandboxes.columns.labels'),
       render: (sandbox) => (
         <LabelsList labels={sandbox.metadata.labels} numLabels={2} />
       ),
     },
     {
-      title: 'Age',
+      title: t('sandboxes.columns.age'),
       render: (sandbox) => formatAge(sandbox.metadata.createdAtMs),
     },
   ];
@@ -115,23 +82,20 @@ const AllSandboxesPage: React.FC<AllSandboxesPageProps> = ({
     <>
       <PageSection>
         <Title headingLevel="h1" className="pf-v6-u-mb-sm">
-          Sandboxes
+          {t('sandboxes.title')}
         </Title>
-        <Content component="p">
-          Secure execution environments for agents and tools, across every
-          workspace on the gateway.
-        </Content>
+        <Content component="p">{t('sandboxes.description')}</Content>
       </PageSection>
       <PageSection>
         <ResourceTable
-          title="Sandboxes"
+          title={t('sandboxes.tableTitle')}
           testId="all-sandboxes"
           query={sandboxes}
           columns={columns}
           rowKey={scopedName}
           filterText={scopedName}
-          filterPlaceholder="Filter by workspace or name"
-          emptyBody="No workspace on this gateway has a sandbox."
+          filterPlaceholder={t('sandboxes.filterPlaceholder')}
+          emptyBody={t('sandboxes.empty')}
           labelSelector={{
             value: sandboxSelector,
             onApply: setSandboxSelector,

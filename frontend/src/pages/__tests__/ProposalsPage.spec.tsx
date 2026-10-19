@@ -134,7 +134,8 @@ describe('ProposalsPage', () => {
     expect(rows()).toEqual([['2', 'team-b', 'agent', '-', '-']]);
   });
 
-  // Unreadable first, then flagged, then the most recently proposed.
+  // Known counts first — flagged, then the most recently proposed — and the
+  // sandboxes that could not be read after them, counted in one alert.
   it('puts what is most urgent at the top', () => {
     mockUseAcrossWorkspaces.mockReturnValue(
       summary([
@@ -162,10 +163,106 @@ describe('ProposalsPage', () => {
 
     // Sandbox name is the third column (after Pending and Workspace).
     expect(rows().map((cells) => cells[2])).toEqual([
-      'unknown',
       'flagged',
       'quiet',
+      'unknown',
     ]);
+    expect(screen.getByTestId('proposals-unavailable')).toHaveTextContent(
+      'The proposals of one sandbox could not be read',
+    );
+  });
+
+  // The summary is polled, one inbox read per sandbox, and the ones the BFF
+  // runs out of time for come back unavailable. They are one alert with a
+  // count, not a wall of rows above the proposals that were read.
+  it('counts the sandboxes it could not read in one alert', () => {
+    mockUseAcrossWorkspaces.mockReturnValue(
+      summary([
+        entry({
+          workspace: 'team-a',
+          sandboxName: 'slow-1',
+          unavailable: true,
+        }),
+        entry({ workspace: 'team-a', sandboxName: 'busy', pendingCount: 3 }),
+        entry({
+          workspace: 'team-b',
+          sandboxName: 'slow-2',
+          unavailable: true,
+        }),
+      ]),
+    );
+    renderPage();
+
+    expect(screen.getAllByTestId('proposals-unavailable')).toHaveLength(1);
+    expect(screen.getByTestId('proposals-unavailable')).toHaveTextContent(
+      'The proposals of 2 sandboxes could not be read',
+    );
+    expect(rows().map((cells) => cells[0])).toEqual([
+      '3',
+      'Could not be read',
+      'Could not be read',
+    ]);
+  });
+
+  it('shows no unavailable alert when every inbox was read', () => {
+    mockUseAcrossWorkspaces.mockReturnValue(
+      summary([
+        entry({ workspace: 'team-a', sandboxName: 'busy', pendingCount: 1 }),
+      ]),
+    );
+    renderPage();
+
+    expect(
+      screen.queryByTestId('proposals-unavailable'),
+    ).not.toBeInTheDocument();
+  });
+
+  // Until every read has answered, "nothing waiting" would be a claim about
+  // workspaces that have not been read yet.
+  it('never says nothing is waiting while a read is still out', () => {
+    mockIsPlatformAdmin = false;
+    mockUsePerWorkspace.mockReturnValue(summary([], { isLoading: true }));
+    renderPage();
+
+    expect(screen.queryByTestId('proposals-empty')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('proposals-table')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: 'Loading proposals' }),
+    ).toBeInTheDocument();
+  });
+
+  it('waits for the workspace list before saying nothing is waiting', () => {
+    mockIsPlatformAdmin = false;
+    mockUseWorkspaces.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: jest.fn(),
+    });
+    renderPage();
+
+    expect(screen.queryByTestId('proposals-empty')).not.toBeInTheDocument();
+  });
+
+  it('says nothing is waiting once every read has answered', () => {
+    renderPage();
+
+    expect(screen.getByTestId('proposals-empty')).toHaveTextContent(
+      'No sandbox you can see has a policy rule waiting for a decision.',
+    );
+  });
+
+  // A sandbox the gateway listed without a workspace has no page to lead to.
+  it('does not link a sandbox that names no workspace', () => {
+    mockUseAcrossWorkspaces.mockReturnValue(
+      summary([
+        entry({ workspace: '', sandboxName: 'orphan', unavailable: true }),
+      ]),
+    );
+    renderPage();
+
+    expect(rows()).toEqual([['Could not be read', '-', 'orphan', '-', '-']]);
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
   });
 
   // A sandbox whose inbox could not be read has an unknown number of
@@ -203,8 +300,9 @@ describe('ProposalsPage', () => {
       '/workspaces/team-a/sandboxes/agent?tab=proposals',
     );
     // The count is the row's one link. The two names beside it say which
-    // sandbox the row is about and lead nowhere.
+    // sandbox the row is about and lead nowhere; the link's name says it.
     expect(link).toHaveTextContent('1');
+    expect(link).toHaveAccessibleName('1 proposal waiting in team-a/agent');
     expect(screen.getAllByRole('link')).toEqual([link]);
   });
 
@@ -219,8 +317,41 @@ describe('ProposalsPage', () => {
     );
     renderPage();
 
+    expect(screen.getByTestId('proposals-partial')).toHaveTextContent(
+      'A workspace could not be read',
+    );
     expect(screen.getByTestId('proposals-partial')).toHaveTextContent('team-b');
     expect(rows()).toHaveLength(1);
+  });
+
+  it('counts the workspaces it could not read, and says less when empty', () => {
+    mockIsPlatformAdmin = false;
+    mockUsePerWorkspace.mockReturnValue(
+      summary([], { failedWorkspaces: ['team-a', 'team-b'] }),
+    );
+    renderPage();
+
+    expect(screen.getByTestId('proposals-partial')).toHaveTextContent(
+      '2 workspaces could not be read',
+    );
+    expect(screen.getByTestId('proposals-partial')).toHaveTextContent(
+      'team-a, team-b',
+    );
+    // Not "none you can see": two of them were not seen.
+    expect(screen.getByTestId('proposals-empty')).toHaveTextContent(
+      'No sandbox in the workspaces that could be read has a policy rule waiting for a decision.',
+    );
+  });
+
+  it("describes proposals as the sandboxes' own", () => {
+    renderPage();
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Proposals' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/^Policy rules your sandboxes have proposed/),
+    ).toBeInTheDocument();
   });
 
   it('says so when the feature is switched off, and reads nothing', () => {

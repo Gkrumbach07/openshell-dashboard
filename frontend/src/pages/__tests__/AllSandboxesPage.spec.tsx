@@ -60,15 +60,13 @@ const Location: React.FC = () => {
   );
 };
 
-const renderPage = (
-  props: React.ComponentProps<typeof AllSandboxesPage> = {},
-) =>
+const renderPage = () =>
   render(
     <MemoryRouter
       initialEntries={['/sandboxes']}
       future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
     >
-      <AllSandboxesPage {...props} />
+      <AllSandboxesPage />
       <Location />
     </MemoryRouter>,
   );
@@ -96,7 +94,7 @@ describe('AllSandboxesPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Secure execution environments for agents and tools, across every workspace on the gateway.',
+        'Secure execution environments, across every workspace on the gateway.',
       ),
     ).toBeInTheDocument();
     expect(headersOf('all-sandboxes-table')).toEqual([
@@ -135,11 +133,14 @@ describe('AllSandboxesPage', () => {
   });
 
   // A row leads to the workspace-scoped page of the sandbox it is: the one in
-  // its own workspace, not another of the same name.
+  // its own workspace, not another of the same name. Both names are links,
+  // so they can be opened in a new tab and read as links by a screen reader.
   it('opens a sandbox in the workspace it belongs to', () => {
     renderPage();
+    const link = screen.getByTestId('sandbox-link-team-b/agent');
+    expect(link).toHaveAttribute('href', '/workspaces/team-b/sandboxes/agent');
 
-    fireEvent.click(screen.getByTestId('sandbox-link-team-b/agent'));
+    fireEvent.click(link);
 
     expect(screen.getByTestId('location')).toHaveTextContent(
       /^\/workspaces\/team-b\/sandboxes\/agent$/,
@@ -149,30 +150,31 @@ describe('AllSandboxesPage', () => {
   it('opens the workspace from the workspace column', () => {
     renderPage();
     const firstRow = rowsOf('all-sandboxes-table')[0];
+    const link = within(firstRow).getByRole('link', { name: 'team-a' });
+    expect(link).toHaveAttribute('href', '/workspaces/team-a');
 
-    fireEvent.click(within(firstRow).getByRole('button', { name: 'team-a' }));
+    fireEvent.click(link);
 
     expect(screen.getByTestId('location')).toHaveTextContent(
       /^\/workspaces\/team-a$/,
     );
   });
 
-  it('hands navigation to the host when it provides callbacks', () => {
-    const onSelectSandbox = jest.fn();
-    const onSelectWorkspace = jest.fn();
-    renderPage({ onSelectSandbox, onSelectWorkspace });
-
-    fireEvent.click(screen.getByTestId('sandbox-link-team-b/builder'));
-    expect(onSelectSandbox).toHaveBeenCalledWith('team-b', 'builder');
-
-    fireEvent.click(
-      within(rowsOf('all-sandboxes-table')[0]).getByRole('button', {
-        name: 'team-a',
-      }),
+  // A name is one path segment, whatever it holds.
+  it('encodes the names in the paths it links to', () => {
+    mockUseAllSandboxes.mockReturnValue(
+      ok([sandbox('team a', 'x?y', 'READY')]),
     );
-    expect(onSelectWorkspace).toHaveBeenCalledWith('team-a');
-    // The router was left alone.
-    expect(screen.getByTestId('location')).toHaveTextContent(/^\/sandboxes$/);
+    renderPage();
+
+    expect(screen.getByTestId('sandbox-link-team a/x?y')).toHaveAttribute(
+      'href',
+      '/workspaces/team%20a/sandboxes/x%3Fy',
+    );
+    expect(screen.getByTestId('workspace-link-team a/x?y')).toHaveAttribute(
+      'href',
+      '/workspaces/team%20a',
+    );
   });
 
   it('filters the rows by workspace or name as it is typed', () => {

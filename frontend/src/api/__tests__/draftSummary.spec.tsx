@@ -6,6 +6,7 @@ import { DRAFT_SUMMARY_POLL_MS } from '../../constants';
 import {
   getWorkspaceDraftSummary,
   useWorkspaceDraftSummary,
+  useWorkspacesDraftSummaries,
 } from '../draftSummary';
 import { policyKeys } from '../queryKeys';
 import type { DraftSummary } from '../../types';
@@ -139,5 +140,102 @@ describe('workspace draft summary', () => {
       .find({ queryKey: policyKeys.workspaceDraftSummary('team-a') });
     const observer = query?.observers[0];
     expect(observer?.options.refetchInterval).toBe(DRAFT_SUMMARY_POLL_MS);
+  });
+});
+
+// A promise per workspace, settled when the test says so.
+const deferredReads = () => {
+  const pending: Record<
+    string,
+    { resolve: (summary: DraftSummary) => void; reject: (e: Error) => void }
+  > = {};
+  mockGet.mockImplementation(
+    (path: string) =>
+      new Promise<DraftSummary>((resolve, reject) => {
+        const workspace = decodeURIComponent(path.split('/')[4]);
+        pending[workspace] = { resolve, reject };
+      }),
+  );
+  return pending;
+};
+
+const setupMany = (workspaces: string[], enabled = true) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  return renderHook(
+    (props: { enabled: boolean }) =>
+      useWorkspacesDraftSummaries(workspaces, props.enabled),
+    { wrapper, initialProps: { enabled } },
+  );
+};
+
+const teamSummary = (workspace: string, pendingCount: number) => ({
+  totalPending: pendingCount,
+  sandboxes: [
+    {
+      workspace,
+      sandboxName: 'agent',
+      pendingCount,
+      hasSecurityFlags: false,
+      latestDraftMs: 0,
+    },
+  ],
+});
+
+describe('the summaries of several workspaces', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  // A list built from some of the workspaces would say nothing is waiting in
+  // the ones still being read.
+  it('is loading until every workspace has answered', async () => {
+    const reads = deferredReads();
+    const { result } = setupMany(['team-a', 'team-b']);
+    await waitFor(() => expect(Object.keys(reads)).toHaveLength(2));
+    expect(result.current.isLoading).toBe(true);
+
+    reads['team-a'].resolve(teamSummary('team-a', 1));
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    expect(result.current.isLoading).toBe(true);
+
+    reads['team-b'].resolve(teamSummary('team-b', 2));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.totalPending).toBe(3);
+    expect(result.current.items).toHaveLength(2);
+  });
+
+  it('counts a workspace that failed as answered, and names it', async () => {
+    const reads = deferredReads();
+    const { result } = setupMany(['team-a', 'team-b']);
+    await waitFor(() => expect(Object.keys(reads)).toHaveLength(2));
+
+    reads['team-a'].resolve(teamSummary('team-a', 1));
+    reads['team-b'].reject(new Error('workspace role required'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.failedWorkspaces).toEqual(['team-b']);
+    expect(result.current.isError).toBe(false);
+  });
+
+  // The page renders once with the reads switched off (while the role is
+  // being read) and then switches them on. The render that switches them on
+  // must not be answered from the one before it.
+  it('is loading from the render that switches the reads on', async () => {
+    const reads = deferredReads();
+    const { result, rerender } = setupMany(['team-a'], false);
+    expect(result.current.isLoading).toBe(false);
+    expect(mockGet).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    expect(result.current.isLoading).toBe(true);
+
+    await waitFor(() => expect(reads['team-a']).toBeDefined());
+    reads['team-a'].resolve(teamSummary('team-a', 1));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.totalPending).toBe(1);
   });
 });
