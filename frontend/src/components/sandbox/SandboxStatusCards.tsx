@@ -8,10 +8,13 @@ import {
   DescriptionListGroup,
   DescriptionListTerm,
   Label,
+  Stack,
   StackItem,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
+import { useI18n } from '../../i18n';
+import EndpointFailureDetails from './EndpointFailureDetails';
 import type {
   ConfigurationAdmissionState,
   EndpointResult,
@@ -46,12 +49,15 @@ const ENDPOINT_RESULTS: Record<EndpointResult, string> = {
 };
 
 // The parts of a sandbox's status that are reported only for some sandboxes,
-// each as a card of the Details tab and neither when there is nothing to show:
+// each as a card of the Details tab and none when there is nothing to show:
 // whether the sandbox accepted the configuration the gateway wants it to run,
-// and the last network result for each tool server its policy configures.
+// the last network result for each tool server its policy configures with the
+// cause of a failed one, and the last token grant the sandbox refused.
 const SandboxStatusCards: React.FC<SandboxStatusCardsProps> = ({ sandbox }) => {
+  const { t } = useI18n('sandboxes');
   const admission = sandbox.status.configurationAdmission;
   const endpoints = sandbox.status.endpointStatuses ?? [];
+  const tokenGrantFailure = sandbox.status.lastTokenGrantFailure;
   // A state this build does not know is shown as the gateway sent it.
   const admissionLabel = admission
     ? (ADMISSION_LABELS[admission.state] ?? {
@@ -147,6 +153,12 @@ const SandboxStatusCards: React.FC<SandboxStatusCardsProps> = ({ sandbox }) => {
                       <Td dataLabel="Last result">
                         {ENDPOINT_RESULTS[endpoint.lastResult] ??
                           endpoint.lastResult}
+                        {endpoint.lastFailure && (
+                          <EndpointFailureDetails
+                            failure={endpoint.lastFailure}
+                            testId={`sandbox-endpoint-failure-${endpoint.endpointId}`}
+                          />
+                        )}
                       </Td>
                       <Td dataLabel="Reported at">
                         {endpoint.lastReportedAt || 'No report yet'}
@@ -160,6 +172,39 @@ const SandboxStatusCards: React.FC<SandboxStatusCardsProps> = ({ sandbox }) => {
                 is when the gateway accepted the report. They do not check
                 current availability or tool-call success.
               </Content>
+            </CardBody>
+          </Card>
+        </StackItem>
+      )}
+      {tokenGrantFailure && (
+        <StackItem>
+          <Card data-testid="sandbox-token-grant-failure-card">
+            <CardTitle>{t('tokenGrantFailure.title')}</CardTitle>
+            <CardBody>
+              <Stack hasGutter>
+                <DescriptionList isCompact isHorizontal>
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>
+                      {t('tokenGrantFailure.destination')}
+                    </DescriptionListTerm>
+                    <DescriptionListDescription data-testid="sandbox-token-grant-destination">
+                      {t('tokenGrantFailure.destinationValue', {
+                        host: tokenGrantFailure.destinationHost,
+                        port: tokenGrantFailure.destinationPort,
+                      })}
+                    </DescriptionListDescription>
+                  </DescriptionListGroup>
+                </DescriptionList>
+                {tokenGrantFailure.failure && (
+                  <EndpointFailureDetails
+                    failure={tokenGrantFailure.failure}
+                    testId="sandbox-token-grant-failure"
+                  />
+                )}
+                <Content component="small">
+                  {t('tokenGrantFailure.help')}
+                </Content>
+              </Stack>
             </CardBody>
           </Card>
         </StackItem>

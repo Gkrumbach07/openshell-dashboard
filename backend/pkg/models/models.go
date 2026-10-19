@@ -52,13 +52,50 @@ type SandboxCondition struct {
 // CREDENTIAL_UNAVAILABLE, TLS_FAILED, TRANSPORT_FAILED or UPSTREAM_REJECTED.
 // LastReportedAt is when the gateway accepted the observation (RFC 3339), not
 // when the request was made, and is empty while nothing was observed.
+// LastFailure is the cause of LastResult when the sandbox classified one, and
+// is absent otherwise.
 type EndpointStatus struct {
-	EndpointID     string   `json:"endpointId"`
-	Host           string   `json:"host"`
-	Path           string   `json:"path,omitempty"`
-	LastResult     string   `json:"lastResult"`
-	LastReportedAt string   `json:"lastReportedAt,omitempty"`
-	Ports          []uint32 `json:"ports,omitempty"`
+	LastFailure    *EndpointFailure `json:"lastFailure,omitempty"`
+	EndpointID     string           `json:"endpointId"`
+	Host           string           `json:"host"`
+	Path           string           `json:"path,omitempty"`
+	LastResult     string           `json:"lastResult"`
+	LastReportedAt string           `json:"lastReportedAt,omitempty"`
+	Ports          []uint32         `json:"ports,omitempty"`
+}
+
+// EndpointFailure mirrors openshell.v1.EndpointFailure: why an observed
+// exchange failed, in the gateway's closed sets of codes. It does not establish
+// that the endpoint is unhealthy, and no field carries remote text.
+//
+// Domain is the EndpointFailureDomain enum without its prefix: UNSPECIFIED or
+// TOKEN_GRANT. Code and Stage come from the domain's closed set, such as
+// provider_authorization_required and gateway_rpc. RecoveryAction is what the
+// gateway documents for Code, named as on CredentialRefreshStatus, and empty
+// when none is given. Provider and CredentialKey name the credential that
+// failed, never its value, and are empty when the failure came before one was
+// selected. UpstreamHTTPStatus is what a token service answered, absent when
+// none answered. RequestID is the ID the workload got back in the
+// x-openshell-request-id header.
+type EndpointFailure struct {
+	UpstreamHTTPStatus *uint32 `json:"upstreamHttpStatus,omitempty"`
+	Domain             string  `json:"domain"`
+	Code               string  `json:"code"`
+	RecoveryAction     string  `json:"recoveryAction,omitempty"`
+	Provider           string  `json:"provider,omitempty"`
+	CredentialKey      string  `json:"credentialKey,omitempty"`
+	Stage              string  `json:"stage,omitempty"`
+	RequestID          string  `json:"requestId,omitempty"`
+}
+
+// TokenGrantFailureObservation mirrors openshell.v1.TokenGrantFailureObservation:
+// the latest token grant the sandbox refused, for any destination, including
+// one no endpoint status lists. It describes the attempted call, not the
+// destination's health, and a later grant to the same destination clears it.
+type TokenGrantFailureObservation struct {
+	Failure         *EndpointFailure `json:"failure,omitempty"`
+	DestinationHost string           `json:"destinationHost"`
+	DestinationPort uint32           `json:"destinationPort"`
 }
 
 // ConfigurationAdmission mirrors openshell.v1.SandboxConfigurationAdmission:
@@ -90,8 +127,10 @@ type SandboxStatus struct {
 	Conditions  []SandboxCondition `json:"conditions,omitempty"`
 	// ConfigurationAdmission is absent for a sandbox that has reported none.
 	ConfigurationAdmission *ConfigurationAdmission `json:"configurationAdmission,omitempty"`
-	EndpointStatuses       []EndpointStatus        `json:"endpointStatuses,omitempty"`
-	CurrentPolicyVersion   uint32                  `json:"currentPolicyVersion"`
+	// LastTokenGrantFailure is absent when the gateway holds no refused grant.
+	LastTokenGrantFailure *TokenGrantFailureObservation `json:"lastTokenGrantFailure,omitempty"`
+	EndpointStatuses      []EndpointStatus              `json:"endpointStatuses,omitempty"`
+	CurrentPolicyVersion  uint32                        `json:"currentPolicyVersion"`
 }
 
 // SandboxSpecTemplate is the dashboard view of openshell.v1.SandboxTemplate,

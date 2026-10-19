@@ -14,7 +14,7 @@ return <Button>{t('create')}</Button>;
 ```
 
 - Import `useI18n` from this directory by relative path (`'../i18n'`). Do not import `i18next` / `react-i18next` from pages or components; ESLint rejects it.
-- Namespaces: `common` (shell + shared actions), `auth` (login), `workspaces` (workspace list).
+- Namespaces: `common` (shell + shared actions), `auth` (login), `workspaces` (workspace list), `sandboxes` (sandbox details).
 - Prefer nested keys (`empty.title`), not English-as-key.
 - Interpolation: `t('delete.toast', { name })`.
 - **Do not translate:** product name “OpenShell”, opaque API IDs/names, technical codes, gateway/BFF `.message` strings.

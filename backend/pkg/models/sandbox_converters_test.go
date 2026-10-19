@@ -17,6 +17,7 @@ func fullSDKSandbox() *openshell.Sandbox {
 	userNamespaces := true
 	gpus := uint32(2)
 	exit := int32(137)
+	upstreamStatus := uint32(401)
 	return &openshell.Sandbox{
 		ID:              "sb-id",
 		Name:            "agent-1",
@@ -67,7 +68,35 @@ func fullSDKSandbox() *openshell.Sandbox {
 				Path:           "/**",
 				LastResult:     openshell.EndpointPolicyDenied,
 				LastReportedAt: "2026-10-06T10:01:00Z",
+			}, {
+				EndpointID:     "ep-2",
+				Host:           "tools.example.test",
+				Ports:          []uint32{443},
+				Path:           "/mcp",
+				LastResult:     openshell.EndpointCredentialUnavailable,
+				LastReportedAt: "2026-10-06T10:02:00Z",
+				LastFailure: &openshell.EndpointFailure{
+					Domain:             openshell.EndpointFailureDomainTokenGrant,
+					Code:               "provider_authorization_required",
+					RecoveryAction:     openshell.RefreshRecoveryActionReauthorize,
+					Provider:           "github",
+					CredentialKey:      "GITHUB_TOKEN",
+					Stage:              "token_service",
+					UpstreamHTTPStatus: &upstreamStatus,
+					RequestID:          "6f1c2a3e-0000-4000-8000-000000000001",
+				},
 			}},
+			LastTokenGrantFailure: &openshell.TokenGrantFailureObservation{
+				DestinationHost: "api.example.test",
+				DestinationPort: 8443,
+				Failure: &openshell.EndpointFailure{
+					Domain:         openshell.EndpointFailureDomainTokenGrant,
+					Code:           "credential_selection_failed",
+					RecoveryAction: openshell.RefreshRecoveryActionFixConfiguration,
+					Stage:          "gateway_rpc",
+					RequestID:      "6f1c2a3e-0000-4000-8000-000000000002",
+				},
+			},
 			ConfigurationAdmission: &types.SandboxConfigurationAdmission{
 				State:               types.ConfigurationAdmissionRejected,
 				PolicyVersion:       3,
@@ -122,8 +151,32 @@ const fullSandboxJSON = `{
       "policyVersion": 3
     },
     "endpointStatuses": [
-      {"endpointId": "ep-1", "host": "mcp.example.test", "path": "/**", "lastResult": "POLICY_DENIED", "lastReportedAt": "2026-10-06T10:01:00Z", "ports": [443, 8443]}
+      {"endpointId": "ep-1", "host": "mcp.example.test", "path": "/**", "lastResult": "POLICY_DENIED", "lastReportedAt": "2026-10-06T10:01:00Z", "ports": [443, 8443]},
+      {
+        "lastFailure": {
+          "upstreamHttpStatus": 401,
+          "domain": "TOKEN_GRANT",
+          "code": "provider_authorization_required",
+          "recoveryAction": "REAUTHORIZE",
+          "provider": "github",
+          "credentialKey": "GITHUB_TOKEN",
+          "stage": "token_service",
+          "requestId": "6f1c2a3e-0000-4000-8000-000000000001"
+        },
+        "endpointId": "ep-2", "host": "tools.example.test", "path": "/mcp", "lastResult": "CREDENTIAL_UNAVAILABLE", "lastReportedAt": "2026-10-06T10:02:00Z", "ports": [443]
+      }
     ],
+    "lastTokenGrantFailure": {
+      "failure": {
+        "domain": "TOKEN_GRANT",
+        "code": "credential_selection_failed",
+        "recoveryAction": "FIX_CONFIGURATION",
+        "stage": "gateway_rpc",
+        "requestId": "6f1c2a3e-0000-4000-8000-000000000002"
+      },
+      "destinationHost": "api.example.test",
+      "destinationPort": 8443
+    },
     "currentPolicyVersion": 3
   },
   "metadata": {
@@ -261,6 +314,47 @@ func TestFromSDKSandboxEndpointResults(t *testing.T) {
 				t.Errorf("endpointStatuses = %+v, want one with lastResult %q", got.Status.EndpointStatuses, tc.want)
 			}
 		})
+	}
+}
+
+// A failure's domain is named the way the gateway's enum names it, and a
+// domain this build does not know reads as unspecified. A sandbox that
+// classified no cause, for an endpoint or for a grant, sends none.
+func TestFromSDKSandboxEndpointFailures(t *testing.T) {
+	domains := map[openshell.EndpointFailureDomain]string{
+		openshell.EndpointFailureDomainTokenGrant:       "TOKEN_GRANT",
+		openshell.EndpointFailureDomainUnspecified:      "UNSPECIFIED",
+		openshell.EndpointFailureDomain("SomethingNew"): "UNSPECIFIED",
+	}
+	for domain, want := range domains {
+		got := FromSDKSandbox(&openshell.Sandbox{Status: openshell.SandboxStatus{
+			EndpointStatuses: []openshell.EndpointStatus{{
+				EndpointID:  "ep",
+				LastResult:  openshell.EndpointCredentialUnavailable,
+				LastFailure: &openshell.EndpointFailure{Domain: domain, Code: "some_code"},
+			}},
+		}})
+		failure := got.Status.EndpointStatuses[0].LastFailure
+		if failure == nil || failure.Domain != want || failure.Code != "some_code" || failure.RecoveryAction != "" {
+			t.Errorf("failure in domain %q = %+v, want domain %s, its code and no recovery action", domain, failure, want)
+		}
+	}
+
+	got := FromSDKSandbox(&openshell.Sandbox{Status: openshell.SandboxStatus{
+		EndpointStatuses: []openshell.EndpointStatus{{EndpointID: "ep", LastResult: openshell.EndpointTLSFailed}},
+		LastTokenGrantFailure: &openshell.TokenGrantFailureObservation{
+			DestinationHost: "api.example.test",
+			DestinationPort: 443,
+		},
+	}})
+	if got.Status.EndpointStatuses[0].LastFailure != nil {
+		t.Errorf("endpoint with no classified cause has lastFailure %+v", got.Status.EndpointStatuses[0].LastFailure)
+	}
+	if grant := got.Status.LastTokenGrantFailure; grant == nil || grant.Failure != nil || grant.DestinationPort != 443 {
+		t.Errorf("lastTokenGrantFailure = %+v, want the destination and no failure", grant)
+	}
+	if none := FromSDKSandbox(&openshell.Sandbox{}); none.Status.LastTokenGrantFailure != nil {
+		t.Errorf("sandbox with no refused grant has lastTokenGrantFailure %+v", none.Status.LastTokenGrantFailure)
 	}
 }
 
