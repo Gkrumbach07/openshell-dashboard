@@ -72,8 +72,7 @@ export const gatewayInfo = {
   ],
   compatibility: {
     status: 'supported',
-    supportedMin: '0.1.0',
-    supportedMax: '0.1.2',
+    supportedLine: '0.1',
   },
 };
 
@@ -82,8 +81,7 @@ export const gatewayCompatibility = {
   healthy: true,
   compatibility: {
     status: 'supported',
-    supportedMin: '0.1.0',
-    supportedMax: '0.1.2',
+    supportedLine: '0.1',
   },
 };
 
@@ -500,14 +498,14 @@ export const draftSummary = {
     {
       workspace: 'ml-training',
       sandboxName: 'training-run-42',
-      pendingCount: 1,
+      pendingCount: 2,
       hasSecurityFlags: true,
       latestDraftMs: now - minutes(10),
       latestRationale:
         'The sandbox attempted to install packages from PyPI. Allowing access to pypi.org enables pip install.',
     },
   ],
-  totalPending: 3,
+  totalPending: 4,
 };
 
 export const workspaceDraftSummary: Record<string, object> = {
@@ -530,14 +528,14 @@ export const workspaceDraftSummary: Record<string, object> = {
       {
         workspace: 'ml-training',
         sandboxName: 'training-run-42',
-        pendingCount: 1,
+        pendingCount: 2,
         hasSecurityFlags: true,
         latestDraftMs: now - minutes(10),
         latestRationale:
           'The sandbox attempted to install packages from PyPI. Allowing access to pypi.org enables pip install.',
       },
     ],
-    totalPending: 1,
+    totalPending: 2,
   },
   'dev-sandbox': { sandboxes: [], totalPending: 0 },
   staging: { sandboxes: [], totalPending: 0 },
