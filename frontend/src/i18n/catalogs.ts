@@ -1,5 +1,8 @@
 import auth from './locales/en/auth';
 import common from './locales/en/common';
+import crossWorkspace from './locales/en/crossWorkspace';
+import gateway from './locales/en/gateway';
+import sandbox from './locales/en/sandbox';
 import sandboxes from './locales/en/sandboxes';
 import workspaces from './locales/en/workspaces';
 
@@ -8,6 +11,9 @@ export const catalogs = {
     common,
     auth,
     workspaces,
+    gateway,
+    crossWorkspace,
+    sandbox,
     sandboxes,
   },
 } as const;
