@@ -65,7 +65,8 @@ export const getAllWorkspacesDraftSummary = (): Promise<DraftSummary> =>
   get<DraftSummary>('/api/v1/draft-summary?allWorkspaces=true');
 
 // `refetchInterval` is for the shell, which counts on every page and reads
-// at NAV_COUNT_POLL_MS; the pages that list the proposals leave it alone.
+// at NAV_COUNT_POLL_MS, and for the Gateway page (GATEWAY_PAGE_POLL_MS); the
+// Proposals page leaves it alone.
 export const useAllWorkspacesDraftSummary = (
   enabled = true,
   options: { refetchInterval?: number } = {},

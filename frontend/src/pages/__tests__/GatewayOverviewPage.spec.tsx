@@ -28,6 +28,10 @@ jest.mock('../../api/auth', () => ({
 import { useAllProviders, useAllSandboxes } from '../../api/allWorkspaces';
 import { useAllWorkspacesDraftSummary } from '../../api/draftSummary';
 import { useGatewayCompatibility, useGatewayInfo } from '../../api/gateway';
+import {
+  GATEWAY_PAGE_POLL_MS,
+  GATEWAY_PAGE_PROVIDERS_POLL_MS,
+} from '../../constants';
 import { useGlobalPolicy } from '../../api/policy';
 import { useGlobalSettings } from '../../api/settings';
 
@@ -107,6 +111,26 @@ describe('GatewayOverviewPage', () => {
     });
     renderPage();
     expect(screen.getByLabelText('Loading gateway info')).toBeInTheDocument();
+  });
+
+  // The page a platform admin lands on and leaves open: what it reads across
+  // workspaces costs more the more sandboxes there are, so it reads at its
+  // own pace, not the Sandboxes and Proposals pages'.
+  it('reads the lists across workspaces at its own pace', () => {
+    mockUseGatewayInfo.mockReturnValue(
+      answered({ status: 'HEALTHY', gatewayVersion: '0.1.2' }),
+    );
+    renderPage();
+
+    expect(mockUseAllSandboxes).toHaveBeenCalledWith(undefined, {
+      refetchInterval: GATEWAY_PAGE_POLL_MS,
+    });
+    expect(mockUseDraftSummary).toHaveBeenCalledWith(true, {
+      refetchInterval: GATEWAY_PAGE_POLL_MS,
+    });
+    expect(mockUseAllProviders).toHaveBeenCalledWith({
+      refetchInterval: GATEWAY_PAGE_PROVIDERS_POLL_MS,
+    });
   });
 
   it('shows error alert on fetch failure', () => {

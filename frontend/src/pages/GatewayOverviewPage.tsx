@@ -45,7 +45,11 @@ import { useAllProviders, useAllSandboxes } from '../api/allWorkspaces';
 import { useFeatureFlags } from '../api/auth';
 import { useAllWorkspacesDraftSummary } from '../api/draftSummary';
 import { useGatewayCompatibility, useGatewayInfo } from '../api/gateway';
-import { BUILD_COMMIT } from '../constants';
+import {
+  BUILD_COMMIT,
+  GATEWAY_PAGE_POLL_MS,
+  GATEWAY_PAGE_PROVIDERS_POLL_MS,
+} from '../constants';
 import type {
   DraftSandboxSummary,
   GatewayCompatibility,
@@ -251,11 +255,19 @@ const GatewayOverviewPage: React.FC = () => {
   const gateway = useGatewayInfo();
   const compatibility = useGatewayCompatibility();
   const features = useFeatureFlags();
-  const sandboxes = useAllSandboxes();
-  const providers = useAllProviders();
-  // The same query the shell's Proposals badge reads, so this costs the
-  // gateway nothing beyond what the badge already asks for.
-  const proposals = useAllWorkspacesDraftSummary(features.draftPolicy);
+  // This is the page a platform admin lands on and leaves open, so it reads
+  // the lists across workspaces at its own, slower pace (constants.ts).
+  const sandboxes = useAllSandboxes(undefined, {
+    refetchInterval: GATEWAY_PAGE_POLL_MS,
+  });
+  const providers = useAllProviders({
+    refetchInterval: GATEWAY_PAGE_PROVIDERS_POLL_MS,
+  });
+  // The same query the shell's Proposals badge reads, so the badge rides on
+  // this page's reads while it is open.
+  const proposals = useAllWorkspacesDraftSummary(features.draftPolicy, {
+    refetchInterval: GATEWAY_PAGE_POLL_MS,
+  });
   // Which kind of thing Needs attention is showing. Every hook runs before
   // the early returns below, so this one does too.
   const [attentionType, setAttentionType] = useState<AttentionType | 'all'>(
