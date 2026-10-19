@@ -93,7 +93,15 @@ func FromSDKSandbox(sandbox *openshell.Sandbox) Sandbox {
 			Path:           endpoint.Path,
 			LastResult:     sdkEndpointResultString(endpoint.LastResult),
 			LastReportedAt: endpoint.LastReportedAt,
+			LastFailure:    fromSDKEndpointFailure(endpoint.LastFailure),
 		})
+	}
+	if observation := sandbox.Status.LastTokenGrantFailure; observation != nil {
+		out.Status.LastTokenGrantFailure = &TokenGrantFailureObservation{
+			DestinationHost: observation.DestinationHost,
+			DestinationPort: observation.DestinationPort,
+			Failure:         fromSDKEndpointFailure(observation.Failure),
+		}
 	}
 	if admission := sandbox.Status.ConfigurationAdmission; admission != nil {
 		// The SDK calls a state the gateway left unspecified "unknown".
@@ -141,6 +149,31 @@ func fromSDKSpecTemplate(t *openshell.SandboxTemplate) *SandboxSpecTemplate {
 		return nil
 	}
 	return &out
+}
+
+// fromSDKEndpointFailure converts the cause of a failed exchange, and returns
+// nil when the sandbox classified none.
+func fromSDKEndpointFailure(failure *openshell.EndpointFailure) *EndpointFailure {
+	if failure == nil {
+		return nil
+	}
+	return &EndpointFailure{
+		Domain:             sdkEndpointFailureDomainString(failure.Domain),
+		Code:               failure.Code,
+		RecoveryAction:     sdkRecoveryActionString(failure.RecoveryAction),
+		Provider:           failure.Provider,
+		CredentialKey:      failure.CredentialKey,
+		Stage:              failure.Stage,
+		UpstreamHTTPStatus: failure.UpstreamHTTPStatus,
+		RequestID:          failure.RequestID,
+	}
+}
+
+func sdkEndpointFailureDomainString(domain openshell.EndpointFailureDomain) string {
+	if domain == openshell.EndpointFailureDomainTokenGrant {
+		return "TOKEN_GRANT"
+	}
+	return "UNSPECIFIED"
 }
 
 func sdkEndpointResultString(result openshell.EndpointResult) string {

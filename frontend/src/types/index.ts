@@ -84,9 +84,44 @@ export type EndpointResult =
   | 'TRANSPORT_FAILED'
   | 'UPSTREAM_REJECTED';
 
+// openshell.v1.EndpointFailureDomain without its prefix: the subsystem whose
+// closed set of codes explains a failure.
+export type EndpointFailureDomain =
+  'UNSPECIFIED' | 'TOKEN_GRANT' | (string & NonNullable<unknown>);
+
+// openshell.v1.EndpointFailure — why an observed exchange failed, in the
+// gateway's closed sets of codes (code and stage, such as
+// "provider_authorization_required" and "gateway_rpc"). It does not establish
+// that the endpoint is unhealthy, and no field carries remote text.
+// credentialKey is a credential's name, never its value; provider and
+// credentialKey are absent when the failure came before a credential was
+// selected. requestId is the x-openshell-request-id the workload got back.
+export type EndpointFailure = {
+  domain: EndpointFailureDomain;
+  code: string;
+  // Absent when the gateway gives none.
+  recoveryAction?: RefreshRecoveryAction;
+  provider?: string;
+  credentialKey?: string;
+  stage?: string;
+  // What a token service answered; absent when none answered.
+  upstreamHttpStatus?: number;
+  requestId?: string;
+};
+
+// openshell.v1.TokenGrantFailureObservation — the latest token grant the
+// sandbox refused, for any destination, including one no endpoint status
+// lists. It describes the attempted call, not the destination's health.
+export type TokenGrantFailureObservation = {
+  destinationHost: string;
+  destinationPort: number;
+  failure?: EndpointFailure;
+};
+
 // openshell.v1.EndpointStatus — a tool server endpoint the sandbox's policy
 // configures. lastReportedAt (RFC 3339) is when the gateway accepted the
 // observation, not when the request was made, and is absent until there is one.
+// lastFailure is the cause of lastResult when the sandbox classified one.
 export type EndpointStatus = {
   endpointId: string;
   host: string;
@@ -94,6 +129,7 @@ export type EndpointStatus = {
   path?: string;
   lastResult: EndpointResult;
   lastReportedAt?: string;
+  lastFailure?: EndpointFailure;
 };
 
 export type ConfigurationAdmissionState =
@@ -122,6 +158,8 @@ export type SandboxStatus = {
   // running). Signal exits are reported as 128+signal.
   exitCode?: number;
   endpointStatuses?: EndpointStatus[];
+  // Absent when the gateway holds no refused grant.
+  lastTokenGrantFailure?: TokenGrantFailureObservation;
   configurationAdmission?: ConfigurationAdmission;
 };
 
