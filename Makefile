@@ -26,7 +26,7 @@ dev-full: ## The same behind sign-in: starts the gateway, Keycloak and the auth 
 
 # UI work against fixtures instead of a gateway. A Vite middleware plugin
 # answers /api/v1 itself, so neither the BFF nor a gateway has to be running.
-# See mock-api-setup.md for what the fixtures cover.
+# See docs/mock-api.md for what the fixtures cover.
 dev-mock: ## Start the frontend only (:3000), served from mock API data
 	cd frontend && MOCK_API=true npm start
 

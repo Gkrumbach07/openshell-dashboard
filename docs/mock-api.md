@@ -1,20 +1,13 @@
-# Mock API Setup for Local UI Development
+# The mock API
 
-## What was done
+For UI work without a gateway. A **Vite dev-server plugin** intercepts all `/api/v1/*` requests and returns realistic mock data, allowing the full dashboard UI to run locally without a real OpenShell gateway, BFF, or Keycloak.
 
-A **Vite dev-server plugin** was created that intercepts all `/api/v1/*` requests and returns realistic mock data, allowing the full dashboard UI to run locally without a real OpenShell gateway, BFF, or Keycloak.
-
-## Files created
+## Files
 
 | File | Purpose |
 |---|---|
 | `frontend/mock/data.ts` | All mock data — workspaces, providers, sandboxes, profiles, settings, policies, drafts, logs, services, templates, members, gateway info, auth config |
 | `frontend/mock/mockPlugin.ts` | Vite plugin with a compiled route matcher that intercepts GET requests with pattern-matched routes (`:param` syntax), and stubs POST/PUT/DELETE generically |
-
-## File modified
-
-| File | Change |
-|---|---|
 | `frontend/vite.config.ts` | Imports `mockApiPlugin` and conditionally adds it to the Vite plugin array when `MOCK_API=true` |
 
 ## How to run

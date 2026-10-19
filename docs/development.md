@@ -29,6 +29,7 @@ Open `http://localhost:4180`, not the port 3000 the dev server prints. The comma
 - **Stop.** Ctrl-C, then `make dev-down`. `make dev-reset` also deletes the gateway's data; run it before you delete the checkout.
 - **Logs.** `make dev-logs` follows the gateway and Keycloak.
 - **Docker.** The gateway runs on the daemon `docker` talks to (`docker context ls`). Tested on colima on macOS only; there, keep the checkout under your home directory.
+- **No gateway at all.** `make dev-mock` serves the UI from fixtures, with no BFF or gateway running; `make dev-mock-empty` is a gateway nobody has used yet. See [The mock API](mock-api.md).
 - **A gateway of your own.** For `make dev`, skip `make gateway` and export its address and certificates first ([Connecting to a gateway outside the chart](configuration.md#connecting-to-a-gateway-outside-the-chart)).
 
 ## Make targets
@@ -37,6 +38,7 @@ Open `http://localhost:4180`, not the port 3000 the dev server prints. The comma
 |---|---|
 | `make setup` | `npm install` in `frontend/`, `go mod download` in `backend/` |
 | `make gateway`, `dev`, `dev-full`, `dev-logs`, `dev-down`, `dev-reset` | [Run it locally](#run-it-locally) |
+| `make dev-mock`, `dev-mock-empty` | The UI alone, on [the mock API](mock-api.md) |
 | `make test` | `go test ./...` and Jest |
 | `make lint` | ESLint, the Prettier check and golangci-lint |
 | `make typecheck`, `make format` | `tsc --noEmit`; Prettier, writing the files |
