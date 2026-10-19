@@ -628,3 +628,73 @@ func TestDraftSummaryStopsWhenNobodyIsWaiting(t *testing.T) {
 		t.Errorf("%d sandboxes reported as unavailable, want the %d that were never read", unavailable, want)
 	}
 }
+
+// Across workspaces there is no workspace to fall back on. A sandbox the
+// gateway lists without one is reported unavailable and never read: the
+// gateway refuses a selector with an empty name (hard fact 12). Any other
+// sandbox in the same list is read as usual.
+func TestDraftSummaryAllWorkspacesSandboxWithoutAWorkspace(t *testing.T) {
+	tests := []struct {
+		name      string
+		listed    []*openshell.Sandbox
+		wantReads []draftRead
+		want      models.DraftSummary
+	}{
+		{
+			name:   "the only sandbox names no workspace",
+			listed: []*openshell.Sandbox{{Name: "orphan"}},
+			want: models.DraftSummary{
+				Sandboxes: []models.DraftSandboxSummary{{SandboxName: "orphan", Unavailable: true}},
+			},
+			wantReads: []draftRead{},
+		},
+		{
+			name: "one of several names no workspace",
+			listed: []*openshell.Sandbox{
+				{Name: "agent", Workspace: "team-a"},
+				{Name: "orphan"},
+				{Name: "quiet", Workspace: "team-b"},
+			},
+			want: models.DraftSummary{
+				TotalPending: 1,
+				Sandboxes: []models.DraftSandboxSummary{
+					{Workspace: "team-a", SandboxName: "agent", PendingCount: 1},
+					{SandboxName: "orphan", Unavailable: true},
+				},
+			},
+			wantReads: []draftRead{
+				{workspace: "team-a", sandbox: "agent", filter: "pending"},
+				{workspace: "team-b", sandbox: "quiet", filter: "pending"},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sdk := &mockSDK{}
+			sdk.sandboxes.listFn = func(context.Context, string, ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
+				return tc.listed, nil
+			}
+			inbox := &draftInbox{chunks: map[string][]openshell.PolicyChunk{
+				"team-a/agent": {{ID: "c1", Status: "pending"}},
+			}}
+			sdk.policy.getDraftFn = inbox.get
+
+			w := serve(t, draftSummaryRoutes(sdk), http.MethodGet, "/draft-summary?allWorkspaces=true", "")
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+			}
+			var got models.DraftSummary
+			decodeInto(t, w, &got)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("summary differs.\ngot:  %+v\nwant: %+v", got, tc.want)
+			}
+			want := map[draftRead]int{}
+			for _, read := range tc.wantReads {
+				want[read]++
+			}
+			if reads := inbox.readSet(); !reflect.DeepEqual(reads, want) {
+				t.Errorf("draft reads = %v, want %v", reads, want)
+			}
+		})
+	}
+}
