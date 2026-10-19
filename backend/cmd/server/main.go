@@ -122,7 +122,13 @@ func main() {
 		"gatewayReleaseLine", line.String(),
 	)
 
+	requestCtx, cancelRequests := context.WithCancel(context.Background())
+	defer cancelRequests()
+
 	server := newInboundServer(addr, app.Routes())
+	server.BaseContext = func(net.Listener) context.Context {
+		return requestCtx
+	}
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- serveInbound(server, *tlsCert, *tlsKey)
@@ -140,6 +146,7 @@ func main() {
 	case sig := <-sigCh:
 		signal.Stop(sigCh)
 		slog.Info("shutting down BFF", "signal", sig.String())
+		cancelRequests()
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
