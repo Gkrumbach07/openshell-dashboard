@@ -21,13 +21,9 @@ import {
 } from '@patternfly/react-core';
 import { ExpandableRowContent, Tbody, Td, Tr } from '@patternfly/react-table';
 
+import { useI18n } from '../../i18n';
 import { formatTimestamp } from '../../utils/formatters';
-import {
-  approvalAnnotation,
-  approveOutlineStyle,
-  chunkStatusColor,
-  chunkStatusIcon,
-} from './utils';
+import { approvalAnnotation, chunkStatusColor, chunkStatusIcon } from './utils';
 import type { useDraftActions } from './useDraftActions';
 import type { PolicyChunk } from '../../types';
 
@@ -62,6 +58,7 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
   onSetRejecting,
   onSetRejectReason,
 }) => {
+  const { t } = useI18n('sandbox');
   const { approve, reject, undo } = actions;
   const annotation = approvalAnnotation(chunk);
   // The gateway takes an approval for a pending or a rejected chunk, and a
@@ -155,7 +152,6 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
                   <Button
                     variant="secondary"
                     size="sm"
-                    style={approveOutlineStyle}
                     onClick={() =>
                       approve.mutate({
                         chunkId: chunk.id,
@@ -292,7 +288,9 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
                       the security flag, which stays in the table. */}
                   {(annotation || chunk.stage) && (
                     <DescriptionListGroup>
-                      <DescriptionListTerm>Labels</DescriptionListTerm>
+                      <DescriptionListTerm>
+                        {t('drafts.chunk.labels')}
+                      </DescriptionListTerm>
                       <DescriptionListDescription>
                         <LabelGroup numLabels={2}>
                           {annotation && (
@@ -313,7 +311,9 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
                   )}
                   {chunk.securityNotes && (
                     <DescriptionListGroup>
-                      <DescriptionListTerm>Security notes</DescriptionListTerm>
+                      <DescriptionListTerm>
+                        {t('drafts.chunk.securityNotes')}
+                      </DescriptionListTerm>
                       <DescriptionListDescription>
                         {/* The same label the row carries, repeated against
                             the note it stands for: the table says which

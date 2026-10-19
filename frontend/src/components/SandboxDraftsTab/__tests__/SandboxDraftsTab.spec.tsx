@@ -221,6 +221,31 @@ describe('SandboxDraftsTab', () => {
     });
   });
 
+  // Hard fact 25: flagged proposals are left out of a bulk approval unless
+  // the reviewer asks for them.
+  it('leaves the security-flagged proposals out of a bulk approval by default', () => {
+    renderTab();
+    fireEvent.click(screen.getByTestId('approve-all-chunks'));
+    expect(mockApproveAll.mock.calls[0][0]).toEqual({
+      includeSecurityFlagged: false,
+      approvals: [
+        { chunkId: 'c1', reviewToken: 'tok-1' },
+        { chunkId: 'c2', reviewToken: 'tok-2' },
+      ],
+    });
+  });
+
+  // PatternFly has no success button. Approve is a plain secondary button,
+  // not one recoloured through PatternFly's private custom properties.
+  it('draws the approvals as plain secondary buttons', () => {
+    renderTab();
+    for (const id of ['approve-all-chunks', 'approve-chunk-c1']) {
+      const button = screen.getByTestId(id);
+      expect(button).toHaveClass('pf-m-secondary');
+      expect(button).not.toHaveAttribute('style');
+    }
+  });
+
   it('says how many were approved and how many skipped, and why', () => {
     mockApproveAll.mockImplementation((_args, options) =>
       options.onSuccess({

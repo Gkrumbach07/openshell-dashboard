@@ -7,27 +7,6 @@ import {
 
 import type { DraftChunkApproval, PolicyChunk } from '../../types';
 
-// A green outline button, for approving. PatternFly has no success variant: a
-// secondary button takes its outline from the brand token (the blue), and
-// isDanger is the one status modifier it offers. This is PatternFly's own
-// danger-outline mapping with the success tokens in place of the danger ones,
-// so the button keeps every state the component defines and follows the
-// theme. Shared so the row's Approve and the toolbar's Approve all match.
-export const approveOutlineStyle = {
-  '--pf-v6-c-button--m-secondary--Color':
-    'var(--pf-t--global--text--color--status--success--default)',
-  '--pf-v6-c-button--m-secondary--BorderColor':
-    'var(--pf-t--global--border--color--status--success--default)',
-  '--pf-v6-c-button--m-secondary--hover--Color':
-    'var(--pf-t--global--text--color--status--success--hover)',
-  '--pf-v6-c-button--m-secondary--hover--BorderColor':
-    'var(--pf-t--global--border--color--status--success--hover)',
-  '--pf-v6-c-button--m-secondary--m-clicked--Color':
-    'var(--pf-t--global--text--color--status--success--clicked)',
-  '--pf-v6-c-button--m-secondary--m-clicked--BorderColor':
-    'var(--pf-t--global--border--color--status--success--clicked)',
-} as React.CSSProperties;
-
 export const eventColor = (
   eventType: string,
 ): 'green' | 'red' | 'blue' | 'orange' | 'grey' => {
@@ -72,13 +51,14 @@ export const chunkStatusIcon = (
 
 // The statuses `openshell draft get --status` filters by. The empty one is no
 // filter at all.
+// Each label is a key of the sandbox namespace.
 export const CHUNK_STATUS_FILTERS = [
   // Shut, the toggle is the only thing saying what is being filtered, so the
   // one option that is not itself a status has to name it.
-  { value: '', label: 'All statuses' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: '', labelKey: 'drafts.status.all' },
+  { value: 'pending', labelKey: 'drafts.status.pending' },
+  { value: 'approved', labelKey: 'drafts.status.approved' },
+  { value: 'rejected', labelKey: 'drafts.status.rejected' },
 ] as const;
 
 // The approvals a bulk approval sends: every pending chunk on screen, each

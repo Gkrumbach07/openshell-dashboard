@@ -52,10 +52,9 @@ describe('SandboxAttention, stacked under the sandbox header', () => {
     expect(closeButton('attention-drafts')).toBeNull();
   });
 
-  // What to do about the proposals reads as the end of the sentence the title
-  // starts, so it sits opposite the title in the alert's action slot rather
-  // than on a line of its own under the message.
-  it('puts the review link opposite the title, not under it', () => {
+  // The review link is the alert's action link, in PatternFly's action
+  // group under the message, and not crammed into the close slot.
+  it('puts the review link in the action group, not the close slot', () => {
     render(
       <SandboxAttention
         sandbox={sandbox()}
@@ -66,10 +65,44 @@ describe('SandboxAttention, stacked under the sandbox header', () => {
     );
     const alert = screen.getByTestId('attention-drafts');
     const review = screen.getByRole('button', { name: 'Review' });
-    expect(alert.querySelector('.pf-v6-c-alert__action')).toContainElement(
-      review,
+    expect(
+      alert.querySelector('.pf-v6-c-alert__action-group'),
+    ).toContainElement(review);
+    expect(alert.querySelector('.pf-v6-c-alert__action')).toBeNull();
+  });
+
+  it('keeps the close button in the close slot beside an action link', () => {
+    render(
+      <SandboxAttention
+        sandbox={sandbox('ERROR')}
+        draftSummary={draft}
+        onReviewDrafts={() => {}}
+        mode="detail"
+      />,
     );
-    expect(alert.querySelector('.pf-v6-c-alert__action-group')).toBeNull();
+    const alert = screen.getByTestId('attention-error');
+    expect(alert.querySelector('.pf-v6-c-alert__action')).toContainElement(
+      closeButton('attention-error'),
+    );
+  });
+
+  it('shows the flagged proposals as a warning, the others as info', () => {
+    const { rerender } = render(
+      <SandboxAttention
+        sandbox={sandbox()}
+        draftSummary={{ ...draft, hasSecurityFlags: true }}
+        mode="detail"
+      />,
+    );
+    expect(screen.getByTestId('attention-drafts')).toHaveClass('pf-m-warning');
+    rerender(
+      <SandboxAttention
+        sandbox={sandbox()}
+        draftSummary={draft}
+        mode="detail"
+      />,
+    );
+    expect(screen.getByTestId('attention-drafts')).toHaveClass('pf-m-info');
   });
 
   it('shows nothing once they have been decided', () => {

@@ -28,17 +28,14 @@ import { Table, Th, Thead, Tr } from '@patternfly/react-table';
 
 import { useDraftPolicy, useEffectiveSandboxPolicy } from '../../api/policy';
 import { useWorkspaceRole } from '../../api/rbac';
+import { useI18n } from '../../i18n';
 import { formatTimestamp } from '../../utils/formatters';
 import RefreshErrorAlert, { isRefreshError } from '../RefreshErrorAlert';
 import DraftChunkRow from './DraftChunkRow';
 import DraftHistorySection from './DraftHistorySection';
 import EditDraftModal from './EditDraftModal';
 import { useDraftActions } from './useDraftActions';
-import {
-  approveOutlineStyle,
-  CHUNK_STATUS_FILTERS,
-  pendingApprovals,
-} from './utils';
+import { CHUNK_STATUS_FILTERS, pendingApprovals } from './utils';
 import type { ApiError } from '../../api/client';
 import type { ApproveAllResult, PolicyChunk } from '../../types';
 
@@ -51,6 +48,7 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
   workspace,
   sandboxName,
 }) => {
+  const { t } = useI18n('sandbox');
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const [statusFilter, setStatusFilter] = useState('');
   const [isStatusOpen, setStatusOpen] = useState(false);
@@ -134,9 +132,10 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
   const columns = isWorkspaceAdmin ? 7 : 6;
   // What the toggle says while it is shut, which is the one of the four the
   // gateway is being asked for.
-  const statusLabel =
+  const statusLabel = t(
     CHUNK_STATUS_FILTERS.find((filter) => filter.value === statusFilter)
-      ?.label ?? 'All statuses';
+      ?.labelKey ?? 'drafts.status.all',
+  );
 
   // Where the draft stands and when the analysis behind it finished. It
   // comes back in the same read as the summary, and it is what says as of
@@ -237,11 +236,11 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
                       screen after that, so the question sits out of the way
                       of them, in the corner of the panel. */}
                   <FlexItem>
-                    <Popover bodyContent="An LLM-generated analysis of the activity that generated the proposals.">
+                    <Popover bodyContent={t('drafts.summary.source')}>
                       <Button
                         variant="plain"
                         isInline
-                        aria-label="Where the analysis summary comes from"
+                        aria-label={t('drafts.summary.sourceAriaLabel')}
                         data-testid="draft-summary-help"
                         // Plain rather than status-coloured: PatternFly's info
                         // status is purple, which on a panel that reports no
@@ -272,6 +271,7 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
                     ref={toggleRef}
                     isExpanded={isStatusOpen}
                     onClick={() => setStatusOpen(!isStatusOpen)}
+                    aria-label={t('drafts.status.label')}
                     data-testid="draft-status-toggle"
                   >
                     {statusLabel}
@@ -286,7 +286,7 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
                       isSelected={statusFilter === filter.value}
                       data-testid={`draft-status-${filter.value || 'all'}`}
                     >
-                      {filter.label}
+                      {t(filter.labelKey)}
                     </DropdownItem>
                   ))}
                 </DropdownList>
@@ -298,7 +298,6 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
                   <ToolbarItem>
                     <Button
                       variant="secondary"
-                      style={approveOutlineStyle}
                       onClick={() =>
                         actions.approveAll.mutate(
                           { includeSecurityFlagged: includeFlagged, approvals },

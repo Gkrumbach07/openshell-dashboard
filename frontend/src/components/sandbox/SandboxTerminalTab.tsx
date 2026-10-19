@@ -20,6 +20,7 @@ import {
 } from '@patternfly/react-core';
 import { TAB_CONTENT_HEIGHT, TERMINAL_FONT_SIZE } from '../../constants';
 import { Terminal } from '@xterm/xterm';
+import type { ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { getApiBasePath } from '../../api/client';
@@ -38,15 +39,40 @@ import type {
 import '@xterm/xterm/css/xterm.css';
 
 // xterm.js theme requires literal color values (rendered on canvas, not CSS),
-// so the dashboard's two themes are two literal pairs rather than tokens. The
-// cursor goes with them because xterm's own default cursor is white, which on
-// a light background is no cursor at all.
+// so the dashboard's two themes are two literal palettes rather than tokens.
+// The dark one keeps xterm's own ANSI colours, which are made for a dark
+// background. The light one needs all sixteen: xterm's defaults include a
+// white and a bright white, which on a white background are no text at all,
+// and pale yellows and cyans that barely read. Its cursor and selection are
+// set for the same reason: xterm's defaults for both are white.
 const TERM_COLOURS: Record<
   Theme,
-  { background: string; foreground: string; cursor: string }
+  ITheme & { background: string; foreground: string }
 > = {
   dark: { background: '#1e1e1e', foreground: '#d4d4d4', cursor: '#d4d4d4' },
-  light: { background: '#ffffff', foreground: '#151515', cursor: '#151515' },
+  light: {
+    background: '#ffffff',
+    foreground: '#151515',
+    cursor: '#151515',
+    cursorAccent: '#ffffff',
+    selectionBackground: '#b9d7f5',
+    black: '#151515',
+    red: '#a30000',
+    green: '#2d6a24',
+    yellow: '#795600',
+    blue: '#004d99',
+    magenta: '#7c2a8c',
+    cyan: '#005f60',
+    white: '#4d4d4d',
+    brightBlack: '#6a6e73',
+    brightRed: '#c9190b',
+    brightGreen: '#3d7317',
+    brightYellow: '#8a6200',
+    brightBlue: '#0066cc',
+    brightMagenta: '#8f3ba3',
+    brightCyan: '#007078',
+    brightWhite: '#383838',
+  },
 };
 
 type SandboxTerminalTabProps = {

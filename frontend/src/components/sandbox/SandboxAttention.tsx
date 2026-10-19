@@ -116,12 +116,9 @@ export const buildAttentionItems = (
     const n = draftSummary.pendingCount;
     items.push({
       key: 'drafts',
-      // Informational whether or not any of them is flagged: this is a count
-      // of work waiting to be read, not a condition of the sandbox, and the
-      // rest of the page keeps warning and danger for conditions. That some
-      // of them carry findings is said in the title, where the reader is
-      // already looking, rather than in the colour.
-      variant: 'info',
+      // A proposal the prover raised findings on is not a routine one, and
+      // the colour says so before the title is read.
+      variant: draftSummary.hasSecurityFlags ? 'warning' : 'info',
       title: draftSummary.hasSecurityFlags
         ? `${n} rule${n > 1 ? 's' : ''} proposed, with findings`
         : `${n} rule${n > 1 ? 's' : ''} proposed`,
@@ -181,48 +178,29 @@ export const buildAttentionItems = (
 const renderAlert = (
   item: AttentionItem,
   opts?: { dismissable?: boolean; onDismiss?: () => void },
-) => {
-  const action = item.action;
-  const isDismissable = opts?.dismissable;
-  return (
-    <Alert
-      key={item.key}
-      variant={item.variant}
-      isInline
-      title={item.title}
-      // Both of these go in the alert's action slot, which PatternFly lays on
-      // the title's own row at the far end of it ("icon title action" in the
-      // grid). The action here is what to do about what the title says, so it
-      // belongs opposite the title and not on a line of its own below the
-      // message, where actionLinks would put it.
-      actionClose={
-        action || isDismissable ? (
-          <Flex
-            gap={{ default: 'gapSm' }}
-            alignItems={{ default: 'alignItemsCenter' }}
-            flexWrap={{ default: 'nowrap' }}
-          >
-            {action && (
-              <FlexItem>
-                <AlertActionLink onClick={action.onClick}>
-                  {action.label}
-                </AlertActionLink>
-              </FlexItem>
-            )}
-            {isDismissable && (
-              <FlexItem>
-                <AlertActionCloseButton onClose={opts?.onDismiss} />
-              </FlexItem>
-            )}
-          </Flex>
-        ) : undefined
-      }
-      data-testid={`attention-${item.key}`}
-    >
-      {item.description && <Content component="p">{item.description}</Content>}
-    </Alert>
-  );
-};
+) => (
+  <Alert
+    key={item.key}
+    variant={item.variant}
+    isInline
+    title={item.title}
+    actionClose={
+      opts?.dismissable ? (
+        <AlertActionCloseButton onClose={opts.onDismiss} />
+      ) : undefined
+    }
+    actionLinks={
+      item.action ? (
+        <AlertActionLink onClick={item.action.onClick}>
+          {item.action.label}
+        </AlertActionLink>
+      ) : undefined
+    }
+    data-testid={`attention-${item.key}`}
+  >
+    {item.description && <Content component="p">{item.description}</Content>}
+  </Alert>
+);
 
 // ── Card mode: single alert with prev/next pagination in top-right ──
 
