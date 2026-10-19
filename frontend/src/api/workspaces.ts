@@ -88,12 +88,19 @@ export const listWorkspaceServices = (
 //
 // Polled: a workspace somebody else creates or deletes, and the phase of one
 // that is being deleted, show up without a reload.
-export const useWorkspaces = (labelSelector?: string) =>
+// `enabled` and `refetchInterval` are for the shell, which counts the
+// workspaces on every page: not for a user the gateway gives no role, and at
+// NAV_COUNT_POLL_MS. The Workspaces page leaves both alone.
+export const useWorkspaces = (
+  labelSelector?: string,
+  options: { enabled?: boolean; refetchInterval?: number } = {},
+) =>
   useQuery({
     queryKey: workspaceKeys.list(labelSelector),
     queryFn: () => listWorkspaces(labelSelector),
     placeholderData: keepPreviousData,
-    refetchInterval: RESOURCE_POLL_MS,
+    refetchInterval: options.refetchInterval ?? RESOURCE_POLL_MS,
+    enabled: options.enabled ?? true,
   });
 
 type UseWorkspaceServicesOptions = {

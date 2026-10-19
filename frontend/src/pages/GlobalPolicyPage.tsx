@@ -322,8 +322,10 @@ const GlobalPolicyPage: React.FC = () => {
           )}
         </ModalBody>
         <ModalFooter>
+          {/* Danger: a global policy replaces every sandbox's own policy
+              (hard fact 23, the global one wins). */}
           <Button
-            variant="primary"
+            variant="danger"
             onClick={submit}
             isDisabled={!canApply || setGlobalPolicy.isPending}
             isLoading={setGlobalPolicy.isPending}

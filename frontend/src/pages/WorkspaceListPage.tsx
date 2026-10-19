@@ -287,7 +287,9 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
             icon={CubesIcon}
             variant="xl"
           >
-            <EmptyStateBody>{t('empty.body')}</EmptyStateBody>
+            <EmptyStateBody>
+              {isPlatformAdmin ? t('empty.body') : t('empty.bodyMember')}
+            </EmptyStateBody>
             {isPlatformAdmin && (
               <EmptyStateFooter>
                 <EmptyStateActions>

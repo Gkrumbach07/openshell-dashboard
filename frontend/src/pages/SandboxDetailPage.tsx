@@ -291,7 +291,10 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
             ? undefined
             : () => setActiveTab('proposals')
         }
-        onViewLogs={() => setActiveTab('logs')}
+        // The same on the Logs tab: the link would lead where the reader is.
+        onViewLogs={
+          resolvedTab === 'logs' ? undefined : () => setActiveTab('logs')
+        }
         mode="detail"
         // No padding of its own: the banner then sits the heading's bottom
         // padding below the heading and the tabs' top padding above the

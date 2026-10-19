@@ -5,9 +5,24 @@ export type Theme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'openshell-dashboard-theme';
 const DARK_THEME_CLASS = 'pf-v6-theme-dark';
 
+// Storage can throw — blocked site data, some private windows — and the theme
+// is read at boot, so a failure to read or write it is no theme remembered,
+// never an app that does not start.
 export const getStoredTheme = (): Theme | null => {
-  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return stored === 'light' || stored === 'dark' ? stored : null;
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === 'light' || stored === 'dark' ? stored : null;
+  } catch {
+    return null;
+  }
+};
+
+const storeTheme = (theme: Theme): void => {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // Not remembered; the toggle still applies for this visit.
+  }
 };
 
 export const getSystemTheme = (): Theme =>
@@ -25,9 +40,8 @@ export const initTheme = (): Theme => {
 
 type ThemeContextValue = { theme: Theme; toggleTheme: () => void };
 
-// Light by default, so a surface rendered outside the provider — in a test,
-// or embedded under ADR 0001 by a consumer that mounts one page on its own —
-// is a readable page rather than a dark slab on a white one.
+// Light by default, so a component rendered outside the provider, as in a
+// unit test, is readable.
 const ThemeContext = createContext<ThemeContextValue>({
   theme: 'light',
   toggleTheme: () => undefined,
@@ -49,7 +63,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   const toggleTheme = () => {
     const next: Theme = theme === 'dark' ? 'light' : 'dark';
     applyTheme(next);
-    window.localStorage.setItem(THEME_STORAGE_KEY, next);
+    storeTheme(next);
     setTheme(next);
   };
 

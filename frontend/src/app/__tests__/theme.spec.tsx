@@ -75,6 +75,35 @@ describe('ThemeProvider', () => {
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
   });
 
+  // Storage that throws — blocked site data, some private windows — must not
+  // stop the app from starting or the toggle from working.
+  it('starts and toggles when storage throws', () => {
+    const getItem = jest
+      .spyOn(Storage.prototype, 'getItem')
+      .mockImplementation(() => {
+        throw new Error('blocked');
+      });
+    const setItem = jest
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('blocked');
+      });
+    try {
+      render(
+        <ThemeProvider>
+          <Toggle />
+          <Reader />
+        </ThemeProvider>,
+      );
+      fireEvent.click(screen.getByTestId('toggle'));
+      expect(screen.getByTestId('reader')).toHaveTextContent('dark');
+      expect(document.documentElement).toHaveClass(DARK_THEME_CLASS);
+    } finally {
+      getItem.mockRestore();
+      setItem.mockRestore();
+    }
+  });
+
   it('reads as light outside a provider', () => {
     render(<Reader />);
     expect(screen.getByTestId('reader')).toHaveTextContent('light');

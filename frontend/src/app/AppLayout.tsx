@@ -183,9 +183,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
   const sandboxCount = allSandboxes?.length ?? 0;
   // How many workspaces the signed-in user can see, on the Workspaces entry.
   // The same unfiltered list the Workspaces page reads, so looking at that
-  // list is not a second poll. Unlike the sandboxes count this is for
-  // everyone: the gateway answers each user with the workspaces they are in.
-  const { data: workspaces } = useWorkspaces();
+  // list is not a second poll. Unlike the sandboxes count this is for every
+  // user with a role: the gateway answers each with the workspaces they are
+  // in. A user with no role is shown the entitlement page and no navigation,
+  // so nothing is asked for them.
+  const { data: workspaces } = useWorkspaces(undefined, {
+    enabled: !isRoleLoading && !isUnentitled,
+    refetchInterval: NAV_COUNT_POLL_MS,
+  });
   const workspaceCount = workspaces?.length ?? 0;
 
   const masthead = (

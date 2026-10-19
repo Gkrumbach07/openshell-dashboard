@@ -211,6 +211,28 @@ describe('AppLayout navigation', () => {
     expect(screen.getByTestId('workspaces-badge')).toHaveTextContent('2');
   });
 
+  // The shell reads it on every page, so at the navigation's pace, and not
+  // at all for a user the gateway gives no role.
+  it('reads the workspace count at the navigation pace', () => {
+    renderShell('/workspaces');
+
+    expect(mockUseWorkspaces).toHaveBeenCalledWith(undefined, {
+      enabled: true,
+      refetchInterval: NAV_COUNT_POLL_MS,
+    });
+  });
+
+  it('does not ask for the workspaces of a user with no role', () => {
+    mockIsUser = false;
+    mockIsUnentitled = true;
+    renderShell('/workspaces');
+
+    expect(mockUseWorkspaces).toHaveBeenCalledWith(undefined, {
+      enabled: false,
+      refetchInterval: NAV_COUNT_POLL_MS,
+    });
+  });
+
   it('badges nothing when the user has no workspaces', () => {
     renderShell('/workspaces');
 

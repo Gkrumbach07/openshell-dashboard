@@ -306,11 +306,11 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
 
   const list = (
     <>
-      {/* PatternFly's toolbar order, as `.claude/rules/react.md` sets it out:
-          filters, then the view toggle as an icon group, then the buttons,
-          then the overflow menu, and the pagination last. createActionPosition
-          chooses which end of the action group the create button sits at; it
-          never moves past the pagination. */}
+      {/* PatternFly's toolbar order: filters, then the view toggle as an
+          icon group, then the buttons, then the overflow menu, and the
+          pagination last. createActionPosition chooses which end of the
+          action group the create button sits at; it never moves past the
+          pagination. */}
       <Toolbar aria-label="Sandbox actions">
         <ToolbarContent>
           {toolbarStart && <ToolbarItem>{toolbarStart}</ToolbarItem>}
