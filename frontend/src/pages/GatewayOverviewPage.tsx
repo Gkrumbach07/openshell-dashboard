@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -37,6 +37,7 @@ import {
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
   InfoCircleIcon,
+  QuestionCircleIcon,
 } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { Link } from 'react-router-dom';
@@ -50,41 +51,82 @@ import {
   GATEWAY_PAGE_POLL_MS,
   GATEWAY_PAGE_PROVIDERS_POLL_MS,
 } from '../constants';
+import { useI18n } from '../i18n';
 import type {
   DraftSandboxSummary,
   GatewayCompatibility,
-  GatewayExtensionKind,
   Sandbox,
+  ServiceStatus,
 } from '../types';
+
+type Translate = ReturnType<typeof useI18n>['t'];
+
 // The BFF's verdict on the gateway, in a few words. The notice that explains
 // what an unsupported gateway does to the rest of the dashboard is the one
 // the app shell raises above every page; this only states where the gateway
 // sits, beside the version it is a verdict on.
-const compatibilityText = (compatibility?: GatewayCompatibility): string => {
+const compatibilityText = (
+  t: Translate,
+  compatibility?: GatewayCompatibility,
+): string => {
   const line = compatibility?.supportedLine
     ? `${compatibility.supportedLine}.x`
     : '';
   switch (compatibility?.status) {
     case 'supported':
-      return line ? `Supported (${line})` : 'Supported';
+      return line
+        ? t('compatibility.supportedLine', { line })
+        : t('compatibility.supported');
     case 'unsupported':
-      return line ? `Not supported (built for ${line})` : 'Not supported';
+      return line
+        ? t('compatibility.unsupportedLine', { line })
+        : t('compatibility.unsupported');
     default:
-      return 'Not known';
+      return t('compatibility.notKnown');
   }
 };
 
-const EXTENSION_KIND_LABELS: Record<GatewayExtensionKind, string> = {
-  COMPUTE_DRIVER: 'Compute driver',
-  CREDENTIAL_DRIVER: 'Credential driver',
-  GATEWAY_INTERCEPTOR: 'Gateway interceptor',
-  SUPERVISOR_MIDDLEWARE: 'Supervisor middleware',
-  UNSPECIFIED: 'Unspecified',
+// The gateway's own status from GetGatewayInfo. The masthead's indicator is
+// the health check, which is a yes or a no; DEGRADED is only said here.
+const statusColor = (
+  status: ServiceStatus,
+): 'green' | 'orange' | 'red' | 'grey' => {
+  switch (status) {
+    case 'HEALTHY':
+      return 'green';
+    case 'DEGRADED':
+      return 'orange';
+    case 'UNHEALTHY':
+      return 'red';
+    default:
+      return 'grey';
+  }
 };
 
+const statusIcon = (status: ServiceStatus) => {
+  switch (status) {
+    case 'HEALTHY':
+      return <CheckCircleIcon />;
+    case 'DEGRADED':
+      return <ExclamationTriangleIcon />;
+    case 'UNHEALTHY':
+      return <ExclamationCircleIcon />;
+    default:
+      return <QuestionCircleIcon />;
+  }
+};
+
+const EXTENSION_KINDS = new Set([
+  'COMPUTE_DRIVER',
+  'CREDENTIAL_DRIVER',
+  'GATEWAY_INTERCEPTOR',
+  'SUPERVISOR_MIDDLEWARE',
+  'UNSPECIFIED',
+]);
+
 // A kind this build has no name for is shown as the gateway spelled it.
-const extensionKindLabel = (kind: string): string =>
-  (EXTENSION_KIND_LABELS as Record<string, string | undefined>)[kind] ?? kind;
+const extensionKindLabel = (t: Translate, kind: string): string =>
+  EXTENSION_KINDS.has(kind) ? t(`extensions.kinds.${kind}`) : kind;
 
 const CapabilityList: React.FC<{ capabilities?: string[] }> = ({
   capabilities,
@@ -111,33 +153,19 @@ const countOf = (query: {
 }): number | undefined =>
   query.isError || !query.data ? undefined : query.data.length;
 
-// The three kinds of thing that can be waiting, which are also what the
-// card's filter offers. A kind with nothing in it is not offered.
-const ATTENTION_TYPES = ['proposals', 'errors', 'setup'] as const;
+// The kinds of thing that can be waiting, which are also what the card's
+// filter offers. A kind with nothing in it is not offered. A list that could
+// not be read leads: until it is, nothing else on the card is the whole story.
+const ATTENTION_TYPES = ['unread', 'proposals', 'errors', 'setup'] as const;
 
 type AttentionType = (typeof ATTENTION_TYPES)[number];
 
-// Plural, because the filter picks out a set of them and counts it.
-const ATTENTION_TYPE_LABEL: Record<AttentionType, string> = {
-  proposals: 'Proposals',
-  errors: 'Sandbox errors',
-  setup: 'Setup',
-};
-
-// Singular, because a badge is on one row and says what that row is.
-const ATTENTION_BADGE_LABEL: Record<AttentionType, string> = {
-  proposals: 'Proposal',
-  errors: 'Sandbox error',
-  setup: 'Setup',
-};
-
 // What a kind means, told in the badge's colour. Danger is something that has
-// already gone wrong; warning is something that will unless it is dealt with;
-// info — PatternFly's purple — is a decision waiting on a person, which is a
-// proposal exactly. Nothing has gone wrong with a sandbox whose agent asked
-// for a rule, and a card read before anything has is the wrong place to say
-// otherwise.
+// already gone wrong (a sandbox in error, a list the page could not read);
+// warning is something that will unless it is dealt with; info — PatternFly's
+// purple — is a decision waiting on a person, which is a proposal exactly.
 const ATTENTION_STATUS: Record<AttentionType, 'info' | 'warning' | 'danger'> = {
+  unread: 'danger',
   proposals: 'info',
   errors: 'danger',
   setup: 'warning',
@@ -147,6 +175,7 @@ const ATTENTION_STATUS: Record<AttentionType, 'info' | 'warning' | 'danger'> = {
 // outline ones the masthead's health indicator uses, so one shape means one
 // thing across the page.
 const ATTENTION_ICON: Record<AttentionType, React.ReactElement> = {
+  unread: <ExclamationCircleIcon />,
   proposals: <InfoCircleIcon />,
   errors: <ExclamationCircleIcon />,
   setup: <ExclamationTriangleIcon />,
@@ -174,43 +203,48 @@ type AttentionItem = {
 
 // What to say under a proposal row: the newest chunk's own rationale when
 // the summary carried one, otherwise how many rules are waiting.
-const proposalDetail = (entry: DraftSandboxSummary): string => {
+const proposalDetail = (t: Translate, entry: DraftSandboxSummary): string => {
   if (entry.unavailable) {
-    return 'Its proposal inbox could not be read, so what is waiting in it is not known.';
+    return t('attention.proposals.unavailable');
   }
   if (entry.latestRationale) {
     return entry.latestRationale;
   }
-  return `${entry.pendingCount} policy ${
-    entry.pendingCount === 1 ? 'rule' : 'rules'
-  } waiting for a decision${
-    entry.hasSecurityFlags ? ', flagged by the prover' : ''
-  }.`;
+  return entry.hasSecurityFlags
+    ? t('attention.proposals.pendingFlagged', { count: entry.pendingCount })
+    : t('attention.proposals.pending', { count: entry.pendingCount });
 };
 
 // ERROR means one of two things — the gateway could not provision the
 // sandbox, or its main process exited non-zero (hard fact 1). A condition
 // message says which when the gateway sent one; otherwise the log is where
-// to look.
-const errorCondition = (sandbox: Sandbox) =>
-  sandbox.status.conditions?.find((c) => c.status === 'False' || c.reason);
+// to look. The Ready condition that is False is the one that says why; any
+// other False condition is the next best.
+const errorCondition = (sandbox: Sandbox) => {
+  const conditions = sandbox.status.conditions ?? [];
+  return (
+    conditions.find((c) => c.type === 'Ready' && c.status === 'False') ??
+    conditions.find((c) => c.status === 'False')
+  );
+};
 
-const errorDetail = (sandbox: Sandbox): string =>
-  errorCondition(sandbox)?.message ||
-  'Provisioning failed, or the main process exited non-zero; the log says which.';
+const errorDetail = (t: Translate, sandbox: Sandbox): string =>
+  errorCondition(sandbox)?.message || t('attention.errors.detail');
 
-// Prefer when the error condition last changed; fall back to when the
-// sandbox was created.
+// When the error condition last changed. A sandbox's creation time is not
+// when it went into error, so without a transition time there is no time.
 const errorAtMs = (sandbox: Sandbox): number | undefined => {
   const transitioned = errorCondition(sandbox)?.lastTransitionTime;
-  if (transitioned) {
-    const ms = Date.parse(transitioned);
-    if (!Number.isNaN(ms)) {
-      return ms;
-    }
+  if (!transitioned) {
+    return undefined;
   }
-  return sandbox.metadata.createdAtMs || undefined;
+  const ms = Date.parse(transitioned);
+  return Number.isNaN(ms) ? undefined : ms;
 };
+
+// Newest error first; one with no known time goes last.
+const byErrorTime = (a: Sandbox, b: Sandbox) =>
+  (errorAtMs(b) ?? -Infinity) - (errorAtMs(a) ?? -Infinity) || 0;
 
 // How many of one kind are named before the rest become a line of their own.
 // A gateway with forty sandboxes in error would otherwise be a column forty
@@ -245,13 +279,42 @@ const byProposalUrgency = (a: DraftSandboxSummary, b: DraftSandboxSummary) => {
 const sandboxPath = (workspace: string, name: string, tab: string) =>
   `/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}?tab=${tab}`;
 
+// One row of the card that is not an item: the all-clear, or that the lists
+// are still being read. The same DataList the items are in, so the card does
+// not change shape between the three.
+const AttentionNote: React.FC<{
+  id: string;
+  icon: React.ReactNode;
+  text: string;
+}> = ({ id, icon, text }) => (
+  <DataListItem aria-labelledby={id}>
+    <DataListItemRow>
+      <DataListItemCells
+        dataListCells={[
+          <DataListCell key="note">
+            <Flex
+              gap={{ default: 'gapSm' }}
+              flexWrap={{ default: 'nowrap' }}
+              alignItems={{ default: 'alignItemsCenter' }}
+            >
+              <FlexItem>{icon}</FlexItem>
+              <FlexItem id={id}>{text}</FlexItem>
+            </Flex>
+          </DataListCell>,
+        ]}
+      />
+    </DataListItemRow>
+  </DataListItem>
+);
+
 // Gateway overview — the dashboard's landing page for a platform admin. It
 // answers, in this order: is the gateway well, and is anything waiting for
-// me. Versions and compatibility sit as one small line under the title; the
-// gateway's compute drivers and extensions stay in the two tables a fold
-// below. The API exposes no time series, no utilisation and no event feed,
-// so there is nothing to chart.
+// me. The gateway's status, versions and compatibility sit as one small strip
+// beside the title; the gateway's compute drivers and extensions stay in the
+// two tables below. The API exposes no time series, no utilisation and no
+// event feed, so there is nothing to chart.
 const GatewayOverviewPage: React.FC = () => {
+  const { t } = useI18n('gateway');
   const gateway = useGatewayInfo();
   const compatibility = useGatewayCompatibility();
   const features = useFeatureFlags();
@@ -275,60 +338,24 @@ const GatewayOverviewPage: React.FC = () => {
   );
   const [isTypeOpen, setTypeOpen] = useState(false);
 
-  if (gateway.isLoading) {
-    return (
-      <PageSection>
-        <Bullseye>
-          <Spinner aria-label="Loading gateway info" />
-        </Bullseye>
-      </PageSection>
-    );
-  }
-
-  if (gateway.isError) {
-    return (
-      <PageSection>
-        <Alert
-          variant="danger"
-          title="Cannot reach the OpenShell gateway"
-          actionLinks={
-            <Button variant="link" onClick={() => gateway.refetch()}>
-              Retry
-            </Button>
-          }
-        >
-          {(gateway.error as Error).message}
-        </Alert>
-      </PageSection>
-    );
-  }
-
-  const info = gateway.data;
-  // The type marks it optional; a missing list is shown as none.
-  const extensions = info?.extensions ?? [];
-
   const sandboxCount = countOf(sandboxes);
   const providerCount = countOf(providers);
-  const gatewayVersion = info?.gatewayVersion || '-';
-  // A build has no version number, only the line it is for and, when the
-  // build was told, the commit it is made from (see constants.ts).
-  const builtForLine = compatibility.data?.compatibility?.supportedLine;
-  const dashboardBuild =
-    [builtForLine ? `for ${builtForLine}.x` : '', BUILD_COMMIT]
-      .filter(Boolean)
-      .join(' · ') || 'Not known';
-  const compatibilityLabel = compatibilityText(
-    compatibility.data?.compatibility ?? info?.compatibility,
-  );
+  // Proposals are read only where draft policies are switched on; elsewhere
+  // there is nothing to wait for.
+  const proposalsRead = features.draftPolicy;
+
+  // A list that has not answered yet. One that failed is not loading: it is
+  // a row of its own below.
+  const isLoadingLists =
+    (!sandboxes.isError && !sandboxes.data) ||
+    (!providers.isError && !providers.data) ||
+    (proposalsRead && proposals.isLoading);
 
   // Nothing has been made on this gateway yet. A workspace is not the test:
   // a gateway starts with `default`, so one that has only workspaces has
   // still not been used for anything.
   const isEmpty = sandboxCount === 0 && providerCount === 0;
 
-  const erroredSandboxes = (sandboxes.data ?? []).filter(
-    (sandbox) => sandbox.status.phase === 'ERROR',
-  );
   // What is worth doing something about, each row leading to where it is
   // done. The gateway's own version verdict is not repeated here: it is in
   // the strip above, and the app shell raises a notice above every page when
@@ -338,12 +365,41 @@ const GatewayOverviewPage: React.FC = () => {
   // title that is the link, then a sentence beside it saying what the title
   // means and what is to be done about it.
   const attention: AttentionItem[] = [];
-  // First: a rule an agent proposed is a sandbox held up until somebody
-  // decides on it. One line per sandbox, named as workspace/sandbox, because
-  // approving is done in that sandbox's own inbox and nowhere else (hard
-  // fact 25) — a line that only counted them led to a page that counts them
-  // again.
-  const pendingSandboxes = [...proposals.items]
+  // First: a list that could not be read. Whatever it holds is not known, so
+  // the card must not read as having nothing to do.
+  const unread: [string, boolean, string, unknown][] = [
+    ['sandboxes', sandboxes.isError, '/sandboxes', sandboxes.error],
+    ['providers', providers.isError, '/all-workspaces', providers.error],
+    [
+      'proposals',
+      proposalsRead && proposals.isError,
+      '/proposals',
+      proposals.error,
+    ],
+  ];
+  for (const [list, failed, to, error] of unread) {
+    if (failed) {
+      attention.push({
+        key: `unread-${list}`,
+        type: 'unread',
+        text: t(`attention.unread.${list}`),
+        detail:
+          (error instanceof Error && error.message) ||
+          t('attention.unread.detail'),
+        to,
+      });
+    }
+  }
+  // Then a rule proposed for a sandbox, from a connection it was denied: the
+  // sandbox is held up until somebody decides on it. One line per sandbox,
+  // named as workspace/sandbox, because approving is done in that sandbox's
+  // own inbox and nowhere else (hard fact 25) — a line that only counted
+  // them led to a page that counts them again.
+  const proposalItems =
+    proposalsRead && !proposals.isError ? proposals.items : [];
+  const totalPending =
+    proposalsRead && !proposals.isError ? proposals.totalPending : 0;
+  const pendingSandboxes = [...proposalItems]
     .filter((entry) => entry.unavailable || entry.pendingCount > 0)
     .sort(byProposalUrgency);
   attention.push(
@@ -352,7 +408,7 @@ const GatewayOverviewPage: React.FC = () => {
         key: `proposals-${entry.workspace}/${entry.sandboxName}`,
         type: 'proposals' as const,
         text: `${entry.workspace}/${entry.sandboxName}`,
-        detail: proposalDetail(entry),
+        detail: proposalDetail(t, entry),
         to: sandboxPath(entry.workspace, entry.sandboxName, 'proposals'),
         atMs:
           entry.unavailable || !entry.latestDraftMs
@@ -362,34 +418,35 @@ const GatewayOverviewPage: React.FC = () => {
       (hidden) => ({
         key: 'proposals-more',
         type: 'proposals' as const,
-        text: `${hidden} more ${hidden === 1 ? 'sandbox' : 'sandboxes'} with proposals`,
-        detail: 'Every sandbox with a rule waiting is on the Proposals page.',
+        text: t('attention.proposals.more', { count: hidden }),
+        detail: t('attention.proposals.moreDetail'),
         to: '/proposals',
       }),
     ),
   );
   // A summary that carries a total but no sandboxes is still worth saying;
   // all it can do is lead to the page that lists them.
-  if (pendingSandboxes.length === 0 && proposals.totalPending > 0) {
+  if (pendingSandboxes.length === 0 && totalPending > 0) {
     attention.push({
       key: 'proposals',
       type: 'proposals',
-      text: `${proposals.totalPending} policy ${
-        proposals.totalPending === 1 ? 'rule' : 'rules'
-      } waiting for a decision`,
-      detail: `An agent proposed ${
-        proposals.totalPending === 1 ? 'it' : 'them'
-      }. Each takes effect only once somebody approves it.`,
+      text: t('attention.proposals.total', { count: totalPending }),
+      detail: t('attention.proposals.totalDetail'),
       to: '/proposals',
     });
   }
+  // A list that failed names no sandboxes, even one it held before: a row
+  // above says it could not be read.
+  const erroredSandboxes = (sandboxes.isError ? [] : (sandboxes.data ?? []))
+    .filter((sandbox) => sandbox.status.phase === 'ERROR')
+    .sort(byErrorTime);
   attention.push(
     ...cappedByType(
       erroredSandboxes.map((sandbox) => ({
         key: `errored-${sandbox.metadata.workspace}/${sandbox.metadata.name}`,
         type: 'errors' as const,
         text: `${sandbox.metadata.workspace ?? ''}/${sandbox.metadata.name}`,
-        detail: errorDetail(sandbox),
+        detail: errorDetail(t, sandbox),
         // The row leads to the log, which is where ERROR is explained when
         // the condition did not carry a message.
         to: sandboxPath(
@@ -402,8 +459,8 @@ const GatewayOverviewPage: React.FC = () => {
       (hidden) => ({
         key: 'errored-more',
         type: 'errors' as const,
-        text: `${hidden} more ${hidden === 1 ? 'sandbox' : 'sandboxes'} in error`,
-        detail: 'Every sandbox on the gateway is under Sandboxes.',
+        text: t('attention.errors.more', { count: hidden }),
+        detail: t('attention.errors.moreDetail'),
         to: '/sandboxes',
       }),
     ),
@@ -412,9 +469,8 @@ const GatewayOverviewPage: React.FC = () => {
     attention.push({
       key: 'no-providers',
       type: 'setup',
-      text: 'No providers',
-      detail:
-        'Sandboxes have no credentials to reach a model or a service until one is added.',
+      text: t('attention.setup.noProviders'),
+      detail: t('attention.setup.noProvidersDetail'),
       to: '/all-workspaces',
     });
   }
@@ -423,10 +479,67 @@ const GatewayOverviewPage: React.FC = () => {
     attention.some((item) => item.type === type),
   );
   // A filter held across a refresh can outlive the last item of its kind.
-  const activeType =
-    attentionType !== 'all' && attentionTypes.includes(attentionType)
-      ? attentionType
-      : 'all';
+  // It is shown as All types at once, and dropped, so that it does not come
+  // back by itself when an item of that kind next appears.
+  const isFilterOffered =
+    attentionType === 'all' || attentionTypes.includes(attentionType);
+  useEffect(() => {
+    if (!isFilterOffered) {
+      setAttentionType('all');
+    }
+  }, [isFilterOffered]);
+
+  if (gateway.isLoading) {
+    return (
+      <PageSection>
+        <Bullseye>
+          <Spinner aria-label={t('loading')} />
+        </Bullseye>
+      </PageSection>
+    );
+  }
+
+  if (gateway.isError) {
+    return (
+      <PageSection>
+        <Alert
+          variant="danger"
+          title={t('loadFailed')}
+          actionLinks={
+            <Button variant="link" onClick={() => gateway.refetch()}>
+              {t('retry')}
+            </Button>
+          }
+        >
+          {(gateway.error as Error).message}
+        </Alert>
+      </PageSection>
+    );
+  }
+
+  const info = gateway.data;
+  const status: ServiceStatus = info?.status ?? 'UNSPECIFIED';
+  // The type marks it optional; a missing list is shown as none.
+  const extensions = info?.extensions ?? [];
+  const computeDrivers = info?.computeDrivers ?? [];
+
+  const gatewayVersion = info?.gatewayVersion || '-';
+  // A build has no version number, only the line it is for and, when the
+  // build was told, the commit it is made from (see constants.ts).
+  const builtForLine = compatibility.data?.compatibility?.supportedLine;
+  const dashboardBuild =
+    [
+      builtForLine ? t('facts.dashboardFor', { line: builtForLine }) : '',
+      BUILD_COMMIT,
+    ]
+      .filter(Boolean)
+      .join(' · ') || t('facts.notKnown');
+  const compatibilityLabel = compatibilityText(
+    t,
+    compatibility.data?.compatibility ?? info?.compatibility,
+  );
+
+  const activeType = isFilterOffered ? attentionType : 'all';
   const shownAttention =
     activeType === 'all'
       ? attention
@@ -435,9 +548,9 @@ const GatewayOverviewPage: React.FC = () => {
   return (
     <>
       <PageSection>
-        {/* Heading and description left; versions right. The gateway's health
-            is in the masthead on every page, so these are only the facts
-            that are not. */}
+        {/* Heading and description left; the gateway's status and versions
+            right. The masthead's indicator is the health check only, so
+            the status the gateway reports for itself is said here. */}
         <Flex
           gap={{ default: 'gapMd' }}
           flexWrap={{ default: 'wrap' }}
@@ -446,30 +559,39 @@ const GatewayOverviewPage: React.FC = () => {
         >
           <FlexItem>
             <Title headingLevel="h1" className="pf-v6-u-mb-sm">
-              Gateway
+              {t('title')}
             </Title>
-            <Content component="p">Admin view of status and alerts.</Content>
+            <Content component="p">{t('description')}</Content>
           </FlexItem>
           <FlexItem>
             <Flex
               direction={{ default: 'column' }}
               gap={{ default: 'gapXs' }}
               alignItems={{ default: 'alignItemsFlexEnd' }}
-              data-testid="gateway-status-card"
+              data-testid="gateway-facts"
             >
               <FlexItem>
+                <Label
+                  color={statusColor(status)}
+                  icon={statusIcon(status)}
+                  data-testid="gateway-status"
+                >
+                  {status}
+                </Label>
+              </FlexItem>
+              <FlexItem>
                 <Content component="small" data-testid="gateway-version">
-                  Gateway version: {gatewayVersion}
+                  {t('facts.gatewayVersion', { version: gatewayVersion })}
                 </Content>
               </FlexItem>
               <FlexItem>
                 <Content component="small" data-testid="dashboard-version">
-                  Dashboard: {dashboardBuild}
+                  {t('facts.dashboard', { build: dashboardBuild })}
                 </Content>
               </FlexItem>
               <FlexItem>
                 <Content component="small" data-testid="gateway-compatibility">
-                  Compatibility: {compatibilityLabel}
+                  {t('facts.compatibility', { verdict: compatibilityLabel })}
                 </Content>
               </FlexItem>
             </Flex>
@@ -481,7 +603,8 @@ const GatewayOverviewPage: React.FC = () => {
             gutter rather than by a page section's padding each. Needs
             attention leads: is anything waiting. */}
         <Grid hasGutter>
-          {/* Either what is waiting, or that nothing is. */}
+          {/* What is waiting; or that the lists are still being read; or,
+              once every list has answered, that nothing is. */}
           <GridItem span={12}>
             {attention.length > 0 ? (
               // A card of its own rather than an inline alert. An alert's
@@ -515,8 +638,8 @@ const GatewayOverviewPage: React.FC = () => {
                             data-testid="gateway-attention-type"
                           >
                             {activeType === 'all'
-                              ? 'All types'
-                              : ATTENTION_TYPE_LABEL[activeType]}
+                              ? t('attention.filter.all')
+                              : t(`attention.types.${activeType}`)}
                           </MenuToggle>
                         )}
                         popperProps={{ position: 'end' }}
@@ -526,19 +649,25 @@ const GatewayOverviewPage: React.FC = () => {
                             key="all"
                             value="all"
                             isSelected={activeType === 'all'}
+                            data-testid="gateway-attention-type-all"
                           >
-                            {`All types (${attention.length})`}
+                            {t('attention.filter.allCount', {
+                              count: attention.length,
+                            })}
                           </DropdownItem>
                           {attentionTypes.map((type) => (
                             <DropdownItem
                               key={type}
                               value={type}
                               isSelected={activeType === type}
+                              data-testid={`gateway-attention-type-${type}`}
                             >
-                              {`${ATTENTION_TYPE_LABEL[type]} (${
-                                attention.filter((item) => item.type === type)
-                                  .length
-                              })`}
+                              {t('attention.filter.typeCount', {
+                                label: t(`attention.types.${type}`),
+                                count: attention.filter(
+                                  (item) => item.type === type,
+                                ).length,
+                              })}
                             </DropdownItem>
                           ))}
                         </DropdownList>
@@ -547,7 +676,7 @@ const GatewayOverviewPage: React.FC = () => {
                   }}
                 >
                   <CardTitle component="h2">
-                    Needs attention{' '}
+                    {t('attention.title')}{' '}
                     {/* How many rows are under the heading, badged the way the
                         two full-width cards below badge theirs. It counts what
                         is shown rather than what is waiting, so that it agrees
@@ -558,11 +687,12 @@ const GatewayOverviewPage: React.FC = () => {
                   </CardTitle>
                 </CardHeader>
                 {/* A row is one line: badge, the name as the link, the
-                    sentence saying what is wrong with it, and how long ago
-                    on the right — after PatternFly's own events card. */}
+                    sentence saying what is wrong with it, and when it
+                    happened (date and time) on the right — after
+                    PatternFly's own events card. */}
                 <CardBody>
                   <DataList
-                    aria-label="Needs attention"
+                    aria-label={t('attention.ariaLabel')}
                     isCompact
                     gridBreakpoint="none"
                   >
@@ -594,11 +724,15 @@ const GatewayOverviewPage: React.FC = () => {
                                       // the quiet.
                                       variant="outline"
                                     >
-                                      {ATTENTION_BADGE_LABEL[item.type]}
+                                      {t(`attention.badges.${item.type}`)}
                                     </Label>
                                   </FlexItem>
                                   <FlexItem>
-                                    <Link to={item.to} id={`${item.key}-title`}>
+                                    <Link
+                                      to={item.to}
+                                      id={`${item.key}-title`}
+                                      data-testid={`${item.key}-link`}
+                                    >
                                       {item.text}
                                     </Link>
                                   </FlexItem>
@@ -636,44 +770,66 @@ const GatewayOverviewPage: React.FC = () => {
                         </DataListItemRow>
                       </DataListItem>
                     ))}
+                    {/* What is listed is not all there is while a list is
+                        still being read. */}
+                    {isLoadingLists && activeType === 'all' && (
+                      <AttentionNote
+                        id="gateway-attention-loading-label"
+                        icon={
+                          <Spinner
+                            size="md"
+                            aria-label={t('attention.loadingMore')}
+                            data-testid="gateway-attention-loading"
+                          />
+                        }
+                        text={t('attention.loadingMore')}
+                      />
+                    )}
                   </DataList>
                 </CardBody>
               </Card>
             ) : (
               // The same card, built the same way, so that the row does
               // not change shape when the last thing waiting is dealt with.
-              <Card data-testid="gateway-all-clear">
-                <CardTitle component="h2">Needs attention</CardTitle>
+              // It says nothing needs attention only once every list has
+              // answered: a list still being read could hold anything.
+              <Card
+                data-testid={
+                  isLoadingLists
+                    ? 'gateway-attention-pending'
+                    : 'gateway-all-clear'
+                }
+              >
+                <CardTitle component="h2">{t('attention.title')}</CardTitle>
                 <CardBody>
                   <DataList
-                    aria-label="Needs attention"
+                    aria-label={t('attention.ariaLabel')}
                     isCompact
                     gridBreakpoint="none"
                   >
-                    <DataListItem aria-labelledby="gateway-all-clear-label">
-                      <DataListItemRow>
-                        <DataListItemCells
-                          dataListCells={[
-                            <DataListCell key="all-clear">
-                              <Flex
-                                gap={{ default: 'gapSm' }}
-                                flexWrap={{ default: 'nowrap' }}
-                                alignItems={{ default: 'alignItemsCenter' }}
-                              >
-                                <FlexItem>
-                                  <Icon status="success">
-                                    <CheckCircleIcon />
-                                  </Icon>
-                                </FlexItem>
-                                <FlexItem id="gateway-all-clear-label">
-                                  Nothing needs attention
-                                </FlexItem>
-                              </Flex>
-                            </DataListCell>,
-                          ]}
-                        />
-                      </DataListItemRow>
-                    </DataListItem>
+                    {isLoadingLists ? (
+                      <AttentionNote
+                        id="gateway-attention-loading-label"
+                        icon={
+                          <Spinner
+                            size="md"
+                            aria-label={t('attention.loading')}
+                            data-testid="gateway-attention-loading"
+                          />
+                        }
+                        text={t('attention.loading')}
+                      />
+                    ) : (
+                      <AttentionNote
+                        id="gateway-all-clear-label"
+                        icon={
+                          <Icon status="success">
+                            <CheckCircleIcon />
+                          </Icon>
+                        }
+                        text={t('attention.allClear')}
+                      />
+                    )}
                   </DataList>
                 </CardBody>
               </Card>
@@ -682,37 +838,54 @@ const GatewayOverviewPage: React.FC = () => {
           {isEmpty && (
             <GridItem span={12}>
               <Card data-testid="gateway-get-started">
-                <CardTitle>Get started</CardTitle>
+                <CardTitle component="h2">{t('getStarted.title')}</CardTitle>
                 <CardBody>
-                  <Content component="p">
-                    Nothing has been created on this gateway yet. Three steps
-                    make a sandbox an agent can work in.
-                  </Content>
-                  <ProgressStepper isVertical aria-label="Getting started">
+                  <Content component="p">{t('getStarted.intro')}</Content>
+                  <ProgressStepper
+                    isVertical
+                    aria-label={t('getStarted.ariaLabel')}
+                  >
+                    {/* Done already: the gateway starts with `default`. */}
                     <ProgressStep
                       id="get-started-workspace"
                       titleId="get-started-workspace-title"
-                      variant="info"
-                      isCurrent
-                      description="A workspace holds a team's sandboxes, providers and members. The gateway starts with one called default."
+                      variant="success"
+                      description={t('getStarted.workspaceDetail')}
                     >
-                      <Link to="/workspaces">Create a workspace</Link>
+                      <Link
+                        to="/workspaces"
+                        data-testid="get-started-workspace-link"
+                      >
+                        {t('getStarted.workspace')}
+                      </Link>
                     </ProgressStep>
+                    {/* Providers are a tab of the workspace's own page. */}
                     <ProgressStep
                       id="get-started-provider"
                       titleId="get-started-provider-title"
-                      variant="pending"
-                      description="A provider holds the credentials a sandbox uses to reach a model or a service. Its type comes from a provider profile."
+                      variant="info"
+                      isCurrent
+                      description={t('getStarted.providerDetail')}
                     >
-                      <Link to="/workspaces">Add a provider</Link>
+                      <Link
+                        to="/workspaces/default"
+                        data-testid="get-started-provider-link"
+                      >
+                        {t('getStarted.provider')}
+                      </Link>
                     </ProgressStep>
                     <ProgressStep
                       id="get-started-sandbox"
                       titleId="get-started-sandbox-title"
                       variant="pending"
-                      description="A sandbox is a secure execution environment, governed by the security policy it is created with. Attach the providers it may use."
+                      description={t('getStarted.sandboxDetail')}
                     >
-                      <Link to="/workspaces">Create a sandbox</Link>
+                      <Link
+                        to="/workspaces/default"
+                        data-testid="get-started-sandbox-link"
+                      >
+                        {t('getStarted.sandbox')}
+                      </Link>
                     </ProgressStep>
                   </ProgressStepper>
                 </CardBody>
@@ -740,38 +913,37 @@ const GatewayOverviewPage: React.FC = () => {
                   does not already know what a compute driver is. */}
               <CardHeader>
                 <CardTitle component="h2" className="pf-v6-u-mb-sm">
-                  Compute drivers{' '}
+                  {t('drivers.title')}{' '}
                   <Badge isRead data-testid="gateway-drivers-count">
-                    {(info?.computeDrivers ?? []).length}
+                    {computeDrivers.length}
                   </Badge>
                 </CardTitle>
-                <Content component="p">
-                  Pluggable components that create, inspect, and delete sandbox
-                  workloads.
-                </Content>
+                <Content component="p">{t('drivers.description')}</Content>
               </CardHeader>
               <CardBody>
-                <Table aria-label="Compute drivers" variant="compact">
+                <Table aria-label={t('drivers.ariaLabel')} variant="compact">
                   <Thead>
                     <Tr>
-                      <Th>Name</Th>
-                      <Th>Driver</Th>
-                      <Th>Version</Th>
+                      <Th>{t('drivers.name')}</Th>
+                      <Th>{t('drivers.driver')}</Th>
+                      <Th>{t('drivers.version')}</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
-                    {(info?.computeDrivers ?? []).map((driver) => (
+                    {computeDrivers.map((driver) => (
                       <Tr key={driver.name}>
-                        <Td dataLabel="Name">{driver.name}</Td>
-                        <Td dataLabel="Driver">{driver.driverName || '-'}</Td>
-                        <Td dataLabel="Version">
+                        <Td dataLabel={t('drivers.name')}>{driver.name}</Td>
+                        <Td dataLabel={t('drivers.driver')}>
+                          {driver.driverName || '-'}
+                        </Td>
+                        <Td dataLabel={t('drivers.version')}>
                           {driver.driverVersion || '-'}
                         </Td>
                       </Tr>
                     ))}
-                    {(info?.computeDrivers ?? []).length === 0 && (
+                    {computeDrivers.length === 0 && (
                       <Tr>
-                        <Td colSpan={3}>No compute drivers reported</Td>
+                        <Td colSpan={3}>{t('drivers.empty')}</Td>
                       </Tr>
                     )}
                   </Tbody>
@@ -783,39 +955,35 @@ const GatewayOverviewPage: React.FC = () => {
             <Card data-testid="gateway-extensions-card">
               <CardHeader>
                 <CardTitle component="h2" className="pf-v6-u-mb-sm">
-                  Extensions{' '}
+                  {t('extensions.title')}{' '}
                   <Badge isRead data-testid="gateway-extensions-count">
                     {extensions.length}
                   </Badge>
                 </CardTitle>
-                <Content component="p">
-                  Specialized components designed to add deployment-specific
-                  behavior to the runtime while preserving core security
-                  boundaries and policy controls.
-                </Content>
+                <Content component="p">{t('extensions.description')}</Content>
               </CardHeader>
               <CardBody>
-                <Table aria-label="Extensions" variant="compact">
+                <Table aria-label={t('extensions.ariaLabel')} variant="compact">
                   <Thead>
                     <Tr>
-                      <Th>Name</Th>
-                      <Th>Kind</Th>
-                      <Th>Implementation</Th>
-                      <Th>Protocol</Th>
-                      <Th>Capabilities</Th>
-                      <Th>Requires from gateway</Th>
+                      <Th>{t('extensions.name')}</Th>
+                      <Th>{t('extensions.kind')}</Th>
+                      <Th>{t('extensions.implementation')}</Th>
+                      <Th>{t('extensions.protocol')}</Th>
+                      <Th>{t('extensions.capabilities')}</Th>
+                      <Th>{t('extensions.requires')}</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
                     {extensions.map((extension) => (
                       <Tr key={`${extension.kind}/${extension.configuredName}`}>
-                        <Td dataLabel="Name">
+                        <Td dataLabel={t('extensions.name')}>
                           {extension.configuredName || '-'}
                         </Td>
-                        <Td dataLabel="Kind">
-                          {extensionKindLabel(extension.kind)}
+                        <Td dataLabel={t('extensions.kind')}>
+                          {extensionKindLabel(t, extension.kind)}
                         </Td>
-                        <Td dataLabel="Implementation">
+                        <Td dataLabel={t('extensions.implementation')}>
                           {[
                             extension.implementationName,
                             extension.implementationVersion,
@@ -823,15 +991,15 @@ const GatewayOverviewPage: React.FC = () => {
                             .filter(Boolean)
                             .join(' ') || '-'}
                         </Td>
-                        <Td dataLabel="Protocol">
+                        <Td dataLabel={t('extensions.protocol')}>
                           {extension.protocolMajor}.{extension.protocolMinor}
                         </Td>
-                        <Td dataLabel="Capabilities">
+                        <Td dataLabel={t('extensions.capabilities')}>
                           <CapabilityList
                             capabilities={extension.supportedCapabilities}
                           />
                         </Td>
-                        <Td dataLabel="Requires from gateway">
+                        <Td dataLabel={t('extensions.requires')}>
                           <CapabilityList
                             capabilities={extension.requiredCapabilities}
                           />
@@ -840,7 +1008,7 @@ const GatewayOverviewPage: React.FC = () => {
                     ))}
                     {extensions.length === 0 && (
                       <Tr>
-                        <Td colSpan={6}>No extensions reported</Td>
+                        <Td colSpan={6}>{t('extensions.empty')}</Td>
                       </Tr>
                     )}
                   </Tbody>

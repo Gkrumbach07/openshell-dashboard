@@ -14,13 +14,19 @@ describe('Gateway Overview', () => {
     cy.contains('h1', 'Gateway').should('be.visible');
   });
 
-  // The health is the masthead's, on every page; the Gateway page does not
-  // repeat it.
-  it('shows gateway status as HEALTHY in the masthead', () => {
+  // The health check's answer is the masthead's, on every page.
+  it('shows the gateway as healthy in the masthead', () => {
     cy.get('[data-testid="gateway-status-indicator"]').should(
       'contain.text',
-      'HEALTHY',
+      'Healthy',
     );
+  });
+
+  // The status the gateway reports for itself sits with its version.
+  it('shows the status the gateway reports', () => {
+    cy.get('[data-testid="gateway-facts"]').within(() => {
+      cy.get('[data-testid="gateway-status"]').should('contain.text', 'HEALTHY');
+    });
   });
 
   it('shows gateway version', () => {
