@@ -14,10 +14,15 @@ export const interceptGateway = () => {
   }).as('gateway');
 
   // The shell asks for the verdict on every page. This stub answers
-  // "unknown", which shows no notice.
+  // "unknown", which shows no notice, and a healthy gateway, which the
+  // masthead's status reads from the same answer.
   cy.intercept('GET', '/api/v1/gateway/compatibility', {
     statusCode: 200,
-    body: { gatewayVersion: '0.0.92', compatibility: { status: 'unknown' } },
+    body: {
+      gatewayVersion: '0.0.92',
+      healthy: true,
+      compatibility: { status: 'unknown' },
+    },
   }).as('gatewayCompatibility');
 };
 
@@ -312,6 +317,20 @@ export const interceptMembers = (workspace = 'default') => {
 };
 
 export const interceptMisc = () => {
+  // The Gateway page and the shell read these across every workspace.
+  cy.intercept('GET', '/api/v1/draft-summary?allWorkspaces=true', {
+    statusCode: 200,
+    body: { sandboxes: [], totalPending: 0 },
+  }).as('allWorkspacesDraftSummary');
+
+  cy.intercept('GET', '/api/v1/sandboxes', {
+    fixture: 'sandboxes.json',
+  }).as('listAllSandboxes');
+
+  cy.intercept('GET', '/api/v1/providers', {
+    fixture: 'providers.json',
+  }).as('listAllProviders');
+
   cy.intercept('GET', '/api/v1/draft-summary', {
     statusCode: 200,
     body: { sandboxes: [], totalPending: 0 },
