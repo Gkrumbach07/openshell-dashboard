@@ -8,7 +8,7 @@ import (
 
 type TemplateServiceInterface interface {
 	openshell.SandboxTemplateInterface
-	CreateSandboxFromTemplate(ctx context.Context, workspace, name, templateName string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error)
+	CreateSandboxFromTemplate(ctx context.Context, workspace, name, templateName string, spec *openshell.SandboxSpec, opts ...openshell.CreateOption) (*openshell.Sandbox, error)
 }
 
 type TemplateService struct {
@@ -27,8 +27,7 @@ func (s *TemplateService) CreateSandboxFromTemplate(
 	ctx context.Context,
 	workspace, name, templateName string,
 	spec *openshell.SandboxSpec,
-	labels map[string]string,
-	opts ...openshell.CreateOptions,
+	opts ...openshell.CreateOption,
 ) (*openshell.Sandbox, error) {
-	return s.client.CreateSandboxFromTemplate(ctx, workspace, name, templateName, spec, labels, opts...)
+	return s.client.CreateSandboxFromTemplate(ctx, workspace, name, templateName, spec, opts...)
 }

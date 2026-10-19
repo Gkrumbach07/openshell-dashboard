@@ -59,7 +59,7 @@ func draftSummaryApp(t *testing.T, authMiddleware auth.MiddlewareInterface) (htt
 			t.Fatalf("create workspace %s: %v", workspace, err)
 		}
 		for _, name := range names {
-			if _, err := sdk.Sandboxes().Create(ctx, workspace, name, &openshell.SandboxSpec{}, nil); err != nil {
+			if _, err := sdk.Sandboxes().Create(ctx, workspace, name, &openshell.SandboxSpec{}); err != nil {
 				t.Fatalf("create sandbox %s/%s: %v", workspace, name, err)
 			}
 		}
