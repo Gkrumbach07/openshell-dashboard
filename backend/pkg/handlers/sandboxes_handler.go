@@ -64,9 +64,9 @@ func (h *SandboxHandler) CreateSandbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createOpts := models.BuildSDKCreateOptions(body.Annotations, body.ServiceExposures)
+	createOpts := models.BuildSDKCreateOptions(body.Labels, body.Annotations, body.ServiceExposures)
 
-	sandbox, err := h.svc.Create(r.Context(), r.PathValue("workspace"), body.Name, spec, body.Labels, createOpts...)
+	sandbox, err := h.svc.Create(r.Context(), r.PathValue("workspace"), body.Name, spec, createOpts...)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return

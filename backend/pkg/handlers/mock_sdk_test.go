@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
 
 // mockSDK is a mock of openshell.ClientInterface for testing.
@@ -49,11 +50,10 @@ func (m *mockSDK) CreateSandboxFromTemplate(
 	ctx context.Context,
 	workspace, name, templateName string,
 	spec *openshell.SandboxSpec,
-	labels map[string]string,
-	opts ...openshell.CreateOptions,
+	opts ...openshell.CreateOption,
 ) (*openshell.Sandbox, error) {
 	if m.templates.createFromTemplateFn != nil {
-		return m.templates.createFromTemplateFn(ctx, workspace, name, templateName, spec, labels, opts...)
+		return m.templates.createFromTemplateFn(ctx, workspace, name, templateName, spec, opts...)
 	}
 	return &openshell.Sandbox{Name: name}, nil
 }
@@ -65,7 +65,7 @@ type mockSDKTemplates struct {
 	createFn             func(ctx context.Context, workspace string, template *openshell.SandboxWorkloadTemplate) (*openshell.SandboxWorkloadTemplate, error)
 	getFn                func(ctx context.Context, workspace, name string) (*openshell.SandboxWorkloadTemplate, error)
 	deleteFn             func(ctx context.Context, workspace, name string) (bool, error)
-	createFromTemplateFn func(ctx context.Context, workspace, name, templateName string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error)
+	createFromTemplateFn func(ctx context.Context, workspace, name, templateName string, spec *openshell.SandboxSpec, opts ...openshell.CreateOption) (*openshell.Sandbox, error)
 }
 
 func (m *mockSDKTemplates) List(workspace string, opts ...openshell.ListOptions) (*openshell.Pager[*openshell.SandboxWorkloadTemplate], error) {
@@ -108,10 +108,23 @@ func (m *mockSDKTemplates) Delete(ctx context.Context, workspace, name string, _
 	return mockDeletionResult(deleted), err
 }
 
+// sentCreate is what a sandbox create sent besides its spec, read back from
+// its options the way the SDK reads them.
+type sentCreate struct {
+	labels           map[string]string
+	annotations      map[string]string
+	serviceExposures []openshell.ServiceExposure
+}
+
+func readCreateOptions(opts []openshell.CreateOption) sentCreate {
+	cfg := types.ApplyCreateOptions(opts)
+	return sentCreate{labels: cfg.Labels(), annotations: cfg.Annotations(), serviceExposures: cfg.ServiceExposures()}
+}
+
 // mockSDKSandboxes provides injectable sandbox operations.
 type mockSDKSandboxes struct {
 	listFn          func(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error)
-	createFn        func(ctx context.Context, workspace, name string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error)
+	createFn        func(ctx context.Context, workspace, name string, spec *openshell.SandboxSpec, opts ...openshell.CreateOption) (*openshell.Sandbox, error)
 	getFn           func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
 	deleteFn        func(ctx context.Context, workspace, name string) error
 	attachFn        func(ctx context.Context, workspace, sandboxName, providerName string, expectedResourceVersion uint64) (*openshell.AttachProviderResult, error)
@@ -136,9 +149,9 @@ func (m *mockSDKSandboxes) ListAll(ctx context.Context, workspace string, opts .
 	return nil, nil
 }
 
-func (m *mockSDKSandboxes) Create(ctx context.Context, workspace, name string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error) {
+func (m *mockSDKSandboxes) Create(ctx context.Context, workspace, name string, spec *openshell.SandboxSpec, opts ...openshell.CreateOption) (*openshell.Sandbox, error) {
 	if m.createFn != nil {
-		return m.createFn(ctx, workspace, name, spec, labels, opts...)
+		return m.createFn(ctx, workspace, name, spec, opts...)
 	}
 	return &openshell.Sandbox{Name: name}, nil
 }

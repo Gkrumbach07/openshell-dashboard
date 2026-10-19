@@ -222,7 +222,7 @@ func TestCreateSandboxFromTemplate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			var gotTemplate string
-			sdk.templates.createFromTemplateFn = func(_ context.Context, _, name, templateName string, _ *openshell.SandboxSpec, _ map[string]string, _ ...openshell.CreateOptions) (*openshell.Sandbox, error) {
+			sdk.templates.createFromTemplateFn = func(_ context.Context, _, name, templateName string, _ *openshell.SandboxSpec, _ ...openshell.CreateOption) (*openshell.Sandbox, error) {
 				gotTemplate = templateName
 				return &openshell.Sandbox{Name: name}, nil
 			}
@@ -319,16 +319,15 @@ func TestCreateSandboxTemplatePassesEverything(t *testing.T) {
 // postFromTemplate sends a create-from-template body through the route and
 // returns the response with what the handler passed to the SDK. The spec is
 // nil when the gateway was never called.
-func postFromTemplate(t *testing.T, body string) (*httptest.ResponseRecorder, *openshell.SandboxSpec, map[string]string, []openshell.CreateOptions) {
+func postFromTemplate(t *testing.T, body string) (*httptest.ResponseRecorder, *openshell.SandboxSpec, []openshell.CreateOption) {
 	t.Helper()
 	var (
-		gotSpec   *openshell.SandboxSpec
-		gotLabels map[string]string
-		gotOpts   []openshell.CreateOptions
+		gotSpec *openshell.SandboxSpec
+		gotOpts []openshell.CreateOption
 	)
 	sdk := &mockSDK{}
-	sdk.templates.createFromTemplateFn = func(_ context.Context, _, name, _ string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error) {
-		gotSpec, gotLabels, gotOpts = spec, labels, opts
+	sdk.templates.createFromTemplateFn = func(_ context.Context, _, name, _ string, spec *openshell.SandboxSpec, opts ...openshell.CreateOption) (*openshell.Sandbox, error) {
+		gotSpec, gotOpts = spec, opts
 		return &openshell.Sandbox{Name: name}, nil
 	}
 	handler := NewTemplatesHandler(services.NewTemplateService(sdk))
@@ -337,7 +336,7 @@ func postFromTemplate(t *testing.T, body string) (*httptest.ResponseRecorder, *o
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/workspaces/team-a/sandboxes/from-template", strings.NewReader(body)))
-	return w, gotSpec, gotLabels, gotOpts
+	return w, gotSpec, gotOpts
 }
 
 // A sandbox made from a template takes its labels and annotations, its main
@@ -355,7 +354,7 @@ func TestCreateSandboxFromTemplateForwardsOptions(t *testing.T) {
 		"tty": true,
 		"serviceExposures": [{"targetPort": 8080}]
 	}`
-	w, spec, labels, opts := postFromTemplate(t, body)
+	w, spec, opts := postFromTemplate(t, body)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
 	}
@@ -372,17 +371,15 @@ func TestCreateSandboxFromTemplateForwardsOptions(t *testing.T) {
 	if spec.Template != nil || spec.LogLevel != "" || len(spec.Environment) != 0 || spec.GPU || spec.GPUCount != nil {
 		t.Errorf("spec carries workload fields beside a template: %+v", spec)
 	}
-	if labels["team"] != "ml" {
-		t.Errorf("labels = %v, want team=ml", labels)
+	sent := readCreateOptions(opts)
+	if sent.labels["team"] != "ml" {
+		t.Errorf("labels = %v, want team=ml", sent.labels)
 	}
-	if len(opts) != 1 {
-		t.Fatalf("got %d create options values, want 1: %+v", len(opts), opts)
+	if sent.annotations["owner"] != "ml-team" {
+		t.Errorf("annotations = %v, want owner=ml-team", sent.annotations)
 	}
-	if opts[0].Annotations["owner"] != "ml-team" {
-		t.Errorf("annotations = %v, want owner=ml-team", opts[0].Annotations)
-	}
-	if want := []openshell.ServiceExposure{{TargetPort: 8080}}; !reflect.DeepEqual(opts[0].ServiceExposures, want) {
-		t.Errorf("service exposures = %+v, want %+v", opts[0].ServiceExposures, want)
+	if want := []openshell.ServiceExposure{{TargetPort: 8080}}; !reflect.DeepEqual(sent.serviceExposures, want) {
+		t.Errorf("service exposures = %+v, want %+v", sent.serviceExposures, want)
 	}
 }
 
@@ -402,7 +399,7 @@ func TestCreateSandboxFromTemplateRefusesOptions(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			w, spec, _, _ := postFromTemplate(t, tc.body)
+			w, spec, _ := postFromTemplate(t, tc.body)
 			if w.Code != http.StatusBadRequest {
 				t.Errorf("status = %d, want 400; body: %s", w.Code, w.Body.String())
 			}
