@@ -68,7 +68,7 @@ func twoWorkspaces(t *testing.T, authMiddleware auth.MiddlewareInterface) (http.
 		if _, err := sdk.Workspaces().Create(ctx, workspace, nil); err != nil {
 			t.Fatalf("create workspace %s: %v", workspace, err)
 		}
-		if _, err := sdk.Sandboxes().Create(ctx, workspace, "agent", &openshell.SandboxSpec{}, map[string]string{"team": workspace}); err != nil {
+		if _, err := sdk.Sandboxes().Create(ctx, workspace, "agent", &openshell.SandboxSpec{}, openshell.WithLabels(map[string]string{"team": workspace})); err != nil {
 			t.Fatalf("create sandbox in %s: %v", workspace, err)
 		}
 		if _, err := sdk.Providers().Create(ctx, workspace, &openshell.Provider{Name: "claude", Type: "claude"}); err != nil {

@@ -360,32 +360,49 @@ func TestBuildSDKTemplateGovernanceSpecCarriesCommand(t *testing.T) {
 }
 
 func TestBuildSDKCreateOptions(t *testing.T) {
+	labels := map[string]string{"team": "ml"}
 	annotations := map[string]string{"owner": "ml-team"}
 	exposures := []ServiceExposure{{TargetPort: 8080}, {Service: "web", TargetPort: 3000}}
 	wantExposures := []openshell.ServiceExposure{{TargetPort: 8080}, {Service: "web", TargetPort: 3000}}
 
-	if got := BuildSDKCreateOptions(nil, nil); got != nil {
-		t.Errorf("options for a create with no annotations and no services = %+v, want none", got)
+	if got := BuildSDKCreateOptions(nil, nil, nil); got != nil {
+		t.Errorf("options for a create with no labels, annotations or services = %d, want none", len(got))
 	}
-	if got := BuildSDKCreateOptions(map[string]string{}, []ServiceExposure{}); got != nil {
-		t.Errorf("options for empty annotations and services = %+v, want none", got)
-	}
-
-	got := BuildSDKCreateOptions(annotations, nil)
-	if len(got) != 1 || !reflect.DeepEqual(got[0].Annotations, annotations) || got[0].ServiceExposures != nil {
-		t.Errorf("options for annotations alone = %+v", got)
+	if got := BuildSDKCreateOptions(map[string]string{}, map[string]string{}, []ServiceExposure{}); got != nil {
+		t.Errorf("options for empty labels, annotations and services = %d, want none", len(got))
 	}
 
-	got = BuildSDKCreateOptions(nil, exposures)
-	if len(got) != 1 || got[0].Annotations != nil || !reflect.DeepEqual(got[0].ServiceExposures, wantExposures) {
-		t.Errorf("options for services alone = %+v, want %+v", got, wantExposures)
+	// The options are functions, so they are read back the way the SDK reads them.
+	tests := []struct {
+		name            string
+		labels          map[string]string
+		annotations     map[string]string
+		exposures       []ServiceExposure
+		wantLabels      map[string]string
+		wantAnnotations map[string]string
+		wantExposures   []openshell.ServiceExposure
+	}{
+		{name: "labels alone", labels: labels, wantLabels: labels},
+		{name: "annotations alone", annotations: annotations, wantAnnotations: annotations},
+		{name: "services alone", exposures: exposures, wantExposures: wantExposures},
+		{
+			name: "all three", labels: labels, annotations: annotations, exposures: exposures,
+			wantLabels: labels, wantAnnotations: annotations, wantExposures: wantExposures,
+		},
 	}
-
-	// The SDK reads only the first options value, so both travel in one.
-	got = BuildSDKCreateOptions(annotations, exposures)
-	if len(got) != 1 || !reflect.DeepEqual(got[0].Annotations, annotations) ||
-		!reflect.DeepEqual(got[0].ServiceExposures, wantExposures) {
-		t.Errorf("options for both = %+v, want one value holding both", got)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := types.ApplyCreateOptions(BuildSDKCreateOptions(tc.labels, tc.annotations, tc.exposures))
+			if !reflect.DeepEqual(cfg.Labels(), tc.wantLabels) {
+				t.Errorf("labels = %v, want %v", cfg.Labels(), tc.wantLabels)
+			}
+			if !reflect.DeepEqual(cfg.Annotations(), tc.wantAnnotations) {
+				t.Errorf("annotations = %v, want %v", cfg.Annotations(), tc.wantAnnotations)
+			}
+			if !reflect.DeepEqual(cfg.ServiceExposures(), tc.wantExposures) {
+				t.Errorf("service exposures = %+v, want %+v", cfg.ServiceExposures(), tc.wantExposures)
+			}
+		})
 	}
 }
 

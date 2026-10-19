@@ -115,7 +115,7 @@ func TestListSandboxesBody(t *testing.T) {
 
 func TestCreateSandbox(t *testing.T) {
 	tests := []struct {
-		createFn   func(ctx context.Context, workspace, name string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error)
+		createFn   func(ctx context.Context, workspace, name string, spec *openshell.SandboxSpec, opts ...openshell.CreateOption) (*openshell.Sandbox, error)
 		name       string
 		body       string
 		wantCode   string
@@ -124,7 +124,7 @@ func TestCreateSandbox(t *testing.T) {
 		{
 			name: "success",
 			body: `{"name":"my-sandbox","image":"ubuntu:latest","policy":{"version":1,"filesystem":{"includeWorkdir":true}}}`,
-			createFn: func(_ context.Context, _, name string, _ *openshell.SandboxSpec, _ map[string]string, _ ...openshell.CreateOptions) (*openshell.Sandbox, error) {
+			createFn: func(_ context.Context, _, name string, _ *openshell.SandboxSpec, _ ...openshell.CreateOption) (*openshell.Sandbox, error) {
 				return &openshell.Sandbox{ID: "id-1", Name: name, Status: openshell.SandboxStatus{Phase: openshell.SandboxProvisioning}}, nil
 			},
 			wantStatus: http.StatusCreated,
@@ -169,7 +169,7 @@ func TestCreateSandbox(t *testing.T) {
 		{
 			name: "gateway already exists",
 			body: `{"name":"dup","image":"ubuntu:latest","policy":{"version":1,"filesystem":{"includeWorkdir":true}}}`,
-			createFn: func(_ context.Context, _, _ string, _ *openshell.SandboxSpec, _ map[string]string, _ ...openshell.CreateOptions) (*openshell.Sandbox, error) {
+			createFn: func(_ context.Context, _, _ string, _ *openshell.SandboxSpec, _ ...openshell.CreateOption) (*openshell.Sandbox, error) {
 				return nil, &openshell.StatusError{Code: openshell.ErrorAlreadyExists, Message: "sandbox already exists"}
 			},
 			wantStatus: http.StatusConflict,
@@ -208,16 +208,15 @@ func TestCreateSandbox(t *testing.T) {
 // postSandbox sends a create-sandbox body through the route and returns the
 // response together with what the handler passed to the SDK. The spec is nil
 // when the gateway was never called.
-func postSandbox(t *testing.T, body string, createErr error) (*httptest.ResponseRecorder, *openshell.SandboxSpec, map[string]string, []openshell.CreateOptions) {
+func postSandbox(t *testing.T, body string, createErr error) (*httptest.ResponseRecorder, *openshell.SandboxSpec, []openshell.CreateOption) {
 	t.Helper()
 	var (
-		gotSpec   *openshell.SandboxSpec
-		gotLabels map[string]string
-		gotOpts   []openshell.CreateOptions
+		gotSpec *openshell.SandboxSpec
+		gotOpts []openshell.CreateOption
 	)
 	sdk := &mockSDK{}
-	sdk.sandboxes.createFn = func(_ context.Context, _, name string, spec *openshell.SandboxSpec, labels map[string]string, opts ...openshell.CreateOptions) (*openshell.Sandbox, error) {
-		gotSpec, gotLabels, gotOpts = spec, labels, opts
+	sdk.sandboxes.createFn = func(_ context.Context, _, name string, spec *openshell.SandboxSpec, opts ...openshell.CreateOption) (*openshell.Sandbox, error) {
+		gotSpec, gotOpts = spec, opts
 		if createErr != nil {
 			return nil, createErr
 		}
@@ -235,13 +234,13 @@ func postSandbox(t *testing.T, body string, createErr error) (*httptest.Response
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
-	return w, gotSpec, gotLabels, gotOpts
+	return w, gotSpec, gotOpts
 }
 
 // Everything the create form can send reaches the gateway in the field the
 // gateway reads it from: the main command and its terminal on the spec, the
 // runtime class and the driver config on the spec's inline template, and the
-// annotations and the services to expose in the create options.
+// labels, the annotations and the services to expose in the create options.
 func TestCreateSandboxForwardsOptions(t *testing.T) {
 	const body = `{
 		"name": "agent-1",
@@ -257,7 +256,7 @@ func TestCreateSandboxForwardsOptions(t *testing.T) {
 		"driverConfig": {"kubernetes": {"pod": {"node_selector": {"pool": "gpu"}}}},
 		"serviceExposures": [{"targetPort": 8080}, {"service": "web", "targetPort": 3000}]
 	}`
-	w, spec, labels, opts := postSandbox(t, body, nil)
+	w, spec, opts := postSandbox(t, body, nil)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
 	}
@@ -283,23 +282,22 @@ func TestCreateSandboxForwardsOptions(t *testing.T) {
 	if !reflect.DeepEqual(spec, wantSpec) {
 		t.Errorf("spec = %+v with template %+v\nwant %+v with template %+v", spec, spec.Template, wantSpec, wantSpec.Template)
 	}
-	if want := map[string]string{"team": "ml"}; !reflect.DeepEqual(labels, want) {
-		t.Errorf("labels = %v, want %v", labels, want)
+	sent := readCreateOptions(opts)
+	if want := map[string]string{"team": "ml"}; !reflect.DeepEqual(sent.labels, want) {
+		t.Errorf("labels = %v, want %v", sent.labels, want)
 	}
-	// The SDK reads the first options value only, so both must be in it.
-	wantOpts := []openshell.CreateOptions{{
-		Annotations:      map[string]string{"owner": "ml-team"},
-		ServiceExposures: []openshell.ServiceExposure{{TargetPort: 8080}, {Service: "web", TargetPort: 3000}},
-	}}
-	if !reflect.DeepEqual(opts, wantOpts) {
-		t.Errorf("create options = %+v, want %+v", opts, wantOpts)
+	if want := map[string]string{"owner": "ml-team"}; !reflect.DeepEqual(sent.annotations, want) {
+		t.Errorf("annotations = %v, want %v", sent.annotations, want)
+	}
+	if want := []openshell.ServiceExposure{{TargetPort: 8080}, {Service: "web", TargetPort: 3000}}; !reflect.DeepEqual(sent.serviceExposures, want) {
+		t.Errorf("service exposures = %+v, want %+v", sent.serviceExposures, want)
 	}
 }
 
 // The URLs of the services exposed with a sandbox come back in the answer to
 // the create, which is the only place the gateway reports them.
 func TestCreateSandboxReturnsServiceURLs(t *testing.T) {
-	w, _, _, _ := postSandbox(t,
+	w, _, _ := postSandbox(t,
 		`{"image":"base","policy":{"version":1},"command":["sleep","infinity"],"serviceExposures":[{"targetPort":8080}]}`, nil)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
@@ -324,7 +322,7 @@ func TestCreateSandboxReturnsServiceURLs(t *testing.T) {
 // A create that sets none of the options calls the gateway with no create
 // options, no command and an image-only template.
 func TestCreateSandboxWithoutOptions(t *testing.T) {
-	w, spec, _, opts := postSandbox(t, `{"image":"base","policy":{"version":1}}`, nil)
+	w, spec, opts := postSandbox(t, `{"image":"base","policy":{"version":1}}`, nil)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
 	}
@@ -352,7 +350,7 @@ func TestCreateSandboxWithoutImage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var gotSpec *openshell.SandboxSpec
 			sdk := &mockSDK{}
-			sdk.sandboxes.createFn = func(_ context.Context, _, name string, spec *openshell.SandboxSpec, _ map[string]string, _ ...openshell.CreateOptions) (*openshell.Sandbox, error) {
+			sdk.sandboxes.createFn = func(_ context.Context, _, name string, spec *openshell.SandboxSpec, _ ...openshell.CreateOption) (*openshell.Sandbox, error) {
 				gotSpec = spec
 				resolved := *spec
 				resolved.Template = &openshell.SandboxTemplate{Image: defaultImage}
@@ -401,7 +399,7 @@ func TestCreateSandboxRefusesOptions(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			w, spec, _, _ := postSandbox(t, tc.body, nil)
+			w, spec, _ := postSandbox(t, tc.body, nil)
 			if w.Code != http.StatusBadRequest {
 				t.Errorf("status = %d, want 400; body: %s", w.Code, w.Body.String())
 			}
@@ -425,7 +423,7 @@ func TestCreateSandboxRefusesOptions(t *testing.T) {
 // precondition, which the SDK reports as a conflict.
 func TestCreateSandboxPassesGatewayRefusalOn(t *testing.T) {
 	const refusal = "caller driver config is disabled; a gateway administrator must enable allow_driver_config"
-	w, spec, _, _ := postSandbox(t,
+	w, spec, _ := postSandbox(t,
 		`{"image":"base","policy":{"version":1},"driverConfig":{"kubernetes":{"pod":{"priority":"high"}}}}`,
 		&openshell.StatusError{Code: openshell.ErrorConflict, Message: refusal})
 	if spec == nil {

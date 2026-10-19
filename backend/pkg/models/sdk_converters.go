@@ -205,20 +205,27 @@ func BuildSDKSandboxSpec(req CreateSandboxRequest) (*openshell.SandboxSpec, erro
 }
 
 // BuildSDKCreateOptions builds the options of a sandbox create: the sandbox's
-// annotations and the services to expose with it. It returns none when there
-// is neither.
-func BuildSDKCreateOptions(annotations map[string]string, exposures []ServiceExposure) []openshell.CreateOptions {
-	if len(annotations) == 0 && len(exposures) == 0 {
-		return nil
+// labels and annotations and the services to expose with it. It returns an
+// option only for what the request sets, and none when it sets nothing.
+func BuildSDKCreateOptions(labels, annotations map[string]string, exposures []ServiceExposure) []openshell.CreateOption {
+	var opts []openshell.CreateOption
+	if len(labels) > 0 {
+		opts = append(opts, openshell.WithLabels(labels))
 	}
-	opts := openshell.CreateOptions{Annotations: annotations}
-	for _, exposure := range exposures {
-		opts.ServiceExposures = append(opts.ServiceExposures, openshell.ServiceExposure{
-			Service:    exposure.Service,
-			TargetPort: exposure.TargetPort,
-		})
+	if len(annotations) > 0 {
+		opts = append(opts, openshell.WithAnnotations(annotations))
 	}
-	return []openshell.CreateOptions{opts}
+	if len(exposures) > 0 {
+		sdkExposures := make([]openshell.ServiceExposure, 0, len(exposures))
+		for _, exposure := range exposures {
+			sdkExposures = append(sdkExposures, openshell.ServiceExposure{
+				Service:    exposure.Service,
+				TargetPort: exposure.TargetPort,
+			})
+		}
+		opts = append(opts, openshell.WithServiceExposures(sdkExposures...))
+	}
+	return opts
 }
 
 func sdkSettingScopeString(scope openshell.SettingScope) string {

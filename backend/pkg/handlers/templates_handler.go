@@ -113,9 +113,9 @@ func (h *TemplatesHandler) CreateSandboxFromTemplate(w http.ResponseWriter, r *h
 		return
 	}
 
-	createOpts := models.BuildSDKCreateOptions(body.Annotations, body.ServiceExposures)
+	createOpts := models.BuildSDKCreateOptions(body.Labels, body.Annotations, body.ServiceExposures)
 
-	sandbox, err := h.svc.CreateSandboxFromTemplate(r.Context(), r.PathValue("workspace"), body.Name, body.TemplateName, spec, body.Labels, createOpts...)
+	sandbox, err := h.svc.CreateSandboxFromTemplate(r.Context(), r.PathValue("workspace"), body.Name, body.TemplateName, spec, createOpts...)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
