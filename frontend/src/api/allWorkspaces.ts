@@ -60,16 +60,17 @@ export const listAllServices = (): Promise<ServiceEndpoint[]> =>
 // when someone changes them, in a workspace this page is not looking at, and
 // are read again at the slower pace of such lists.
 
-// `enabled` is for the shell, which counts sandboxes on every page and must
-// not ask a user the gateway will refuse. The Sandboxes page leaves it on.
+// `enabled` and `refetchInterval` are for the shell, which counts sandboxes on
+// every page: it must not ask a user the gateway will refuse, and it reads at
+// NAV_COUNT_POLL_MS. The Sandboxes page leaves both alone.
 export const useAllSandboxes = (
   labelSelector?: string,
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; refetchInterval?: number } = {},
 ) =>
   useQuery({
     queryKey: allWorkspacesKeys.sandboxes(labelSelector),
     queryFn: () => listAllSandboxes(labelSelector),
-    refetchInterval: SANDBOX_POLL_MS,
+    refetchInterval: options.refetchInterval ?? SANDBOX_POLL_MS,
     placeholderData: keepPreviousData,
     enabled: options.enabled ?? true,
   });

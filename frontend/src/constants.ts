@@ -17,6 +17,11 @@ export const POLICY_PENDING_POLL_MS = 2_000;
 // members, sandbox templates, service endpoints, and the lists across
 // workspaces other than the sandboxes.
 export const RESOURCE_POLL_MS = 15_000;
+// The counts on the navigation, read by the shell on every page. The
+// cross-workspace proposal count is one request to the BFF but one draft read
+// per sandbox on the gateway, so the shell reads it at this pace on its own;
+// a page that shows the same list keeps it at that list's pace while open.
+export const NAV_COUNT_POLL_MS = 120_000;
 // Configuration: the gateway's settings and global policy, and a sandbox's
 // settings and policy once no revision is pending. Changed rarely, and by few.
 export const CONFIG_POLL_MS = 30_000;

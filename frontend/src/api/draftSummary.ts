@@ -64,11 +64,16 @@ export const useWorkspaceDraftSummary = (
 export const getAllWorkspacesDraftSummary = (): Promise<DraftSummary> =>
   get<DraftSummary>('/api/v1/draft-summary?allWorkspaces=true');
 
-export const useAllWorkspacesDraftSummary = (enabled = true) => {
+// `refetchInterval` is for the shell, which counts on every page and reads
+// at NAV_COUNT_POLL_MS; the pages that list the proposals leave it alone.
+export const useAllWorkspacesDraftSummary = (
+  enabled = true,
+  options: { refetchInterval?: number } = {},
+) => {
   const query = useQuery({
     queryKey: allWorkspacesKeys.draftSummary,
     queryFn: getAllWorkspacesDraftSummary,
-    refetchInterval: DRAFT_SUMMARY_POLL_MS,
+    refetchInterval: options.refetchInterval ?? DRAFT_SUMMARY_POLL_MS,
     enabled,
   });
 

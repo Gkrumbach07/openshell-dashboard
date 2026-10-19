@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { BUILD_COMMIT } from '../constants';
+import { BUILD_COMMIT, NAV_COUNT_POLL_MS } from '../constants';
 import {
   AboutModal,
   Badge,
@@ -159,14 +159,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
 
   // How many rules are waiting for a decision, on the Proposals entry. Read
   // for a platform admin only, and not because proposals are theirs: this is
-  // the shell, mounted on every page, and the gateway's cross-workspace
-  // summary is the one shape of this read that is a single request. Reading
-  // it the way a standard user has to — one request per workspace they are in
-  // — would put that behind every page they open. The page itself does that
+  // the shell, mounted on every page, and the cross-workspace summary is the
+  // one shape of this read that is a single request to the BFF. Reading it
+  // the way a standard user has to — one request per workspace they are in —
+  // would put that behind every page they open. The page itself does that
   // read, once, where someone is looking at it. The same query the Proposals
-  // page uses, so an admin who is on it is not polling it twice.
+  // page and the Gateway page use, so an admin on either is not polling it
+  // twice. The BFF answers it with one draft read per sandbox on the gateway,
+  // so the shell's own pace is NAV_COUNT_POLL_MS, not the pages'.
   const { totalPending: pendingProposals } = useAllWorkspacesDraftSummary(
     features.draftPolicy && isPlatformAdmin,
+    { refetchInterval: NAV_COUNT_POLL_MS },
   );
   // How many sandboxes the gateway has, on the Sandboxes entry. The unfiltered
   // all-workspaces list — the same query the Sandboxes page reads when no
@@ -175,6 +178,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
   // else, and the shell is mounted on every page.
   const { data: allSandboxes } = useAllSandboxes(undefined, {
     enabled: isPlatformAdmin,
+    refetchInterval: NAV_COUNT_POLL_MS,
   });
   const sandboxCount = allSandboxes?.length ?? 0;
   // How many workspaces the signed-in user can see, on the Workspaces entry.

@@ -34,7 +34,9 @@ jest.mock('../../api/rbac', () => ({
   }),
 }));
 jest.mock('../../api/draftSummary', () => ({
-  useAllWorkspacesDraftSummary: () => ({ totalPending: mockPendingProposals }),
+  useAllWorkspacesDraftSummary: jest.fn(() => ({
+    totalPending: mockPendingProposals,
+  })),
 }));
 jest.mock('../../api/allWorkspaces', () => ({
   useAllSandboxes: jest.fn(() => ({ data: [] })),
@@ -57,6 +59,8 @@ jest.mock('~/assets/openshell-logo-dark.svg', () => ({
 }));
 
 import { useAllSandboxes } from '../../api/allWorkspaces';
+import { useAllWorkspacesDraftSummary } from '../../api/draftSummary';
+import { NAV_COUNT_POLL_MS } from '../../constants';
 import { useWorkspaces } from '../../api/workspaces';
 import AppLayout from '../AppLayout';
 
@@ -129,12 +133,13 @@ describe('AppLayout navigation', () => {
       ['Sandboxes', '/sandboxes'],
       ['Proposals', '/proposals'],
       ['Resources', '/all-workspaces'],
-      ['Providers', '/provider-profiles'],
+      ['Provider profiles', '/provider-profiles'],
       ['Global policy', '/global-policy'],
       ['Settings', '/settings'],
     ]);
     expect(mockUseAllSandboxes).toHaveBeenCalledWith(undefined, {
       enabled: true,
+      refetchInterval: NAV_COUNT_POLL_MS,
     });
   });
 
@@ -151,6 +156,7 @@ describe('AppLayout navigation', () => {
     ]);
     expect(mockUseAllSandboxes).toHaveBeenCalledWith(undefined, {
       enabled: false,
+      refetchInterval: NAV_COUNT_POLL_MS,
     });
   });
 
@@ -161,6 +167,17 @@ describe('AppLayout navigation', () => {
     renderShell('/workspaces');
 
     expect(screen.getByTestId('proposals-badge')).toHaveTextContent('3');
+  });
+
+  // The count costs the gateway one draft read per sandbox, so the shell
+  // reads it at the navigation's pace, not the Proposals page's.
+  it('reads the proposal count at the navigation pace', () => {
+    mockIsPlatformAdmin = true;
+    renderShell('/workspaces');
+
+    expect(useAllWorkspacesDraftSummary).toHaveBeenCalledWith(true, {
+      refetchInterval: NAV_COUNT_POLL_MS,
+    });
   });
 
   it('badges nothing when nothing is waiting', () => {
