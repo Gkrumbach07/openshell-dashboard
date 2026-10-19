@@ -4,7 +4,7 @@ import { initReactI18next } from 'react-i18next';
 
 import { catalogs } from './catalogs';
 
-const NAMESPACES = ['common', 'auth', 'workspaces'] as const;
+const NAMESPACES = ['common', 'auth', 'workspaces', 'sandboxes'] as const;
 
 export const defaultI18nOptions: InitOptions = {
   lng: 'en',

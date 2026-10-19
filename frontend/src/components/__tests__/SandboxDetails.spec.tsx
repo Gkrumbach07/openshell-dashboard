@@ -69,7 +69,36 @@ const full: Sandbox = {
         ports: [443],
         lastResult: 'NO_OBSERVED_EXCHANGE',
       },
+      {
+        endpointId: 'ep-3',
+        host: 'github.example.test',
+        ports: [443],
+        path: '/mcp',
+        lastResult: 'CREDENTIAL_UNAVAILABLE',
+        lastReportedAt: '2026-10-06T10:02:00Z',
+        lastFailure: {
+          domain: 'TOKEN_GRANT',
+          code: 'provider_authorization_required',
+          recoveryAction: 'REAUTHORIZE',
+          provider: 'github',
+          credentialKey: 'GITHUB_TOKEN',
+          stage: 'token_service',
+          upstreamHttpStatus: 401,
+          requestId: '6f1c2a3e-0000-4000-8000-000000000001',
+        },
+      },
     ],
+    lastTokenGrantFailure: {
+      destinationHost: 'api.example.test',
+      destinationPort: 8443,
+      failure: {
+        domain: 'TOKEN_GRANT',
+        code: 'credential_selection_failed',
+        recoveryAction: 'FIX_CONFIGURATION',
+        stage: 'gateway_rpc',
+        requestId: '6f1c2a3e-0000-4000-8000-000000000002',
+      },
+    },
   },
 };
 
@@ -211,6 +240,9 @@ describe('SandboxStatusCards', () => {
     expect(
       screen.queryByTestId('sandbox-endpoints-card'),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('sandbox-token-grant-failure-card'),
+    ).not.toBeInTheDocument();
   });
 
   it('shows a rejected configuration with the reason and the revision', () => {
@@ -273,4 +305,89 @@ describe('SandboxStatusCards', () => {
       card.getByText(/They do not check current availability/),
     ).toBeInTheDocument();
   });
+  it('gives the cause of a failed result in its row, and none for the others', () => {
+    renderStatus(full);
+    const failure = within(screen.getByTestId('sandbox-endpoint-failure-ep-3'));
+    const row = within(screen.getByText('github.example.test').closest('tr')!);
+    expect(
+      row.getByText('Required OpenShell-managed credential was unavailable.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId('sandbox-endpoint-failure-ep-3-cause'),
+    ).toHaveTextContent('provider_authorization_required (token grant)');
+    expect(failure.getByText('token_service')).toBeInTheDocument();
+    expect(failure.getByText('401')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('sandbox-endpoint-failure-ep-3-credential'),
+    ).toHaveTextContent('github/GITHUB_TOKEN');
+    expect(
+      screen.getByTestId('sandbox-endpoint-failure-ep-3-recovery'),
+    ).toHaveTextContent('Reauthorize the provider credential.');
+    expect(
+      failure.getByText('6f1c2a3e-0000-4000-8000-000000000001'),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByTestId('sandbox-endpoint-failure-ep-1'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('sandbox-endpoint-failure-ep-2'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the last refused token grant with its destination and cause', () => {
+    renderStatus(full);
+    const card = within(screen.getByTestId('sandbox-token-grant-failure-card'));
+    expect(card.getByText('Last token grant failure')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('sandbox-token-grant-destination'),
+    ).toHaveTextContent('api.example.test (port 8443)');
+    expect(
+      screen.getByTestId('sandbox-token-grant-failure-cause'),
+    ).toHaveTextContent('credential_selection_failed (token grant)');
+    expect(
+      screen.getByTestId('sandbox-token-grant-failure-recovery'),
+    ).toHaveTextContent(
+      'An operator must fix the provider or identity configuration.',
+    );
+    // The grant failed before a credential was selected.
+    expect(
+      screen.queryByTestId('sandbox-token-grant-failure-credential'),
+    ).not.toBeInTheDocument();
+    expect(card.queryByText('Upstream HTTP status')).not.toBeInTheDocument();
+    expect(
+      card.getByText(/not the destination's current health/),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    [undefined, 'UNSPECIFIED', 'No recovery action provided.', 'unknown'],
+    [
+      'SOMETHING_NEW',
+      'SOME_NEW_DOMAIN',
+      'The gateway reports the recovery action SOMETHING_NEW.',
+      'SOME_NEW_DOMAIN',
+    ],
+  ])(
+    'names recovery action %s and domain %s even without words for them',
+    (recoveryAction, domain, recovery, domainText) => {
+      renderStatus({
+        ...plain,
+        status: {
+          ...plain.status,
+          lastTokenGrantFailure: {
+            destinationHost: 'api.example.test',
+            destinationPort: 443,
+            failure: { domain, code: 'some_code', recoveryAction },
+          },
+        },
+      });
+      expect(
+        screen.getByTestId('sandbox-token-grant-failure-cause'),
+      ).toHaveTextContent(`some_code (${domainText})`);
+      expect(
+        screen.getByTestId('sandbox-token-grant-failure-recovery'),
+      ).toHaveTextContent(recovery);
+    },
+  );
 });
