@@ -21,9 +21,10 @@ import {
 import { ArrowDownIcon } from '@patternfly/react-icons';
 import { LogViewer, LogViewerSearch } from '@patternfly/react-log-viewer';
 
-import { useSandboxLogs } from '../../api/sandboxes';
+import { watchSandboxLogs } from '../../api/sandboxes';
+import { useI18n } from '../../i18n';
 import LogLineDetailModal from '../LogLineDetailModal';
-import RefreshErrorAlert, { isRefreshError } from '../RefreshErrorAlert';
+import RefreshErrorAlert from '../RefreshErrorAlert';
 import { parseSinceDuration } from '../../utils/duration';
 import { buildLogRows, logViewerRowOf } from '../../utils/logLines';
 import type { LogLine } from '../../types';
@@ -33,8 +34,9 @@ type SandboxLogsTabProps = {
   sandboxName: string;
 };
 
-// The largest line count the tab offers.
+// Bound retained history as well as the largest line count the tab offers.
 const MAX_LOG_LINES = 2000;
+const LOG_LEVELS = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR'];
 
 // How far from the end of the log, in pixels, still counts as being at it. A
 // zoomed page reports positions in fractions, so the end is rarely exactly 0.
@@ -71,13 +73,18 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
   workspace,
   sandboxName,
 }) => {
+  const { t } = useI18n();
   const [level, setLevel] = useState('');
   const [source, setSource] = useState('');
   const [lines, setLines] = useState(DEFAULT_LOG_LINES);
   // What `openshell logs --since` takes: 30s, 5m, 1h. Empty is no limit.
   const [since, setSince] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
-  // Whether the view is at the newest line. While it is, each refresh brings
+  const [receivedLines, setReceivedLines] = useState<LogLine[]>([]);
+  const [streamWarning, setStreamWarning] = useState<string | null>(null);
+  const [streamError, setStreamError] = useState<Error | null>(null);
+  const [retryAttempt, setRetryAttempt] = useState(0);
+  // Whether the view is at the newest line. While it is, each update brings
   // the new newest line into view; scrolling away from it lets go.
   const [isAtTail, setAtTail] = useState(true);
   // Counts the lists the viewer has built. It builds a new one when it first
@@ -89,43 +96,114 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
   const lineHelpId = useId();
   const sinceDurationMs = parseSinceDuration(since);
   const sinceIsInvalid = since.trim() !== '' && sinceDurationMs === undefined;
-  const logs = useSandboxLogs(
-    workspace,
-    sandboxName,
-    {
-      lines: Number(lines),
-      level: level || undefined,
-      sources: source ? [source] : undefined,
-      // A window that ends now. Each refresh moves it forward.
-      sinceDurationMs,
-    },
-    autoRefresh,
-  );
 
-  // The logs are re-read every few seconds. A refresh that fails leaves the
-  // lines that loaded before, the search and the place in them as they were,
-  // with a note above. Logs that never loaded for these filters have no lines
-  // to show, and the viewer stays all the same: its toolbar holds the filters,
-  // which may be what has to change before a request works.
-  const refreshFailed = isRefreshError(logs);
-  const loadFailed = logs.isError && !refreshFailed;
+  useEffect(() => {
+    setReceivedLines([]);
+    setStreamWarning(null);
+    setStreamError(null);
+    setOpenLine(null);
+    setAtTail(true);
+  }, [workspace, sandboxName]);
 
-  const logLines = logs.data?.logs;
+  useEffect(() => {
+    if (!autoRefresh) {
+      return;
+    }
+
+    // A new subscription replays the tail. Replace, rather than append to,
+    // the previous subscription's history so reconnects do not duplicate it.
+    setReceivedLines([]);
+    setStreamWarning(null);
+    setStreamError(null);
+    let active = true;
+    let stop: (() => void) | undefined;
+
+    try {
+      stop = watchSandboxLogs(
+        workspace,
+        sandboxName,
+        (line) => {
+          if (active) {
+            setReceivedLines((previous) =>
+              [...previous, line].slice(-MAX_LOG_LINES),
+            );
+          }
+        },
+        (warning: unknown) => {
+          if (!active) {
+            return;
+          }
+          // The current BFF sends {message}, although the watcher declares
+          // its warning callback as receiving a string.
+          let message = t('logs.streamWarning', {
+            defaultValue: 'The log stream reported a warning.',
+          });
+          if (typeof warning === 'string') {
+            message = warning;
+          } else if (
+            warning !== null &&
+            typeof warning === 'object' &&
+            'message' in warning &&
+            typeof warning.message === 'string'
+          ) {
+            message = warning.message;
+          }
+          setStreamWarning(message);
+        },
+        () => {
+          if (active) {
+            setStreamError(
+              new Error(
+                t('logs.disconnected', {
+                  defaultValue: 'Live logs disconnected.',
+                }),
+              ),
+            );
+          }
+        },
+      );
+    } catch (error) {
+      setStreamError(error instanceof Error ? error : new Error(String(error)));
+    }
+
+    return () => {
+      active = false;
+      stop?.();
+    };
+  }, [workspace, sandboxName, autoRefresh, retryAttempt, t]);
+
+  const retry = () => {
+    setAutoRefresh(true);
+    setRetryAttempt((attempt) => attempt + 1);
+  };
+
+  // The watcher currently accepts no filters. Apply the controls to retained
+  // lines without reopening the connection on every filter change.
+  const logLines = useMemo(() => {
+    const sinceMs =
+      sinceDurationMs === undefined ? undefined : Date.now() - sinceDurationMs;
+    const minimumLevel = LOG_LEVELS.indexOf(level);
+    return receivedLines
+      .filter((line) => {
+        const matchesLevel =
+          !level ||
+          LOG_LEVELS.indexOf(line.level?.toUpperCase() ?? '') >= minimumLevel;
+        const matchesSource = !source || (line.source || 'gateway') === source;
+        const matchesSince =
+          sinceMs === undefined || line.timestampMs >= sinceMs;
+        return matchesLevel && matchesSource && matchesSince;
+      })
+      .slice(-Number(lines));
+  }, [receivedLines, level, source, sinceDurationMs, lines]);
+  const refreshFailed = streamError !== null && receivedLines.length > 0;
+  const loadFailed = streamError !== null && !refreshFailed;
   const rows = useMemo(
-    () => buildLogRows(logLines ?? [], { colour: true }),
+    () => buildLogRows(logLines, { colour: true }),
     [logLines],
   );
   const rowCount = rows.lineOfRow.length;
   const logText =
     rowCount === 0 ? 'No log lines match the current filters.' : rows.text;
-
-  // The gateway takes the last `lines` lines and applies the window to those,
-  // not to everything the sandbox logged, and reports how many it took. When
-  // that is as many as were asked for there may be older lines inside the
-  // window that it never looked at. The CLI warns about this with --since.
-  const bufferTotal = logs.data?.bufferTotal ?? 0;
-  const sinceMayBeIncomplete =
-    sinceDurationMs !== undefined && bufferTotal >= Number(lines);
 
   // A different set of lines starts at its newest one again.
   const changeFilter =
@@ -142,12 +220,13 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
     setAtTail(true);
   };
 
-  // Polling is what brings new lines; the view only follows them while it is
-  // at the newest one.
-  const isFollowing = autoRefresh && isAtTail;
+  // Scrolling pauses following, not the stream itself.
+  const isFollowing = autoRefresh && streamError === null && isAtTail;
   let pausedBecause = '';
   if (!autoRefresh) {
-    pausedBecause = 'Auto-refresh is off.';
+    pausedBecause = t('logs.liveOff', { defaultValue: 'Live logs are off.' });
+  } else if (streamError) {
+    pausedBecause = streamError.message;
   } else if (!isAtTail) {
     pausedBecause = 'Scrolled away from the newest line.';
   }
@@ -183,7 +262,7 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
 
   const openRow = (row: number) => {
     const index = rows.lineOfRow[row];
-    if (logLines && index !== undefined) {
+    if (index !== undefined) {
       setOpenLine({ lines: logLines, lineOfRow: rows.lineOfRow, index });
     }
   };
@@ -197,6 +276,11 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
     }
   };
 
+  const hasFilters =
+    level !== '' ||
+    source !== '' ||
+    lines !== DEFAULT_LOG_LINES ||
+    since !== '';
   const toolbar = (
     <Toolbar aria-label="Log filters">
       <ToolbarContent>
@@ -255,15 +339,12 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
             <Checkbox
               id="logs-auto-refresh"
               data-testid="logs-auto-refresh"
-              label="Auto-refresh (5s)"
+              label={t('logs.live', { defaultValue: 'Live logs' })}
               isChecked={autoRefresh}
               onChange={(_event, checked) => setAutoRefresh(checked)}
             />
           </ToolbarItem>
-          {(level !== '' ||
-            source !== '' ||
-            lines !== '200' ||
-            since !== '') && (
+          {hasFilters && (
             <ToolbarItem>
               <Button
                 variant="link"
@@ -293,7 +374,7 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
           </ToolbarItem>
         </ToolbarGroup>
       </ToolbarContent>
-      {(sinceIsInvalid || sinceMayBeIncomplete) && (
+      {(sinceIsInvalid || sinceDurationMs !== undefined) && (
         <ToolbarContent>
           <ToolbarItem data-testid="logs-since-note">
             <HelperText>
@@ -304,10 +385,10 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
                 </HelperTextItem>
               ) : (
                 <HelperTextItem variant="warning">
-                  Only the last {bufferTotal} log lines were searched, so
-                  results for this window may be incomplete.
-                  {Number(lines) < MAX_LOG_LINES &&
-                    ' Raise the line count to search further back.'}
+                  {t('logs.retainedWindow', {
+                    defaultValue:
+                      'Since filters only retained log lines. Older matching lines may be unavailable.',
+                  })}
                 </HelperTextItem>
               )}
             </HelperText>
@@ -411,9 +492,7 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
     : undefined;
 
   let viewerText = logText;
-  if (logs.isLoading) {
-    viewerText = 'Loading...';
-  } else if (loadFailed) {
+  if (loadFailed) {
     viewerText = 'The logs could not be loaded.';
   }
 
@@ -427,22 +506,35 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
           className="pf-v6-u-mb-md"
           data-testid="logs-load-error"
           actionLinks={
-            <Button variant="link" onClick={() => logs.refetch()}>
+            <Button variant="link" onClick={retry}>
               Retry
             </Button>
           }
         >
-          {(logs.error as Error).message}
+          {streamError?.message}
         </Alert>
       )}
       {refreshFailed && (
         <RefreshErrorAlert
-          title="The logs could not be refreshed"
-          error={logs.error}
-          onRetry={() => logs.refetch()}
+          title={t('logs.disconnected', {
+            defaultValue: 'Live logs disconnected.',
+          })}
+          error={streamError}
+          onRetry={retry}
           className="pf-v6-u-mb-md"
           data-testid="logs-refresh-error"
         />
+      )}
+      {streamWarning && (
+        <Alert
+          variant="warning"
+          isInline
+          title={t('logs.warningTitle', { defaultValue: 'Log stream warning' })}
+          className="pf-v6-u-mb-md"
+          data-testid="logs-stream-warning"
+        >
+          {streamWarning}
+        </Alert>
       )}
       {/* A click on a row opens that line's details. The viewer draws its
           rows itself and they cannot take focus, so the click is caught here

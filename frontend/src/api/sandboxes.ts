@@ -7,19 +7,22 @@ import {
   apiUrl,
   del,
   get,
+  openEventSource,
   post,
   sessionExpiredError,
 } from './client';
 import { policyKeys, sandboxKeys } from './queryKeys';
-import type {
-  CreateSandboxRequest,
-  DeleteResult,
-  ExposeServiceRequest,
-  LogFilters,
-  Provider,
-  Sandbox,
-  SandboxLogs,
-  ServiceEndpoint,
+import {
+  LogEvent,
+  type CreateSandboxRequest,
+  type DeleteResult,
+  type ExposeServiceRequest,
+  type LogFilters,
+  type LogLine,
+  type Provider,
+  type Sandbox,
+  type SandboxLogs,
+  type ServiceEndpoint,
 } from '../types';
 
 export const listSandboxes = (
@@ -27,8 +30,7 @@ export const listSandboxes = (
   labelSelector?: string,
 ): Promise<Sandbox[]> =>
   get<Sandbox[]>(
-    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes${
-      labelSelector ? `?labelSelector=${encodeURIComponent(labelSelector)}` : ''
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes${labelSelector ? `?labelSelector=${encodeURIComponent(labelSelector)}` : ''
     }`,
   );
 
@@ -135,6 +137,38 @@ export const useSandboxLogs = (
     queryFn: () => getSandboxLogs(workspace, name, filters),
     refetchInterval: autoRefresh ? SANDBOX_POLL_MS : false,
   });
+
+export const watchSandboxLogs = (
+  workspace: string,
+  name: string,
+  onLog: (line: LogLine) => void,
+  onWarning: (message: string) => void,
+  onDisconnect: () => void,
+): (() => void) => {
+
+  const source = openEventSource(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/logs/stream`
+  );
+
+  source.addEventListener(LogEvent.Log, (event: MessageEvent<string>) => {
+    onLog(JSON.parse(event.data))
+  });
+
+  source.addEventListener(LogEvent.Warning, (event: MessageEvent<string>) => {
+    onWarning(JSON.parse(event.data))
+  });
+
+  const disconnect = () => {
+    source.close()
+    onDisconnect();
+  };
+
+  source.addEventListener(LogEvent.StreamError, disconnect);
+  source.addEventListener(LogEvent.End, disconnect);
+  source.onerror = disconnect;
+
+  return () => source.close();
+};
 
 export const listAttachedProviders = (
   workspace: string,
@@ -275,8 +309,7 @@ export const deleteService = (
   service: string,
 ): Promise<{ deleted: boolean }> =>
   del<{ deleted: boolean }>(
-    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandbox)}/services${
-      service ? `/${encodeURIComponent(service)}` : ''
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandbox)}/services${service ? `/${encodeURIComponent(service)}` : ''
     }`,
   );
 
@@ -427,8 +460,8 @@ export const uploadFile = async (
       reject(
         new Error(
           failure.files?.find((f) => !f.success)?.error ||
-            failure.message ||
-            `Upload failed (${request.status})`,
+          failure.message ||
+          `Upload failed (${request.status})`,
         ),
       );
     };
