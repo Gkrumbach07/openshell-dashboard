@@ -136,14 +136,14 @@ type DraftHistoryEntry struct {
 // known, which is not the same as none pending, so PendingCount is 0 and
 // means nothing.
 type DraftSandboxSummary struct {
-	Workspace        string `json:"workspace"`
-	SandboxName      string `json:"sandboxName"`
+	Workspace   string `json:"workspace"`
+	SandboxName string `json:"sandboxName"`
+	// The rationale of the newest pending chunk, when it has one.
+	LatestRationale  string `json:"latestRationale,omitempty"`
 	LatestDraftMs    int64  `json:"latestDraftMs"`
 	PendingCount     int    `json:"pendingCount"`
 	HasSecurityFlags bool   `json:"hasSecurityFlags"`
-	// The rationale of the newest pending chunk, when it has one.
-	LatestRationale string `json:"latestRationale,omitempty"`
-	Unavailable     bool   `json:"unavailable,omitempty"`
+	Unavailable      bool   `json:"unavailable,omitempty"`
 }
 
 // DraftSummary is the pending draft chunks of several sandboxes at once. No
