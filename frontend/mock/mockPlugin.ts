@@ -36,24 +36,37 @@ const routes: [string, RouteHandler][] = [
   ['GET /api/v1/gateway/compatibility', () => data.gatewayCompatibility],
 
   // Workspaces
-  ['GET /api/v1/workspaces', () =>
-    isEmptyGateway ? data.workspaces.slice(0, 1) : data.workspaces],
-  ['GET /api/v1/workspaces/:workspace', ({ workspace }) =>
-    data.workspaceDetail[workspace] ?? null],
+  [
+    'GET /api/v1/workspaces',
+    () => (isEmptyGateway ? data.workspaces.slice(0, 1) : data.workspaces),
+  ],
+  [
+    'GET /api/v1/workspaces/:workspace',
+    ({ workspace }) => data.workspaceDetail[workspace] ?? null,
+  ],
 
   // Members
-  ['GET /api/v1/workspaces/:workspace/members', ({ workspace }) =>
-    orEmpty(data.members[workspace] ?? [])],
+  [
+    'GET /api/v1/workspaces/:workspace/members',
+    ({ workspace }) => orEmpty(data.members[workspace] ?? []),
+  ],
 
   // Providers (workspace scope)
-  ['GET /api/v1/workspaces/:workspace/providers', ({ workspace }) =>
-    orEmpty(data.providers[workspace] ?? [])],
-  ['GET /api/v1/workspaces/:workspace/providers/:provider', ({ workspace, provider }) => {
-    const list = data.providers[workspace] ?? [];
-    return (list as any[]).find((p) => p.metadata.name === provider) ?? null;
-  }],
-  ['GET /api/v1/workspaces/:workspace/providers/:provider/refresh-status', ({ provider }) =>
-    data.refreshStatus[provider] ?? []],
+  [
+    'GET /api/v1/workspaces/:workspace/providers',
+    ({ workspace }) => orEmpty(data.providers[workspace] ?? []),
+  ],
+  [
+    'GET /api/v1/workspaces/:workspace/providers/:provider',
+    ({ workspace, provider }) => {
+      const list = data.providers[workspace] ?? [];
+      return list.find((p) => p.metadata.name === provider) ?? null;
+    },
+  ],
+  [
+    'GET /api/v1/workspaces/:workspace/providers/:provider/refresh-status',
+    ({ provider }) => data.refreshStatus[provider] ?? [],
+  ],
 
   // Providers (all workspaces)
   ['GET /api/v1/providers', () => orEmpty(data.allProviders)],
@@ -61,55 +74,94 @@ const routes: [string, RouteHandler][] = [
   // Provider profiles (platform)
   ['GET /api/v1/provider-profiles', () => data.platformProfiles],
   // Provider profiles (workspace — includes platform's)
-  ['GET /api/v1/workspaces/:workspace/provider-profiles', () => data.platformProfiles],
+  [
+    'GET /api/v1/workspaces/:workspace/provider-profiles',
+    () => data.platformProfiles,
+  ],
 
   // Sandboxes (workspace scope)
-  ['GET /api/v1/workspaces/:workspace/sandboxes', ({ workspace }) =>
-    orEmpty(data.sandboxes[workspace] ?? [])],
-  ['GET /api/v1/workspaces/:workspace/sandboxes/:sandbox', ({ workspace, sandbox }) => {
-    const list = data.sandboxes[workspace] ?? [];
-    return (list as any[]).find((s) => s.metadata.name === sandbox) ?? null;
-  }],
+  [
+    'GET /api/v1/workspaces/:workspace/sandboxes',
+    ({ workspace }) => orEmpty(data.sandboxes[workspace] ?? []),
+  ],
+  [
+    'GET /api/v1/workspaces/:workspace/sandboxes/:sandbox',
+    ({ workspace, sandbox }) => {
+      const list = data.sandboxes[workspace] ?? [];
+      return list.find((s) => s.metadata.name === sandbox) ?? null;
+    },
+  ],
 
   // Sandbox logs
-  ['GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/logs', ({ sandbox }) =>
-    data.sandboxLogs(sandbox)],
+  [
+    'GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/logs',
+    ({ sandbox }) => data.sandboxLogs(sandbox),
+  ],
 
   // Sandbox policy
-  ['GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/policy', ({ workspace, sandbox }) =>
-    data.sandboxPolicy(workspace, sandbox)],
-  ['GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/policy/effective', () =>
-    data.effectivePolicy],
+  [
+    'GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/policy',
+    ({ workspace }) => data.sandboxPolicy(workspace),
+  ],
+  [
+    'GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/policy/effective',
+    () => data.effectivePolicy,
+  ],
 
   // Sandbox settings
-  ['GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/settings', () =>
-    data.sandboxSettings],
+  [
+    'GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/settings',
+    () => data.sandboxSettings,
+  ],
 
   // Sandbox providers (attached)
-  ['GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/providers', ({ workspace, sandbox }) =>
-    data.attachedProviders(workspace, sandbox)],
+  [
+    'GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/providers',
+    ({ workspace, sandbox }) => data.attachedProviders(workspace, sandbox),
+  ],
 
   // Sandbox services
-  ['GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/services', ({ workspace, sandbox }) =>
-    (data.services[workspace] ?? []).filter((s: any) => s.sandboxName === sandbox)],
+  [
+    'GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/services',
+    ({ workspace, sandbox }) =>
+      (data.services[workspace] ?? []).filter((s) => s.sandboxName === sandbox),
+  ],
 
-  // Sandbox drafts
-  ['GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/drafts', () =>
-    data.draftPolicy],
-  ['GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/drafts/history', () => []],
+  // Sandbox drafts, filtered by ?status= as the BFF passes it to the gateway.
+  [
+    'GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/drafts',
+    (_params, query) => {
+      const status = query.get('status');
+      return status
+        ? {
+            ...data.draftPolicy,
+            chunks: data.draftPolicy.chunks.filter((c) => c.status === status),
+          }
+        : data.draftPolicy;
+    },
+  ],
+  [
+    'GET /api/v1/workspaces/:workspace/sandboxes/:sandbox/drafts/history',
+    () => [],
+  ],
 
   // Draft summaries. The scope is named, as the BFF reads it: ?workspace= is
   // one workspace's, ?allWorkspaces=true is every workspace's, and neither is
   // the empty answer the route has always given an unscoped poll.
-  ['GET /api/v1/draft-summary', (_params, query) => {
-    if (query.get('allWorkspaces') === 'true') {
-      return isEmptyGateway ? emptyDraftSummary : data.draftSummary;
-    }
-    const workspace = query.get('workspace');
-    return workspace ? workspaceDraftSummary(workspace) : emptyDraftSummary;
-  }],
-  ['GET /api/v1/workspaces/:workspace/draft-summary', ({ workspace }) =>
-    workspaceDraftSummary(workspace)],
+  [
+    'GET /api/v1/draft-summary',
+    (_params, query) => {
+      if (query.get('allWorkspaces') === 'true') {
+        return isEmptyGateway ? emptyDraftSummary : data.draftSummary;
+      }
+      const workspace = query.get('workspace');
+      return workspace ? workspaceDraftSummary(workspace) : emptyDraftSummary;
+    },
+  ],
+  [
+    'GET /api/v1/workspaces/:workspace/draft-summary',
+    ({ workspace }) => workspaceDraftSummary(workspace),
+  ],
 
   // Global policy
   ['GET /api/v1/global-policy', () => data.globalPolicy],
@@ -118,19 +170,26 @@ const routes: [string, RouteHandler][] = [
   ['GET /api/v1/settings/global', () => data.globalSettings],
 
   // Templates (workspace scope)
-  ['GET /api/v1/workspaces/:workspace/templates', ({ workspace }) =>
-    orEmpty(data.templates[workspace] ?? [])],
-  ['GET /api/v1/workspaces/:workspace/templates/:template', ({ workspace, template }) => {
-    const list = data.templates[workspace] ?? [];
-    return (list as any[]).find((t) => t.metadata.name === template) ?? null;
-  }],
+  [
+    'GET /api/v1/workspaces/:workspace/templates',
+    ({ workspace }) => orEmpty(data.templates[workspace] ?? []),
+  ],
+  [
+    'GET /api/v1/workspaces/:workspace/templates/:template',
+    ({ workspace, template }) => {
+      const list = data.templates[workspace] ?? [];
+      return list.find((t) => t.metadata.name === template) ?? null;
+    },
+  ],
 
   // Templates (all workspaces)
   ['GET /api/v1/templates', () => orEmpty(data.allTemplates)],
 
   // Services (workspace scope)
-  ['GET /api/v1/workspaces/:workspace/services', ({ workspace }) =>
-    orEmpty(data.services[workspace] ?? [])],
+  [
+    'GET /api/v1/workspaces/:workspace/services',
+    ({ workspace }) => orEmpty(data.services[workspace] ?? []),
+  ],
 
   // Services (all workspaces)
   ['GET /api/v1/services', () => orEmpty(data.allServices)],
@@ -186,7 +245,6 @@ const json = (res: ServerResponse, body: unknown, status = 200) => {
   res.writeHead(status, {
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(payload),
-    'Access-Control-Allow-Origin': '*',
   });
   res.end(payload);
 };
@@ -197,43 +255,56 @@ export default function mockApiPlugin(): Plugin {
     name: 'mock-api',
     configureServer(server: ViteDevServer) {
       // Run before Vite's own middleware (including the proxy).
-      server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
-        const method = req.method ?? 'GET';
-        const urlObj = new URL(req.url ?? '/', `http://${req.headers.host}`);
-        const pathname = urlObj.pathname;
+      server.middlewares.use(
+        (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+          const method = req.method ?? 'GET';
+          const urlObj = new URL(req.url ?? '/', `http://${req.headers.host}`);
+          const pathname = urlObj.pathname;
 
-        // Only intercept /api paths.
-        if (!pathname.startsWith('/api/')) {
-          next();
-          return;
-        }
-
-        // Handle write operations generically (POST/PUT/DELETE return a
-        // sensible stub so the UI does not break on actions).
-        if (method !== 'GET') {
-          if (method === 'POST' || method === 'PUT') {
-            json(res, { success: true, version: 1, policyHash: 'mock' });
-          } else if (method === 'DELETE') {
-            json(res, { deleted: true, outcome: 'completed' });
-          } else {
-            json(res, {}, 204);
+          // Only intercept /api paths.
+          if (!pathname.startsWith('/api/')) {
+            next();
+            return;
           }
-          return;
-        }
 
-        const result = matchRoute(compiled, method, pathname);
-        if (!result) {
-          json(res, { code: 'NOT_FOUND', message: `Mock: no handler for ${method} ${pathname}` }, 404);
-          return;
-        }
+          // Handle write operations generically (POST/PUT/DELETE return a
+          // sensible stub so the UI does not break on actions).
+          if (method !== 'GET') {
+            if (method === 'POST' || method === 'PUT') {
+              json(res, { success: true, version: 1, policyHash: 'mock' });
+            } else if (method === 'DELETE') {
+              json(res, { deleted: true, outcome: 'completed' });
+            } else {
+              json(res, {}, 204);
+            }
+            return;
+          }
 
-        const body = result.handler(result.params, urlObj.searchParams);
-        if (body === null) {
-          json(res, { code: 'NOT_FOUND', message: 'Resource not found' }, 404);
-          return;
-        }
-        json(res, body);
-      });
+          const result = matchRoute(compiled, method, pathname);
+          if (!result) {
+            json(
+              res,
+              {
+                code: 'NOT_FOUND',
+                message: `Mock: no handler for ${method} ${pathname}`,
+              },
+              404,
+            );
+            return;
+          }
+
+          const body = result.handler(result.params, urlObj.searchParams);
+          if (body === null) {
+            json(
+              res,
+              { code: 'NOT_FOUND', message: 'Resource not found' },
+              404,
+            );
+            return;
+          }
+          json(res, body);
+        },
+      );
     },
   };
 }
