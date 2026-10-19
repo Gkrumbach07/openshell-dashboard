@@ -9,7 +9,7 @@ export default {
     allWorkspaces: 'Resources',
     proposals: 'Proposals',
     sandboxes: 'Sandboxes',
-    providerProfiles: 'Providers',
+    providerProfiles: 'Provider profiles',
     globalPolicy: 'Global policy',
     settings: 'Settings',
     primary: 'Primary navigation',

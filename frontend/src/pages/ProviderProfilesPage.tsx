@@ -14,12 +14,14 @@ const ProviderProfilesPage: React.FC = () => {
     <>
       <PageSection>
         <Title headingLevel="h1" className="pf-v6-u-mb-sm">
-          Providers
+          Provider profiles
         </Title>
         <Content component="p">
-          Platform-scoped profiles to connect an AI agent sandbox to external
-          services—such as LLM inference backends, code repositories, or
-          enterprise APIs.
+          Platform-scoped profiles for connecting sandboxes to external
+          services, such as LLM inference backends, code repositories, or
+          enterprise APIs. Every workspace can create providers from them and
+          attach those providers to its sandboxes; a profile a workspace keeps
+          itself with the same ID takes precedence there.
         </Content>
       </PageSection>
       <PageSection>
