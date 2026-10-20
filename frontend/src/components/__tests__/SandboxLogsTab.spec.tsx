@@ -4,7 +4,6 @@ import SandboxLogsTab from '../sandbox/SandboxLogsTab';
 import type { LogFilters, LogLine, SandboxLogs } from '../../types';
 import { useSandboxLogs, watchSandboxLogs } from '~/api';
 
-
 jest.mock('@patternfly/react-log-viewer', () => ({
   LogViewer: ({
     data,
@@ -54,7 +53,6 @@ const pollingEnabled = () => {
   const calls = mockUseSandboxLogs.mock.calls;
   return calls[calls.length - 1][4];
 };
-
 
 // What the viewer reports about its list, and the list the tab drives.
 type MockScroll = {

@@ -124,48 +124,55 @@ func (h *LogsHandler) StreamSandboxLogs(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	rc := http.NewResponseController(w)
-
-	write := func(frame string) error {
-		// Prevent a stalled browser from retaining this handler forever.
-		if err := rc.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil &&
-			!errors.Is(err, http.ErrNotSupported) {
-			return err
-		}
-		defer func() { _ = rc.SetWriteDeadline(time.Time{}) }()
-		if _, err := io.WriteString(w, frame); err != nil {
-			return err
-		}
-		return rc.Flush()
-	}
-
-	send := func(kind string, payload any) error {
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		return write(fmt.Sprintf("event: %s\ndata: %s\n\n", kind, data))
-	}
-
-	forward := func(event *pb.SandboxStreamEvent) error {
-		if line := event.GetLog(); line != nil {
-			return send("log", models.FromProtoSandboxLogLine(line))
-		}
-		if warning := event.GetWarning(); warning != nil {
-			return send("warning", struct {
-				Message string `json:"message"`
-			}{Message: warning.GetMessage()})
-		}
-		return nil
-	}
-
-	if err := write(": connected\n\n"); err != nil {
+	writer := sandboxLogWriter{response: w}
+	if err := writer.write(": connected\n\n"); err != nil {
 		return
 	}
-	if err := forward(first); err != nil {
+	if err := writer.forward(first); err != nil {
 		return
 	}
+	relaySandboxLogs(ctx, writer, stream)
+}
 
+type sandboxLogWriter struct {
+	response http.ResponseWriter
+}
+
+func (writer sandboxLogWriter) write(frame string) error {
+	rc := http.NewResponseController(writer.response)
+	// Prevent a stalled browser from retaining this handler forever.
+	if err := rc.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil &&
+		!errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
+	defer func() { _ = rc.SetWriteDeadline(time.Time{}) }()
+	if _, err := io.WriteString(writer.response, frame); err != nil {
+		return err
+	}
+	return rc.Flush()
+}
+
+func (writer sandboxLogWriter) send(kind string, payload any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return writer.write(fmt.Sprintf("event: %s\ndata: %s\n\n", kind, data))
+}
+
+func (writer sandboxLogWriter) forward(event *pb.SandboxStreamEvent) error {
+	if line := event.GetLog(); line != nil {
+		return writer.send("log", models.FromProtoSandboxLogLine(line))
+	}
+	if warning := event.GetWarning(); warning != nil {
+		return writer.send("warning", struct {
+			Message string `json:"message"`
+		}{Message: warning.GetMessage()})
+	}
+	return nil
+}
+
+func relaySandboxLogs(ctx context.Context, writer sandboxLogWriter, stream services.SandboxLogStream) {
 	type received struct {
 		event *pb.SandboxStreamEvent
 		err   error
@@ -197,7 +204,7 @@ func (h *LogsHandler) StreamSandboxLogs(w http.ResponseWriter, r *http.Request) 
 			return
 
 		case <-heartbeat.C:
-			if err := write(": keepalive\n\n"); err != nil {
+			if err := writer.write(": keepalive\n\n"); err != nil {
 				return
 			}
 
@@ -207,18 +214,18 @@ func (h *LogsHandler) StreamSandboxLogs(w http.ResponseWriter, r *http.Request) 
 					return
 				}
 				if errors.Is(next.err, io.EOF) {
-					_ = send("end", struct{}{})
+					_ = writer.send("end", struct{}{})
 				} else {
 					// HTTP headers are committed: send an SSE error,
 					// never append a normal JSON error response.
-					_ = send("stream-error", apiutils.ErrorResponse{
+					_ = writer.send("stream-error", apiutils.ErrorResponse{
 						Code:    apiutils.GatewayUnavailable,
 						Message: "Live logs disconnected",
 					})
 				}
 				return
 			}
-			if err := forward(next.event); err != nil {
+			if err := writer.forward(next.event); err != nil {
 				return
 			}
 		}

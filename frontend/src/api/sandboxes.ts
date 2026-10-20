@@ -30,7 +30,8 @@ export const listSandboxes = (
   labelSelector?: string,
 ): Promise<Sandbox[]> =>
   get<Sandbox[]>(
-    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes${labelSelector ? `?labelSelector=${encodeURIComponent(labelSelector)}` : ''
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes${
+      labelSelector ? `?labelSelector=${encodeURIComponent(labelSelector)}` : ''
     }`,
   );
 
@@ -158,19 +159,19 @@ export const watchSandboxLogs = (
   });
 
   const source = openEventSource(
-    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/logs/stream?${params.toString()}`
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/logs/stream?${params.toString()}`,
   );
 
   source.addEventListener(LogEvent.Log, (event: MessageEvent<string>) => {
-    onLog(JSON.parse(event.data))
+    onLog(JSON.parse(event.data));
   });
 
   source.addEventListener(LogEvent.Warning, (event: MessageEvent<string>) => {
-    onWarning(JSON.parse(event.data))
+    onWarning(JSON.parse(event.data));
   });
 
   const disconnect = () => {
-    source.close()
+    source.close();
     onDisconnect();
   };
 
@@ -320,7 +321,8 @@ export const deleteService = (
   service: string,
 ): Promise<{ deleted: boolean }> =>
   del<{ deleted: boolean }>(
-    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandbox)}/services${service ? `/${encodeURIComponent(service)}` : ''
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(sandbox)}/services${
+      service ? `/${encodeURIComponent(service)}` : ''
     }`,
   );
 
@@ -471,8 +473,8 @@ export const uploadFile = async (
       reject(
         new Error(
           failure.files?.find((f) => !f.success)?.error ||
-          failure.message ||
-          `Upload failed (${request.status})`,
+            failure.message ||
+            `Upload failed (${request.status})`,
         ),
       );
     };

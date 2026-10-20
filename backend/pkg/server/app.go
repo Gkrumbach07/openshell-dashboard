@@ -4,7 +4,7 @@ package server
 import (
 	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -288,12 +288,20 @@ func (app *App) serveStatic(w http.ResponseWriter, r *http.Request) {
 		apiutils.WriteError(w, http.StatusNotFound, apiutils.NotFound, "unknown API route")
 		return
 	}
-	requested := filepath.Join(app.staticDir, filepath.Clean("/"+r.URL.Path))
-	if info, err := os.Stat(requested); err == nil && !info.IsDir() {
-		http.ServeFile(w, r, requested)
+	root, err := os.OpenRoot(app.staticDir)
+	if err != nil {
+		http.NotFound(w, r)
 		return
 	}
-	http.ServeFile(w, r, filepath.Join(app.staticDir, "index.html"))
+	defer func() { _ = root.Close() }()
+
+	// Root also rejects symlinks that escape the frontend directory.
+	requested := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+	if info, err := root.Stat(requested); err == nil && !info.IsDir() {
+		http.FileServerFS(root.FS()).ServeHTTP(w, r)
+		return
+	}
+	http.ServeFileFS(w, r, root.FS(), "index.html")
 }
 
 // GetHealthz reports BFF liveness without touching the gateway.

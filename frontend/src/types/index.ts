@@ -565,10 +565,10 @@ export type ProfileTokenGrantAudienceOverride = {
 // through an OAuth2 grant when it needs it.
 export type ProfileTokenGrant = {
   grantType:
-  | 'UNSPECIFIED'
-  | 'CLIENT_CREDENTIALS'
-  | 'TOKEN_EXCHANGE'
-  | (string & NonNullable<unknown>);
+    | 'UNSPECIFIED'
+    | 'CLIENT_CREDENTIALS'
+    | 'TOKEN_EXCHANGE'
+    | (string & NonNullable<unknown>);
   tokenEndpoint: string;
   audience?: string;
   jwtSvidAudience?: string;
@@ -946,10 +946,10 @@ export type SandboxLogs = {
 };
 
 export enum LogEvent {
-  Log = "log",
-  Warning = "warning",
-  StreamError = "stream-error",
-  End = "end",
+  Log = 'log',
+  Warning = 'warning',
+  StreamError = 'stream-error',
+  End = 'end',
 }
 
 // --- Policy revisions (SandboxPolicyRevision) ---

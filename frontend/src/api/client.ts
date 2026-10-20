@@ -180,8 +180,8 @@ export const del = <T>(path: string): Promise<T> =>
   apiFetch<T>(path, { method: 'DELETE' });
 
 /**
-  * Open an event source for SSE
-  */
+ * Open an event source for SSE
+ */
 export const openEventSource = (path: string): EventSource => {
   if (authTokenGetter) {
     throw new Error('Header-authenticated streams require fetch-based SSE');
