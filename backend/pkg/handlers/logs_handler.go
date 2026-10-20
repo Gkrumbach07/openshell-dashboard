@@ -18,7 +18,7 @@ import (
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 )
 
-const LOGS_DEFAULT_LINES uint32 = 200
+const logDefaultLines uint32 = 200
 
 type LogsHandler struct {
 	sandboxSvc services.SandboxServiceInterface
@@ -49,7 +49,7 @@ func (h *LogsHandler) GetSandboxLogs(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	var opts []openshell.LogOption
 
-	lines := LOGS_DEFAULT_LINES
+	lines := logDefaultLines
 	if raw := query.Get("lines"); raw != "" {
 		if parsed, parseErr := strconv.ParseUint(raw, 10, 32); parseErr == nil {
 			lines = uint32(parsed)
