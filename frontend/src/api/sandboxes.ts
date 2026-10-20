@@ -131,23 +131,34 @@ export const useSandboxLogs = (
   name: string,
   filters: LogFilters,
   autoRefresh: boolean,
+  enabled = true,
 ) =>
   useQuery({
     queryKey: sandboxKeys.logs(workspace, name, filters),
     queryFn: () => getSandboxLogs(workspace, name, filters),
-    refetchInterval: autoRefresh ? SANDBOX_POLL_MS : false,
+    // A failed request stays stopped until an explicit refetch succeeds.
+    enabled: (query) => enabled && query.state.status !== 'error',
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchInterval: (query) =>
+      autoRefresh && query.state.status !== 'error' ? SANDBOX_POLL_MS : false,
   });
 
 export const watchSandboxLogs = (
   workspace: string,
   name: string,
+  tailLines: number,
   onLog: (line: LogLine) => void,
   onWarning: (message: string) => void,
   onDisconnect: () => void,
 ): (() => void) => {
+  const params = new URLSearchParams({
+    lines: String(tailLines),
+  });
 
   const source = openEventSource(
-    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/logs/stream`
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/logs/stream?${params.toString()}`
   );
 
   source.addEventListener(LogEvent.Log, (event: MessageEvent<string>) => {

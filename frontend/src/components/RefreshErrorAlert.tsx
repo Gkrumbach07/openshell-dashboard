@@ -54,7 +54,7 @@ const RefreshErrorAlert: React.FC<RefreshErrorAlertProps> = ({
       </Button>
     }
   >
-    {(error as Error | null)?.message} {staleNote}
+    {(error as Error | null)?.message}. {staleNote}
   </Alert>
 );
 

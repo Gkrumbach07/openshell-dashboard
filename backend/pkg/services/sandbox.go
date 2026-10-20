@@ -22,7 +22,7 @@ type SandboxLogStream interface {
 
 type SandboxServiceInterface interface {
 	openshell.SandboxInterface
-	StreamSandboxLogs(
+	WatchSandboxLogs(
 		ctx context.Context,
 		workspace string,
 		sandbox string,
@@ -41,7 +41,7 @@ func NewSandboxService(client openshell.SandboxInterface, rawExecClient SandboxR
 	return &SandboxService{SandboxInterface: client, rawExec: rawExecClient}
 }
 
-func (s *SandboxService) StreamSandboxLogs(ctx context.Context, workspace string, sandbox string, logTailLines uint32, logSources []string, logMinLevel string) (SandboxLogStream, error) {
+func (s *SandboxService) WatchSandboxLogs(ctx context.Context, workspace string, sandbox string, logTailLines uint32, logSources []string, logMinLevel string) (SandboxLogStream, error) {
 	req := &pb.WatchSandboxRequest{
 		WorkspaceScope: &dm.WorkspaceSelector{
 			Selection: &dm.WorkspaceSelector_Workspace{

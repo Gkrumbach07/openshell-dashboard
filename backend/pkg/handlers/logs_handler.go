@@ -101,7 +101,7 @@ func (h *LogsHandler) StreamSandboxLogs(w http.ResponseWriter, r *http.Request) 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	stream, err := h.sandboxSvc.StreamSandboxLogs(
+	stream, err := h.sandboxSvc.WatchSandboxLogs(
 		ctx,
 		r.PathValue("workspace"),
 		r.PathValue("name"),
@@ -125,7 +125,6 @@ func (h *LogsHandler) StreamSandboxLogs(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	rc := http.NewResponseController(w)
-	defer func() { _ = rc.SetWriteDeadline(time.Time{}) }()
 
 	write := func(frame string) error {
 		// Prevent a stalled browser from retaining this handler forever.
@@ -133,6 +132,7 @@ func (h *LogsHandler) StreamSandboxLogs(w http.ResponseWriter, r *http.Request) 
 			!errors.Is(err, http.ErrNotSupported) {
 			return err
 		}
+		defer func() { _ = rc.SetWriteDeadline(time.Time{}) }()
 		if _, err := io.WriteString(w, frame); err != nil {
 			return err
 		}

@@ -440,7 +440,7 @@ const SandboxDetailPage: React.FC<SandboxDetailPageProps> = (props) => {
             data-testid="tab-logs"
           >
             <div className="pf-v6-u-pt-lg">
-              <SandboxLogsTab workspace={workspace} sandboxName={sandboxName} />
+              <SandboxLogsTab workspace={workspace} sandboxName={sandboxName} isActive={resolvedTab === 'logs'} />
             </div>
           </Tab>
           {features.terminal && (

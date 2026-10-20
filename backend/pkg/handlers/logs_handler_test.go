@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,8 @@ import (
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
+	pb "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -96,6 +99,101 @@ func TestGetSandboxLogsNotFound(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", w.Code)
+	}
+}
+
+func TestStreamSandboxLogs(t *testing.T) {
+	sdk := &mockSDK{}
+	stream := &mockServerStream{events: []*pb.SandboxStreamEvent{
+		{Payload: &pb.SandboxStreamEvent_Log{Log: &pb.SandboxLogLine{Message: "first log"}}},
+		{Payload: &pb.SandboxStreamEvent_Log{Log: &pb.SandboxLogLine{Message: "second log"}}},
+	}}
+	streamCtx := context.Background()
+	raw := &mockSandboxRawExec{watchLogsFn: func(ctx context.Context, req *pb.WatchSandboxRequest) (grpc.ServerStreamingClient[pb.SandboxStreamEvent], error) {
+		streamCtx = ctx
+		if req.GetWorkspaceScope().GetWorkspace() != "team-a" || req.GetSandbox() != "my-sandbox" {
+			t.Errorf("WatchSandbox target = %s/%s, want team-a/my-sandbox", req.GetWorkspaceScope().GetWorkspace(), req.GetSandbox())
+		}
+		if !req.GetFollowLogs() || !req.GetFollowStatus() {
+			t.Error("WatchSandbox must follow logs and status")
+		}
+		if req.GetLogTailLines() != 50 || req.GetLogMinLevel() != "INFO" || !slices.Equal(req.GetLogSources(), []string{"gateway", "sandbox"}) {
+			t.Errorf("unexpected log filters: %v", req)
+		}
+		return stream, nil
+	}}
+	handler := NewLogsHandler(services.NewSandboxService(sdk.Sandboxes(), raw))
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/logs/stream", handler.StreamSandboxLogs)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/team-a/sandboxes/my-sandbox/logs/stream?lines=50&source=gateway&source=sandbox&level=INFO", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	for header, want := range map[string]string{
+		"Content-Type":      "text/event-stream",
+		"Cache-Control":     "no-cache, no-transform",
+		"X-Accel-Buffering": "no",
+	} {
+		if got := w.Header().Get(header); got != want {
+			t.Errorf("%s = %q, want %q", header, got, want)
+		}
+	}
+	want := ": connected\n\n" +
+		"event: log\ndata: {\"message\":\"first log\",\"timestampMs\":0}\n\n" +
+		"event: log\ndata: {\"message\":\"second log\",\"timestampMs\":0}\n\n" +
+		"event: end\ndata: {}\n\n"
+	if got := w.Body.String(); got != want {
+		t.Errorf("stream = %q, want %q", got, want)
+	}
+	if !w.Flushed {
+		t.Error("stream was not flushed")
+	}
+	if err := streamCtx.Err(); err != context.Canceled {
+		t.Errorf("stream context error = %v, want canceled", err)
+	}
+}
+
+func TestStreamSandboxLogsError(t *testing.T) {
+	sdk := &mockSDK{}
+	stream := &mockServerStream{
+		events: []*pb.SandboxStreamEvent{
+			{Payload: &pb.SandboxStreamEvent_Log{Log: &pb.SandboxLogLine{Message: "first log"}}},
+		},
+		err: status.Error(codes.Unavailable, "internal gateway details"),
+	}
+	streamCtx := context.Background()
+	raw := &mockSandboxRawExec{watchLogsFn: func(ctx context.Context, _ *pb.WatchSandboxRequest) (grpc.ServerStreamingClient[pb.SandboxStreamEvent], error) {
+		streamCtx = ctx
+		return stream, nil
+	}}
+	handler := NewLogsHandler(services.NewSandboxService(sdk.Sandboxes(), raw))
+	r := chi.NewRouter()
+	r.Get("/workspaces/{workspace}/sandboxes/{name}/logs/stream", handler.StreamSandboxLogs)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/team-a/sandboxes/my-sandbox/logs/stream", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 after stream starts; body: %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Content-Type"); got != "text/event-stream" {
+		t.Errorf("Content-Type = %q, want text/event-stream", got)
+	}
+	want := ": connected\n\n" +
+		"event: log\ndata: {\"message\":\"first log\",\"timestampMs\":0}\n\n" +
+		"event: stream-error\ndata: {\"code\":\"gateway_unavailable\",\"message\":\"Live logs disconnected\"}\n\n"
+	if got := w.Body.String(); got != want {
+		t.Errorf("stream = %q, want %q", got, want)
+	}
+	if err := streamCtx.Err(); err != context.Canceled {
+		t.Errorf("stream context error = %v, want canceled", err)
 	}
 }
 

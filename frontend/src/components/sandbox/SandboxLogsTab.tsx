@@ -1,5 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { DEFAULT_LOG_LINES, TAB_CONTENT_HEIGHT } from '../../constants';
+import {
+  DEFAULT_LOG_LINES,
+  SANDBOX_POLL_MS,
+  TAB_CONTENT_HEIGHT,
+} from '../../constants';
 import {
   Alert,
   Button,
@@ -21,7 +25,7 @@ import {
 import { ArrowDownIcon } from '@patternfly/react-icons';
 import { LogViewer, LogViewerSearch } from '@patternfly/react-log-viewer';
 
-import { watchSandboxLogs } from '../../api/sandboxes';
+import { useSandboxLogs, watchSandboxLogs } from '../../api/sandboxes';
 import { useI18n } from '../../i18n';
 import LogLineDetailModal from '../LogLineDetailModal';
 import RefreshErrorAlert from '../RefreshErrorAlert';
@@ -32,6 +36,7 @@ import type { LogLine } from '../../types';
 type SandboxLogsTabProps = {
   workspace: string;
   sandboxName: string;
+  isActive?: boolean;
 };
 
 // Bound retained history as well as the largest line count the tab offers.
@@ -69,9 +74,15 @@ type OpenLine = {
   index: number;
 };
 
+const enum Transport {
+  Stream = 'stream',
+  Poll = 'poll',
+}
+
 const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
   workspace,
   sandboxName,
+  isActive = true,
 }) => {
   const { t } = useI18n();
   const [level, setLevel] = useState('');
@@ -83,6 +94,7 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
   const [receivedLines, setReceivedLines] = useState<LogLine[]>([]);
   const [streamWarning, setStreamWarning] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<Error | null>(null);
+  const [pollingFailure, setPollingFailure] = useState<Error | null>(null);
   const [retryAttempt, setRetryAttempt] = useState(0);
   // Whether the view is at the newest line. While it is, each update brings
   // the new newest line into view; scrolling away from it lets go.
@@ -92,21 +104,50 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
   const [listGeneration, setListGeneration] = useState(0);
   const [lineNumber, setLineNumber] = useState('');
   const [openLine, setOpenLine] = useState<OpenLine | null>(null);
+  // transport type (streaming, polling) for logs
+  const [transport, setTransport] = useState<Transport>(Transport.Stream);
   const viewerList = useRef<LogViewerList | null>(null);
   const lineHelpId = useId();
   const sinceDurationMs = parseSinceDuration(since);
   const sinceIsInvalid = since.trim() !== '' && sinceDurationMs === undefined;
 
+  const polling = useSandboxLogs(
+    workspace,
+    sandboxName,
+    {
+      lines: Number(lines),
+      level: level || undefined,
+      sources: source ? [source] : undefined,
+      sinceDurationMs,
+    },
+    autoRefresh,
+    transport === Transport.Poll && autoRefresh && pollingFailure === null,
+  );
+
+  // Keep the failure across filter changes and auto-refresh toggles. Only
+  // Retry may start requests again, even if a different query key is selected.
+  useEffect(() => {
+    if (transport === Transport.Poll && polling.error) {
+      setPollingFailure(polling.error);
+    }
+  }, [transport, polling.error]);
+
+  const displayLines: LogLine[] =
+    transport === Transport.Poll
+      ? (polling.data?.logs ?? receivedLines)
+      : receivedLines;
+
   useEffect(() => {
     setReceivedLines([]);
     setStreamWarning(null);
     setStreamError(null);
+    setPollingFailure(null);
     setOpenLine(null);
     setAtTail(true);
   }, [workspace, sandboxName]);
 
   useEffect(() => {
-    if (!autoRefresh) {
+    if (!autoRefresh || transport !== Transport.Stream) {
       return;
     }
 
@@ -118,10 +159,19 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
     let active = true;
     let stop: (() => void) | undefined;
 
+    const fallbackToPolling = (error: Error) => {
+      if (!active) {
+        return;
+      }
+      setStreamError(error);
+      setTransport(Transport.Poll);
+    };
+
     try {
       stop = watchSandboxLogs(
         workspace,
         sandboxName,
+        MAX_LOG_LINES,
         (line) => {
           if (active) {
             setReceivedLines((previous) =>
@@ -152,10 +202,10 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
         },
         () => {
           if (active) {
-            setStreamError(
+            fallbackToPolling(
               new Error(
                 t('logs.disconnected', {
-                  defaultValue: 'Live logs disconnected.',
+                  defaultValue: 'Live logs disconnected. Using polling',
                 }),
               ),
             );
@@ -163,16 +213,21 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
         },
       );
     } catch (error) {
-      setStreamError(error instanceof Error ? error : new Error(String(error)));
+      fallbackToPolling(
+        error instanceof Error ? error : new Error(String(error)),
+      );
     }
 
     return () => {
       active = false;
       stop?.();
     };
-  }, [workspace, sandboxName, autoRefresh, retryAttempt, t]);
+  }, [transport, workspace, sandboxName, autoRefresh, retryAttempt, t]);
 
   const retry = () => {
+    setStreamError(null);
+    setPollingFailure(null);
+    setTransport(Transport.Stream);
     setAutoRefresh(true);
     setRetryAttempt((attempt) => attempt + 1);
   };
@@ -183,7 +238,7 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
     const sinceMs =
       sinceDurationMs === undefined ? undefined : Date.now() - sinceDurationMs;
     const minimumLevel = LOG_LEVELS.indexOf(level);
-    return receivedLines
+    return displayLines
       .filter((line) => {
         const matchesLevel =
           !level ||
@@ -194,9 +249,23 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
         return matchesLevel && matchesSource && matchesSince;
       })
       .slice(-Number(lines));
-  }, [receivedLines, level, source, sinceDurationMs, lines]);
-  const refreshFailed = streamError !== null && receivedLines.length > 0;
-  const loadFailed = streamError !== null && !refreshFailed;
+  }, [displayLines, level, source, sinceDurationMs, lines]);
+  const activeError =
+    transport === Transport.Poll
+      ? (pollingFailure ?? polling.error ?? null)
+      : streamError;
+  const hasLoadedLogs =
+    displayLines.length > 0 ||
+    (transport === Transport.Poll && polling.data !== undefined);
+  const refreshFailed = activeError !== null && hasLoadedLogs;
+  const loadFailed = activeError !== null && !hasLoadedLogs;
+  const retryActiveTransport =
+    transport === Transport.Poll
+      ? () => {
+          setPollingFailure(null);
+          void polling.refetch();
+        }
+      : retry;
   const rows = useMemo(
     () => buildLogRows(logLines, { colour: true }),
     [logLines],
@@ -220,13 +289,15 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
     setAtTail(true);
   };
 
-  // Scrolling pauses following, not the stream itself.
-  const isFollowing = autoRefresh && streamError === null && isAtTail;
+  // Scrolling pauses following, not updates from the active transport.
+  const isFollowing = autoRefresh && activeError === null && isAtTail;
   let pausedBecause = '';
   if (!autoRefresh) {
-    pausedBecause = t('logs.liveOff', { defaultValue: 'Live logs are off.' });
-  } else if (streamError) {
-    pausedBecause = streamError.message;
+    pausedBecause = t('logs.updatesOff', {
+      defaultValue: 'Automatic log updates are off.',
+    });
+  } else if (activeError) {
+    pausedBecause = activeError.message;
   } else if (!isAtTail) {
     pausedBecause = 'Scrolled away from the newest line.';
   }
@@ -339,7 +410,7 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
             <Checkbox
               id="logs-auto-refresh"
               data-testid="logs-auto-refresh"
-              label={t('logs.live', { defaultValue: 'Live logs' })}
+              label={t('logs.autoRefresh', { defaultValue: 'Auto-refresh' })}
               isChecked={autoRefresh}
               onChange={(_event, checked) => setAutoRefresh(checked)}
             />
@@ -498,34 +569,71 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
 
   return (
     <>
+      {transport === Transport.Poll && (
+        <Alert
+          variant="info"
+          isInline
+          title={t('logs.pollingTitle', { defaultValue: 'Using polling' })}
+          className="pf-v6-u-mb-md"
+          data-testid="logs-polling-fallback"
+          actionLinks={
+            <Button
+              variant="link"
+              onClick={retry}
+              data-testid="logs-retry-stream"
+            >
+              {t('logs.retryStream', { defaultValue: 'Retry stream' })}
+            </Button>
+          }
+        >
+          {activeError
+            ? t('logs.pollingFailed', {
+                defaultValue:
+                  'Automatic log updates stopped after an error. Press Retry to resume.',
+              })
+            : autoRefresh
+              ? t('logs.pollingDescription', {
+                  defaultValue:
+                    'Streaming is unavailable. Logs refresh every {{seconds}} seconds until you retry streaming.',
+                  seconds: SANDBOX_POLL_MS / 1000,
+                })
+              : t('logs.pollingPaused', {
+                  defaultValue:
+                    'Streaming is unavailable. Automatic log updates are off.',
+                })}
+        </Alert>
+      )}
       {loadFailed && (
         <Alert
           variant="danger"
           isInline
-          title="Failed to load logs"
+          title={t('logs.loadErrorTitle', {
+            defaultValue: 'Failed to load logs',
+          })}
           className="pf-v6-u-mb-md"
           data-testid="logs-load-error"
           actionLinks={
-            <Button variant="link" onClick={retry}>
-              Retry
+            <Button variant="link" onClick={retryActiveTransport}>
+              {t('actions.retry', { defaultValue: 'Retry' })}
             </Button>
           }
         >
-          {streamError?.message}
+          {activeError?.message}
         </Alert>
       )}
       {refreshFailed && (
         <RefreshErrorAlert
-          title={t('logs.disconnected', {
-            defaultValue: 'Live logs disconnected.',
+          title={t('logs.refreshErrorTitle', {
+            defaultValue: 'The logs could not be refreshed',
           })}
-          error={streamError}
-          onRetry={retry}
+          error={activeError}
+          onRetry={retryActiveTransport}
+          retryLabel={t('actions.retry', { defaultValue: 'Retry' })}
           className="pf-v6-u-mb-md"
           data-testid="logs-refresh-error"
         />
       )}
-      {streamWarning && (
+      {transport === Transport.Stream && streamWarning && (
         <Alert
           variant="warning"
           isInline
@@ -554,18 +662,20 @@ const SandboxLogsTab: React.FC<SandboxLogsTabProps> = ({
         }}
         data-testid="logs-rows"
       >
-        <LogViewer
-          data={viewerText}
-          theme="dark"
-          height={TAB_CONTENT_HEIGHT}
-          toolbar={toolbar}
-          footer={footer}
-          hasLineNumbers
-          isTextWrapped={false}
-          onScroll={onScroll}
-          innerRef={viewerList}
-          data-testid="logs-output"
-        />
+        {isActive && (
+          <LogViewer
+            data={viewerText}
+            theme="dark"
+            height={TAB_CONTENT_HEIGHT}
+            toolbar={toolbar}
+            footer={footer}
+            hasLineNumbers
+            isTextWrapped={false}
+            onScroll={onScroll}
+            innerRef={viewerList}
+            data-testid="logs-output"
+          />
+        )}
       </div>
       <LogLineDetailModal
         line={openLine?.lines[openLine.index]}
