@@ -353,7 +353,8 @@ export const interceptMisc = () => {
   }).as('draftSummary');
 
   // What the sandbox list reads its "N pending rules" badges from.
-  cy.intercept('GET', /\/api\/v1\/workspaces\/[^/]+\/draft-summary$/, {
+  // The sandbox list names the sandboxes of its page (?sandbox=...).
+  cy.intercept('GET', /\/api\/v1\/workspaces\/[^/]+\/draft-summary(\?.*)?$/, {
     statusCode: 200,
     body: { sandboxes: [], totalPending: 0 },
   }).as('workspaceDraftSummary');

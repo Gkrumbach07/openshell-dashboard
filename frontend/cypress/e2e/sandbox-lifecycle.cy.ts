@@ -12,10 +12,14 @@ describe('Sandbox Lifecycle', () => {
     cy.get('[data-testid="view-toggle-list"]').click();
   });
 
+  // The list sits in the page's scrolling content area. With the filters and
+  // the pager above it, a row can start below the fold at the CI viewport,
+  // and Cypress counts a row its scroll container clips as not visible. Each
+  // row is scrolled to before it is checked.
   it('displays sandbox list with different phases', () => {
-    cy.contains('my-agent').should('be.visible');
-    cy.contains('data-processor').should('be.visible');
-    cy.contains('broken-sandbox').should('be.visible');
+    ['my-agent', 'data-processor', 'broken-sandbox'].forEach((name) => {
+      cy.contains(name).scrollIntoView().should('be.visible');
+    });
   });
 
   it('shows sandbox phase labels in table view', () => {
