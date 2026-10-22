@@ -12,6 +12,7 @@ import type { Workspace } from '../../types';
 
 jest.mock('../../api/workspaces', () => ({
   useWorkspaces: jest.fn(),
+  useWorkspacePage: jest.fn(),
   deleteWorkspace: jest.fn(),
   useDeleteWorkspace: jest.fn(() => ({
     mutate: jest.fn(),
@@ -39,9 +40,24 @@ jest.mock('../../app/AlertContext', () => ({
   useAlerts: jest.fn(() => ({ addSuccess: mockAddSuccess })),
 }));
 
-import { deleteWorkspace, useWorkspaces } from '../../api/workspaces';
+import {
+  deleteWorkspace,
+  useWorkspaces,
+  useWorkspacePage,
+} from '../../api/workspaces';
+import { pagedResult } from './pagedHookMock';
 const mockUseWorkspaces = useWorkspaces as jest.Mock;
+const mockUseWorkspacePage = useWorkspacePage as jest.Mock;
 const mockDeleteWorkspace = deleteWorkspace as jest.Mock;
+
+const bottomPagination = () =>
+  within(screen.getByRole('navigation', { name: 'Bottom pagination' }));
+
+beforeEach(() => {
+  mockUseWorkspacePage.mockImplementation((request) =>
+    pagedResult(mockUseWorkspaces(request.labelSelector), request),
+  );
+});
 
 // The page deletes through the query client (it invalidates the lists a
 // deleted workspace was in), so it is rendered inside one. The list itself is
@@ -104,6 +120,135 @@ describe('WorkspaceListPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsPlatformAdmin = true;
+  });
+
+  it('uses the continuation token and resets when page size changes', () => {
+    serve({ '': Array.from({ length: 11 }, (_, i) => workspace(`ws-${i}`)) });
+    render(<WorkspaceListPage />);
+    fireEvent.click(
+      bottomPagination().getByRole('button', { name: 'Go to next page' }),
+    );
+    expect(mockUseWorkspacePage).toHaveBeenLastCalledWith({
+      pageSize: 10,
+      pageToken: '10',
+      labelSelector: undefined,
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Items per page' }), {
+      target: { value: '20' },
+    });
+    expect(mockUseWorkspacePage).toHaveBeenLastCalledWith({
+      pageSize: 20,
+      pageToken: '',
+      labelSelector: undefined,
+    });
+    expect(bottomPagination().getByText('Page 1')).toBeInTheDocument();
+  });
+
+  it('holds table space behind a spinner while the next page loads', () => {
+    const first = {
+      items: [workspace('first')],
+      nextPageToken: 'next',
+    };
+    const second = {
+      items: [workspace('second')],
+      nextPageToken: 'third',
+    };
+    let pending = true;
+    let fetching = true;
+    mockUseWorkspacePage.mockImplementation((request) => ({
+      isLoading: false,
+      isFetching: Boolean(request.pageToken && fetching),
+      isError: false,
+      isPlaceholderData: Boolean(request.pageToken && pending),
+      data: request.pageToken && !pending ? second : first,
+    }));
+    const view = render(<WorkspaceListPage />);
+    fireEvent.click(
+      bottomPagination().getByRole('button', { name: 'Go to next page' }),
+    );
+
+    const table = screen.getByTestId('workspace-table');
+    const content = table.parentElement as HTMLElement;
+    expect(content).toHaveAttribute('aria-hidden', 'true');
+    expect(content).toHaveAttribute('inert');
+    expect(content).toHaveClass('cursor-page-transition__content--loading');
+    expect(screen.getByLabelText('Loading workspaces')).toBeInTheDocument();
+    expect(
+      bottomPagination().getByRole('button', { name: 'Go to previous page' }),
+    ).toBeDisabled();
+
+    pending = false;
+    view.rerender(<WorkspaceListPage />);
+    expect(listedNames()).toEqual(['second']);
+    expect(content).toHaveAttribute('aria-hidden', 'false');
+    expect(content).not.toHaveAttribute('inert');
+    expect(screen.queryByLabelText('Loading workspaces')).toBeNull();
+    expect(
+      bottomPagination().getByRole('button', { name: 'Go to previous page' }),
+    ).toBeEnabled();
+    expect(
+      bottomPagination().getByRole('button', { name: 'Go to next page' }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('combobox', { name: 'Items per page' }),
+    ).toBeEnabled();
+
+    fetching = false;
+    view.rerender(<WorkspaceListPage />);
+    expect(listedNames()).toEqual(['second']);
+  });
+
+  it('keeps pagination controls enabled during a background refresh', () => {
+    let fetching = false;
+    mockUseWorkspacePage.mockImplementation(() => ({
+      isLoading: false,
+      isFetching: fetching,
+      isError: false,
+      isPlaceholderData: false,
+      data: { items: [workspace('first')], nextPageToken: 'next' },
+    }));
+    const view = render(<WorkspaceListPage />);
+    fetching = true;
+    view.rerender(<WorkspaceListPage />);
+
+    expect(listedNames()).toEqual(['first']);
+    expect(
+      bottomPagination().getByRole('button', { name: 'Go to next page' }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('combobox', { name: 'Items per page' }),
+    ).toBeEnabled();
+  });
+
+  it('offers a first-page reset when a continuation token is rejected', () => {
+    mockUseWorkspacePage.mockImplementation((request) =>
+      request.pageToken
+        ? {
+            isLoading: false,
+            isError: true,
+            error: new Error('token expired'),
+            data: undefined,
+          }
+        : {
+            isLoading: false,
+            isError: false,
+            data: { items: [workspace('team-a')], nextPageToken: 'stale' },
+          },
+    );
+    render(<WorkspaceListPage />);
+    fireEvent.click(
+      bottomPagination().getByRole('button', { name: 'Go to next page' }),
+    );
+    expect(screen.getByText('token expired')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Start at first page' }),
+    );
+    expect(mockUseWorkspacePage).toHaveBeenLastCalledWith({
+      pageSize: 10,
+      pageToken: '',
+      labelSelector: undefined,
+    });
+    expect(bottomPagination().getByText('Page 1')).toBeInTheDocument();
   });
 
   it('lists every workspace with its labels until a filter is applied', () => {
@@ -658,7 +803,9 @@ describe('WorkspaceListPage when the list shrinks', () => {
     let listed = many(11);
     serveList(() => listed);
     const view = render(<WorkspaceListPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Go to next page' }));
+    fireEvent.click(
+      bottomPagination().getByRole('button', { name: 'Go to next page' }),
+    );
     expect(listedNames()).toEqual(['ws-11']);
 
     // The one workspace on the second page is deleted, here or elsewhere.
@@ -674,7 +821,9 @@ describe('WorkspaceListPage when the list shrinks', () => {
     let listed = many(11);
     serveList(() => listed);
     const view = render(<WorkspaceListPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Go to next page' }));
+    fireEvent.click(
+      bottomPagination().getByRole('button', { name: 'Go to next page' }),
+    );
 
     listed = many(10);
     view.rerender(<WorkspaceListPage />);

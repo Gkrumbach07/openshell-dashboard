@@ -8,6 +8,8 @@ import {
 import { RESOURCE_POLL_MS } from '../constants';
 import { del, get, post } from './client';
 import { allWorkspacesKeys, workspaceKeys } from './queryKeys';
+import { pagedPath } from './pagination';
+import type { ListPage, PageRequest } from './pagination';
 import type {
   AddMemberRequest,
   CreateWorkspaceRequest,
@@ -25,6 +27,19 @@ export const listWorkspaces = (labelSelector?: string): Promise<Workspace[]> =>
       labelSelector ? `?labelSelector=${encodeURIComponent(labelSelector)}` : ''
     }`,
   );
+
+export const listWorkspacePage = (
+  request: PageRequest,
+): Promise<ListPage<Workspace>> =>
+  get<ListPage<Workspace>>(pagedPath('/api/v1/workspaces', request));
+
+export const useWorkspacePage = (request: PageRequest) =>
+  useQuery({
+    queryKey: workspaceKeys.page(request),
+    queryFn: () => listWorkspacePage(request),
+    placeholderData: keepPreviousData,
+    refetchInterval: RESOURCE_POLL_MS,
+  });
 
 export const getWorkspace = (name: string): Promise<Workspace> =>
   get<Workspace>(`/api/v1/workspaces/${encodeURIComponent(name)}`);

@@ -64,6 +64,26 @@ const (
 // GetWorkspaceDraftSummary counts the pending draft chunks of every sandbox
 // in a workspace. See summarizeDrafts.
 func (h *DraftsHandler) GetWorkspaceDraftSummary(w http.ResponseWriter, r *http.Request) {
+	if names, named := r.URL.Query()["sandbox"]; named {
+		if len(names) > 100 {
+			apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidArgument, "you can request draft summaries for no more than 100 sandboxes at a time")
+			return
+		}
+		seen := make(map[string]bool, len(names))
+		sandboxes := make([]*openshell.Sandbox, 0, len(names))
+		for _, name := range names {
+			if !apiutils.ValidDNS1123(name) {
+				apiutils.WriteError(w, http.StatusBadRequest, apiutils.InvalidName, "sandbox must be a valid DNS-1123 name")
+				return
+			}
+			if !seen[name] {
+				seen[name] = true
+				sandboxes = append(sandboxes, &openshell.Sandbox{Name: name, Workspace: r.PathValue("workspace")})
+			}
+		}
+		apiutils.WriteJSON(w, http.StatusOK, h.summarizeDrafts(r.Context(), r.PathValue("workspace"), sandboxes))
+		return
+	}
 	h.writeDraftSummary(w, r, r.PathValue("workspace"))
 }
 

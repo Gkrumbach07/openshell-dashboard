@@ -87,6 +87,15 @@ This branch is built on:
 
 [docs/compatibility.md](docs/compatibility.md) says what the dashboard shows when the gateway is on another line, and how the claim is tested.
 
+## List pagination
+
+`GET /api/v1/workspaces`, `GET /api/v1/workspaces/{workspace}/sandboxes`, and
+`GET /api/v1/sandboxes` accept `pageSize` (1–100), an optional opaque
+`pageToken`, and `labelSelector`. A token requires `pageSize`. Paged requests
+return `{"items": [...], "nextPageToken": "..."}`; an empty token marks the last
+page. Requests without `pageSize` retain the existing array response. The
+gateway does not return a total count.
+
 ## Documentation
 
 - [Install](docs/install.md): the full guide, with Keycloak, OpenShift and troubleshooting

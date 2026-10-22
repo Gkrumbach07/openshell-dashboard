@@ -38,16 +38,19 @@ const summary: DraftSummary = {
   ],
 };
 
-const setup = (workspace: string, enabled?: boolean) => {
+const setup = (workspace: string, enabled?: boolean, names?: string[]) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
-  const hook = renderHook(() => useWorkspaceDraftSummary(workspace, enabled), {
-    wrapper,
-  });
+  const hook = renderHook(
+    () => useWorkspaceDraftSummary(workspace, enabled, names),
+    {
+      wrapper,
+    },
+  );
   return { ...hook, queryClient };
 };
 
@@ -62,6 +65,27 @@ describe('workspace draft summary', () => {
     expect(mockGet).toHaveBeenCalledWith(
       '/api/v1/workspaces/team%20a/draft-summary',
     );
+  });
+
+  it('sends only the names on the visible page', async () => {
+    await getWorkspaceDraftSummary('team a', ['busy', 'quiet']);
+    expect(mockGet).toHaveBeenCalledWith(
+      '/api/v1/workspaces/team%20a/draft-summary?sandbox=busy&sandbox=quiet',
+    );
+    expect(policyKeys.workspaceDraftSummary('team-a', ['busy'])).not.toEqual(
+      policyKeys.workspaceDraftSummary('team-a', ['quiet']),
+    );
+  });
+
+  it('makes no summary request when the page has no rows', async () => {
+    expect(await getWorkspaceDraftSummary('team-a', [])).toEqual({
+      sandboxes: [],
+      totalPending: 0,
+    });
+    const { result } = setup('team-a', true, []);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(result.current.bySandbox).toEqual({});
   });
 
   it('keys the summary by workspace, under the key of every summary', () => {

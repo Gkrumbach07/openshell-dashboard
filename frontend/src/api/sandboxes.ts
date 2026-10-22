@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 
 import { SANDBOX_POLL_MS } from '../constants';
@@ -12,6 +17,8 @@ import {
   sessionExpiredError,
 } from './client';
 import { policyKeys, sandboxKeys } from './queryKeys';
+import { pagedPath } from './pagination';
+import type { ListPage, PageRequest } from './pagination';
 import {
   LogEvent,
   type CreateSandboxRequest,
@@ -34,6 +41,25 @@ export const listSandboxes = (
       labelSelector ? `?labelSelector=${encodeURIComponent(labelSelector)}` : ''
     }`,
   );
+
+export const listSandboxPage = (
+  workspace: string,
+  request: PageRequest,
+): Promise<ListPage<Sandbox>> =>
+  get<ListPage<Sandbox>>(
+    pagedPath(
+      `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes`,
+      request,
+    ),
+  );
+
+export const useSandboxPage = (workspace: string, request: PageRequest) =>
+  useQuery({
+    queryKey: sandboxKeys.page(workspace, request),
+    queryFn: () => listSandboxPage(workspace, request),
+    placeholderData: keepPreviousData,
+    refetchInterval: SANDBOX_POLL_MS,
+  });
 
 export const getSandbox = (workspace: string, name: string): Promise<Sandbox> =>
   get<Sandbox>(

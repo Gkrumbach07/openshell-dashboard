@@ -16,6 +16,7 @@ import { CubesIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 
 import { useTableSelection } from '../hooks/useTableSelection';
+import CursorResourceTable from './CursorResourceTable';
 import RefreshErrorAlert, { isRefreshError } from './RefreshErrorAlert';
 
 export type ResourceTableColumn<T> = {
@@ -47,7 +48,19 @@ export type ResourceTableLabelSelector = {
   onApply: (selector: string) => void;
 };
 
-type ResourceTableProps<T> = {
+export type ResourceTableCursorPage = {
+  page: number;
+  perPage: number;
+  hasNext: boolean;
+  isLoading?: boolean;
+  isTransitioning?: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+  onPerPageSelect: (size: number) => void;
+  onReset: () => void;
+};
+
+export type ResourceTableProps<T> = {
   // Names the table, the toolbar and the test ids: "Sandboxes", "sandboxes".
   title: string;
   testId: string;
@@ -59,12 +72,14 @@ type ResourceTableProps<T> = {
   filterPlaceholder: string;
   emptyBody: string;
   labelSelector?: ResourceTableLabelSelector;
+  typeLabel?: ResourceTableLabelSelector & { error?: string };
+  cursorPage?: ResourceTableCursorPage;
 };
 
 // A read-only, paginated list of resources: what a list page shows when the
 // rows are for looking at and following, not for acting on. The lists across
 // workspaces and a workspace's service endpoints are built on it.
-const ResourceTable = <T,>({
+const LocalResourceTable = <T,>({
   title,
   testId,
   query,
@@ -264,5 +279,12 @@ const ResourceTable = <T,>({
     </>
   );
 };
+
+const ResourceTable = <T,>(props: ResourceTableProps<T>): React.ReactElement =>
+  props.cursorPage ? (
+    <CursorResourceTable {...props} cursorPage={props.cursorPage} />
+  ) : (
+    <LocalResourceTable {...props} />
+  );
 
 export default ResourceTable;

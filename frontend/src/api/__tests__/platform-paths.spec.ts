@@ -1,12 +1,17 @@
 import {
   listAllProviders,
   listAllSandboxes,
+  listAllSandboxPage,
   listAllServices,
   listAllTemplates,
 } from '../allWorkspaces';
-import { allWorkspacesKeys, workspaceKeys } from '../queryKeys';
-import { deleteService, getSandboxLogs } from '../sandboxes';
-import { listWorkspaceServices, listWorkspaces } from '../workspaces';
+import { allWorkspacesKeys, sandboxKeys, workspaceKeys } from '../queryKeys';
+import { deleteService, getSandboxLogs, listSandboxPage } from '../sandboxes';
+import {
+  listWorkspaceServices,
+  listWorkspaces,
+  listWorkspacePage,
+} from '../workspaces';
 
 jest.mock('../client', () => ({
   apiFetch: jest.fn(),
@@ -42,6 +47,30 @@ describe('all-workspaces API', () => {
     );
   });
 
+  it('requests one sandbox page with an opaque token and selector', async () => {
+    await listAllSandboxPage({
+      pageSize: 20,
+      pageToken: 'a+/=',
+      labelSelector: 'type=tool,team=ml',
+    });
+    expect(mockGet).toHaveBeenCalledWith(
+      '/api/v1/sandboxes?pageSize=20&pageToken=a%2B%2F%3D&labelSelector=type%3Dtool%2Cteam%3Dml',
+    );
+    expect(
+      allWorkspacesKeys.sandboxPage({
+        pageSize: 20,
+        pageToken: 'a+/=',
+        labelSelector: 'type=tool,team=ml',
+      }),
+    ).not.toEqual(
+      allWorkspacesKeys.sandboxPage({
+        pageSize: 20,
+        pageToken: '',
+        labelSelector: 'type=tool,team=ml',
+      }),
+    );
+  });
+
   it('listAllProviders calls the top-level path', async () => {
     await listAllProviders();
     expect(mockGet).toHaveBeenCalledWith('/api/v1/providers');
@@ -66,6 +95,39 @@ describe('all-workspaces API', () => {
 });
 
 describe('workspaces API', () => {
+  it('requests one workspace page and keeps each token in its cache key', async () => {
+    await listWorkspacePage({
+      pageSize: 10,
+      pageToken: 'next',
+      labelSelector: 'env=staging',
+    });
+    expect(mockGet).toHaveBeenCalledWith(
+      '/api/v1/workspaces?pageSize=10&pageToken=next&labelSelector=env%3Dstaging',
+    );
+    expect(
+      workspaceKeys.page({
+        pageSize: 10,
+        pageToken: 'next',
+        labelSelector: 'env=staging',
+      }),
+    ).not.toEqual(
+      workspaceKeys.page({
+        pageSize: 10,
+        pageToken: '',
+        labelSelector: 'env=staging',
+      }),
+    );
+  });
+
+  it('requests one workspace-scoped sandbox page', async () => {
+    await listSandboxPage('team/a', { pageSize: 10 });
+    expect(mockGet).toHaveBeenCalledWith(
+      '/api/v1/workspaces/team%2Fa/sandboxes?pageSize=10',
+    );
+    expect(sandboxKeys.page('team/a', { pageSize: 10 })).not.toEqual(
+      sandboxKeys.page('team/b', { pageSize: 10 }),
+    );
+  });
   it('listWorkspaces passes a label selector, encoded', async () => {
     await listWorkspaces('env=staging,owner=ml');
     expect(mockGet).toHaveBeenCalledWith(

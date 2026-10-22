@@ -11,21 +11,31 @@ import type { DraftSandboxSummary, DraftSummary } from '../types';
 // it from one draft read per sandbox, the way the TUI does.
 export const getWorkspaceDraftSummary = (
   workspace: string,
-): Promise<DraftSummary> =>
-  get<DraftSummary>(
-    `/api/v1/workspaces/${encodeURIComponent(workspace)}/draft-summary`,
-  );
+  names?: readonly string[],
+): Promise<DraftSummary> => {
+  const path = `/api/v1/workspaces/${encodeURIComponent(workspace)}/draft-summary`;
+  if (!names) return get<DraftSummary>(path);
+  if (names.length === 0)
+    return Promise.resolve({ sandboxes: [], totalPending: 0 });
+  const params = new URLSearchParams();
+  names.forEach((name) => params.append('sandbox', name));
+  return get<DraftSummary>(`${path}?${params.toString()}`);
+};
 
 // bySandbox holds an entry for each sandbox that has pending chunks or whose
 // inbox could not be read (`unavailable`). A sandbox without one has none
 // pending. Pass enabled=false where draft policies are switched off: nothing
 // is requested and every sandbox reads as having none.
-export const useWorkspaceDraftSummary = (workspace: string, enabled = true) => {
+export const useWorkspaceDraftSummary = (
+  workspace: string,
+  enabled = true,
+  names?: readonly string[],
+) => {
   const query = useQuery({
-    queryKey: policyKeys.workspaceDraftSummary(workspace),
-    queryFn: () => getWorkspaceDraftSummary(workspace),
+    queryKey: policyKeys.workspaceDraftSummary(workspace, names),
+    queryFn: () => getWorkspaceDraftSummary(workspace, names),
     refetchInterval: DRAFT_SUMMARY_POLL_MS,
-    enabled,
+    enabled: enabled && (names === undefined || names.length > 0),
   });
 
   const items = query.data?.sandboxes;

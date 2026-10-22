@@ -21,7 +21,6 @@ import { useNavigate } from 'react-router-dom';
 
 import { useFeatureFlags } from '../api/auth';
 import { useProviders } from '../api/providers';
-import { useSandboxes } from '../api/sandboxes';
 import { useTemplates } from '../api/templates';
 import {
   useMembers,
@@ -66,7 +65,6 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
   const resolvedCredentialInput =
     renderCredentialInput ?? slots.credentialInput;
   const workspaceQuery = useWorkspace(workspace);
-  const sandboxCount = useSandboxes(workspace);
   const templateCount = useTemplates(workspace);
   const providerCount = useProviders(workspace);
   const memberCount = useMembers(workspace);
@@ -186,14 +184,7 @@ const WorkspaceDetailPage: React.FC<WorkspaceDetailPageProps> = ({
         >
           <Tab
             eventKey="sandboxes"
-            title={
-              <TabTitleText>
-                Sandboxes{' '}
-                {sandboxCount.data && (
-                  <Badge isRead>{sandboxCount.data.length}</Badge>
-                )}
-              </TabTitleText>
-            }
+            title={<TabTitleText>Sandboxes</TabTitleText>}
             data-testid="tab-sandboxes"
           >
             <TabPanel>

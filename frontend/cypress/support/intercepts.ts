@@ -22,9 +22,12 @@ export const interceptGateway = () => {
 };
 
 export const interceptWorkspaces = () => {
-  cy.intercept('GET', '/api/v1/workspaces', {
-    fixture: 'workspaces.json',
-  }).as('listWorkspaces');
+  cy.intercept(
+    { method: 'GET', pathname: '/api/v1/workspaces' },
+    {
+      fixture: 'workspaces.json',
+    },
+  ).as('listWorkspaces');
 
   cy.intercept('GET', '/api/v1/workspaces/default', {
     statusCode: 200,
@@ -71,9 +74,12 @@ export const interceptWorkspaces = () => {
 };
 
 export const interceptSandboxes = (workspace = 'default') => {
-  cy.intercept('GET', `/api/v1/workspaces/${workspace}/sandboxes`, {
-    fixture: 'sandboxes.json',
-  }).as('listSandboxes');
+  cy.intercept(
+    { method: 'GET', pathname: `/api/v1/workspaces/${workspace}/sandboxes` },
+    {
+      fixture: 'sandboxes.json',
+    },
+  ).as('listSandboxes');
 
   cy.intercept(
     'GET',

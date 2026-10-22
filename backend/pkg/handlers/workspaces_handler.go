@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"net/url"
 
-	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
-
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/apiutils"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
@@ -28,11 +26,29 @@ func NewWorkspacesHandler(svc services.WorkspaceServiceInterface) *WorkspacesHan
 }
 
 func (h *WorkspacesHandler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
-	var opts []openshell.ListOptions
-	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
-		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
+	opts, paged, valid := listRequestOptions(w, r)
+	if !valid {
+		return
 	}
-	workspaces, err := h.svc.ListAll(r.Context(), opts...)
+	if paged {
+		pager, err := h.svc.List(opts)
+		if err != nil {
+			apiutils.WriteSDKError(w, err)
+			return
+		}
+		page, err := pager.NextPage(r.Context())
+		if err != nil {
+			apiutils.WriteSDKError(w, err)
+			return
+		}
+		items := make([]models.Workspace, 0, len(page.Items))
+		for _, workspace := range page.Items {
+			items = append(items, models.FromSDKWorkspace(workspace))
+		}
+		apiutils.WriteJSON(w, http.StatusOK, listPageResponse[models.Workspace]{Items: items, NextPageToken: page.NextPageToken})
+		return
+	}
+	workspaces, err := h.svc.ListAll(r.Context(), opts)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return

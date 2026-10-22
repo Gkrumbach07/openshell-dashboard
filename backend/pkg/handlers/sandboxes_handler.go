@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
-
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/apiutils"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/models"
 	"github.com/Gkrumbach07/openshell-dashboard/backend/pkg/services"
@@ -23,11 +21,29 @@ func NewSandboxHandler(svc services.SandboxServiceInterface) *SandboxHandler {
 }
 
 func (h *SandboxHandler) ListSandboxes(w http.ResponseWriter, r *http.Request) {
-	var opts []openshell.ListOptions
-	if sel := r.URL.Query().Get("labelSelector"); sel != "" {
-		opts = append(opts, openshell.ListOptions{LabelSelector: sel})
+	opts, paged, valid := listRequestOptions(w, r)
+	if !valid {
+		return
 	}
-	sandboxes, err := h.svc.ListAll(r.Context(), r.PathValue("workspace"), opts...)
+	if paged {
+		pager, err := h.svc.List(r.PathValue("workspace"), opts)
+		if err != nil {
+			apiutils.WriteSDKError(w, err)
+			return
+		}
+		page, err := pager.NextPage(r.Context())
+		if err != nil {
+			apiutils.WriteSDKError(w, err)
+			return
+		}
+		items := make([]models.Sandbox, 0, len(page.Items))
+		for _, sandbox := range page.Items {
+			items = append(items, models.FromSDKSandbox(sandbox))
+		}
+		apiutils.WriteJSON(w, http.StatusOK, listPageResponse[models.Sandbox]{Items: items, NextPageToken: page.NextPageToken})
+		return
+	}
+	sandboxes, err := h.svc.ListAll(r.Context(), r.PathValue("workspace"), opts)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return

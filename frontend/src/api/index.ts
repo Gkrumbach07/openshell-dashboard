@@ -1,6 +1,7 @@
 // The API client and hooks, re-exported from one place. Nothing in the app
 // imports from here: each import names the source module.
 export * from './client';
+export * from './pagination';
 export * from './auth';
 export * from './gateway';
 export * from './workspaces';

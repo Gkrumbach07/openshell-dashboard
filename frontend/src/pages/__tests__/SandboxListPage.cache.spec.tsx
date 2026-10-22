@@ -93,7 +93,10 @@ describe('SandboxListPage and the sandbox cache', () => {
         : {
             ok: true,
             status: 200,
-            json: async () => [sandbox('web'), sandbox('db')],
+            json: async () => ({
+              items: [sandbox('web'), sandbox('db')],
+              nextPageToken: '',
+            }),
           },
     );
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -127,7 +130,7 @@ describe('SandboxListPage and the sandbox cache', () => {
     ).toHaveTextContent("invalid label selector 'web'");
     expect(screen.queryByTestId('crashed')).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/workspaces/team-a/sandboxes?labelSelector=web',
+      '/api/v1/workspaces/team-a/sandboxes?pageSize=10&labelSelector=web',
       expect.anything(),
     );
     // And the sandbox that was looked at is still what its own key holds.

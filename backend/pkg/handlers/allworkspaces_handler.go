@@ -61,7 +61,30 @@ func everyWorkspace(labelSelector string) openshell.ListOptions {
 // ListSandboxes lists the sandboxes of every workspace. Query params:
 // labelSelector, as on the workspace-scoped list.
 func (h *AllWorkspacesHandler) ListSandboxes(w http.ResponseWriter, r *http.Request) {
-	sandboxes, err := h.sandboxes.ListAll(r.Context(), "", everyWorkspace(r.URL.Query().Get("labelSelector")))
+	opts, paged, valid := listRequestOptions(w, r)
+	if !valid {
+		return
+	}
+	opts.AllWorkspaces = true
+	if paged {
+		pager, err := h.sandboxes.List("", opts)
+		if err != nil {
+			apiutils.WriteSDKError(w, err)
+			return
+		}
+		page, err := pager.NextPage(r.Context())
+		if err != nil {
+			apiutils.WriteSDKError(w, err)
+			return
+		}
+		items := make([]models.Sandbox, 0, len(page.Items))
+		for _, sandbox := range page.Items {
+			items = append(items, models.FromSDKSandbox(sandbox))
+		}
+		apiutils.WriteJSON(w, http.StatusOK, listPageResponse[models.Sandbox]{Items: items, NextPageToken: page.NextPageToken})
+		return
+	}
+	sandboxes, err := h.sandboxes.ListAll(r.Context(), "", opts)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
