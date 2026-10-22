@@ -240,6 +240,22 @@ const matchRoute = (
   return null;
 };
 
+// A list asked for with pageSize is answered a page at a time, as the BFF
+// answers it: { items, nextPageToken }, the token being the next offset.
+// Without pageSize the whole array is the answer, as before pagination.
+const pageOf = (body: unknown, query: URLSearchParams): unknown => {
+  const size = Number(query.get('pageSize'));
+  if (!Array.isArray(body) || !query.has('pageSize') || !(size > 0)) {
+    return body;
+  }
+  const offset = Number(query.get('pageToken') || '0');
+  const next = offset + size;
+  return {
+    items: body.slice(offset, next),
+    nextPageToken: next < body.length ? String(next) : '',
+  };
+};
+
 const json = (res: ServerResponse, body: unknown, status = 200) => {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
@@ -302,7 +318,7 @@ export default function mockApiPlugin(): Plugin {
             );
             return;
           }
-          json(res, body);
+          json(res, pageOf(body, urlObj.searchParams));
         },
       );
     },
