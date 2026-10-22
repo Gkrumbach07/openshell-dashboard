@@ -111,13 +111,29 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
       - run: cd frontend && npm ci
+      - run: cd frontend && npm run build
+      # The dev server is started and waited for here, not by the Cypress
+      # action: from 2026-10-22 the action's wait-on gave up on its first
+      # refused connection ("Socket closed before the connection was
+      # established") instead of retrying, before Vite had printed a line.
+      - name: Start the dev server
+        run: |
+          cd frontend
+          nohup npm start > "$RUNNER_TEMP/vite.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:3000; then exit 0; fi
+            sleep 1
+          done
+          echo "The dev server did not answer on :3000 within 60 s."
+          cat "$RUNNER_TEMP/vite.log"
+          exit 1
       - uses: cypress-io/github-action@v6
         with:
           working-directory: frontend
-          build: npm run build
-          start: npm start
-          wait-on: "http://localhost:3000"
+          install: false
           browser: chrome
+      - if: failure()
+        run: cat "$RUNNER_TEMP/vite.log" || true
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
