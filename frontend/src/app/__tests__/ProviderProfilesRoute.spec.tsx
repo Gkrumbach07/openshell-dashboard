@@ -22,6 +22,20 @@ jest.mock('../../api/gateway', () => ({
   useGatewayInfo: () => ({ data: undefined }),
   useGatewayCompatibility: () => ({ data: undefined, isLoading: true }),
 }));
+// The shell counts the rules waiting for a decision for its Proposals badge.
+jest.mock('../../api/draftSummary', () => ({
+  useAllWorkspacesDraftSummary: () => ({ totalPending: 0 }),
+}));
+// The shell counts sandboxes and workspaces for their nav badges. The real
+// allWorkspaces module stays for the pages this file loads; only the counts
+// are stubbed.
+jest.mock('../../api/allWorkspaces', () => ({
+  ...jest.requireActual('../../api/allWorkspaces'),
+  useAllSandboxes: () => ({ data: [] }),
+}));
+jest.mock('../../api/workspaces', () => ({
+  useWorkspaces: () => ({ data: [] }),
+}));
 jest.mock('../theme', () => ({
   useTheme: () => ({ theme: 'light', toggleTheme: jest.fn() }),
 }));
@@ -49,6 +63,7 @@ jest.mock('../../pages/WorkspaceDetailPage', () => mockPage('workspace'));
 jest.mock('../../pages/SandboxDetailPage', () => mockPage('sandbox'));
 jest.mock('../../pages/ProviderDetailPage', () => mockPage('provider'));
 jest.mock('../../pages/GlobalPolicyPage', () => mockPage('global-policy'));
+jest.mock('../../pages/ProposalsPage', () => mockPage('proposals'));
 jest.mock('../../pages/SettingsPage', () => mockPage('settings'));
 
 import AuthenticatedRoutes from '../AuthenticatedRoutes';

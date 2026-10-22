@@ -60,19 +60,29 @@ export const listAllServices = (): Promise<ServiceEndpoint[]> =>
 // when someone changes them, in a workspace this page is not looking at, and
 // are read again at the slower pace of such lists.
 
-export const useAllSandboxes = (labelSelector?: string) =>
+// `enabled` and `refetchInterval` are for the shell, which counts sandboxes on
+// every page: it must not ask a user the gateway will refuse, and it reads at
+// NAV_COUNT_POLL_MS. The Gateway page reads at GATEWAY_PAGE_POLL_MS. The
+// Sandboxes page leaves both alone.
+export const useAllSandboxes = (
+  labelSelector?: string,
+  options: { enabled?: boolean; refetchInterval?: number } = {},
+) =>
   useQuery({
     queryKey: allWorkspacesKeys.sandboxes(labelSelector),
     queryFn: () => listAllSandboxes(labelSelector),
-    refetchInterval: SANDBOX_POLL_MS,
+    refetchInterval: options.refetchInterval ?? SANDBOX_POLL_MS,
     placeholderData: keepPreviousData,
+    enabled: options.enabled ?? true,
   });
 
-export const useAllProviders = () =>
+// `refetchInterval` is for the Gateway page, which only asks whether any
+// provider exists yet; the Resources page leaves it alone.
+export const useAllProviders = (options: { refetchInterval?: number } = {}) =>
   useQuery({
     queryKey: allWorkspacesKeys.providers,
     queryFn: listAllProviders,
-    refetchInterval: RESOURCE_POLL_MS,
+    refetchInterval: options.refetchInterval ?? RESOURCE_POLL_MS,
   });
 
 export const useAllTemplates = (labelSelector?: string) =>

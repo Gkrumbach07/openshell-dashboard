@@ -14,18 +14,25 @@ describe('Gateway Overview', () => {
     cy.contains('h1', 'Gateway').should('be.visible');
   });
 
-  it('shows gateway status as HEALTHY', () => {
-    cy.get('[data-testid="gateway-status-card"]').within(() => {
-      cy.contains('Status').should('be.visible');
-      cy.contains('HEALTHY').should('be.visible');
+  // The health check's answer is the masthead's, on every page.
+  it('shows the gateway as healthy in the masthead', () => {
+    cy.get('[data-testid="gateway-status-indicator"]').should(
+      'contain.text',
+      'Healthy',
+    );
+  });
+
+  // The status the gateway reports for itself sits with its version.
+  it('shows the status the gateway reports', () => {
+    cy.get('[data-testid="gateway-facts"]').within(() => {
+      cy.get('[data-testid="gateway-status"]').should('contain.text', 'HEALTHY');
     });
   });
 
   it('shows gateway version', () => {
-    cy.get('[data-testid="gateway-version-card"]').within(() => {
-      cy.contains('Gateway version').should('be.visible');
-      cy.contains('0.0.92').should('be.visible');
-    });
+    cy.get('[data-testid="gateway-version"]')
+      .should('be.visible')
+      .and('contain.text', 'Gateway version: 0.0.92');
   });
 
   it('shows compute drivers table', () => {

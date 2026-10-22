@@ -109,10 +109,48 @@ describe('CreateSandboxFromTemplateModal', () => {
     expect(request.annotations).toEqual({ owner: 'ml-team' });
   });
 
+  // The name and the labels are what the gateway fills in for a form that
+  // leaves them alone, so the form opens on the policy and the providers and
+  // keeps those two a fold below.
+  it('keeps the generated fields folded away until they are asked for', () => {
+    renderModal();
+    expect(
+      screen.getByTestId('from-template-policy-template-select'),
+    ).toBeVisible();
+    expect(screen.getByTestId('from-template-name-input')).not.toBeVisible();
+
+    fireEvent.click(screen.getByText('Name and labels'));
+    expect(screen.getByTestId('from-template-name-input')).toBeVisible();
+    expect(
+      screen.getByText('A name is generated when this is left empty.'),
+    ).toBeInTheDocument();
+  });
+
+  // What the section holds is sent, so folding it would hide a value that
+  // still goes to the gateway.
+  it('keeps the section open while a field in it holds a value', () => {
+    renderModal();
+    fireEvent.click(screen.getByText('Name and labels'));
+    type('from-template-name-input', 'my-sandbox');
+    fireEvent.click(screen.getByText('Name and labels'));
+    expect(screen.getByTestId('from-template-name-input')).toBeVisible();
+
+    type('from-template-name-input', '');
+    type('from-template-labels-input', 'team=ml');
+    fireEvent.click(screen.getByText('Name and labels'));
+    expect(screen.getByTestId('from-template-labels-input')).toBeVisible();
+
+    // Emptied, and already folded by the reader, it folds.
+    type('from-template-labels-input', '');
+    expect(screen.getByTestId('from-template-name-input')).not.toBeVisible();
+  });
+
   it('refuses labels that are not key=value pairs', () => {
     renderModal();
     type('from-template-labels-input', 'team');
 
+    // Otherwise the form is blocked from a field nobody can see.
+    expect(screen.getByTestId('from-template-labels-input')).toBeVisible();
     expect(
       screen.getByText('Labels must be comma-separated key=value pairs'),
     ).toBeInTheDocument();

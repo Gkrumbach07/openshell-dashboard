@@ -27,6 +27,11 @@ type AttentionItem = {
   title: string;
   description?: string;
   action?: { label: string; onClick: () => void };
+  // Most of these are a state of the sandbox the reader can only be told
+  // about, so closing one is the only thing to do with it. An item that
+  // counts work waiting is not: it goes when the work is done, and a close
+  // button would take the count away while the proposals were still there.
+  isPermanent?: boolean;
 };
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
@@ -111,6 +116,8 @@ export const buildAttentionItems = (
     const n = draftSummary.pendingCount;
     items.push({
       key: 'drafts',
+      // A proposal the prover raised findings on is not a routine one, and
+      // the colour says so before the title is read.
       variant: draftSummary.hasSecurityFlags ? 'warning' : 'info',
       title: draftSummary.hasSecurityFlags
         ? `${n} rule${n > 1 ? 's' : ''} proposed, with findings`
@@ -121,6 +128,9 @@ export const buildAttentionItems = (
             onClick: () => callbacks.onReviewDrafts!(metadata.name),
           }
         : undefined,
+      // It is the count of what is waiting, so it goes when the proposals
+      // have been decided and not before.
+      isPermanent: true,
     });
   }
 
@@ -243,7 +253,8 @@ const CardAttention: React.FC<{ items: AttentionItem[] }> = ({ items }) => {
   );
 };
 
-// ── Detail mode: stacked AlertGroupInline, each dismissable ──
+// ── Detail mode: stacked AlertGroupInline, dismissable but for the ones
+// that count work waiting ──
 
 const DetailAttention: React.FC<{ items: AttentionItem[] }> = ({ items }) => {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -254,7 +265,7 @@ const DetailAttention: React.FC<{ items: AttentionItem[] }> = ({ items }) => {
     <AlertGroup>
       {visible.map((item) =>
         renderAlert(item, {
-          dismissable: true,
+          dismissable: !item.isPermanent,
           onDismiss: () => setDismissed((prev) => new Set(prev).add(item.key)),
         }),
       )}

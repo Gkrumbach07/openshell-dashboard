@@ -19,6 +19,17 @@ jest.mock('../../api/rbac', () => ({
     isUnentitled: false,
   }),
 }));
+// The shell counts the rules waiting for a decision for its Proposals badge.
+jest.mock('../../api/draftSummary', () => ({
+  useAllWorkspacesDraftSummary: () => ({ totalPending: 0 }),
+}));
+// The shell counts sandboxes and workspaces for their nav badges. None here.
+jest.mock('../../api/allWorkspaces', () => ({
+  useAllSandboxes: () => ({ data: [] }),
+}));
+jest.mock('../../api/workspaces', () => ({
+  useWorkspaces: () => ({ data: [] }),
+}));
 jest.mock('../theme', () => ({
   useTheme: () => ({ theme: 'light', toggleTheme: jest.fn() }),
 }));
@@ -90,12 +101,13 @@ describe('AppLayout gateway health', () => {
     answerHealth(true);
     renderShell();
 
-    // The gateway-info request was made and refused...
-    expect(mockUseGatewayInfo).toHaveBeenCalled();
+    // Gateway info is the Gateway page's, and a gateway with roles refuses
+    // it to this user: the shell does not ask for it at all...
+    expect(mockUseGatewayInfo).not.toHaveBeenCalled();
     // ...and the health is there all the same.
     expect(
       masthead().getByTestId('gateway-status-indicator'),
-    ).toHaveTextContent('Gateway healthy');
+    ).toHaveTextContent('Healthy');
     // The Gateway page is still not offered to this user.
     expect(
       screen.queryByRole('link', { name: 'Gateway' }),
@@ -109,7 +121,7 @@ describe('AppLayout gateway health', () => {
 
     expect(
       masthead().getByTestId('gateway-status-indicator'),
-    ).toHaveTextContent('Gateway not healthy');
+    ).toHaveTextContent('Not healthy');
   });
 
   it('says the gateway is unreachable when the health request fails for that reason', () => {
@@ -131,7 +143,7 @@ describe('AppLayout gateway health', () => {
 
     expect(
       masthead().getByTestId('gateway-status-indicator'),
-    ).toHaveTextContent('Gateway unreachable');
+    ).toHaveTextContent('Unreachable');
   });
 
   // The shell stays mounted while the routes change under it, so the status

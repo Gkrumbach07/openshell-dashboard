@@ -3,6 +3,7 @@ import { Content, PageSection, Title } from '@patternfly/react-core';
 import { PLATFORM_PROFILE_SCOPE } from '../api/providers';
 import { useUserRole } from '../api/rbac';
 import ProfilesPanel from '../components/provider/ProfilesPanel';
+import { useI18n } from '../i18n';
 
 // The platform's provider profiles: the ones that belong to no workspace and
 // that every workspace sees and can create providers from. It is the CLI's
@@ -10,16 +11,14 @@ import ProfilesPanel from '../components/provider/ProfilesPanel';
 // platform admins only.
 const ProviderProfilesPage: React.FC = () => {
   const { isPlatformAdmin } = useUserRole();
+  const { t } = useI18n('common');
   return (
     <>
       <PageSection>
-        <Title headingLevel="h1">Provider profiles</Title>
-        <Content component="p">
-          Platform-scoped provider profiles. Every workspace sees them and can
-          create providers from them; a workspace keeps profiles of its own on
-          its Profiles tab, and one of those takes precedence there over a
-          platform profile with the same ID. Platform Admin only.
-        </Content>
+        <Title headingLevel="h1" className="pf-v6-u-mb-sm">
+          {t('providerProfiles.title')}
+        </Title>
+        <Content component="p">{t('providerProfiles.description')}</Content>
       </PageSection>
       <PageSection>
         <ProfilesPanel

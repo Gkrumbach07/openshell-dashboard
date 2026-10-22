@@ -14,6 +14,18 @@ jest.mock('../../api/auth', () => ({
   useFeatureFlags: () => ({ globalPolicy: true, settings: true }),
 }));
 // Real useUserRole — badge/nav cases set roles on useCurrentUser below.
+// The shell counts the rules waiting for a decision for its Proposals badge.
+// Nothing is pending here; AppLayout.navigation.spec covers the badge itself.
+jest.mock('../../api/draftSummary', () => ({
+  useAllWorkspacesDraftSummary: () => ({ totalPending: 0 }),
+}));
+// The shell counts sandboxes and workspaces for their nav badges. None here.
+jest.mock('../../api/allWorkspaces', () => ({
+  useAllSandboxes: () => ({ data: [] }),
+}));
+jest.mock('../../api/workspaces', () => ({
+  useWorkspaces: () => ({ data: [] }),
+}));
 jest.mock('../theme', () => ({
   useTheme: () => ({ theme: 'light', toggleTheme: jest.fn() }),
 }));
@@ -99,6 +111,22 @@ const renderShell = (route: string, page: React.ReactNode) =>
     </MemoryRouter>,
   );
 
+// An entry of the sidebar, by its label. A link and not its text: the page
+// heading carries the same words as the entry that led to it ("Workspaces"),
+// and jsdom has no width, so the collapsed sidebar is out of the
+// accessibility tree.
+const navLink = (name: string) =>
+  within(screen.getByLabelText('Primary navigation')).getByRole('link', {
+    name,
+    hidden: true,
+  });
+
+const missingNavLink = (name: string) =>
+  within(screen.getByLabelText('Primary navigation')).queryByRole('link', {
+    name,
+    hidden: true,
+  });
+
 // A page as every routed page starts: its own level 1 heading.
 const page = (
   <div data-testid="routed-page">
@@ -118,6 +146,9 @@ describe('AppLayout role badge', () => {
     mockUser({ roles: ['user'] });
     renderShell('/workspaces', page);
 
+    expect(screen.getByTestId('role-badge-region')).toHaveTextContent(
+      /Role:\s*Standard user/,
+    );
     expect(screen.getByTestId('role-badge')).toHaveTextContent('Standard user');
   });
 
@@ -125,6 +156,9 @@ describe('AppLayout role badge', () => {
     mockUser({ roles: ['admin'] });
     renderShell('/workspaces', page);
 
+    expect(screen.getByTestId('role-badge-region')).toHaveTextContent(
+      /Role:\s*Platform admin/,
+    );
     expect(screen.getByTestId('role-badge')).toHaveTextContent(
       'Platform admin',
     );
@@ -171,22 +205,20 @@ describe('AppLayout platform-admin gating', () => {
   it('hides Gateway, Global policy, and Settings nav for a User', () => {
     renderShell('/workspaces', page);
 
-    const nav = screen.getByLabelText('Primary navigation');
-    expect(within(nav).getByText('Workspaces')).toBeInTheDocument();
-    expect(within(nav).queryByText('Gateway')).not.toBeInTheDocument();
-    expect(within(nav).queryByText('Global policy')).not.toBeInTheDocument();
-    expect(within(nav).queryByText('Settings')).not.toBeInTheDocument();
+    expect(navLink('Workspaces')).toBeInTheDocument();
+    expect(missingNavLink('Gateway')).not.toBeInTheDocument();
+    expect(missingNavLink('Global policy')).not.toBeInTheDocument();
+    expect(missingNavLink('Settings')).not.toBeInTheDocument();
   });
 
   it('shows Gateway, Global policy, and Settings nav for a Platform Admin', () => {
     mockUser({ roles: ['admin'] });
     renderShell('/workspaces', page);
 
-    const nav = screen.getByLabelText('Primary navigation');
-    expect(within(nav).getByText('Gateway')).toBeInTheDocument();
-    expect(within(nav).getByText('Workspaces')).toBeInTheDocument();
-    expect(within(nav).getByText('Global policy')).toBeInTheDocument();
-    expect(within(nav).getByText('Settings')).toBeInTheDocument();
+    expect(navLink('Gateway')).toBeInTheDocument();
+    expect(navLink('Workspaces')).toBeInTheDocument();
+    expect(navLink('Global policy')).toBeInTheDocument();
+    expect(navLink('Settings')).toBeInTheDocument();
   });
 
   it('points the logo home at /workspaces for a User', () => {
@@ -237,8 +269,9 @@ describe('AppLayout gateway compatibility notice', () => {
     mockVerdict('0.0.116', { status: 'unsupported', ...line });
     renderShell('/workspaces', page);
 
-    // The shell did ask for gateway info, and got nothing...
-    expect(mockUseGatewayInfo).toHaveBeenCalled();
+    // The verdict rides on its own request, which the gateway answers for
+    // every signed-in user: the shell never asks for gateway info...
+    expect(mockUseGatewayInfo).not.toHaveBeenCalled();
     // ...and the notice is there anyway, naming the version.
     expect(screen.getByTestId('gateway-compatibility-alert')).toHaveTextContent(
       'This gateway reports 0.0.116.',
@@ -429,12 +462,13 @@ describe('AppLayout About dialog', () => {
   });
 
   // The gateway refuses GET /gateway to anyone but a platform admin. The line
-  // is read from the route every signed-in user may call.
+  // is read from the route every signed-in user may call, and the shell never
+  // asks for gateway info at all.
   it('shows the line to a user whose gateway-info request is refused', async () => {
     renderShell('/workspaces', page);
     const about = await openAbout();
 
-    expect(mockUseGatewayInfo).toHaveBeenCalled();
+    expect(mockUseGatewayInfo).not.toHaveBeenCalled();
     expect(within(about).getByTestId('about-gateway-line')).toHaveTextContent(
       '0.1.x',
     );

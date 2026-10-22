@@ -107,18 +107,24 @@ func TestWorkspaceDraftSummary(t *testing.T) {
 			sandboxes: sandboxesNamed("team-a", "busy", "quiet", "flagged"),
 			chunks: map[string][]openshell.PolicyChunk{
 				"team-a/busy": {
-					{ID: "c1", Status: "pending", CreatedAt: newer},
-					{ID: "c2", Status: "pending", CreatedAt: older},
+					{ID: "c1", Status: "pending", CreatedAt: newer, Rationale: "allow pypi.org for pip"},
+					{ID: "c2", Status: "pending", CreatedAt: older, Rationale: "older proposal"},
 				},
 				"team-a/flagged": {
-					{ID: "c3", Status: "pending", CreatedAt: older, SecurityNotes: "wildcard host"},
+					{ID: "c3", Status: "pending", CreatedAt: older, SecurityNotes: "wildcard host", Rationale: "broad egress"},
 				},
 			},
 			want: models.DraftSummary{
 				TotalPending: 3,
 				Sandboxes: []models.DraftSandboxSummary{
-					{Workspace: "team-a", SandboxName: "busy", PendingCount: 2, LatestDraftMs: newer.UnixMilli()},
-					{Workspace: "team-a", SandboxName: "flagged", PendingCount: 1, LatestDraftMs: older.UnixMilli(), HasSecurityFlags: true},
+					{
+						Workspace: "team-a", SandboxName: "busy", PendingCount: 2,
+						LatestDraftMs: newer.UnixMilli(), LatestRationale: "allow pypi.org for pip",
+					},
+					{
+						Workspace: "team-a", SandboxName: "flagged", PendingCount: 1,
+						LatestDraftMs: older.UnixMilli(), HasSecurityFlags: true, LatestRationale: "broad egress",
+					},
 				},
 			},
 			wantReads: []draftRead{
@@ -333,7 +339,9 @@ func TestDraftSummaryListFails(t *testing.T) {
 	}
 }
 
-// The route outside a workspace summarizes the workspace it names.
+// The route outside a workspace summarizes the scope it is asked for, and
+// nothing wider: a workspace by name, every workspace by name, and without
+// either, nothing at all.
 func TestDraftSummaryScope(t *testing.T) {
 	everywhere := []*openshell.Sandbox{
 		{Name: "agent", Workspace: "team-a"},
@@ -345,45 +353,69 @@ func TestDraftSummaryScope(t *testing.T) {
 		"team-a/agent": {{ID: "c1", Status: "pending"}},
 		"team-b/agent": {{ID: "c2", Status: "pending"}, {ID: "c3", Status: "pending", SecurityNotes: "broad"}},
 	}
+	teamB := models.DraftSummary{
+		TotalPending: 2,
+		Sandboxes: []models.DraftSandboxSummary{
+			{Workspace: "team-b", SandboxName: "agent", PendingCount: 2, HasSecurityFlags: true},
+		},
+	}
 	tests := []struct {
 		name          string
 		path          string
 		wantWorkspace string
 		listed        []*openshell.Sandbox
+		wantOpts      []openshell.ListOptions
 		want          models.DraftSummary
+		wantNoList    bool
 	}{
 		{
 			name:          "?workspace= is that workspace's summary",
 			path:          "/draft-summary?workspace=team-b",
 			wantWorkspace: "team-b",
 			listed:        everywhere[1:],
-			want: models.DraftSummary{
-				TotalPending: 2,
-				Sandboxes: []models.DraftSandboxSummary{
-					{Workspace: "team-b", SandboxName: "agent", PendingCount: 2, HasSecurityFlags: true},
-				},
-			},
+			want:          teamB,
 		},
 		{
 			name:          "the workspace route",
 			path:          "/workspaces/team-b/draft-summary",
 			wantWorkspace: "team-b",
 			listed:        everywhere[1:],
+			want:          teamB,
+		},
+		{
+			// Each sandbox names its own workspace, which is what the entries
+			// report: the empty workspace argument is only a fallback.
+			name:     "?allWorkspaces=true is every workspace's summary",
+			path:     "/draft-summary?allWorkspaces=true",
+			listed:   everywhere,
+			wantOpts: []openshell.ListOptions{{AllWorkspaces: true}},
 			want: models.DraftSummary{
-				TotalPending: 2,
+				TotalPending: 3,
 				Sandboxes: []models.DraftSandboxSummary{
+					{Workspace: "team-a", SandboxName: "agent", PendingCount: 1},
 					{Workspace: "team-b", SandboxName: "agent", PendingCount: 2, HasSecurityFlags: true},
 				},
 			},
+		},
+		{
+			// Neither is the old answer: empty, without a call to the gateway.
+			name:       "neither names a scope, so nothing is summarized",
+			path:       "/draft-summary",
+			wantNoList: true,
+			want:       models.DraftSummary{Sandboxes: []models.DraftSandboxSummary{}},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			sdk := &mockSDK{}
 			sdk.sandboxes.listFn = func(_ context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
-				if len(opts) != 0 || workspace != tc.wantWorkspace {
-					t.Errorf("sandboxes listed in %q with %+v, want workspace %q and no options",
-						workspace, opts, tc.wantWorkspace)
+				if tc.wantNoList {
+					t.Errorf("sandboxes listed (workspace %q, %+v) for a summary that names no scope", workspace, opts)
+					return nil, nil
+				}
+				if workspace != tc.wantWorkspace || !reflect.DeepEqual(opts, tc.wantOpts) {
+					t.Errorf("sandboxes listed in %q with %+v, want workspace %q with %+v",
+						workspace, opts, tc.wantWorkspace, tc.wantOpts)
 				}
 				return tc.listed, nil
 			}
@@ -401,6 +433,23 @@ func TestDraftSummaryScope(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The gateway answers an all-workspaces list for platform admins only. Its
+// refusal is the answer, relayed as it is: the BFF does not authorize, and a
+// 403 is not an empty summary.
+func TestDraftSummaryAllWorkspacesRefused(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.sandboxes.listFn = func(context.Context, string, ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
+		return nil, &openshell.StatusError{Code: openshell.ErrorPermissionDenied, Message: "platform admin required"}
+	}
+	sdk.policy.getDraftFn = func(context.Context, string, string, ...openshell.GetDraftOption) (*openshell.DraftPolicy, error) {
+		t.Error("an inbox was read although the sandboxes could not be listed")
+		return nil, nil
+	}
+	wantErrorResponse(t,
+		serve(t, draftSummaryRoutes(sdk), http.MethodGet, "/draft-summary?allWorkspaces=true", ""),
+		http.StatusForbidden, apiutils.PermissionDenied)
 }
 
 // However many sandboxes a workspace has, only so many inboxes are read at
@@ -577,5 +626,75 @@ func TestDraftSummaryStopsWhenNobodyIsWaiting(t *testing.T) {
 	}
 	if want := sandboxCount - int(reads.Load()); unavailable != want {
 		t.Errorf("%d sandboxes reported as unavailable, want the %d that were never read", unavailable, want)
+	}
+}
+
+// Across workspaces there is no workspace to fall back on. A sandbox the
+// gateway lists without one is reported unavailable and never read: the
+// gateway refuses a selector with an empty name (hard fact 12). Any other
+// sandbox in the same list is read as usual.
+func TestDraftSummaryAllWorkspacesSandboxWithoutAWorkspace(t *testing.T) {
+	tests := []struct {
+		name      string
+		listed    []*openshell.Sandbox
+		wantReads []draftRead
+		want      models.DraftSummary
+	}{
+		{
+			name:   "the only sandbox names no workspace",
+			listed: []*openshell.Sandbox{{Name: "orphan"}},
+			want: models.DraftSummary{
+				Sandboxes: []models.DraftSandboxSummary{{SandboxName: "orphan", Unavailable: true}},
+			},
+			wantReads: []draftRead{},
+		},
+		{
+			name: "one of several names no workspace",
+			listed: []*openshell.Sandbox{
+				{Name: "agent", Workspace: "team-a"},
+				{Name: "orphan"},
+				{Name: "quiet", Workspace: "team-b"},
+			},
+			want: models.DraftSummary{
+				TotalPending: 1,
+				Sandboxes: []models.DraftSandboxSummary{
+					{Workspace: "team-a", SandboxName: "agent", PendingCount: 1},
+					{SandboxName: "orphan", Unavailable: true},
+				},
+			},
+			wantReads: []draftRead{
+				{workspace: "team-a", sandbox: "agent", filter: "pending"},
+				{workspace: "team-b", sandbox: "quiet", filter: "pending"},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sdk := &mockSDK{}
+			sdk.sandboxes.listFn = func(context.Context, string, ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
+				return tc.listed, nil
+			}
+			inbox := &draftInbox{chunks: map[string][]openshell.PolicyChunk{
+				"team-a/agent": {{ID: "c1", Status: "pending"}},
+			}}
+			sdk.policy.getDraftFn = inbox.get
+
+			w := serve(t, draftSummaryRoutes(sdk), http.MethodGet, "/draft-summary?allWorkspaces=true", "")
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+			}
+			var got models.DraftSummary
+			decodeInto(t, w, &got)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("summary differs.\ngot:  %+v\nwant: %+v", got, tc.want)
+			}
+			want := map[draftRead]int{}
+			for _, read := range tc.wantReads {
+				want[read]++
+			}
+			if reads := inbox.readSet(); !reflect.DeepEqual(reads, want) {
+				t.Errorf("draft reads = %v, want %v", reads, want)
+			}
+		})
 	}
 }

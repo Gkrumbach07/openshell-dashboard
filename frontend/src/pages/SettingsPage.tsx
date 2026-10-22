@@ -222,7 +222,9 @@ const SettingsPage: React.FC = () => {
   return (
     <>
       <PageSection>
-        <Title headingLevel="h1">Settings</Title>
+        <Title headingLevel="h1" className="pf-v6-u-mb-sm">
+          Settings
+        </Title>
         <Content component="p">
           Gateway configuration settings. Changes take effect immediately.
           Platform Admin only.

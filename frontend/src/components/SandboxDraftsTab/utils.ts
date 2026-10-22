@@ -23,16 +23,12 @@ export const eventColor = (
   return 'grey';
 };
 
-export const chunkStatusColor = (
-  status: string,
-): 'green' | 'red' | 'blue' | 'grey' => {
+export const chunkStatusColor = (status: string): 'green' | 'red' | 'grey' => {
   switch (status) {
     case 'approved':
       return 'green';
     case 'rejected':
       return 'red';
-    case 'pending':
-      return 'blue';
     default:
       return 'grey';
   }
@@ -55,11 +51,14 @@ export const chunkStatusIcon = (
 
 // The statuses `openshell draft get --status` filters by. The empty one is no
 // filter at all.
+// Each label is a key of the sandboxes namespace.
 export const CHUNK_STATUS_FILTERS = [
-  { value: '', label: 'All' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
+  // Shut, the toggle is the only thing saying what is being filtered, so the
+  // one option that is not itself a status has to name it.
+  { value: '', labelKey: 'drafts.status.all' },
+  { value: 'pending', labelKey: 'drafts.status.pending' },
+  { value: 'approved', labelKey: 'drafts.status.approved' },
+  { value: 'rejected', labelKey: 'drafts.status.rejected' },
 ] as const;
 
 // The approvals a bulk approval sends: every pending chunk on screen, each

@@ -14,7 +14,7 @@ import {
   POLICY_PENDING_POLL_MS,
 } from '../constants';
 import { apiFetch, del, get, post, put } from './client';
-import { policyKeys, sandboxKeys } from './queryKeys';
+import { allWorkspacesKeys, policyKeys, sandboxKeys } from './queryKeys';
 import type {
   ApproveAllResult,
   DraftChunkApproval,
@@ -259,12 +259,14 @@ export const useMergeSandboxPolicy = (workspace: string, name: string) => {
 };
 
 // Polled: another platform admin, or the CLI, may set or delete the global
-// policy while the page is open.
-export const useGlobalPolicy = () =>
+// policy while the page is open. Pass enabled=false where the global policy
+// feature is switched off: nothing is requested.
+export const useGlobalPolicy = (enabled = true) =>
   useQuery({
     queryKey: policyKeys.global,
     queryFn: getGlobalPolicy,
     refetchInterval: CONFIG_POLL_MS,
+    enabled,
   });
 
 // The global policy replaces the policy of every sandbox, so setting or
@@ -319,7 +321,11 @@ export const useDraftPolicy = (
   });
 
 // Draft decisions invalidate both the inbox and the policy view (approvals
-// bump the policy version).
+// bump the policy version), and every pending count read from a summary: each
+// workspace's (the sandbox list's badges, a member's Proposals page and nav
+// count) and the all-workspaces one (a platform admin's nav count, Gateway
+// page and Proposals page), so none of them shows the decided chunk as still
+// waiting until its next poll.
 const useDraftMutation = <TArgs, TResult>(
   workspace: string,
   name: string,
@@ -337,6 +343,10 @@ const useDraftMutation = <TArgs, TResult>(
       });
       queryClient.invalidateQueries({
         queryKey: policyKeys.sandbox(workspace, name),
+      });
+      queryClient.invalidateQueries({ queryKey: policyKeys.draftSummary });
+      queryClient.invalidateQueries({
+        queryKey: allWorkspacesKeys.draftSummary,
       });
     },
   });

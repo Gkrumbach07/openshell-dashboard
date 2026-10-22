@@ -88,12 +88,24 @@ func (h *DraftsHandler) GetWorkspaceDraftSummary(w http.ResponseWriter, r *http.
 }
 
 // GetDraftSummary is the summary outside a workspace route. With ?workspace=
-// it is that workspace's, the same answer as GetWorkspaceDraftSummary.
+// it is that workspace's, the same answer as GetWorkspaceDraftSummary. With
+// ?allWorkspaces=true it is every workspace's, which is what a platform
+// admin's shell (the Proposals count in the navigation), Gateway page and
+// Proposals page ask for: the gateway answers the all-workspaces sandbox list
+// for platform admins only and refuses everyone else, and that refusal is
+// relayed as it is (ADR 0002).
 //
-// Without one it answers an empty summary. A summary of every workspace would
-// be one draft read per sandbox on the gateway, and a 403 for everyone who is
-// not a platform admin.
+// With neither it answers an empty summary. Frontends older than the
+// workspace route poll this URL without a workspace, every few seconds and
+// for every user; a summary of every workspace would be one draft read per
+// sandbox on the gateway per poll, and a 403 for everyone who is not a
+// platform admin. So the cross-workspace summary is asked for by name,
+// never inferred.
 func (h *DraftsHandler) GetDraftSummary(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("allWorkspaces") == "true" {
+		h.writeDraftSummary(w, r, "", everyWorkspace(""))
+		return
+	}
 	workspace := r.URL.Query().Get("workspace")
 	if workspace == "" {
 		apiutils.WriteJSON(w, http.StatusOK, models.DraftSummary{Sandboxes: []models.DraftSandboxSummary{}})
@@ -102,13 +114,18 @@ func (h *DraftsHandler) GetDraftSummary(w http.ResponseWriter, r *http.Request) 
 	h.writeDraftSummary(w, r, workspace)
 }
 
-func (h *DraftsHandler) writeDraftSummary(w http.ResponseWriter, r *http.Request, workspace string) {
+// writeDraftSummary summarizes the sandboxes the given list options select.
+// Across workspaces the workspace argument is empty and the SDK ignores it;
+// each sandbox names its own, which summarizeDrafts prefers. A sandbox that
+// still resolves to no workspace is reported unavailable, never read with an
+// empty selector (see summarizeDrafts).
+func (h *DraftsHandler) writeDraftSummary(w http.ResponseWriter, r *http.Request, workspace string, opts ...openshell.ListOptions) {
 	if h.sandboxes == nil {
 		slog.Warn("draft summary requested, but the drafts handler was given no sandbox service")
 		apiutils.WriteJSON(w, http.StatusOK, models.DraftSummary{Sandboxes: []models.DraftSandboxSummary{}})
 		return
 	}
-	sandboxes, err := h.sandboxes.ListAll(r.Context(), workspace)
+	sandboxes, err := h.sandboxes.ListAll(r.Context(), workspace, opts...)
 	if err != nil {
 		apiutils.WriteSDKError(w, err)
 		return
@@ -123,13 +140,19 @@ func (h *DraftsHandler) writeDraftSummary(w http.ResponseWriter, r *http.Request
 // unavailable, which a client must not read as none pending, and so does the
 // entry of a sandbox the summary ran out of time for. A sandbox that is gone
 // by the time it is read is left out: there is nothing to report on.
-// workspace is the fallback for a sandbox that names none itself.
+// workspace is the fallback for a sandbox that names none itself. Across
+// workspaces there is no fallback, and a sandbox that names no workspace is
+// reported unavailable without a read: the gateway refuses a selector with
+// an empty name (hard fact 12), and a client could not lead anywhere from an
+// entry without one.
 func (h *DraftsHandler) summarizeDrafts(ctx context.Context, workspace string, sandboxes []*openshell.Sandbox) models.DraftSummary {
 	ctx, cancel := context.WithTimeout(ctx, draftSummaryTimeout)
 	defer cancel()
 
 	entries := make([]*models.DraftSandboxSummary, len(sandboxes))
 	read := make([]bool, len(sandboxes))
+	// Decided before any read starts, so the workers never see these.
+	markUnscoped(workspace, sandboxes, entries, read)
 	indexes := make(chan int)
 	var wg sync.WaitGroup
 	for range min(draftSummaryConcurrency, len(sandboxes)) {
@@ -147,6 +170,9 @@ func (h *DraftsHandler) summarizeDrafts(ctx context.Context, workspace string, s
 	}
 	// Nothing more is started once the client has gone or the time is up.
 	for i := range sandboxes {
+		if read[i] {
+			continue
+		}
 		if ctx.Err() != nil {
 			break
 		}
@@ -175,6 +201,23 @@ func (h *DraftsHandler) summarizeDrafts(ctx context.Context, workspace string, s
 		summary.TotalPending += entry.PendingCount
 	}
 	return summary
+}
+
+// markUnscoped reports every sandbox that resolves to no workspace as
+// unavailable and marks it read, so it is never read with an empty selector
+// (hard fact 12). It logs them once.
+func markUnscoped(workspace string, sandboxes []*openshell.Sandbox, entries []*models.DraftSandboxSummary, read []bool) {
+	var unscoped []string
+	for i, sandbox := range sandboxes {
+		if sandbox != nil && sandboxWorkspaceOr(sandbox, workspace) == "" {
+			entries[i] = &models.DraftSandboxSummary{SandboxName: sandbox.Name, Unavailable: true}
+			read[i] = true
+			unscoped = append(unscoped, sandbox.Name)
+		}
+	}
+	if len(unscoped) > 0 {
+		slog.Warn("pending draft chunks not read for sandboxes listed without a workspace", "sandboxes", unscoped)
+	}
 }
 
 // sandboxWorkspaceOr is the workspace a sandbox names, or the one it was
@@ -216,8 +259,17 @@ func (h *DraftsHandler) pendingDrafts(ctx context.Context, workspace, name strin
 		if chunk.SecurityNotes != "" {
 			entry.HasSecurityFlags = true
 		}
-		if !chunk.CreatedAt.IsZero() && chunk.CreatedAt.UnixMilli() > entry.LatestDraftMs {
-			entry.LatestDraftMs = chunk.CreatedAt.UnixMilli()
+		if chunk.CreatedAt.IsZero() {
+			// No creation time to order by: keep the first rationale we see.
+			if entry.LatestRationale == "" {
+				entry.LatestRationale = chunk.Rationale
+			}
+			continue
+		}
+		createdMs := chunk.CreatedAt.UnixMilli()
+		if createdMs > entry.LatestDraftMs {
+			entry.LatestDraftMs = createdMs
+			entry.LatestRationale = chunk.Rationale
 		}
 	}
 	return entry

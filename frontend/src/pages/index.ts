@@ -5,6 +5,7 @@ export { default as GatewayOverviewPage } from './GatewayOverviewPage';
 export { default as WorkspaceListPage } from './WorkspaceListPage';
 export { default as WorkspaceDetailPage } from './WorkspaceDetailPage';
 export { default as AllWorkspacesPage } from './AllWorkspacesPage';
+export { default as AllSandboxesPage } from './AllSandboxesPage';
 export { default as SandboxListPage } from './SandboxListPage';
 export { default as SandboxDetailPage } from './SandboxDetailPage';
 export { default as ProviderListPage } from './ProviderListPage';

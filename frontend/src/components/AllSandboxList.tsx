@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button } from '@patternfly/react-core';
+import { Link } from 'react-router-dom';
 
 import { useAllSandboxPage } from '../api/allWorkspaces';
 import {
@@ -10,23 +10,21 @@ import {
 import { combineSandboxLabelSelector } from '../utils/sandboxLabelSelector';
 import { formatAge } from '../utils/formatters';
 import type { Sandbox } from '../types';
-import { ImageReference, scopedName, workspaceOf } from './AllWorkspaceCells';
+import {
+  sandboxPath,
+  scopedName,
+  workspaceOf,
+  workspacePath,
+} from '../utils/workspaceNames';
+import ImageReference from './sandbox/ImageReference';
 import LabelsList from './LabelsList';
 import PhaseLabel from './PhaseLabel';
 import ResourceTable from './ResourceTable';
 import type { ResourceTableColumn } from './ResourceTable';
 
-type AllSandboxListProps = {
-  onSelectWorkspace: (workspace: string) => void;
-  onSelectSandbox: (workspace: string, name: string) => void;
-};
-
-// The sandbox tab owns its Gateway cursor, type-label filter and columns.
+// The Sandboxes page's list: it owns its gateway cursor, type-label filter and columns.
 // Other all-workspaces resources continue to use local table pagination.
-const AllSandboxList: React.FC<AllSandboxListProps> = ({
-  onSelectWorkspace,
-  onSelectSandbox,
-}) => {
+const AllSandboxList: React.FC = () => {
   const [selector, setSelector] = useState('');
   const [typeLabel, setTypeLabel] = useState('');
   const [filterError, setFilterError] = useState('');
@@ -53,34 +51,31 @@ const AllSandboxList: React.FC<AllSandboxListProps> = ({
     setTypeLabel(type.trim());
   };
 
+  // Name leads so the sandbox is what the row is about; workspace follows.
+  // Both are links, so they open in a new tab and read as links.
   const columns: ResourceTableColumn<Sandbox>[] = [
-    {
-      title: 'Workspace',
-      modifier: 'nowrap',
-      render: (sandbox) => (
-        <Button
-          variant="link"
-          isInline
-          onClick={() => onSelectWorkspace(workspaceOf(sandbox))}
-        >
-          {workspaceOf(sandbox)}
-        </Button>
-      ),
-    },
     {
       title: 'Name',
       modifier: 'nowrap',
       render: (sandbox) => (
-        <Button
-          variant="link"
-          isInline
-          onClick={() =>
-            onSelectSandbox(workspaceOf(sandbox), sandbox.metadata.name)
-          }
+        <Link
+          to={sandboxPath(workspaceOf(sandbox), sandbox.metadata.name)}
           data-testid={`sandbox-link-${scopedName(sandbox)}`}
         >
           {sandbox.metadata.name}
-        </Button>
+        </Link>
+      ),
+    },
+    {
+      title: 'Workspace',
+      modifier: 'nowrap',
+      render: (sandbox) => (
+        <Link
+          to={workspacePath(workspaceOf(sandbox))}
+          data-testid={`workspace-link-${scopedName(sandbox)}`}
+        >
+          {workspaceOf(sandbox)}
+        </Link>
       ),
     },
     {

@@ -1,5 +1,11 @@
-import { Label } from '@patternfly/react-core';
+import { Content, Flex, FlexItem, Label } from '@patternfly/react-core';
 import type { LabelProps } from '@patternfly/react-core';
+import {
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  ExclamationTriangleIcon,
+  QuestionCircleIcon,
+} from '@patternfly/react-icons';
 
 import { useGatewayCompatibility } from '../api/gateway';
 import type { ApiError } from '../api/client';
@@ -48,11 +54,22 @@ export const gatewayHealthStateOf = (
   return query.data.healthy ? 'healthy' : 'notHealthy';
 };
 
-const STATE_STATUS: Record<GatewayHealthState, LabelProps['status']> = {
-  healthy: 'success',
-  notHealthy: 'warning',
-  unreachable: 'danger',
-  unknown: undefined,
+// The colour and the icon the Gateway page gives the same four states, so
+// that the masthead and the page say one thing in one way. PatternFly's
+// `status` shorthand is a different palette from the page's `color`, which
+// is what had the two greens differing.
+const STATE_COLOR: Record<GatewayHealthState, LabelProps['color']> = {
+  healthy: 'green',
+  notHealthy: 'orange',
+  unreachable: 'red',
+  unknown: 'grey',
+};
+
+const STATE_ICON: Record<GatewayHealthState, React.ReactNode> = {
+  healthy: <CheckCircleIcon />,
+  notHealthy: <ExclamationTriangleIcon />,
+  unreachable: <ExclamationCircleIcon />,
+  unknown: <QuestionCircleIcon />,
 };
 
 const STATE_LABEL_KEY = {
@@ -78,19 +95,39 @@ const GatewayStatusIndicator: React.FC = () => {
   const state = gatewayHealthStateOf(useGatewayCompatibility());
 
   return (
-    <span role="status" data-testid="gateway-status-region">
+    // The status region is the row itself. A full-height toolbar stretches
+    // its items and their children, so a plain wrapper around the row would
+    // be masthead-tall with the row sitting at its top — the label and the
+    // badge riding above the centreline every other item on the bar keeps.
+    // Centred here, there is nothing left to ride high in.
+    <Flex
+      component="span"
+      role="status"
+      gap={{ default: 'gapSm' }}
+      alignItems={{ default: 'alignItemsCenter' }}
+      flexWrap={{ default: 'nowrap' }}
+      data-testid="gateway-status-region"
+    >
       {state && (
-        <Label
-          isCompact
-          color={state === 'unknown' ? 'grey' : undefined}
-          status={STATE_STATUS[state]}
-          data-testid="gateway-status-indicator"
-          data-state={state}
-        >
-          {t(STATE_LABEL_KEY[state])}
-        </Label>
+        // What the label is the value of, said once beside it rather than
+        // repeated inside every one of the four states.
+        <>
+          <FlexItem component="span">
+            <Content component="small">{t('gatewayHealth.label')}</Content>
+          </FlexItem>
+          <FlexItem component="span">
+            <Label
+              color={STATE_COLOR[state]}
+              icon={STATE_ICON[state]}
+              data-testid="gateway-status-indicator"
+              data-state={state}
+            >
+              {t(STATE_LABEL_KEY[state])}
+            </Label>
+          </FlexItem>
+        </>
       )}
-    </span>
+    </Flex>
   );
 };
 

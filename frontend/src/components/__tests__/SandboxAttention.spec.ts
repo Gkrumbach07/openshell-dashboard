@@ -65,7 +65,9 @@ describe('buildAttentionItems', () => {
     expect(items[0].title).toContain('3 rules proposed');
   });
 
-  it('returns warning for drafts with security flags', () => {
+  // A proposal the prover flagged is not a routine one: the colour says so
+  // as well as the title.
+  it('warns when drafts carry security findings', () => {
     const draft: DraftSandboxSummary = {
       workspace: 'default',
       sandboxName: 'test-sandbox',

@@ -19,8 +19,17 @@ if (commit !== '' && !/^[0-9a-f]{7,40}$/.test(commit)) {
   );
 }
 
+// The mock API (docs/mock-api.md) is loaded only when asked for, so a build
+// never reads frontend/mock/ at all.
+const useMockApi = process.env.MOCK_API === 'true';
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    ...(useMockApi
+      ? [import('./mock/mockPlugin').then((m) => m.default())]
+      : []),
+  ],
   base: '/',
   resolve: {
     alias: {

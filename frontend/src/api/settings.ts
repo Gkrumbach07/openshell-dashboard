@@ -34,12 +34,14 @@ export const deleteGlobalSetting = (
   );
 
 // Polled: another platform admin, or the CLI, may change a setting while the
-// page is open.
-export const useGlobalSettings = () =>
+// page is open. Pass enabled=false where the settings feature is switched
+// off: nothing is requested.
+export const useGlobalSettings = (enabled = true) =>
   useQuery({
     queryKey: settingsKeys.global,
     queryFn: getGlobalSettings,
     refetchInterval: CONFIG_POLL_MS,
+    enabled,
   });
 
 // A global setting overrides the same key on every sandbox, so each sandbox's

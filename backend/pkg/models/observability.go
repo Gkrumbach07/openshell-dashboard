@@ -128,15 +128,18 @@ type DraftHistoryEntry struct {
 
 // DraftSandboxSummary counts the pending draft chunks of one sandbox, as read
 // with GetDraftPolicy and the status filter "pending". HasSecurityFlags says
-// whether any of them carries security notes, and LatestDraftMs is when the
-// newest was created.
+// whether any of them carries security notes, LatestDraftMs is when the newest
+// was created, and LatestRationale is that chunk's rationale — what the Needs
+// attention row shows under the sandbox name.
 //
 // Unavailable marks a sandbox whose inbox could not be read. Its count is not
 // known, which is not the same as none pending, so PendingCount is 0 and
 // means nothing.
 type DraftSandboxSummary struct {
-	Workspace        string `json:"workspace"`
-	SandboxName      string `json:"sandboxName"`
+	Workspace   string `json:"workspace"`
+	SandboxName string `json:"sandboxName"`
+	// The rationale of the newest pending chunk, when it has one.
+	LatestRationale  string `json:"latestRationale,omitempty"`
 	LatestDraftMs    int64  `json:"latestDraftMs"`
 	PendingCount     int    `json:"pendingCount"`
 	HasSecurityFlags bool   `json:"hasSecurityFlags"`

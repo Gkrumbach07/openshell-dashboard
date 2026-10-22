@@ -26,6 +26,7 @@ import { useApplyApprovalMode } from '../api/sandboxSettings';
 import { useCreateSandbox } from '../api/sandboxes';
 import { useAlerts } from '../app/AlertContext';
 import { useCreateSandboxForm } from '../hooks/useCreateSandboxForm';
+import { useI18n } from '../i18n';
 import KeyValueEditor from './KeyValueEditor';
 import { policyTemplates } from './policy/policyTemplates';
 import PolicyTextField from './policy/PolicyTextField';
@@ -47,7 +48,17 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const { t } = useI18n('sandboxes');
   const form = useCreateSandboxForm();
+  // A field of the folded section that holds a value keeps the section
+  // open: whatever it holds is sent, so it is never sent out of sight.
+  const hasOptionalValues = [
+    form.name,
+    form.labelsText,
+    form.gpuCount,
+    form.cpu,
+    form.memory,
+  ].some((value) => value !== '');
   const providers = useProviders(workspace);
   const createSandbox = useCreateSandbox(workspace);
   const approvalMode = useApplyApprovalMode(workspace);
@@ -126,124 +137,6 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
             submit();
           }}
         >
-          <FormGroup label="Name" fieldId="sandbox-name">
-            <TextInput
-              id="sandbox-name"
-              data-testid="sandbox-name-input"
-              value={form.name}
-              onChange={(_event, value) => form.setName(value)}
-              placeholder="Leave empty for a generated name"
-            />
-          </FormGroup>
-          <FormGroup label="Image" fieldId="sandbox-image">
-            <TextInput
-              id="sandbox-image"
-              data-testid="sandbox-image-input"
-              value={form.image}
-              onChange={(_event, value) => form.setImage(value)}
-              placeholder="Leave empty for the gateway's default image"
-            />
-            <FormHelperText>
-              <HelperText>
-                <HelperTextItem data-testid="sandbox-image-help">
-                  {form.isResolved
-                    ? `Community image — resolves to ${form.resolvedImage}`
-                    : "Optional. A community sandbox name (base, python, ollama, …) or a fully-qualified OCI image reference. Leaving it empty uses the gateway's default image."}
-                </HelperTextItem>
-              </HelperText>
-            </FormHelperText>
-          </FormGroup>
-          <FormGroup label="Labels" fieldId="sandbox-labels">
-            <TextInput
-              id="sandbox-labels"
-              data-testid="sandbox-labels-input"
-              value={form.labelsText}
-              onChange={(_event, value) => form.setLabelsText(value)}
-              placeholder="team=ml, kind=agent"
-              validated={form.labels === null ? 'error' : 'default'}
-            />
-            <FormHelperText>
-              <HelperText>
-                <HelperTextItem
-                  variant={form.labels === null ? 'error' : 'default'}
-                >
-                  {form.labels === null
-                    ? 'Labels must be comma-separated key=value pairs'
-                    : 'Optional comma-separated key=value pairs, used for filtering'}
-                </HelperTextItem>
-              </HelperText>
-            </FormHelperText>
-          </FormGroup>
-          <FormGroup label="Providers" fieldId="sandbox-providers" role="group">
-            {(providers.data ?? []).length === 0 ? (
-              <FormHelperText>
-                <HelperText>
-                  <HelperTextItem>
-                    No providers in this workspace yet
-                  </HelperTextItem>
-                </HelperText>
-              </FormHelperText>
-            ) : (
-              (providers.data ?? []).map((provider) => (
-                <Checkbox
-                  key={provider.metadata.name}
-                  id={`sandbox-provider-${provider.metadata.name}`}
-                  data-testid={`sandbox-provider-${provider.metadata.name}`}
-                  label={`${provider.metadata.name} (${provider.type})`}
-                  isChecked={form.selectedProviders.includes(
-                    provider.metadata.name,
-                  )}
-                  onChange={(_event, checked) =>
-                    form.toggleProvider(provider.metadata.name, checked)
-                  }
-                />
-              ))
-            )}
-          </FormGroup>
-          <FormGroup label="Resources" fieldId="sandbox-resources" role="group">
-            <Grid hasGutter>
-              <GridItem span={4}>
-                <TextInput
-                  id="sandbox-gpu"
-                  data-testid="sandbox-gpu-input"
-                  value={form.gpuCount}
-                  onChange={(_event, value) => form.setGpuCount(value)}
-                  placeholder="GPUs (e.g. 1)"
-                  validated={form.gpuInvalid ? 'error' : 'default'}
-                  aria-label="GPU count"
-                />
-              </GridItem>
-              <GridItem span={4}>
-                <TextInput
-                  id="sandbox-cpu"
-                  data-testid="sandbox-cpu-input"
-                  value={form.cpu}
-                  onChange={(_event, value) => form.setCpu(value)}
-                  placeholder="CPU limit (e.g. 2, 500m)"
-                  aria-label="CPU limit"
-                />
-              </GridItem>
-              <GridItem span={4}>
-                <TextInput
-                  id="sandbox-memory"
-                  data-testid="sandbox-memory-input"
-                  value={form.memory}
-                  onChange={(_event, value) => form.setMemory(value)}
-                  placeholder="Memory limit (e.g. 4Gi)"
-                  aria-label="Memory limit"
-                />
-              </GridItem>
-            </Grid>
-            <FormHelperText>
-              <HelperText>
-                <HelperTextItem variant={form.gpuInvalid ? 'error' : 'default'}>
-                  {form.gpuInvalid
-                    ? 'GPU count must be a whole number'
-                    : 'All optional. CPU/memory use Kubernetes quantities and apply as limits.'}
-                </HelperTextItem>
-              </HelperText>
-            </FormHelperText>
-          </FormGroup>
           <FormGroup
             label="Security policy"
             isRequired
@@ -286,6 +179,153 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
               onChange={form.setPolicyText}
               error={form.policyError}
             />
+          </ExpandableSection>
+          <FormGroup label="Image" fieldId="sandbox-image">
+            <TextInput
+              id="sandbox-image"
+              data-testid="sandbox-image-input"
+              value={form.image}
+              onChange={(_event, value) => form.setImage(value)}
+              placeholder="Leave empty for the gateway's default image"
+            />
+            <FormHelperText>
+              <HelperText>
+                <HelperTextItem data-testid="sandbox-image-help">
+                  {form.isResolved
+                    ? `Community image — resolves to ${form.resolvedImage}`
+                    : "Optional. A community sandbox name (base, python, ollama, …) or a fully-qualified OCI image reference. Leaving it empty uses the gateway's default image."}
+                </HelperTextItem>
+              </HelperText>
+            </FormHelperText>
+          </FormGroup>
+          <FormGroup label="Providers" fieldId="sandbox-providers" role="group">
+            {(providers.data ?? []).length === 0 ? (
+              <FormHelperText>
+                <HelperText>
+                  <HelperTextItem>
+                    No providers in this workspace yet
+                  </HelperTextItem>
+                </HelperText>
+              </FormHelperText>
+            ) : (
+              (providers.data ?? []).map((provider) => (
+                <Checkbox
+                  key={provider.metadata.name}
+                  id={`sandbox-provider-${provider.metadata.name}`}
+                  data-testid={`sandbox-provider-${provider.metadata.name}`}
+                  label={`${provider.metadata.name} (${provider.type})`}
+                  isChecked={form.selectedProviders.includes(
+                    provider.metadata.name,
+                  )}
+                  onChange={(_event, checked) =>
+                    form.toggleProvider(provider.metadata.name, checked)
+                  }
+                />
+              ))
+            )}
+          </FormGroup>
+          {/* Optional fields, folded away so that the form opens on the
+              three things a sandbox is made of. Only the name is generated
+              when left empty. The section opens by itself around a field
+              that needs correcting, and stays open while any of its fields
+              holds a value. */}
+          <ExpandableSection
+            toggleText={t('create.optionalSection')}
+            isExpanded={
+              form.isGeneratedExpanded ||
+              form.hasGeneratedError ||
+              hasOptionalValues
+            }
+            onToggle={(_event, expanded) => form.setGeneratedExpanded(expanded)}
+            data-testid="sandbox-generated-expand"
+          >
+            <FormSection>
+              <FormGroup label="Name" fieldId="sandbox-name">
+                <TextInput
+                  id="sandbox-name"
+                  data-testid="sandbox-name-input"
+                  value={form.name}
+                  onChange={(_event, value) => form.setName(value)}
+                  placeholder="Leave empty for a generated name"
+                />
+                <FormHelperText>
+                  <HelperText>
+                    <HelperTextItem>{t('create.nameHelper')}</HelperTextItem>
+                  </HelperText>
+                </FormHelperText>
+              </FormGroup>
+              <FormGroup label="Labels" fieldId="sandbox-labels">
+                <TextInput
+                  id="sandbox-labels"
+                  data-testid="sandbox-labels-input"
+                  value={form.labelsText}
+                  onChange={(_event, value) => form.setLabelsText(value)}
+                  placeholder="team=ml, kind=agent"
+                  validated={form.labels === null ? 'error' : 'default'}
+                />
+                <FormHelperText>
+                  <HelperText>
+                    <HelperTextItem
+                      variant={form.labels === null ? 'error' : 'default'}
+                    >
+                      {form.labels === null
+                        ? 'Labels must be comma-separated key=value pairs'
+                        : 'Optional comma-separated key=value pairs, used for filtering'}
+                    </HelperTextItem>
+                  </HelperText>
+                </FormHelperText>
+              </FormGroup>
+              <FormGroup
+                label="Resources"
+                fieldId="sandbox-resources"
+                role="group"
+              >
+                <Grid hasGutter>
+                  <GridItem span={4}>
+                    <TextInput
+                      id="sandbox-gpu"
+                      data-testid="sandbox-gpu-input"
+                      value={form.gpuCount}
+                      onChange={(_event, value) => form.setGpuCount(value)}
+                      placeholder="GPUs (e.g. 1)"
+                      validated={form.gpuInvalid ? 'error' : 'default'}
+                      aria-label="GPU count"
+                    />
+                  </GridItem>
+                  <GridItem span={4}>
+                    <TextInput
+                      id="sandbox-cpu"
+                      data-testid="sandbox-cpu-input"
+                      value={form.cpu}
+                      onChange={(_event, value) => form.setCpu(value)}
+                      placeholder="CPU limit (e.g. 2, 500m)"
+                      aria-label="CPU limit"
+                    />
+                  </GridItem>
+                  <GridItem span={4}>
+                    <TextInput
+                      id="sandbox-memory"
+                      data-testid="sandbox-memory-input"
+                      value={form.memory}
+                      onChange={(_event, value) => form.setMemory(value)}
+                      placeholder="Memory limit (e.g. 4Gi)"
+                      aria-label="Memory limit"
+                    />
+                  </GridItem>
+                </Grid>
+                <FormHelperText>
+                  <HelperText>
+                    <HelperTextItem
+                      variant={form.gpuInvalid ? 'error' : 'default'}
+                    >
+                      {form.gpuInvalid
+                        ? 'GPU count must be a whole number'
+                        : 'All optional. CPU/memory use Kubernetes quantities and apply as limits.'}
+                    </HelperTextItem>
+                  </HelperText>
+                </FormHelperText>
+              </FormGroup>
+            </FormSection>
           </ExpandableSection>
           <ExpandableSection
             toggleText="Advanced options"

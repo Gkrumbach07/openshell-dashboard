@@ -23,6 +23,7 @@ import { useProviders } from '../api/providers';
 import { useApplyApprovalMode } from '../api/sandboxSettings';
 import { useCreateSandboxFromTemplate } from '../api/templates';
 import { useAlerts } from '../app/AlertContext';
+import { useI18n } from '../i18n';
 import { POLICY_REQUIRED, parseLabels } from '../hooks/useCreateSandboxForm';
 import { usePolicyText } from '../hooks/usePolicyText';
 import { useSandboxLaunchOptions } from '../hooks/useSandboxLaunchOptions';
@@ -43,6 +44,7 @@ type CreateSandboxFromTemplateModalProps = {
 const CreateSandboxFromTemplateModal: React.FC<
   CreateSandboxFromTemplateModalProps
 > = ({ workspace, templateName, isOpen, onClose }) => {
+  const { t } = useI18n('sandboxes');
   const providers = useProviders(workspace);
   const createFromTemplate = useCreateSandboxFromTemplate(workspace);
   const { addSuccess } = useAlerts();
@@ -59,6 +61,7 @@ const CreateSandboxFromTemplateModal: React.FC<
   // labels and annotations, its main command, the services to expose and the
   // approval mode. The workload stays the template's.
   const [labelsText, setLabelsText] = useState('');
+  const [isGeneratedExpanded, setGeneratedExpanded] = useState(false);
   const [annotationRows, setAnnotationRows] = useState<KeyValueRow[]>([]);
   const [isAdvancedExpanded, setAdvancedExpanded] = useState(false);
   const launch = useSandboxLaunchOptions();
@@ -74,6 +77,9 @@ const CreateSandboxFromTemplateModal: React.FC<
     [policyTemplateId],
   );
   const labels = parseLabels(labelsText);
+  // A field of the folded section that holds a value keeps the section
+  // open: whatever it holds is sent, so it is never sent out of sight.
+  const hasOptionalValues = name !== '' || labelsText !== '';
   const { record: annotations, error: annotationsError } =
     rowsToRecord(annotationRows);
   // The section opens by itself around a field that needs correcting.
@@ -105,6 +111,7 @@ const CreateSandboxFromTemplateModal: React.FC<
     setSelectedProviders([]);
     setPolicyExpanded(false);
     setLabelsText('');
+    setGeneratedExpanded(false);
     setAnnotationRows([]);
     setAdvancedExpanded(false);
     launch.reset();
@@ -197,62 +204,6 @@ const CreateSandboxFromTemplateModal: React.FC<
             submit();
           }}
         >
-          <FormGroup label="Name" fieldId="from-template-name">
-            <TextInput
-              id="from-template-name"
-              data-testid="from-template-name-input"
-              value={name}
-              onChange={(_event, value) => setName(value)}
-              placeholder="Leave empty for a generated name"
-            />
-          </FormGroup>
-          <FormGroup label="Labels" fieldId="from-template-labels">
-            <TextInput
-              id="from-template-labels"
-              data-testid="from-template-labels-input"
-              value={labelsText}
-              onChange={(_event, value) => setLabelsText(value)}
-              placeholder="team=ml, kind=agent"
-              validated={labels === null ? 'error' : 'default'}
-            />
-            <FormHelperText>
-              <HelperText>
-                <HelperTextItem variant={labels === null ? 'error' : 'default'}>
-                  {labels === null
-                    ? 'Labels must be comma-separated key=value pairs'
-                    : 'Optional comma-separated key=value pairs, used for filtering'}
-                </HelperTextItem>
-              </HelperText>
-            </FormHelperText>
-          </FormGroup>
-          <FormGroup
-            label="Providers"
-            fieldId="from-template-providers"
-            role="group"
-          >
-            {(providers.data ?? []).length === 0 ? (
-              <FormHelperText>
-                <HelperText>
-                  <HelperTextItem>
-                    No providers in this workspace yet
-                  </HelperTextItem>
-                </HelperText>
-              </FormHelperText>
-            ) : (
-              (providers.data ?? []).map((provider) => (
-                <Checkbox
-                  key={provider.metadata.name}
-                  id={`from-template-provider-${provider.metadata.name}`}
-                  data-testid={`from-template-provider-${provider.metadata.name}`}
-                  label={`${provider.metadata.name} (${provider.type})`}
-                  isChecked={selectedProviders.includes(provider.metadata.name)}
-                  onChange={(_event, checked) =>
-                    toggleProvider(provider.metadata.name, checked)
-                  }
-                />
-              ))
-            )}
-          </FormGroup>
           <FormGroup
             label="Security policy"
             isRequired
@@ -293,6 +244,84 @@ const CreateSandboxFromTemplateModal: React.FC<
               onChange={setPolicyText}
               error={policyError}
             />
+          </ExpandableSection>
+          <FormGroup
+            label="Providers"
+            fieldId="from-template-providers"
+            role="group"
+          >
+            {(providers.data ?? []).length === 0 ? (
+              <FormHelperText>
+                <HelperText>
+                  <HelperTextItem>
+                    No providers in this workspace yet
+                  </HelperTextItem>
+                </HelperText>
+              </FormHelperText>
+            ) : (
+              (providers.data ?? []).map((provider) => (
+                <Checkbox
+                  key={provider.metadata.name}
+                  id={`from-template-provider-${provider.metadata.name}`}
+                  data-testid={`from-template-provider-${provider.metadata.name}`}
+                  label={`${provider.metadata.name} (${provider.type})`}
+                  isChecked={selectedProviders.includes(provider.metadata.name)}
+                  onChange={(_event, checked) =>
+                    toggleProvider(provider.metadata.name, checked)
+                  }
+                />
+              ))
+            )}
+          </FormGroup>
+          {/* Optional fields, folded away as in the Create sandbox form.
+              Only the name is generated when left empty. The section opens
+              by itself around a field that needs correcting, and stays open
+              while any of its fields holds a value. */}
+          <ExpandableSection
+            toggleText={t('create.optionalSectionFromTemplate')}
+            isExpanded={
+              isGeneratedExpanded || labels === null || hasOptionalValues
+            }
+            onToggle={(_event, expanded) => setGeneratedExpanded(expanded)}
+            data-testid="from-template-generated-expand"
+          >
+            <FormSection>
+              <FormGroup label="Name" fieldId="from-template-name">
+                <TextInput
+                  id="from-template-name"
+                  data-testid="from-template-name-input"
+                  value={name}
+                  onChange={(_event, value) => setName(value)}
+                  placeholder="Leave empty for a generated name"
+                />
+                <FormHelperText>
+                  <HelperText>
+                    <HelperTextItem>{t('create.nameHelper')}</HelperTextItem>
+                  </HelperText>
+                </FormHelperText>
+              </FormGroup>
+              <FormGroup label="Labels" fieldId="from-template-labels">
+                <TextInput
+                  id="from-template-labels"
+                  data-testid="from-template-labels-input"
+                  value={labelsText}
+                  onChange={(_event, value) => setLabelsText(value)}
+                  placeholder="team=ml, kind=agent"
+                  validated={labels === null ? 'error' : 'default'}
+                />
+                <FormHelperText>
+                  <HelperText>
+                    <HelperTextItem
+                      variant={labels === null ? 'error' : 'default'}
+                    >
+                      {labels === null
+                        ? 'Labels must be comma-separated key=value pairs'
+                        : 'Optional comma-separated key=value pairs, used for filtering'}
+                    </HelperTextItem>
+                  </HelperText>
+                </FormHelperText>
+              </FormGroup>
+            </FormSection>
           </ExpandableSection>
           <ExpandableSection
             toggleText="Advanced options"

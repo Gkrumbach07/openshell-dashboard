@@ -362,6 +362,23 @@ describe('WorkspaceListPage', () => {
     expect(screen.queryByTestId('workspace-table')).not.toBeInTheDocument();
   });
 
+  // Only a platform admin can create one, so nobody else is told to.
+  it('tells a user who is not a platform admin to ask for a workspace', () => {
+    mockIsPlatformAdmin = false;
+    serve({ '': [] });
+    render(<WorkspaceListPage />);
+
+    expect(
+      screen.getByText('Ask a platform admin to add you to a workspace.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Create one to give a team/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('create-workspace-empty'),
+    ).not.toBeInTheDocument();
+  });
+
   it('lets a user who is not a platform admin filter too', () => {
     mockIsPlatformAdmin = false;
     serve({ '': all, 'env=staging': [all[1]] });

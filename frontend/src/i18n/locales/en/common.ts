@@ -2,7 +2,13 @@ export default {
   nav: {
     gateway: 'Gateway',
     workspaces: 'Workspaces',
-    allWorkspaces: 'All workspaces',
+    // Providers, templates and services across every workspace — resources,
+    // not workspaces, which is the question "what is the difference between
+    // Workspaces and All workspaces?" that the old label invited. Sandboxes
+    // are their own entry.
+    allWorkspaces: 'Resources',
+    proposals: 'Proposals',
+    sandboxes: 'Sandboxes',
     providerProfiles: 'Provider profiles',
     globalPolicy: 'Global policy',
     settings: 'Settings',
@@ -15,6 +21,8 @@ export default {
     themeToDark: 'Switch to dark theme',
     help: 'Help',
     about: 'About',
+    // What the badge beside it is the value of — same form as gatewayHealth.label.
+    roleLabel: 'Role:',
     roleAdmin: 'Platform admin',
     roleUser: 'Standard user',
     userFallback: 'User',
@@ -32,6 +40,8 @@ export default {
     none: 'None',
     close: 'Close',
   },
+  // The About dialog, from the masthead's help menu, and the masthead logo's
+  // alt text.
   about: {
     productName: 'OpenShell Dashboard',
     trademark: 'Apache-2.0 license.',
@@ -44,8 +54,6 @@ export default {
     gatewayLine: '{{line}}.x',
     dashboardCommit: 'Dashboard commit',
     gatewayVersion: 'Gateway version',
-    gatewayStatus: 'Gateway status',
-    computeDriver: 'Compute driver',
     unknown: 'Unknown',
   },
   gatewayCompatibility: {
@@ -58,10 +66,14 @@ export default {
   },
   // What the gateway's own health check says, shown in the masthead.
   gatewayHealth: {
-    healthy: 'Gateway healthy',
-    notHealthy: 'Gateway not healthy',
-    unreachable: 'Gateway unreachable',
-    unknown: 'Gateway status unknown',
+    // What the label beside it is the value of. The states are in sentence
+    // case: the region they sit in is announced on every change, and some
+    // screen readers spell out text in capitals letter by letter.
+    label: 'Gateway status:',
+    healthy: 'Healthy',
+    notHealthy: 'Not healthy',
+    unreachable: 'Unreachable',
+    unknown: 'Unknown',
   },
   logs: {
     autoRefresh: 'Auto-refresh',
@@ -93,5 +105,11 @@ export default {
     sandboxResults: 'Sandbox results',
     workspaceResults: 'Workspace results',
     resourceResults: '{{title}} results',
+  },
+  // The platform's provider profiles page.
+  providerProfiles: {
+    title: 'Provider profiles',
+    description:
+      'Platform-scoped profiles for connecting sandboxes to external services, such as LLM inference backends, code repositories, or enterprise APIs. Every workspace can create providers from them and attach those providers to its sandboxes; a profile a workspace keeps itself with the same ID takes precedence there.',
   },
 } as const;

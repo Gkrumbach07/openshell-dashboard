@@ -11,6 +11,9 @@ jest.mock('@xterm/xterm', () => ({
     return {
       cols: 80,
       rows: 24,
+      // The real terminal's live settings, which the tab writes the theme
+      // into when the theme is toggled.
+      options: {},
       loadAddon: jest.fn(),
       open: jest.fn(),
       write: jest.fn(),
@@ -77,6 +80,39 @@ const renderTab = () =>
   render(<SandboxTerminalTab workspace="team a" sandboxName="agent-1" />);
 
 describe('SandboxTerminalTab', () => {
+  // xterm's default ANSI white and bright white are white: on the light
+  // theme's white background they would be no text at all. The light theme
+  // brings all sixteen colours, each dark enough to read on white.
+  it('gives the light theme a full ANSI palette that reads on white', () => {
+    const { Terminal } = jest.requireMock('@xterm/xterm') as {
+      Terminal: jest.Mock;
+    };
+    renderTab();
+    const theme = Terminal.mock.calls[Terminal.mock.calls.length - 1][0]
+      .theme as Record<string, string>;
+    expect(theme.background).toBe('#ffffff');
+    const names = ['black', 'red', 'green', 'yellow', 'blue', 'magenta'];
+    const palette = [...names, 'cyan', 'white'].flatMap((name) => [
+      name,
+      `bright${name[0].toUpperCase()}${name.slice(1)}`,
+    ]);
+    // Relative luminance, as WCAG defines it.
+    const luminance = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => {
+        const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    for (const name of palette) {
+      expect(theme[name]).toMatch(/^#[0-9a-f]{6}$/);
+      // At least 4.5:1 against white.
+      expect(1.05 / (luminance(theme[name]) + 0.05)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+    }
+  });
+
   it('opens the default shell with a start message and nothing else in the URL', () => {
     renderTab();
     const socket = lastSocket();

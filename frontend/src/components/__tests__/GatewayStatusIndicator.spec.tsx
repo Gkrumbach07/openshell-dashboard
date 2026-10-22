@@ -106,21 +106,16 @@ describe('GatewayStatusIndicator', () => {
   });
 
   it.each([
-    [{ data: answer(true) }, 'healthy', 'Gateway healthy', 'pf-m-success'],
-    [
-      { data: answer(false) },
-      'notHealthy',
-      'Gateway not healthy',
-      'pf-m-warning',
-    ],
+    [{ data: answer(true) }, 'healthy', 'Healthy', 'pf-m-green'],
+    [{ data: answer(false) }, 'notHealthy', 'Not healthy', 'pf-m-orange'],
     [
       { isError: true, error: unreachable },
       'unreachable',
-      'Gateway unreachable',
-      'pf-m-danger',
+      'Unreachable',
+      'pf-m-red',
     ],
-    // Not a state of the gateway, so it has none of the status colours.
-    [{ data: answer() }, 'unknown', 'Gateway status unknown', undefined],
+    // Not a state of the gateway, so it has none of the state colours.
+    [{ data: answer() }, 'unknown', 'Unknown', undefined],
   ])('shows %# in words and in colour', (query, state, label, className) => {
     serve(query);
     render(<GatewayStatusIndicator />);
@@ -128,11 +123,11 @@ describe('GatewayStatusIndicator', () => {
     expect(indicator()).toHaveAttribute('data-state', state);
     // The words carry the state. The colour only repeats it.
     expect(indicator()).toHaveTextContent(label);
-    for (const status of ['pf-m-success', 'pf-m-warning', 'pf-m-danger']) {
-      if (status === className) {
-        expect(indicator()).toHaveClass(status);
+    for (const color of ['pf-m-green', 'pf-m-orange', 'pf-m-red']) {
+      if (color === className) {
+        expect(indicator()).toHaveClass(color);
       } else {
-        expect(indicator()).not.toHaveClass(status);
+        expect(indicator()).not.toHaveClass(color);
       }
     }
   });
@@ -141,8 +136,8 @@ describe('GatewayStatusIndicator', () => {
     serve({ isError: true, error: unreachable, data: answer(true) });
     render(<GatewayStatusIndicator />);
 
-    expect(indicator()).toHaveTextContent('Gateway unreachable');
-    expect(screen.queryByText('Gateway healthy')).not.toBeInTheDocument();
+    expect(indicator()).toHaveTextContent('Unreachable');
+    expect(screen.queryByText('Healthy')).not.toBeInTheDocument();
   });
 
   it('shows nothing until there is an answer', () => {
@@ -165,15 +160,15 @@ describe('GatewayStatusIndicator', () => {
     serve({ data: answer(true) });
     rerender(<GatewayStatusIndicator />);
     expect(screen.getByRole('status')).toBe(region);
-    expect(region).toHaveTextContent('Gateway healthy');
+    expect(region).toHaveTextContent(/Gateway status:\s*Healthy/);
 
     serve({ isError: true, error: unreachable, data: answer(true) });
     rerender(<GatewayStatusIndicator />);
     expect(screen.getByRole('status')).toBe(region);
-    expect(region).toHaveTextContent('Gateway unreachable');
+    expect(region).toHaveTextContent(/Gateway status:\s*Unreachable/);
 
     serve({ data: answer(true) });
     rerender(<GatewayStatusIndicator />);
-    expect(region).toHaveTextContent('Gateway healthy');
+    expect(region).toHaveTextContent(/Gateway status:\s*Healthy/);
   });
 });

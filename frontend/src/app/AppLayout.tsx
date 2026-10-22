@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { BUILD_COMMIT } from '../constants';
+import { Fragment, useState } from 'react';
+import { BUILD_COMMIT, NAV_COUNT_POLL_MS } from '../constants';
 import {
   AboutModal,
+  Badge,
   Button,
   Content,
   DescriptionList,
@@ -21,6 +22,7 @@ import {
   MenuToggle,
   Nav,
   NavItem,
+  NavItemSeparator,
   NavList,
   Page,
   PageSection,
@@ -41,9 +43,12 @@ import { Link, useLocation } from 'react-router-dom';
 
 import openshellLogo from '~/assets/openshell-logo.svg';
 import openshellLogoDark from '~/assets/openshell-logo-dark.svg';
-import { useGatewayCompatibility, useGatewayInfo } from '../api/gateway';
+import { useAllSandboxes } from '../api/allWorkspaces';
+import { useGatewayCompatibility } from '../api/gateway';
 import { useCurrentUser, useFeatureFlags } from '../api/auth';
+import { useAllWorkspacesDraftSummary } from '../api/draftSummary';
 import { useUserRole } from '../api/rbac';
+import { useWorkspaces } from '../api/workspaces';
 import CurrentUserModal from '../components/CurrentUserModal';
 import GatewayCompatibilityAlert from '../components/GatewayCompatibilityAlert';
 import GatewayStatusIndicator from '../components/GatewayStatusIndicator';
@@ -57,37 +62,70 @@ type AppLayoutProps = {
   sessionAlert?: React.ReactNode;
 };
 
+type NavGroupId = 'workspaces' | 'platform';
+
 type NavEntry = {
   path: string;
   labelKey:
     | 'nav.gateway'
     | 'nav.workspaces'
+    | 'nav.proposals'
+    | 'nav.sandboxes'
     | 'nav.allWorkspaces'
     | 'nav.providerProfiles'
     | 'nav.globalPolicy'
     | 'nav.settings';
+  // The section of the sidebar the entry belongs to. An entry with none sits
+  // above the sections, as Gateway does: the dashboard's landing page is not
+  // one of a set.
+  group?: NavGroupId;
   adminOnly?: boolean;
   featureKey?: keyof import('../types').FeatureFlags;
 };
 
+const navGroups: { id: NavGroupId }[] = [
+  { id: 'workspaces' },
+  { id: 'platform' },
+];
+
 const navEntries: NavEntry[] = [
   { path: '/gateway', labelKey: 'nav.gateway', adminOnly: true },
-  { path: '/workspaces', labelKey: 'nav.workspaces' },
-  { path: '/all-workspaces', labelKey: 'nav.allWorkspaces', adminOnly: true },
+  { path: '/workspaces', labelKey: 'nav.workspaces', group: 'workspaces' },
+  {
+    path: '/sandboxes',
+    labelKey: 'nav.sandboxes',
+    group: 'workspaces',
+    adminOnly: true,
+  },
+  {
+    path: '/proposals',
+    labelKey: 'nav.proposals',
+    group: 'workspaces',
+    featureKey: 'draftPolicy',
+  },
+  {
+    path: '/all-workspaces',
+    labelKey: 'nav.allWorkspaces',
+    group: 'workspaces',
+    adminOnly: true,
+  },
   {
     path: '/provider-profiles',
     labelKey: 'nav.providerProfiles',
+    group: 'platform',
     adminOnly: true,
   },
   {
     path: '/global-policy',
     labelKey: 'nav.globalPolicy',
+    group: 'platform',
     adminOnly: true,
     featureKey: 'globalPolicy',
   },
   {
     path: '/settings',
     labelKey: 'nav.settings',
+    group: 'platform',
     adminOnly: true,
     featureKey: 'settings',
   },
@@ -104,19 +142,56 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
     isLoading: isRoleLoading,
   } = useUserRole();
   const features = useFeatureFlags();
-  const gateway = useGatewayInfo();
   // The release line this build is for comes from the BFF, which has it
   // compiled in, so it is known in every image whatever built it. Read from
   // the route every signed-in user may call; the notice and the masthead keep
-  // the same query fresh.
-  const builtForLine =
-    useGatewayCompatibility().data?.compatibility?.supportedLine;
+  // the same query fresh. Gateway info is not read here: a gateway with roles
+  // refuses it to anyone who is not a platform admin, and the shell is
+  // mounted for everyone.
+  const compatibility = useGatewayCompatibility().data;
+  const builtForLine = compatibility?.compatibility?.supportedLine;
   const [isAboutOpen, setAboutOpen] = useState(false);
   const [isHelpOpen, setHelpOpen] = useState(false);
   const [isUserOpen, setUserOpen] = useState(false);
   const [isIdentityOpen, setIdentityOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const logoSrc = theme === 'dark' ? openshellLogoDark : openshellLogo;
+
+  // How many rules are waiting for a decision, on the Proposals entry. Read
+  // for a platform admin only, and not because proposals are theirs: this is
+  // the shell, mounted on every page, and the cross-workspace summary is the
+  // one shape of this read that is a single request to the BFF. Reading it
+  // the way a standard user has to — one request per workspace they are in —
+  // would put that behind every page they open. The page itself does that
+  // read, once, where someone is looking at it. The same query the Proposals
+  // page and the Gateway page use, so an admin on either is not polling it
+  // twice. The BFF answers it with one draft read per sandbox on the gateway,
+  // so the shell's own pace is NAV_COUNT_POLL_MS, not the pages'.
+  const { totalPending: pendingProposals } = useAllWorkspacesDraftSummary(
+    features.draftPolicy && isPlatformAdmin,
+    { refetchInterval: NAV_COUNT_POLL_MS },
+  );
+  // How many sandboxes the gateway has, on the Sandboxes entry. The unfiltered
+  // all-workspaces list — the same query the Sandboxes page reads when no
+  // label selector is set — so an admin looking at that list is not polling
+  // it twice. A platform admin only: the gateway refuses the list to anyone
+  // else, and the shell is mounted on every page.
+  const { data: allSandboxes } = useAllSandboxes(undefined, {
+    enabled: isPlatformAdmin,
+    refetchInterval: NAV_COUNT_POLL_MS,
+  });
+  const sandboxCount = allSandboxes?.length ?? 0;
+  // How many workspaces the signed-in user can see, on the Workspaces entry.
+  // The same unfiltered list the Workspaces page reads, so looking at that
+  // list is not a second poll. Unlike the sandboxes count this is for every
+  // user with a role: the gateway answers each with the workspaces they are
+  // in. A user with no role is shown the entitlement page and no navigation,
+  // so nothing is asked for them.
+  const { data: workspaces } = useWorkspaces(undefined, {
+    enabled: !isRoleLoading && !isUnentitled,
+    refetchInterval: NAV_COUNT_POLL_MS,
+  });
+  const workspaceCount = workspaces?.length ?? 0;
 
   const masthead = (
     <Masthead
@@ -220,6 +295,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
                 toggle={(toggleRef) => (
                   <MenuToggle
                     ref={toggleRef}
+                    // Without a variant PatternFly gives this a bordered
+                    // button, beside a status indicator and a theme toggle
+                    // that are both plain. plainText keeps the caret and
+                    // drops the border.
+                    variant="plainText"
                     onClick={() => setUserOpen(!isUserOpen)}
                     isExpanded={isUserOpen}
                     data-testid="current-user"
@@ -267,28 +347,68 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
     </Masthead>
   );
 
+  const visibleEntries = navEntries.filter(
+    (e) =>
+      (!e.adminOnly || isPlatformAdmin) &&
+      (!e.featureKey || features[e.featureKey]),
+  );
+  const groupedEntries = navGroups
+    .map((group) => ({
+      ...group,
+      entries: visibleEntries.filter((entry) => entry.group === group.id),
+    }))
+    .filter((group) => group.entries.length > 0);
+  // A rule above the only section there is would divide the sidebar from
+  // nothing. Rules earn their place once a user can see more than one section
+  // — a standard user, who sees only their workspaces, gets the flat list
+  // they had.
+  const hasSections = groupedEntries.length > 1;
+
+  const navItem = (entry: NavEntry) => (
+    <NavItem
+      key={entry.path}
+      itemId={entry.path}
+      to={entry.path}
+      isActive={location.pathname.startsWith(entry.path)}
+      component={(props) => <Link {...props} to={entry.path} />}
+    >
+      {t(entry.labelKey)}
+      {entry.path === '/proposals' && pendingProposals > 0 && (
+        <Badge isRead className="pf-v6-u-ml-sm" data-testid="proposals-badge">
+          {pendingProposals}
+        </Badge>
+      )}
+      {entry.path === '/workspaces' && workspaceCount > 0 && (
+        <Badge isRead className="pf-v6-u-ml-sm" data-testid="workspaces-badge">
+          {workspaceCount}
+        </Badge>
+      )}
+      {entry.path === '/sandboxes' && sandboxCount > 0 && (
+        <Badge isRead className="pf-v6-u-ml-sm" data-testid="sandboxes-badge">
+          {sandboxCount}
+        </Badge>
+      )}
+    </NavItem>
+  );
+
   const sidebar = (
     <PageSidebar>
       <PageSidebarBody>
         <Nav aria-label={t('nav.primary')}>
           <NavList>
-            {navEntries
-              .filter(
-                (e) =>
-                  (!e.adminOnly || isPlatformAdmin) &&
-                  (!e.featureKey || features[e.featureKey]),
-              )
-              .map((entry) => (
-                <NavItem
-                  key={entry.path}
-                  itemId={entry.path}
-                  to={entry.path}
-                  isActive={location.pathname.startsWith(entry.path)}
-                  component={(props) => <Link {...props} to={entry.path} />}
-                >
-                  {t(entry.labelKey)}
-                </NavItem>
-              ))}
+            {visibleEntries.filter((entry) => !entry.group).map(navItem)}
+            {groupedEntries.map((group) =>
+              hasSections ? (
+                // A rule above each section, so the entries below it read as
+                // starting there rather than as more of the set above.
+                <Fragment key={group.id}>
+                  <NavItemSeparator data-testid="nav-section-rule" />
+                  {group.entries.map(navItem)}
+                </Fragment>
+              ) : (
+                group.entries.map(navItem)
+              ),
+            )}
           </NavList>
         </Nav>
       </PageSidebarBody>
@@ -361,25 +481,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, sessionAlert }) => {
                 {t('about.gatewayVersion')}
               </DescriptionListTerm>
               <DescriptionListDescription>
-                {gateway.data?.gatewayVersion || t('about.unknown')}
-              </DescriptionListDescription>
-            </DescriptionListGroup>
-            <DescriptionListGroup>
-              <DescriptionListTerm>
-                {t('about.gatewayStatus')}
-              </DescriptionListTerm>
-              <DescriptionListDescription>
-                {gateway.data?.status || t('about.unknown')}
-              </DescriptionListDescription>
-            </DescriptionListGroup>
-            <DescriptionListGroup>
-              <DescriptionListTerm>
-                {t('about.computeDriver')}
-              </DescriptionListTerm>
-              <DescriptionListDescription>
-                {gateway.data?.computeDrivers?.[0]
-                  ? `${gateway.data.computeDrivers[0].driverName} ${gateway.data.computeDrivers[0].driverVersion}`
-                  : t('about.unknown')}
+                {compatibility?.gatewayVersion || t('about.unknown')}
               </DescriptionListDescription>
             </DescriptionListGroup>
           </DescriptionList>

@@ -19,7 +19,6 @@ import {
   useAllTemplates,
 } from '../api/allWorkspaces';
 import { useFeatureFlags } from '../api/auth';
-import AllSandboxList from '../components/AllSandboxList';
 import {
   ImageReference,
   scopedName,
@@ -43,11 +42,11 @@ const TabPanel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="pf-v6-u-pt-lg">{children}</div>
 );
 
-// The sandboxes, providers, templates and service endpoints of every
-// workspace on the gateway: `--all-workspaces` on the CLI's four lists. The
-// gateway answers these for platform admins only, and its refusal is shown as
-// it is. Each row names its workspace and leads to the workspace-scoped page
-// for the resource, which is where it is acted on.
+// The providers, templates and service endpoints of every workspace on the
+// gateway: `--all-workspaces` on those three CLI lists. Sandboxes are a page
+// of their own. The gateway answers these for platform admins only, and its
+// refusal is shown as it is. Each row names its workspace and leads to the
+// workspace-scoped page for the resource, which is where it is acted on.
 const AllWorkspacesPage: React.FC<AllWorkspacesPageProps> = ({
   onSelectWorkspace,
   onSelectSandbox,
@@ -55,7 +54,7 @@ const AllWorkspacesPage: React.FC<AllWorkspacesPageProps> = ({
 }) => {
   const navigate = useNavigate();
   const features = useFeatureFlags();
-  const [activeTab, setActiveTab] = useState<string | number>('sandboxes');
+  const [activeTab, setActiveTab] = useState<string | number>('providers');
   const [templateSelector, setTemplateSelector] = useState('');
   const providers = useAllProviders();
   const templates = useAllTemplates(templateSelector || undefined);
@@ -170,10 +169,12 @@ const AllWorkspacesPage: React.FC<AllWorkspacesPageProps> = ({
   return (
     <>
       <PageSection>
-        <Title headingLevel="h1">All workspaces</Title>
+        <Title headingLevel="h1" className="pf-v6-u-mb-sm">
+          Resources
+        </Title>
         <Content component="p">
-          Sandboxes, providers, templates and services across every workspace on
-          the gateway. Select a row to open it in its workspace.
+          Providers, templates and services across every workspace on the
+          gateway.
         </Content>
       </PageSection>
       <PageSection>
@@ -182,18 +183,6 @@ const AllWorkspacesPage: React.FC<AllWorkspacesPageProps> = ({
           onSelect={(_event, key) => setActiveTab(key)}
           aria-label="Resources in all workspaces"
         >
-          <Tab
-            eventKey="sandboxes"
-            title={<TabTitleText>Sandboxes</TabTitleText>}
-            data-testid="all-tab-sandboxes"
-          >
-            <TabPanel>
-              <AllSandboxList
-                onSelectWorkspace={selectWorkspace}
-                onSelectSandbox={selectSandbox}
-              />
-            </TabPanel>
-          </Tab>
           <Tab
             eventKey="providers"
             title={

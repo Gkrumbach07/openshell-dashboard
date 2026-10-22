@@ -2,16 +2,9 @@ import React from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import AllWorkspacesPage from '../AllWorkspacesPage';
-import type {
-  Provider,
-  Sandbox,
-  SandboxTemplate,
-  ServiceEndpoint,
-} from '../../types';
+import type { Provider, SandboxTemplate, ServiceEndpoint } from '../../types';
 
 jest.mock('../../api/allWorkspaces', () => ({
-  useAllSandboxes: jest.fn(),
-  useAllSandboxPage: jest.fn(),
   useAllProviders: jest.fn(),
   useAllTemplates: jest.fn(),
   useAllServices: jest.fn(),
@@ -24,20 +17,9 @@ jest.mock('../../api/auth', () => ({
 
 import {
   useAllProviders,
-  useAllSandboxes,
-  useAllSandboxPage,
   useAllServices,
   useAllTemplates,
 } from '../../api/allWorkspaces';
-const mockUseAllSandboxes = useAllSandboxes as jest.Mock;
-const mockUseAllSandboxPage = useAllSandboxPage as jest.Mock;
-import { pagedResult } from './pagedHookMock';
-
-beforeEach(() => {
-  mockUseAllSandboxPage.mockImplementation((request) =>
-    pagedResult(mockUseAllSandboxes(request.labelSelector), request),
-  );
-});
 const mockUseAllProviders = useAllProviders as jest.Mock;
 const mockUseAllTemplates = useAllTemplates as jest.Mock;
 const mockUseAllServices = useAllServices as jest.Mock;
@@ -49,24 +31,6 @@ const meta = (workspace: string, name: string) => ({
   createdAtMs: Date.now() - 120_000,
   resourceVersion: 1,
 });
-
-const sandbox = (
-  workspace: string,
-  name: string,
-  phase: Sandbox['status']['phase'],
-  labels?: Record<string, string>,
-): Sandbox => ({
-  metadata: { ...meta(workspace, name), labels },
-  spec: { image: 'ghcr.io/nvidia/openshell-community/sandboxes/base:latest' },
-  status: { phase, currentPolicyVersion: 1 },
-});
-
-// The same name in two workspaces: only the workspace tells the rows apart.
-const sandboxes = [
-  sandbox('team-a', 'agent', 'READY', { team: 'ml' }),
-  sandbox('team-b', 'agent', 'STOPPED'),
-  sandbox('team-b', 'builder', 'ERROR', { team: 'ml' }),
-];
 
 const providers: Provider[] = [
   {
@@ -157,63 +121,30 @@ describe('AllWorkspacesPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockServicesFeature = true;
-    mockUseAllSandboxes.mockReturnValue(ok(sandboxes));
     mockUseAllProviders.mockReturnValue(ok(providers));
     mockUseAllTemplates.mockReturnValue(ok(templates));
     mockUseAllServices.mockReturnValue(ok(services));
   });
 
-  // `openshell sandbox list --all-workspaces`: WORKSPACE, NAME, CREATED,
-  // PHASE.
-  it('lists the sandboxes of every workspace with a workspace column', () => {
+  it('opens on providers, and no longer lists sandboxes', () => {
     renderPage();
 
     expect(
-      screen.getByRole('heading', { level: 1, name: 'All workspaces' }),
+      screen.getByRole('heading', { level: 1, name: 'Resources' }),
     ).toBeInTheDocument();
-    expect(headersOf('all-sandboxes-table')).toEqual([
-      'Workspace',
-      'Name',
-      'Status',
-      'Image',
-      'Labels',
-      'Age',
-    ]);
-    const rows = rowsOf('all-sandboxes-table');
-    expect(rows).toHaveLength(3);
-    // Two sandboxes named agent, each in its own workspace.
     expect(
-      rows.map((row) =>
-        within(row)
-          .getAllByRole('cell')
-          .slice(0, 3)
-          .map((cell) => cell.textContent),
+      screen.getByText(
+        'Providers, templates and services across every workspace on the gateway.',
       ),
-    ).toEqual([
-      ['team-a', 'agent', 'READY'],
-      ['team-b', 'agent', 'STOPPED'],
-      ['team-b', 'builder', 'ERROR'],
-    ]);
-    expect(rows[0]).toHaveTextContent('team=ml');
-    // The image column cuts a long reference short, so the whole of it is
-    // also the cell's title.
-    const image = within(rows[0]).getByTitle(
-      'ghcr.io/nvidia/openshell-community/sandboxes/base:latest',
-    );
-    expect(image).toHaveTextContent(
-      'ghcr.io/nvidia/openshell-community/sandboxes/base:latest',
-    );
-    expect(image.closest('td')).toHaveClass('pf-m-truncate');
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: /Sandboxes/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('all-providers-table')).toBeInTheDocument();
   });
 
-  it('does not show an inaccurate sandbox total', () => {
+  it('counts the providers, templates and services on their tabs', () => {
     renderPage();
-    expect(screen.getByRole('tab', { name: /Sandboxes/ })).toHaveTextContent(
-      'Sandboxes',
-    );
-    expect(
-      screen.getByRole('tab', { name: /Sandboxes/ }),
-    ).not.toHaveTextContent('3');
     expect(screen.getByRole('tab', { name: /Providers/ })).toHaveTextContent(
       'Providers 2',
     );
@@ -225,222 +156,46 @@ describe('AllWorkspacesPage', () => {
     );
   });
 
-  // A row leads to the workspace-scoped page of the sandbox it is: the one in
-  // its own workspace, not another of the same name.
-  it('opens a sandbox in the workspace it belongs to', () => {
-    renderPage();
-
-    fireEvent.click(screen.getByTestId('sandbox-link-team-b/agent'));
-
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      /^\/workspaces\/team-b\/sandboxes\/agent$/,
-    );
-  });
-
-  it('opens the workspace from the workspace column', () => {
-    renderPage();
-    const firstRow = rowsOf('all-sandboxes-table')[0];
-
-    fireEvent.click(within(firstRow).getByRole('button', { name: 'team-a' }));
-
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      /^\/workspaces\/team-a$/,
-    );
-  });
-
-  it('hands navigation to the callbacks when they are passed', () => {
+  it('hands navigation to the host when it provides callbacks', () => {
     const onSelectSandbox = jest.fn();
     const onSelectWorkspace = jest.fn();
     const onSelectProvider = jest.fn();
     renderPage({ onSelectSandbox, onSelectWorkspace, onSelectProvider });
 
-    fireEvent.click(screen.getByTestId('sandbox-link-team-b/builder'));
-    expect(onSelectSandbox).toHaveBeenCalledWith('team-b', 'builder');
-
     fireEvent.click(
-      within(rowsOf('all-sandboxes-table')[0]).getByRole('button', {
+      within(rowsOf('all-providers-table')[0]).getByRole('button', {
         name: 'team-a',
       }),
     );
     expect(onSelectWorkspace).toHaveBeenCalledWith('team-a');
 
-    openTab(/Providers/);
     fireEvent.click(screen.getByTestId('provider-link-team-b/claude'));
     expect(onSelectProvider).toHaveBeenCalledWith('team-b', 'claude');
 
     openTab(/Services/);
     fireEvent.click(screen.getByTestId('service-sandbox-link-team-b-agent'));
-    expect(onSelectSandbox).toHaveBeenLastCalledWith(
-      'team-b',
-      'agent',
-      'services',
-    );
+    expect(onSelectSandbox).toHaveBeenCalledWith('team-b', 'agent', 'services');
     // The router was left alone.
     expect(screen.getByTestId('location')).toHaveTextContent(
       /^\/all-workspaces$/,
     );
   });
 
-  it('filters the rows by workspace or name as it is typed', () => {
-    renderPage();
-    const filter = screen.getByRole('textbox', {
-      name: 'Filter current page of sandboxes',
-    });
-
-    fireEvent.change(filter, { target: { value: 'team-b' } });
-    expect(rowsOf('all-sandboxes-table')).toHaveLength(2);
-
-    fireEvent.change(filter, { target: { value: 'team-b/build' } });
-    const rows = rowsOf('all-sandboxes-table');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveTextContent('builder');
-
-    fireEvent.change(filter, { target: { value: 'nothing-like-this' } });
-    expect(screen.getByText('No sandboxes match on this page.')).toBeVisible();
-  });
-
-  // `--selector`: the gateway applies it, so it goes to the request when it
-  // is submitted.
-  it('asks the gateway for the label selector that is submitted', () => {
-    mockUseAllSandboxes.mockImplementation((selector?: string) =>
-      ok(selector === 'team=ml' ? [sandboxes[0], sandboxes[2]] : sandboxes),
-    );
-    renderPage();
-    const selector = screen.getByRole('textbox', {
-      name: 'Filter sandboxes by label selector',
-    });
-
-    fireEvent.change(selector, { target: { value: 'team=ml' } });
-    expect(mockUseAllSandboxes).toHaveBeenLastCalledWith(undefined);
-    fireEvent.keyDown(selector, { key: 'Enter' });
-
-    expect(mockUseAllSandboxes).toHaveBeenLastCalledWith('team=ml');
-    expect(rowsOf('all-sandboxes-table')).toHaveLength(2);
-    // Templates keep their own selector.
-    expect(mockUseAllTemplates).toHaveBeenLastCalledWith(undefined);
-  });
-
-  it('adds the type label to the all-workspaces sandbox selector', () => {
-    renderPage();
-    const selector = screen.getByRole('textbox', {
-      name: 'Filter sandboxes by label selector',
-    });
-    fireEvent.change(selector, { target: { value: 'team=ml' } });
-    fireEvent.keyDown(selector, { key: 'Enter' });
-    const type = screen.getByRole('textbox', {
-      name: 'Filter sandboxes by type label',
-    });
-    fireEvent.change(type, { target: { value: 'type=tool' } });
-    fireEvent.keyDown(type, { key: 'Enter' });
-    expect(mockUseAllSandboxPage).toHaveBeenLastCalledWith({
-      pageSize: 10,
-      pageToken: '',
-      labelSelector: 'team=ml,type=tool',
-    });
-    expect(
-      screen.getByRole('tab', { name: 'Sandboxes' }),
-    ).not.toHaveTextContent('3');
-  });
-
-  it('keeps the type field visible when its selector matches no sandboxes', () => {
-    mockUseAllSandboxes.mockImplementation((selector?: string) =>
-      ok(selector === 'type=tool' ? [] : sandboxes),
-    );
-    renderPage();
-    const type = screen.getByRole('textbox', {
-      name: 'Filter sandboxes by type label',
-    });
-    fireEvent.change(type, { target: { value: 'type=tool' } });
-    fireEvent.keyDown(type, { key: 'Enter' });
-    expect(screen.getByTestId('all-sandboxes-table')).toBeInTheDocument();
-    expect(type).toHaveValue('type=tool');
-    expect(screen.queryByTestId('all-sandboxes-empty')).not.toBeInTheDocument();
-  });
-
-  it('rejects a conflicting type key without changing the request', () => {
-    renderPage();
-    const selector = screen.getByRole('textbox', {
-      name: 'Filter sandboxes by label selector',
-    });
-    fireEvent.change(selector, { target: { value: 'type=agent' } });
-    fireEvent.keyDown(selector, { key: 'Enter' });
-    const type = screen.getByRole('textbox', {
-      name: 'Filter sandboxes by type label',
-    });
-    fireEvent.change(type, { target: { value: 'type=tool' } });
-    fireEvent.keyDown(type, { key: 'Enter' });
-    expect(
-      screen.getByTestId('all-sandboxes-type-label-error'),
-    ).toHaveTextContent('already uses type');
-    expect(mockUseAllSandboxPage).toHaveBeenLastCalledWith({
-      pageSize: 10,
-      pageToken: '',
-      labelSelector: 'type=agent',
-    });
-  });
-
-  it('shows why a label selector was refused and keeps the box', () => {
-    mockUseAllSandboxes.mockImplementation((selector?: string) =>
-      selector
-        ? failed("invalid label selector: expected 'key=value', got 'team'")
-        : ok(sandboxes),
-    );
-    renderPage();
-    const selector = screen.getByRole('textbox', {
-      name: 'Filter sandboxes by label selector',
-    });
-
-    fireEvent.change(selector, { target: { value: 'team' } });
-    fireEvent.keyDown(selector, { key: 'Enter' });
-
-    expect(screen.getByTestId('all-sandboxes-error')).toHaveTextContent(
-      "invalid label selector: expected 'key=value', got 'team'",
-    );
-    expect(
-      screen.getByRole('textbox', {
-        name: 'Filter sandboxes by label selector',
-      }),
-    ).toHaveValue('team');
-  });
-
   // The gateway answers these lists for platform admins only. The page does
-  // not second-guess it: the refusal is shown as the gateway worded it.
+  // not second-guess it: the refusal is shown as the gateway worded it, and
+  // the other lists are their own requests.
   it("shows the gateway's refusal as it is", () => {
-    mockUseAllSandboxes.mockReturnValue(
+    mockUseAllProviders.mockReturnValue(
       failed("role 'openshell-admin' required"),
     );
     renderPage();
 
-    const alert = screen.getByTestId('all-sandboxes-error');
-    expect(alert).toHaveTextContent('Failed to load sandboxes');
+    const alert = screen.getByTestId('all-providers-error');
+    expect(alert).toHaveTextContent('Failed to load providers');
     expect(alert).toHaveTextContent("role 'openshell-admin' required");
-    expect(screen.queryByTestId('all-sandboxes-table')).not.toBeInTheDocument();
-    // The other lists are their own requests and are not hidden by it.
-    openTab(/Providers/);
-    expect(rowsOf('all-providers-table')).toHaveLength(2);
-  });
-
-  it('retries a failed list', () => {
-    const refetch = jest.fn();
-    mockUseAllSandboxes.mockReturnValue({ ...failed('boom'), refetch });
-    renderPage();
-
-    fireEvent.click(
-      within(screen.getByTestId('all-sandboxes-error')).getByRole('button', {
-        name: 'Retry',
-      }),
-    );
-
-    expect(refetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('says so when no workspace has a sandbox', () => {
-    mockUseAllSandboxes.mockReturnValue(ok([]));
-    renderPage();
-
-    expect(screen.getByTestId('all-sandboxes-empty')).toHaveTextContent(
-      'No workspace on this gateway has a sandbox.',
-    );
+    expect(screen.queryByTestId('all-providers-table')).not.toBeInTheDocument();
+    openTab(/Templates/);
+    expect(rowsOf('all-templates-table')).toHaveLength(2);
   });
 
   // `openshell provider list --all-workspaces`: WORKSPACE, NAME, TYPE,
@@ -497,7 +252,6 @@ describe('AllWorkspacesPage', () => {
     fireEvent.change(selector, { target: { value: 'lang=python' } });
     fireEvent.keyDown(selector, { key: 'Enter' });
     expect(mockUseAllTemplates).toHaveBeenLastCalledWith('lang=python');
-    expect(mockUseAllSandboxes).toHaveBeenLastCalledWith(undefined);
   });
 
   // `openshell service list --all-workspaces`: WORKSPACE, SANDBOX, SERVICE,

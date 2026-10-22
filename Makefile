@@ -2,7 +2,7 @@ IMAGE_NAME ?= openshell-dashboard
 TAG ?= latest
 PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: help setup gateway dev dev-full dev-backend dev-frontend dev-proxy dev-logs dev-down dev-reset build build-frontend build-backend test lint lint-go typecheck format format-check clean buildx
+.PHONY: help setup gateway dev dev-full dev-mock dev-mock-empty dev-backend dev-frontend dev-proxy dev-logs dev-down dev-reset build build-frontend build-backend test lint lint-go typecheck format format-check clean buildx
 
 help: ## List the targets
 	@awk -F ':.*## ' '/^[a-zA-Z0-9_-]+:.*## / {printf "  %-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -23,6 +23,18 @@ dev-full: ## The same behind sign-in: starts the gateway, Keycloak and the auth 
 	@scripts/dev-env.sh proxy --build
 	scripts/dev-env.sh up --sign-in
 	@eval "$$(scripts/dev-env.sh env --sign-in)" && $(MAKE) -j3 dev-backend dev-frontend dev-proxy
+
+# UI work against fixtures instead of a gateway. A Vite middleware plugin
+# answers /api/v1 itself, so neither the BFF nor a gateway has to be running.
+# See docs/mock-api.md for what the fixtures cover.
+dev-mock: ## Start the frontend only (:3000), served from mock API data
+	cd frontend && MOCK_API=true npm start
+
+# The same fixtures, emptied: the one `default` workspace a gateway starts
+# with and nothing in it. This is how the Gateway page's get-started
+# walkthrough, which stands in for the counts, is reached.
+dev-mock-empty: ## Start the frontend only (:3000), as a gateway nobody has used yet
+	cd frontend && MOCK_API=true MOCK_EMPTY=true npm start
 
 # Sign-in is off unless the caller says otherwise: AUTH_DISABLED=false make dev.
 # make dev-full does, and adds what the BFF needs behind the auth proxy.

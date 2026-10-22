@@ -128,8 +128,12 @@ const renderTab = (data: DraftPolicy = inbox) => {
   return render(<SandboxDraftsTab workspace="team-a" sandboxName="sb1" />);
 };
 
-const clickToggle = (testId: string) =>
-  fireEvent.click(within(screen.getByTestId(testId)).getByRole('button'));
+// The status filter is a dropdown, so the four are only on screen once it is
+// open, and the menu is a popper outside the toolbar.
+const pickStatus = (label: string) => {
+  fireEvent.click(screen.getByTestId('draft-status-toggle'));
+  fireEvent.click(within(screen.getByRole('menu')).getByText(label));
+};
 
 describe('draft helpers', () => {
   it('builds a bulk approval from the pending chunks and their review tokens', () => {
@@ -217,6 +221,31 @@ describe('SandboxDraftsTab', () => {
     });
   });
 
+  // Hard fact 25: flagged proposals are left out of a bulk approval unless
+  // the reviewer asks for them.
+  it('leaves the security-flagged proposals out of a bulk approval by default', () => {
+    renderTab();
+    fireEvent.click(screen.getByTestId('approve-all-chunks'));
+    expect(mockApproveAll.mock.calls[0][0]).toEqual({
+      includeSecurityFlagged: false,
+      approvals: [
+        { chunkId: 'c1', reviewToken: 'tok-1' },
+        { chunkId: 'c2', reviewToken: 'tok-2' },
+      ],
+    });
+  });
+
+  // PatternFly has no success button. Approve is a plain secondary button,
+  // not one recoloured through PatternFly's private custom properties.
+  it('draws the approvals as plain secondary buttons', () => {
+    renderTab();
+    for (const id of ['approve-all-chunks', 'approve-chunk-c1']) {
+      const button = screen.getByTestId(id);
+      expect(button).toHaveClass('pf-m-secondary');
+      expect(button).not.toHaveAttribute('style');
+    }
+  });
+
   it('says how many were approved and how many skipped, and why', () => {
     mockApproveAll.mockImplementation((_args, options) =>
       options.onSuccess({
@@ -238,7 +267,7 @@ describe('SandboxDraftsTab', () => {
     expect(screen.getByTestId('draft-chunk-c1')).toBeInTheDocument();
     expect(screen.getByTestId('draft-chunk-c3')).toBeInTheDocument();
 
-    clickToggle('draft-status-rejected');
+    pickStatus('Rejected');
     expect(mockUseDraftPolicy).toHaveBeenCalledWith(
       'team-a',
       'sb1',
@@ -251,41 +280,96 @@ describe('SandboxDraftsTab', () => {
       'Approve all pending (2)',
     );
 
-    clickToggle('draft-status-approved');
+    pickStatus('Approved');
     expect(screen.getByTestId('draft-chunk-c3')).toBeInTheDocument();
     expect(screen.queryByTestId('draft-chunk-c4')).not.toBeInTheDocument();
+    // Shut, the toggle is the only thing saying which of the four is being
+    // asked for, so it has to say it.
+    expect(screen.getByTestId('draft-status-toggle')).toHaveTextContent(
+      'Approved',
+    );
   });
 
   it('says which filter came back empty', () => {
     renderTab({ ...inbox, chunks: [chunk({ id: 'c1' })] });
-    clickToggle('draft-status-rejected');
+    pickStatus('Rejected');
     expect(screen.getByTestId('draft-empty')).toHaveTextContent(
       'No rejected proposals.',
     );
   });
 
+  // There is no summary in mechanistic mode — no model writes one — and then
+  // the version and the time of the analysis are all there is to say, on
+  // their own above the proposals.
   it('shows the draft version and when the sandbox was last analyzed', () => {
     renderTab();
-    expect(screen.getByTestId('draft-version')).toHaveTextContent(
+    const analysedAt = screen.getByTestId('draft-version');
+    expect(analysedAt).toHaveTextContent('Draft version 12');
+    expect(analysedAt).toHaveTextContent('last analyzed');
+    expect(screen.queryByTestId('draft-summary')).not.toBeInTheDocument();
+  });
+
+  // The model's account of what the sandbox has been doing. Nothing has
+  // happened and there is nothing to do about it, so it is prose above the
+  // proposals rather than an alert among the things that did happen — and the
+  // analysis it came from is named with it, in the same panel, since that is
+  // what says as of when it is true.
+  it('gives the analysis summary as plain text, not an alert', () => {
+    renderTab({
+      ...inbox,
+      rollingSummary: 'The sandbox keeps reaching for pypi.org.',
+    });
+
+    const summary = screen.getByTestId('draft-summary');
+    expect(summary).toHaveTextContent(
+      'The sandbox keeps reaching for pypi.org',
+    );
+    expect(summary.closest('.pf-v6-c-alert')).toBeNull();
+    expect(within(summary).getByTestId('draft-version')).toHaveTextContent(
       'Draft version 12',
     );
-    expect(screen.getByTestId('draft-version')).toHaveTextContent(
-      'last analyzed',
-    );
+    // Said once, not in both places.
+    expect(screen.getAllByTestId('draft-version')).toHaveLength(1);
+  });
+
+  // Whose words they are is a question asked once and not wanted on screen
+  // afterwards, so it is in the corner of the panel rather than beside a
+  // heading over it.
+  it('explains in a popover where the summary comes from', async () => {
+    renderTab({
+      ...inbox,
+      rollingSummary: 'The sandbox keeps reaching for pypi.org.',
+    });
+
+    fireEvent.click(screen.getByTestId('draft-summary-help'));
+
+    const popover = await screen.findByRole('dialog');
+    // Who wrote it: the one thing the panel itself no longer says, now that
+    // the heading above it is gone.
+    expect(popover).toHaveTextContent('LLM-generated');
   });
 
   it('shows what the CLI and TUI show about a chunk', () => {
     renderTab();
     const row = screen.getByTestId('draft-chunk-c2');
-    expect(row).toHaveTextContent('flagged');
-    expect(row).toHaveTextContent('refined');
+    // The row carries the rule, its status, the denial count and the one
+    // label an approve-all acts on. The labels that only qualify a proposal
+    // are in the detail, not beside the name.
     expect(row).toHaveTextContent('3 times');
-    expect(screen.getByTestId('chunk-annotation-c2')).toHaveTextContent(
-      'review required',
-    );
+    expect(row).toHaveTextContent('flagged');
+    expect(row).not.toHaveTextContent('refined');
+    expect(row).not.toHaveTextContent('review required');
 
     fireEvent.click(within(row).getByRole('button', { name: 'Details' }));
     const details = screen.getByTestId('chunk-details-c2');
+    // The flag is said twice on purpose: in the table, and again against the
+    // note it was raised about.
+    expect(details).toHaveTextContent('flagged');
+    expect(details).toHaveTextContent('wildcard host');
+    expect(details).toHaveTextContent('refined');
+    expect(
+      within(details).getByTestId('chunk-annotation-c2'),
+    ).toHaveTextContent('review required');
     expect(details).toHaveTextContent('possible issues: private ip reach');
     expect(details).toHaveTextContent('3 connections (first');
     expect(details).toHaveTextContent('/ last');
@@ -374,7 +458,7 @@ describe('SandboxDraftsTab', () => {
     expect(screen.queryByTestId('approve-all-chunks')).not.toBeInTheDocument();
     expect(screen.queryByTestId('approve-chunk-c1')).not.toBeInTheDocument();
     // The filter is a read, so it stays.
-    expect(screen.getByTestId('draft-status-pending')).toBeInTheDocument();
+    expect(screen.getByTestId('draft-status-toggle')).toBeInTheDocument();
   });
   // A second click while the first rejection is on its way would be a second
   // rejection, which the gateway answers with an error for a chunk that is

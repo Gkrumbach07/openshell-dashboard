@@ -48,12 +48,20 @@ jest.mock('../../app/AlertContext', () => ({
   })),
 }));
 
-// The tabs have specs of their own. Here each is a marker that says it was
-// mounted, which is what this page decides.
+// The banner has a spec of its own. What this page decides is which of its
+// links there is anything behind from the tab that is open.
+const mockAttentionProps: { onReviewDrafts?: () => void }[] = [];
+const lastAttention = () => mockAttentionProps[mockAttentionProps.length - 1];
 jest.mock('../../components/sandbox/SandboxAttention', () => ({
   __esModule: true,
-  default: () => null,
+  default: (props: { onReviewDrafts?: () => void }) => {
+    mockAttentionProps.push(props);
+    return null;
+  },
 }));
+
+// The tabs have specs of their own. Here each is a marker that says it was
+// mounted, which is what this page decides.
 jest.mock('../../components/sandbox/SandboxLogsTab', () => ({
   __esModule: true,
   default: () => null,
@@ -140,6 +148,7 @@ const renderPage = (activeTab?: string) => {
 describe('SandboxDetailPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAttentionProps.length = 0;
     mockFlags = { ...mockFlags, settings: true };
   });
 
@@ -180,6 +189,18 @@ describe('SandboxDetailPage', () => {
     expect(screen.getByTestId('settings-tab-content')).toHaveTextContent(
       'team-a/agent-1',
     );
+  });
+
+  // The banner sits above the tabs, so it is on screen on every one of them.
+  // On the Proposals tab its Review link leads where the reader already is.
+  it('offers no Review of the proposals from the Proposals tab', () => {
+    renderPage('proposals');
+    expect(lastAttention()?.onReviewDrafts).toBeUndefined();
+  });
+
+  it('offers it from every other tab', () => {
+    renderPage('details');
+    expect(lastAttention()?.onReviewDrafts).toBeDefined();
   });
 
   it('has no Settings tab where the settings feature is off', () => {
