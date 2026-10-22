@@ -63,6 +63,19 @@ export default {
     unreachable: 'Gateway unreachable',
     unknown: 'Gateway status unknown',
   },
+  logs: {
+    autoRefresh: 'Auto-refresh',
+    updatesOff: 'Automatic log updates are off.',
+    pollingTitle: 'Using polling',
+    pollingDescription:
+      'Streaming is unavailable. Logs refresh every {{seconds}} seconds until you retry streaming.',
+    pollingPaused: 'Streaming is unavailable. Automatic log updates are off.',
+    pollingFailed:
+      'Automatic log updates stopped after an error. Press Retry to resume.',
+    retryStream: 'Retry stream',
+    loadErrorTitle: 'Failed to load logs',
+    refreshErrorTitle: 'The logs could not be refreshed',
+  },
   actions: {
     retry: 'Retry',
   },

@@ -2,6 +2,57 @@ import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import SandboxLogsTab from '../sandbox/SandboxLogsTab';
 import type { LogFilters, LogLine, SandboxLogs } from '../../types';
+import { useSandboxLogs, watchSandboxLogs } from '~/api';
+
+jest.mock('@patternfly/react-log-viewer', () => ({
+  LogViewer: ({
+    data,
+    toolbar,
+    footer,
+  }: {
+    data: string;
+    toolbar: React.ReactNode;
+    footer: React.ReactNode;
+  }) => (
+    <>
+      {toolbar}
+      <pre data-testid="logs-text">{data}</pre>
+      {footer}
+    </>
+  ),
+  LogViewerSearch: () => null,
+}));
+
+jest.mock('../../api/sandboxes', () => ({
+  useSandboxLogs: jest.fn(),
+  watchSandboxLogs: jest.fn(),
+}));
+
+const mockUseSandboxLogs = useSandboxLogs as jest.Mock;
+const mockWatchSandboxLogs = watchSandboxLogs as jest.Mock;
+const mockRefetch = jest.fn();
+const mockStop = jest.fn();
+let mockOnLog: (line: LogLine) => void;
+let mockOnWarning: (message: string) => void;
+let mockOnDisconnect: () => void;
+
+const line = (message: string): LogLine => ({
+  timestampMs: 1_760_000_000_000,
+  level: 'INFO',
+  source: 'sandbox',
+  message,
+});
+
+const servePolling = (data?: SandboxLogs, error: Error | null = null) =>
+  mockUseSandboxLogs.mockReturnValue({ data, error, refetch: mockRefetch });
+
+const renderTab = () =>
+  render(<SandboxLogsTab workspace="team-a" sandboxName="agent" />);
+
+const pollingEnabled = () => {
+  const calls = mockUseSandboxLogs.mock.calls;
+  return calls[calls.length - 1][4];
+};
 
 // What the viewer reports about its list, and the list the tab drives.
 type MockScroll = {
@@ -93,10 +144,12 @@ jest.mock('@patternfly/react-log-viewer', () => {
 
 jest.mock('../../api/sandboxes', () => ({
   useSandboxLogs: jest.fn(),
+  // Keep these existing toolbar, row and follow cases on the polling path.
+  // Stream/fallback presentation is covered in SandboxLogsTab.transport.spec.tsx.
+  watchSandboxLogs: jest.fn(() => {
+    throw new Error('Streaming unavailable');
+  }),
 }));
-
-import { useSandboxLogs } from '../../api/sandboxes';
-const mockUseSandboxLogs = useSandboxLogs as jest.Mock;
 
 const serve = (logs: SandboxLogs) =>
   mockUseSandboxLogs.mockReturnValue({
@@ -125,9 +178,6 @@ const lastRequest = (): { filters: LogFilters; autoRefresh: boolean } => {
   expect([workspace, sandbox]).toEqual(['team-a', 'agent']);
   return { filters, autoRefresh };
 };
-
-const renderTab = () =>
-  render(<SandboxLogsTab workspace="team-a" sandboxName="agent" />);
 
 const sinceBox = () => screen.getByTestId('logs-since-input');
 
@@ -184,29 +234,27 @@ describe('SandboxLogsTab', () => {
     );
   });
 
-  // The gateway filters the lines it was asked for, not everything the
-  // sandbox ever logged. The CLI prints the same warning with --since.
-  it('warns that a window is searched in the returned lines only', () => {
+  it('warns that a window can only search retained lines', () => {
     renderTab();
 
     typeSince('5m');
 
     expect(screen.getByTestId('logs-since-note')).toHaveTextContent(
-      'Only the last 200 log lines were searched, so results for this window may be incomplete.',
+      'Since filters only retained log lines. Older matching lines may be unavailable.',
     );
   });
 
-  it('says to raise the line count while there is a larger one to pick', () => {
+  it('does not promise that raising the displayed line count fetches older history', () => {
     renderTab();
 
     typeSince('5m');
 
-    expect(screen.getByTestId('logs-since-note')).toHaveTextContent(
+    expect(screen.getByTestId('logs-since-note')).not.toHaveTextContent(
       'Raise the line count to search further back.',
     );
   });
 
-  it('does not say so at the largest line count', () => {
+  it('keeps the retention warning at the largest line count', () => {
     serve({ bufferTotal: 2000, logs: someLogs.logs });
     renderTab();
     fireEvent.change(screen.getByTestId('logs-lines-select'), {
@@ -217,23 +265,24 @@ describe('SandboxLogsTab', () => {
 
     const note = screen.getByTestId('logs-since-note');
     expect(note).toHaveTextContent(
-      'Only the last 2000 log lines were searched, so results for this window may be incomplete.',
+      'Since filters only retained log lines. Older matching lines may be unavailable.',
     );
     expect(note).not.toHaveTextContent('Raise the line count');
   });
 
-  // Fewer lines than were asked for means the gateway searched everything it
-  // holds: there is nothing further back to miss.
+  // A snapshot does not establish how much older history the gateway trimmed.
   it.each([
     ['fewer lines than were asked for', 36],
     ['no lines at all', 0],
-  ])('does not warn when the gateway searched %s', (_name, bufferTotal) => {
+  ])('keeps the retention warning with %s', (_name, bufferTotal) => {
     serve({ bufferTotal, logs: [] });
     renderTab();
 
     typeSince('5m');
 
-    expect(screen.queryByTestId('logs-since-note')).not.toBeInTheDocument();
+    expect(screen.getByTestId('logs-since-note')).toHaveTextContent(
+      'Older matching lines may be unavailable.',
+    );
   });
 
   it('combines the window with the other filters', () => {
@@ -285,7 +334,7 @@ describe('SandboxLogsTab', () => {
     expect(screen.queryByTestId('logs-clear-filters')).not.toBeInTheDocument();
   });
 
-  // Polling is how the tab follows a log: there is no stream through the BFF.
+  // The fallback keeps updating until automatic updates are switched off.
   it('keeps polling unless auto-refresh is switched off', () => {
     renderTab();
     typeSince('5m');
@@ -469,22 +518,23 @@ describe('SandboxLogsTab follow', () => {
 
     expect(followStatus()).toHaveTextContent('Following');
     expect(screen.queryByTestId('logs-paused-reason')).not.toBeInTheDocument();
-    expect(mockScrollToBottom).toHaveBeenCalledTimes(1);
+    expect(mockScrollToBottom).toHaveBeenCalled();
     // There is nowhere to jump to from the newest line.
     expect(jumpToLatest()).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('goes to the newest line again whenever the lines change', () => {
     const { rerender } = renderTab();
-    expect(mockScrollToBottom).toHaveBeenCalledTimes(1);
+    const initialScrolls = mockScrollToBottom.mock.calls.length;
+    expect(initialScrolls).toBeGreaterThan(0);
 
     // A refresh that brought nothing new moves nothing.
     rerender(<SandboxLogsTab workspace="team-a" sandboxName="agent" />);
-    expect(mockScrollToBottom).toHaveBeenCalledTimes(1);
+    expect(mockScrollToBottom).toHaveBeenCalledTimes(initialScrolls);
 
     serveLines(logLine('one'), logLine('two'), logLine('three'));
     rerender(<SandboxLogsTab workspace="team-a" sandboxName="agent" />);
-    expect(mockScrollToBottom).toHaveBeenCalledTimes(2);
+    expect(mockScrollToBottom).toHaveBeenCalledTimes(initialScrolls + 1);
     expect(followStatus()).toHaveTextContent('Following');
   });
 
@@ -592,7 +642,7 @@ describe('SandboxLogsTab follow', () => {
 
     expect(followStatus()).toHaveTextContent('Paused');
     expect(screen.getByTestId('logs-paused-reason')).toHaveTextContent(
-      'Auto-refresh is off.',
+      'Automatic log updates are off.',
     );
     // The view is still at the newest line it has.
     expect(jumpToLatest()).toHaveAttribute('aria-disabled', 'true');
@@ -983,5 +1033,197 @@ describe('SandboxLogsTab when a request fails', () => {
     renderTab();
     fireEvent.click(screen.getByTestId('log-row-1'));
     expect(screen.queryByTestId('log-line-detail')).not.toBeInTheDocument();
+  });
+});
+
+describe('SandboxLogsTab transport presentation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    servePolling();
+    mockWatchSandboxLogs.mockImplementation(
+      (
+        _workspace: string,
+        _sandbox: string,
+        _tailLines: number,
+        onLog: (line: LogLine) => void,
+        onWarning: (message: string) => void,
+        onDisconnect: () => void,
+      ) => {
+        mockOnLog = onLog;
+        mockOnWarning = onWarning;
+        mockOnDisconnect = onDisconnect;
+        return mockStop;
+      },
+    );
+  });
+
+  it('ignores errors from disabled polling while streaming', () => {
+    servePolling(undefined, new Error('Previous polling failure'));
+    renderTab();
+    act(() => mockOnLog(line('Streamed line')));
+
+    expect(pollingEnabled()).toBe(false);
+    expect(screen.getByTestId('logs-text')).toHaveTextContent('Streamed line');
+    expect(screen.getByTestId('logs-follow-status')).toHaveTextContent(
+      'Following',
+    );
+    expect(screen.queryByTestId('logs-load-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('logs-refresh-error')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('logs-polling-fallback'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('announces polling fallback without treating healthy polling as an error', () => {
+    renderTab();
+    servePolling({ logs: [line('Polled line')], bufferTotal: 1 });
+    act(() => mockOnDisconnect());
+
+    expect(pollingEnabled()).toBe(true);
+    expect(screen.getByTestId('logs-polling-fallback')).toHaveTextContent(
+      'Logs refresh every 5 seconds until you retry streaming.',
+    );
+    expect(screen.getByTestId('logs-text')).toHaveTextContent('Polled line');
+    expect(screen.getByTestId('logs-follow-status')).toHaveTextContent(
+      'Following',
+    );
+    expect(screen.queryByTestId('logs-paused-reason')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('logs-load-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('logs-refresh-error')).not.toBeInTheDocument();
+    expect(mockStop).toHaveBeenCalledTimes(1);
+    expect(mockWatchSandboxLogs).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps streamed lines visible while the first poll is pending', () => {
+    renderTab();
+    act(() => mockOnLog(line('Last streamed line')));
+    act(() => mockOnDisconnect());
+
+    expect(screen.getByTestId('logs-text')).toHaveTextContent(
+      'Last streamed line',
+    );
+    expect(screen.queryByTestId('logs-load-error')).not.toBeInTheDocument();
+  });
+
+  it('retries streaming only through the explicit fallback action', () => {
+    renderTab();
+    act(() => mockOnDisconnect());
+    expect(mockWatchSandboxLogs).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId('logs-retry-stream'));
+
+    expect(mockWatchSandboxLogs).toHaveBeenCalledTimes(2);
+    expect(pollingEnabled()).toBe(false);
+    expect(
+      screen.queryByTestId('logs-polling-fallback'),
+    ).not.toBeInTheDocument();
+    expect(mockRefetch).not.toHaveBeenCalled();
+  });
+
+  it('shows polling refresh errors and retries polling without reopening SSE', () => {
+    renderTab();
+    servePolling(
+      { logs: [line('Earlier polled line')], bufferTotal: 1 },
+      new Error('Polling gateway unavailable'),
+    );
+    act(() => mockOnDisconnect());
+
+    const alert = screen.getByTestId('logs-refresh-error');
+    expect(alert).toHaveTextContent('Polling gateway unavailable');
+    expect(screen.getByTestId('logs-text')).toHaveTextContent(
+      'Earlier polled line',
+    );
+    expect(screen.getByTestId('logs-follow-status')).toHaveTextContent(
+      'Paused',
+    );
+    expect(screen.getByTestId('logs-paused-reason')).toHaveTextContent(
+      'Polling gateway unavailable',
+    );
+
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+
+    expect(mockRefetch).toHaveBeenCalledTimes(1);
+    expect(mockWatchSandboxLogs).toHaveBeenCalledTimes(1);
+    expect(pollingEnabled()).toBe(true);
+  });
+
+  it('preserves streamed lines when polling fails before returning a snapshot', () => {
+    renderTab();
+    act(() => mockOnLog(line('Last streamed line')));
+    servePolling(undefined, new Error('Polling failed'));
+    act(() => mockOnDisconnect());
+
+    expect(screen.getByTestId('logs-refresh-error')).toHaveTextContent(
+      'Polling failed',
+    );
+    expect(screen.getByTestId('logs-text')).toHaveTextContent(
+      'Last streamed line',
+    );
+    expect(screen.queryByTestId('logs-load-error')).not.toBeInTheDocument();
+  });
+
+  it('shows an initial polling failure and retries the active transport', () => {
+    renderTab();
+    servePolling(undefined, new Error('Initial polling failure'));
+    act(() => mockOnDisconnect());
+
+    const alert = screen.getByTestId('logs-load-error');
+    expect(alert).toHaveTextContent('Initial polling failure');
+    expect(screen.getByTestId('logs-text')).toHaveTextContent(
+      'The logs could not be loaded.',
+    );
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+
+    expect(mockRefetch).toHaveBeenCalledTimes(1);
+    expect(mockWatchSandboxLogs).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats an empty successful snapshot as loaded during a refresh failure', () => {
+    renderTab();
+    servePolling({ logs: [], bufferTotal: 0 }, new Error('Refresh failed'));
+    act(() => mockOnDisconnect());
+
+    expect(screen.getByTestId('logs-refresh-error')).toHaveTextContent(
+      'Refresh failed',
+    );
+    expect(screen.queryByTestId('logs-load-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('logs-text')).toHaveTextContent(
+      'No log lines match the current filters.',
+    );
+  });
+
+  it('does not claim polling is running when automatic updates are disabled', () => {
+    renderTab();
+    act(() => mockOnDisconnect());
+    fireEvent.click(screen.getByTestId('logs-auto-refresh'));
+
+    expect(pollingEnabled()).toBe(false);
+    expect(screen.getByTestId('logs-auto-refresh')).toHaveAccessibleName(
+      'Auto-refresh',
+    );
+    expect(screen.getByTestId('logs-follow-status')).toHaveTextContent(
+      'Paused',
+    );
+    expect(screen.getByTestId('logs-paused-reason')).toHaveTextContent(
+      'Automatic log updates are off.',
+    );
+    expect(screen.getByTestId('logs-polling-fallback')).toHaveTextContent(
+      'Streaming is unavailable. Automatic log updates are off.',
+    );
+    expect(screen.getByTestId('logs-polling-fallback')).not.toHaveTextContent(
+      'Logs refresh every',
+    );
+  });
+
+  it('hides stream-specific warnings after switching to polling', () => {
+    renderTab();
+    act(() => mockOnWarning('Stream warning'));
+    expect(screen.getByTestId('logs-stream-warning')).toHaveTextContent(
+      'Stream warning',
+    );
+
+    act(() => mockOnDisconnect());
+
+    expect(screen.queryByTestId('logs-stream-warning')).not.toBeInTheDocument();
   });
 });

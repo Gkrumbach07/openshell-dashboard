@@ -7,6 +7,8 @@ import (
 
 	openshell "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
+	pb "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	"google.golang.org/grpc"
 )
 
 // mockSDK is a mock of openshell.ClientInterface for testing.
@@ -133,6 +135,33 @@ type mockSDKSandboxes struct {
 	getLogsFn       func(ctx context.Context, workspace, name string, opts ...openshell.LogOption) (*openshell.LogResult, error)
 	stopFn          func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
 	startFn         func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
+}
+
+// mockSandboxRawExec provides the raw WatchSandbox call used for live logs.
+type mockSandboxRawExec struct {
+	watchLogsFn func(ctx context.Context, req *pb.WatchSandboxRequest) (grpc.ServerStreamingClient[pb.SandboxStreamEvent], error)
+}
+
+func (m *mockSandboxRawExec) WatchSandbox(ctx context.Context, req *pb.WatchSandboxRequest) (grpc.ServerStreamingClient[pb.SandboxStreamEvent], error) {
+	return m.watchLogsFn(ctx, req)
+}
+
+type mockServerStream struct {
+	grpc.ClientStream
+	err    error
+	events []*pb.SandboxStreamEvent
+}
+
+func (m *mockServerStream) Recv() (*pb.SandboxStreamEvent, error) {
+	if len(m.events) > 0 {
+		event := m.events[0]
+		m.events = m.events[1:]
+		return event, nil
+	}
+	if m.err != nil {
+		return nil, m.err
+	}
+	return nil, io.EOF
 }
 
 func (m *mockSDKSandboxes) List(workspace string, opts ...openshell.ListOptions) (*openshell.Pager[*openshell.Sandbox], error) {

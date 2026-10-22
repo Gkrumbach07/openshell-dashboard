@@ -17,6 +17,23 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+type RawExecClientInterface interface {
+	Close() error
+	ExecWithStdin(ctx context.Context, workspace, sandboxName string, command []string, stdin []byte) (string, int, error)
+	ExecWithStdinStream(ctx context.Context, workspace, sandboxName string, command []string, stdin io.Reader) (string, int, error)
+	ListProviderProfiles(ctx context.Context, workspace string) ([]*pb.ProviderProfile, error)
+	GetProviderProfile(ctx context.Context, workspace, id string) (*pb.ProviderProfile, error)
+	ImportProviderProfiles(ctx context.Context, workspace string, items []*pb.ProviderProfileImportItem) (*pb.ImportProviderProfilesResponse, error)
+	UpdateProviderProfile(ctx context.Context, workspace, id string, expectedResourceVersion uint64, item *pb.ProviderProfileImportItem) (*pb.UpdateProviderProfilesResponse, error)
+	LintProviderProfiles(ctx context.Context, workspace string, items []*pb.ProviderProfileImportItem) (*pb.LintProviderProfilesResponse, error)
+	checkStablePlaceholder(ctx context.Context, workspace string, items []*pb.ProviderProfileImportItem) error
+	ProviderCredentialKeys(ctx context.Context, workspace, name string) ([]string, error)
+	ListProviderCredentialKeys(ctx context.Context, workspace string) (map[string][]string, error)
+	ListSandboxProviderCredentialKeys(ctx context.Context, workspace, sandboxName string) (map[string][]string, error)
+	ListProviderCredentialKeysAllWorkspaces(ctx context.Context) (map[string]map[string][]string, error)
+	WatchSandbox(ctx context.Context, req *pb.WatchSandboxRequest) (grpc.ServerStreamingClient[pb.SandboxStreamEvent], error)
+}
+
 // RawExecClient calls the gateway through the SDK's generated proto client for
 // the three things the OpenShell Go SDK's own client does not offer. It shares
 // the same address, TLS, and per-request bearer forwarding as the main SDK

@@ -945,6 +945,13 @@ export type SandboxLogs = {
   bufferTotal: number;
 };
 
+export enum LogEvent {
+  Log = 'log',
+  Warning = 'warning',
+  StreamError = 'stream-error',
+  End = 'end',
+}
+
 // --- Policy revisions (SandboxPolicyRevision) ---
 
 export type PolicyStatus =

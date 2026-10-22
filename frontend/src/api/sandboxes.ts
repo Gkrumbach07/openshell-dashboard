@@ -7,19 +7,22 @@ import {
   apiUrl,
   del,
   get,
+  openEventSource,
   post,
   sessionExpiredError,
 } from './client';
 import { policyKeys, sandboxKeys } from './queryKeys';
-import type {
-  CreateSandboxRequest,
-  DeleteResult,
-  ExposeServiceRequest,
-  LogFilters,
-  Provider,
-  Sandbox,
-  SandboxLogs,
-  ServiceEndpoint,
+import {
+  LogEvent,
+  type CreateSandboxRequest,
+  type DeleteResult,
+  type ExposeServiceRequest,
+  type LogFilters,
+  type LogLine,
+  type Provider,
+  type Sandbox,
+  type SandboxLogs,
+  type ServiceEndpoint,
 } from '../types';
 
 export const listSandboxes = (
@@ -129,12 +132,55 @@ export const useSandboxLogs = (
   name: string,
   filters: LogFilters,
   autoRefresh: boolean,
+  enabled = true,
 ) =>
   useQuery({
     queryKey: sandboxKeys.logs(workspace, name, filters),
     queryFn: () => getSandboxLogs(workspace, name, filters),
-    refetchInterval: autoRefresh ? SANDBOX_POLL_MS : false,
+    // A failed request stays stopped until an explicit refetch succeeds.
+    enabled: (query) => enabled && query.state.status !== 'error',
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchInterval: (query) =>
+      autoRefresh && query.state.status !== 'error' ? SANDBOX_POLL_MS : false,
   });
+
+export const watchSandboxLogs = (
+  workspace: string,
+  name: string,
+  tailLines: number,
+  onLog: (line: LogLine) => void,
+  onWarning: (message: string) => void,
+  onDisconnect: () => void,
+): (() => void) => {
+  const params = new URLSearchParams({
+    lines: String(tailLines),
+  });
+
+  const source = openEventSource(
+    `/api/v1/workspaces/${encodeURIComponent(workspace)}/sandboxes/${encodeURIComponent(name)}/logs/stream?${params.toString()}`,
+  );
+
+  source.addEventListener(LogEvent.Log, (event: MessageEvent<string>) => {
+    onLog(JSON.parse(event.data));
+  });
+
+  source.addEventListener(LogEvent.Warning, (event: MessageEvent<string>) => {
+    onWarning(JSON.parse(event.data));
+  });
+
+  const disconnect = () => {
+    source.close();
+    onDisconnect();
+  };
+
+  source.addEventListener(LogEvent.StreamError, disconnect);
+  source.addEventListener(LogEvent.End, disconnect);
+  source.onerror = disconnect;
+
+  return () => source.close();
+};
 
 export const listAttachedProviders = (
   workspace: string,
