@@ -26,13 +26,28 @@ export const interceptGateway = () => {
   }).as('gatewayCompatibility');
 };
 
+// The list fixtures are written as one page, { items, nextPageToken }. The
+// BFF answers a list that way only when it is asked for pageSize; without it,
+// the answer is the whole array. The shell's counts and the Gateway page ask
+// without, the paged lists with, so a stub answers each as the BFF would.
+const replyAsListOrPage =
+  (page: { items: unknown[] }) =>
+  (req: {
+    query: Record<string, string | number>;
+    reply: (body: object) => void;
+  }) =>
+    req.reply({
+      statusCode: 200,
+      body: req.query.pageSize ? page : page.items,
+    });
+
 export const interceptWorkspaces = () => {
-  cy.intercept(
-    { method: 'GET', pathname: '/api/v1/workspaces' },
-    {
-      fixture: 'workspaces.json',
-    },
-  ).as('listWorkspaces');
+  cy.fixture('workspaces.json').then((page) => {
+    cy.intercept(
+      { method: 'GET', pathname: '/api/v1/workspaces' },
+      replyAsListOrPage(page),
+    ).as('listWorkspaces');
+  });
 
   cy.intercept('GET', '/api/v1/workspaces/default', {
     statusCode: 200,
@@ -209,9 +224,7 @@ export const interceptProviders = (workspace = 'default') => {
 
   cy.intercept(
     'DELETE',
-    new RegExp(
-      `/api/v1/workspaces/${workspace}/provider-profiles/[^/]+$`,
-    ),
+    new RegExp(`/api/v1/workspaces/${workspace}/provider-profiles/[^/]+$`),
     { statusCode: 200, body: { deleted: true } },
   ).as('deleteProviderProfile');
 
@@ -323,9 +336,12 @@ export const interceptMisc = () => {
     body: { sandboxes: [], totalPending: 0 },
   }).as('allWorkspacesDraftSummary');
 
-  cy.intercept('GET', '/api/v1/sandboxes', {
-    fixture: 'sandboxes.json',
-  }).as('listAllSandboxes');
+  cy.fixture('sandboxes.json').then((page) => {
+    cy.intercept(
+      { method: 'GET', pathname: '/api/v1/sandboxes' },
+      replyAsListOrPage(page),
+    ).as('listAllSandboxes');
+  });
 
   cy.intercept('GET', '/api/v1/providers', {
     fixture: 'providers.json',
