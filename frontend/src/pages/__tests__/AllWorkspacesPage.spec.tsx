@@ -143,7 +143,7 @@ describe('AllWorkspacesPage', () => {
     expect(screen.getByTestId('all-providers-table')).toBeInTheDocument();
   });
 
-  it('does not show an inaccurate sandbox total', () => {
+  it('counts the providers, templates and services on their tabs', () => {
     renderPage();
     expect(screen.getByRole('tab', { name: /Providers/ })).toHaveTextContent(
       'Providers 2',

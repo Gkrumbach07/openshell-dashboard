@@ -7,19 +7,6 @@ export default {
     title: 'Sandboxes',
     description:
       'Secure execution environments, across every workspace on the gateway.',
-    // Names the table; ResourceTable also builds its loading, filter and
-    // error wording from it.
-    tableTitle: 'Sandboxes',
-    filterPlaceholder: 'Filter by workspace or name',
-    empty: 'No workspace on this gateway has a sandbox.',
-    columns: {
-      name: 'Name',
-      workspace: 'Workspace',
-      status: 'Status',
-      image: 'Image',
-      labels: 'Labels',
-      age: 'Age',
-    },
   },
   proposals: {
     title: 'Proposals',
