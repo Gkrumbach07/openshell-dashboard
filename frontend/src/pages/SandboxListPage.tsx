@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Bullseye,
@@ -11,7 +11,6 @@ import {
   EmptyStateBody,
   EmptyStateFooter,
   MenuToggle,
-  Pagination,
   SearchInput,
   Spinner,
   ToggleGroup,
@@ -19,10 +18,12 @@ import {
   Toolbar,
   ToolbarContent,
   ToolbarItem,
+  ToolbarToggleGroup,
 } from '@patternfly/react-core';
 import {
   CubesIcon,
   EllipsisVIcon,
+  FilterIcon,
   ListIcon,
   ThIcon,
 } from '@patternfly/react-icons';
@@ -37,12 +38,14 @@ import { useProviderExpiry } from '../api/providers';
 import { sandboxKeys } from '../api/queryKeys';
 import {
   deleteSandbox,
-  useSandboxes,
+  useSandboxPage,
   useStartSandbox,
   useStopSandbox,
 } from '../api/sandboxes';
 import { useAlerts } from '../app/AlertContext';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import CursorPagination from '../components/CursorPagination';
+import CursorPageTransition from '../components/CursorPageTransition';
 import CreateSandboxModal from '../components/CreateSandboxModal';
 import RefreshErrorAlert, {
   isRefreshError,
@@ -50,9 +53,16 @@ import RefreshErrorAlert, {
 import SandboxGalleryView from '../components/sandbox/SandboxGalleryView';
 import SandboxTableRow from '../components/sandbox/SandboxTableRow';
 import { useBulkDelete } from '../hooks/useBulkDelete';
-import { useListPage } from '../hooks/useListPage';
+import {
+  isCursorPagePending,
+  useCursorListPage,
+  useCursorPageResult,
+} from '../hooks/useCursorListPage';
+import { useCursorSelection } from '../hooks/useCursorSelection';
+import { useI18n } from '../i18n';
 import { describeDeletions, type ResourceNoun } from '../utils/deletion';
 import { hasPolicyRevision } from '../utils/sandboxLifecycle';
+import { combineSandboxLabelSelector } from '../utils/sandboxLabelSelector';
 import type { Sandbox } from '../types';
 
 const SANDBOX_NOUN: ResourceNoun = { singular: 'sandbox', plural: 'sandboxes' };
@@ -116,31 +126,74 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
   // search is submitted, not on every key.
   const [selectorInput, setSelectorInput] = useState('');
   const [labelSelector, setLabelSelector] = useState('');
-  const sandboxes = useSandboxes(workspace, labelSelector || undefined);
+  const [typeInput, setTypeInput] = useState('');
+  const [typeLabel, setTypeLabel] = useState('');
+  const [filterError, setFilterError] = useState('');
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [nameFilter, setNameFilter] = useState('');
+  const resultsRef = useRef<HTMLHeadingElement>(null);
+  const { t: tCommon } = useI18n('common');
   const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
+  const scope = `${workspace}\0${labelSelector}\0${typeLabel}`;
   const {
     page,
-    setPage,
+    pageToken,
+    reset,
+    next,
+    previous,
     perPage,
     onPerPageSelect,
+    isTransitioning,
+    markLoaded,
+  } = useCursorListPage(scope);
+  const {
     selected,
-    numSelected,
     toggleAll,
     toggleOne,
     pageAllSelected,
+    reconcilePage,
     clearSelection,
-    isActionsOpen,
-    setActionsOpen,
-    deleteTargets,
-    setDeleteTargets,
-    closeDeleteModal,
-    deleteSelectedLabel,
-    pageOf,
-  } = useListPage();
+  } = useCursorSelection(scope);
+  const [isActionsOpen, setActionsOpen] = useState(false);
+  const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
+  const closeDeleteModal = () => setDeleteTargets(null);
+  const deleteSelectedLabel = selected.length
+    ? `Delete selected (${selected.length})`
+    : 'Delete selected';
+  useEffect(() => setDeleteTargets(null), [workspace]);
+  const combinedSelector = combineSandboxLabelSelector(
+    labelSelector,
+    typeLabel,
+  ).selector;
+  const sandboxes = useSandboxPage(workspace, {
+    pageSize: perPage,
+    pageToken,
+    labelSelector: combinedSelector || undefined,
+  });
+  useCursorPageResult({ page, markLoaded, reset }, sandboxes);
+  useEffect(() => {
+    if (
+      !sandboxes.data ||
+      sandboxes.isFetching ||
+      sandboxes.isError ||
+      sandboxes.isPlaceholderData
+    )
+      return;
+    reconcilePage(
+      `${perPage}\0${pageToken}`,
+      sandboxes.data.items.map(sandboxName),
+    );
+  }, [
+    sandboxes.data,
+    sandboxes.isFetching,
+    sandboxes.isError,
+    sandboxes.isPlaceholderData,
+    perPage,
+    pageToken,
+    reconcilePage,
+  ]);
   const filteredSandboxes = useMemo(() => {
-    const all = sandboxes.data ?? [];
+    const all = sandboxes.data?.items ?? [];
     const normalizedFilter = nameFilter.trim().toLocaleLowerCase();
     if (!normalizedFilter) {
       return all;
@@ -149,17 +202,19 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
       sandbox.metadata.name.toLocaleLowerCase().includes(normalizedFilter),
     );
   }, [sandboxes.data, nameFilter]);
-  // The rows of the page being shown. Taking them from pageOf keeps the page
-  // inside a list that got shorter, and drops from the selection a sandbox
-  // that a filter has hidden or that is gone: see useTableSelection.
-  const rows = pageOf(filteredSandboxes, sandboxName);
+  const rows = filteredSandboxes;
+  const loadedRows = sandboxes.isPlaceholderData ? [] : rows;
   // The sandboxes on this page whose policy can be read. One that was just
   // created has no policy revision until its supervisor has started, and the
   // gateway answers a request for it with a 404; see hasPolicyRevision.
-  const policyNames = rows.filter(hasPolicyRevision).map(sandboxName);
+  const policyNames = loadedRows.filter(hasPolicyRevision).map(sandboxName);
   const policyViews = useSandboxPolicies(workspace, policyNames);
   const providerExpiry = useProviderExpiry(workspace);
-  const drafts = useWorkspaceDraftSummary(workspace, features.draftPolicy);
+  const drafts = useWorkspaceDraftSummary(
+    workspace,
+    features.draftPolicy,
+    loadedRows.map(sandboxName),
+  );
   const { addAlert, addSuccess, addDanger } = useAlerts();
   const stopSandbox = useStopSandbox(workspace);
   const startSandbox = useStartSandbox(workspace);
@@ -168,18 +223,17 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
     sandboxKeys.scope(workspace),
   );
 
-  if (sandboxes.isLoading) {
-    return (
-      <Bullseye>
-        <Spinner aria-label="Loading sandboxes" />
-      </Bullseye>
-    );
-  }
-
-  const applySelector = (selector: string) => {
+  const applyFilters = (selector: string, type: string) => {
     setSelectorInput(selector);
+    setTypeInput(type);
+    const result = combineSandboxLabelSelector(selector, type);
+    if (result.error) {
+      setFilterError(result.error);
+      return;
+    }
+    setFilterError('');
     setLabelSelector(selector.trim());
-    setPage(1);
+    setTypeLabel(type.trim());
   };
 
   // The list is re-read while the page is open. A refresh that fails leaves
@@ -189,7 +243,8 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
   // caused it can be corrected.
   const refreshFailed = isRefreshError(sandboxes);
   const loadFailed = sandboxes.isError && !refreshFailed;
-  if (loadFailed && !labelSelector) {
+  const pageFailed = sandboxes.isError && page > 1;
+  if (loadFailed && !labelSelector && !typeLabel && page === 1) {
     return (
       <Alert
         variant="danger"
@@ -205,13 +260,19 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
     );
   }
 
-  const allRows = sandboxes.data ?? [];
-  const totalCount = filteredSandboxes.length;
+  const allRows = sandboxes.data?.items ?? [];
   const pageNames = rows.map(sandboxName);
 
   // With a selector applied an empty list is a filter that matches nothing,
   // and the filter stays on screen to be changed.
-  const isEmpty = allRows.length === 0 && !labelSelector;
+  const isEmpty =
+    allRows.length === 0 &&
+    !labelSelector &&
+    !typeLabel &&
+    page === 1 &&
+    !sandboxes.isLoading &&
+    !sandboxes.isPlaceholderData &&
+    !loadFailed;
 
   const emptyState = (
     <EmptyState variant="lg" titleText="No sandboxes" icon={CubesIcon}>
@@ -232,6 +293,17 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
     </EmptyState>
   );
 
+  const paginationProps = {
+    perPage,
+    page,
+    hasNext: Boolean(sandboxes.data?.nextPageToken),
+    isLoading: isCursorPagePending(sandboxes, isTransitioning),
+    isError: sandboxes.isError,
+    onPrevious: previous,
+    onNext: () => next(sandboxes.data?.nextPageToken ?? ''),
+    onPerPageSelect,
+  };
+
   const list = (
     <>
       <Toolbar aria-label="Sandbox actions">
@@ -247,34 +319,55 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
             </ToolbarItem>
           )}
           {toolbarStart && <ToolbarItem>{toolbarStart}</ToolbarItem>}
-          <ToolbarItem>
-            <SearchInput
-              aria-label="Filter sandboxes by name"
-              placeholder="Filter by name"
-              value={nameFilter}
-              onChange={(_event, value) => {
-                setNameFilter(value);
-                setPage(1);
-              }}
-              onClear={() => {
-                setNameFilter('');
-                setPage(1);
-              }}
-            />
-          </ToolbarItem>
-          <ToolbarItem>
-            <SearchInput
-              aria-label="Filter sandboxes by label selector"
-              placeholder="Label selector, e.g. team=ml"
-              value={selectorInput}
-              onChange={(_event, value) => setSelectorInput(value)}
-              onSearch={(_event, value) => applySelector(value)}
-              onClear={() => applySelector('')}
-              submitSearchButtonLabel="Apply label selector"
-              resetButtonLabel="Clear label selector"
-              data-testid="sandbox-label-selector"
-            />
-          </ToolbarItem>
+          <ToolbarToggleGroup toggleIcon={<FilterIcon />} breakpoint="lg">
+            <ToolbarItem>
+              <SearchInput
+                aria-label="Filter current page of sandboxes by name"
+                placeholder="Filter current page by name"
+                value={nameFilter}
+                onChange={(_event, value) => {
+                  setNameFilter(value);
+                  clearSelection();
+                }}
+                onClear={() => {
+                  setNameFilter('');
+                  clearSelection();
+                }}
+              />
+            </ToolbarItem>
+            <ToolbarItem>
+              <SearchInput
+                aria-label="Filter sandboxes by label selector"
+                placeholder="Label selector, e.g. team=ml"
+                value={selectorInput}
+                onChange={(_event, value) => setSelectorInput(value)}
+                onSearch={(_event, value) => applyFilters(value, typeLabel)}
+                onClear={() => applyFilters('', typeLabel)}
+                submitSearchButtonLabel="Apply label selector"
+                resetButtonLabel="Clear label selector"
+                data-testid="sandbox-label-selector"
+              />
+            </ToolbarItem>
+            <ToolbarItem>
+              <SearchInput
+                aria-label="Filter sandboxes by type label"
+                inputProps={{
+                  'aria-invalid': Boolean(filterError),
+                  'aria-describedby': filterError
+                    ? 'sandbox-type-label-error'
+                    : undefined,
+                }}
+                placeholder="Type label, e.g. type=tool"
+                value={typeInput}
+                onChange={(_event, value) => setTypeInput(value)}
+                onSearch={(_event, value) => applyFilters(labelSelector, value)}
+                onClear={() => applyFilters(labelSelector, '')}
+                submitSearchButtonLabel="Apply type label"
+                resetButtonLabel="Clear type label"
+                data-testid="sandbox-type-label"
+              />
+            </ToolbarItem>
+          </ToolbarToggleGroup>
           {!compactToolbar && (
             <ToolbarItem>
               <Dropdown
@@ -297,7 +390,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
                 <DropdownList>
                   <DropdownItem
                     key="delete-selected"
-                    isDisabled={numSelected === 0}
+                    isDisabled={selected.length === 0 || isTransitioning}
                     onClick={() => setDeleteTargets(selected)}
                     data-testid="delete-selected-sandboxes"
                   >
@@ -335,18 +428,8 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
               </ToggleGroup>
             </ToolbarItem>
           )}
-          <ToolbarItem>
-            <Pagination
-              itemCount={totalCount}
-              perPage={perPage}
-              page={page}
-              onSetPage={(_event, p) => setPage(p)}
-              onPerPageSelect={(_event, pp) => onPerPageSelect(pp)}
-              isCompact
-            />
-          </ToolbarItem>
           {createActionPosition === 'end' && (
-            <ToolbarItem align={{ default: 'alignEnd' }}>
+            <ToolbarItem>
               <Button
                 onClick={() => setCreateOpen(true)}
                 data-testid="create-sandbox"
@@ -355,93 +438,131 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
               </Button>
             </ToolbarItem>
           )}
+          <ToolbarItem variant="pagination" align={{ default: 'alignEnd' }}>
+            <CursorPagination variant="top" {...paginationProps} />
+          </ToolbarItem>
         </ToolbarContent>
       </Toolbar>
-      {loadFailed && (
+      {(loadFailed || pageFailed) && (
         <Alert
           variant="danger"
           isInline
-          title="The label selector could not be applied"
+          title={
+            page > 1
+              ? 'Could not load this page'
+              : 'The label selector could not be applied'
+          }
           data-testid="sandbox-label-selector-error"
         >
           {(sandboxes.error as Error).message}
+          {page > 1 && (
+            <Button variant="link" onClick={reset}>
+              Start at first page
+            </Button>
+          )}
         </Alert>
       )}
-      {compactToolbar || viewMode === 'list' ? (
-        <Table aria-label="Sandboxes" data-testid="sandbox-table">
-          <Thead>
-            <Tr>
-              <Th
-                select={{
-                  onSelect: (_event, isSelecting) =>
-                    toggleAll(pageNames, isSelecting),
-                  isSelected: pageAllSelected(pageNames),
-                }}
-                aria-label="Select all sandboxes"
-              />
-              <Th>Name</Th>
-              <Th>Status</Th>
-              <Th>Policy</Th>
-              <Th>Providers</Th>
-              <Th>Labels</Th>
-              <Th>Created</Th>
-              <Th screenReaderText="Actions" />
-            </Tr>
-          </Thead>
-          <Tbody>
-            {rows.map((sandbox, rowIndex) => (
-              <SandboxTableRow
-                key={sandbox.metadata.name}
-                sandbox={sandbox}
-                rowIndex={rowIndex}
-                isSelected={selected.includes(sandbox.metadata.name)}
-                onSelect={(isSelecting) =>
-                  toggleOne(sandbox.metadata.name, isSelecting)
-                }
-                onNameClick={() => onSelect?.(sandbox.metadata.name)}
-                onDelete={() => setDeleteTargets([sandbox.metadata.name])}
-                onStop={() =>
-                  stopSandbox.mutate(sandbox.metadata.name, {
-                    onSuccess: () =>
-                      addSuccess(`Stopping sandbox ${sandbox.metadata.name}`),
-                    onError: (err) =>
-                      addDanger(
-                        `Failed to stop sandbox ${sandbox.metadata.name}: ${(err as Error).message}`,
-                      ),
-                  })
-                }
-                onStart={() =>
-                  startSandbox.mutate(sandbox.metadata.name, {
-                    onSuccess: () =>
-                      addSuccess(`Starting sandbox ${sandbox.metadata.name}`),
-                    onError: (err) =>
-                      addDanger(
-                        `Failed to start sandbox ${sandbox.metadata.name}: ${(err as Error).message}`,
-                      ),
-                  })
-                }
-                onViewLogs={() => viewSandbox(sandbox.metadata.name, 'logs')}
-                onOpenTerminal={
-                  sandbox.status.phase === 'READY' && features.terminal
-                    ? () => viewSandbox(sandbox.metadata.name, 'terminal')
-                    : undefined
-                }
-                policyView={policyViews[sandbox.metadata.name]}
-                draftSummary={drafts.bySandbox[sandbox.metadata.name]}
-                onReviewDrafts={
-                  features.draftPolicy
-                    ? () => viewSandbox(sandbox.metadata.name, 'proposals')
-                    : undefined
-                }
-              />
-            ))}
-            {rows.length === 0 && !loadFailed && (
+      {filterError && (
+        <Alert
+          id="sandbox-type-label-error"
+          variant="danger"
+          isInline
+          title={filterError}
+          data-testid="sandbox-type-label-error"
+        />
+      )}
+      <h2 ref={resultsRef} tabIndex={-1} className="pf-v6-screen-reader">
+        {tCommon('pagination.sandboxResults')}
+      </h2>
+      {sandboxes.isLoading ||
+      (isTransitioning && !sandboxes.data && !sandboxes.isError) ? (
+        <Bullseye>
+          <Spinner aria-label="Loading sandboxes" />
+        </Bullseye>
+      ) : compactToolbar || viewMode === 'list' ? (
+        <CursorPageTransition
+          loading={Boolean(isTransitioning && sandboxes.isPlaceholderData)}
+          loadingLabel="Loading sandboxes"
+        >
+          <Table aria-label="Sandboxes" data-testid="sandbox-table">
+            <Thead>
               <Tr>
-                <Td colSpan={8}>No sandboxes match this filter.</Td>
+                <Th
+                  select={{
+                    onSelect: (_event, isSelecting) =>
+                      toggleAll(pageNames, isSelecting),
+                    isSelected: pageAllSelected(pageNames),
+                  }}
+                  aria-label="Select all sandboxes"
+                />
+                <Th>Name</Th>
+                <Th>Status</Th>
+                <Th>Policy</Th>
+                <Th>Providers</Th>
+                <Th>Labels</Th>
+                <Th>Created</Th>
+                <Th screenReaderText="Actions" />
               </Tr>
-            )}
-          </Tbody>
-        </Table>
+            </Thead>
+            <Tbody>
+              {rows.map((sandbox, rowIndex) => (
+                <SandboxTableRow
+                  key={sandbox.metadata.name}
+                  sandbox={sandbox}
+                  rowIndex={rowIndex}
+                  isSelected={selected.includes(sandbox.metadata.name)}
+                  onSelect={(isSelecting) =>
+                    toggleOne(sandbox.metadata.name, isSelecting)
+                  }
+                  onNameClick={() => onSelect?.(sandbox.metadata.name)}
+                  onDelete={() => setDeleteTargets([sandbox.metadata.name])}
+                  onStop={() =>
+                    stopSandbox.mutate(sandbox.metadata.name, {
+                      onSuccess: () =>
+                        addSuccess(`Stopping sandbox ${sandbox.metadata.name}`),
+                      onError: (err) =>
+                        addDanger(
+                          `Failed to stop sandbox ${sandbox.metadata.name}: ${(err as Error).message}`,
+                        ),
+                    })
+                  }
+                  onStart={() =>
+                    startSandbox.mutate(sandbox.metadata.name, {
+                      onSuccess: () =>
+                        addSuccess(`Starting sandbox ${sandbox.metadata.name}`),
+                      onError: (err) =>
+                        addDanger(
+                          `Failed to start sandbox ${sandbox.metadata.name}: ${(err as Error).message}`,
+                        ),
+                    })
+                  }
+                  onViewLogs={() => viewSandbox(sandbox.metadata.name, 'logs')}
+                  onOpenTerminal={
+                    sandbox.status.phase === 'READY' && features.terminal
+                      ? () => viewSandbox(sandbox.metadata.name, 'terminal')
+                      : undefined
+                  }
+                  policyView={policyViews[sandbox.metadata.name]}
+                  draftSummary={drafts.bySandbox[sandbox.metadata.name]}
+                  onReviewDrafts={
+                    features.draftPolicy
+                      ? () => viewSandbox(sandbox.metadata.name, 'proposals')
+                      : undefined
+                  }
+                />
+              ))}
+              {rows.length === 0 && !loadFailed && (
+                <Tr>
+                  <Td colSpan={8}>
+                    {nameFilter
+                      ? 'No sandboxes match on this page.'
+                      : 'No sandboxes match this filter.'}
+                  </Td>
+                </Tr>
+              )}
+            </Tbody>
+          </Table>
+        </CursorPageTransition>
       ) : rows.length === 0 ? (
         // The gallery's own empty state invites creating a first sandbox,
         // which is not what a filter that matches nothing calls for.
@@ -454,27 +575,37 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
           />
         )
       ) : (
-        <SandboxGalleryView
-          sandboxes={rows}
-          draftSummaries={drafts.items}
-          policyViews={policyViews}
-          providerExpiry={providerExpiry}
-          onDelete={(name) => setDeleteTargets([name])}
-          onSelect={onSelect}
-          onViewLogs={(name) => viewSandbox(name, 'logs')}
-          onOpenTerminal={
-            features.terminal
-              ? (name) => viewSandbox(name, 'terminal')
-              : undefined
-          }
-          onReviewDrafts={
-            features.draftPolicy
-              ? (name) => viewSandbox(name, 'proposals')
-              : undefined
-          }
-          onCreateClick={() => setCreateOpen(true)}
-        />
+        <CursorPageTransition
+          loading={Boolean(isTransitioning && sandboxes.isPlaceholderData)}
+          loadingLabel="Loading sandboxes"
+        >
+          <SandboxGalleryView
+            sandboxes={rows}
+            draftSummaries={drafts.items}
+            policyViews={policyViews}
+            providerExpiry={providerExpiry}
+            onDelete={(name) => setDeleteTargets([name])}
+            onSelect={onSelect}
+            onViewLogs={(name) => viewSandbox(name, 'logs')}
+            onOpenTerminal={
+              features.terminal
+                ? (name) => viewSandbox(name, 'terminal')
+                : undefined
+            }
+            onReviewDrafts={
+              features.draftPolicy
+                ? (name) => viewSandbox(name, 'proposals')
+                : undefined
+            }
+            onCreateClick={() => setCreateOpen(true)}
+          />
+        </CursorPageTransition>
       )}
+      <CursorPagination
+        variant="bottom"
+        resultsRef={resultsRef}
+        {...paginationProps}
+      />
     </>
   );
 
@@ -484,7 +615,7 @@ const SandboxListPage: React.FC<SandboxListPageProps> = ({
   // open Create sandbox form, and what was typed into it, where it is.
   return (
     <>
-      {refreshFailed && (
+      {refreshFailed && !pageFailed && (
         <RefreshErrorAlert
           title="The sandboxes could not be refreshed"
           error={sandboxes.error}

@@ -68,6 +68,7 @@ jest.mock('../../api/auth', () => ({
 
 jest.mock('../../api/sandboxes', () => ({
   useSandboxes: jest.fn(),
+  useSandboxPage: jest.fn(),
   deleteSandbox: jest.fn(),
   useStopSandbox: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
   useStartSandbox: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
@@ -126,9 +127,20 @@ jest.mock('../../slots', () => ({ useSlots: () => ({}) }));
 
 import { useWorkspaceDraftSummary } from '../../api/draftSummary';
 import { useSandboxPolicies } from '../../api/policy';
-import { useSandboxes } from '../../api/sandboxes';
+import { useSandboxes, useSandboxPage } from '../../api/sandboxes';
+import { pagedResult } from './pagedHookMock';
 
 const mockUseSandboxes = useSandboxes as jest.Mock;
+const mockUseSandboxPage = useSandboxPage as jest.Mock;
+
+const bottomPagination = () =>
+  within(screen.getByRole('navigation', { name: 'Bottom pagination' }));
+
+beforeEach(() => {
+  mockUseSandboxPage.mockImplementation((workspace, request) =>
+    pagedResult(mockUseSandboxes(workspace, request.labelSelector), request),
+  );
+});
 const mockUseSandboxPolicies = useSandboxPolicies as jest.Mock;
 const mockUseWorkspaceDraftSummary = useWorkspaceDraftSummary as jest.Mock;
 
@@ -195,6 +207,116 @@ describe('SandboxListPage list', () => {
   });
 
   describe('label selector', () => {
+    it('combines an applied type label with the generic selector', () => {
+      renderPage();
+      applySelector('team=ml');
+      const type = within(screen.getByTestId('sandbox-type-label')).getByRole(
+        'textbox',
+      );
+      fireEvent.change(type, { target: { value: 'type=tool' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Apply type label' }));
+      expect(mockUseSandboxPage).toHaveBeenLastCalledWith('team-a', {
+        pageSize: 10,
+        pageToken: '',
+        labelSelector: 'team=ml,type=tool',
+      });
+    });
+
+    it('rejects a type key already used in the generic selector', () => {
+      renderPage();
+      applySelector('type=agent');
+      const type = within(screen.getByTestId('sandbox-type-label')).getByRole(
+        'textbox',
+      );
+      fireEvent.change(type, { target: { value: 'type=tool' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Apply type label' }));
+      expect(screen.getByTestId('sandbox-type-label-error')).toHaveTextContent(
+        'already uses type',
+      );
+      expect(mockUseSandboxPage).toHaveBeenLastCalledWith('team-a', {
+        pageSize: 10,
+        pageToken: '',
+        labelSelector: 'type=agent',
+      });
+    });
+
+    it('requests only the next page and retains earlier selections', () => {
+      mockUseSandboxes.mockReturnValue(
+        listOf(
+          ...Array.from({ length: 11 }, (_, i) =>
+            makeSandbox(`agent-${i + 1}`),
+          ),
+        ),
+      );
+      renderPage();
+      const firstRow = screen
+        .getByTestId('sandbox-table')
+        .querySelector('tbody tr');
+      fireEvent.click(within(firstRow as HTMLElement).getByRole('checkbox'));
+      fireEvent.click(
+        bottomPagination().getByRole('button', { name: 'Go to next page' }),
+      );
+      expect(mockUseSandboxPage).toHaveBeenLastCalledWith('team-a', {
+        pageSize: 10,
+        pageToken: '10',
+        labelSelector: undefined,
+      });
+      expect(mockUseWorkspaceDraftSummary).toHaveBeenLastCalledWith(
+        'team-a',
+        true,
+        ['agent-11'],
+      );
+      const secondRow = screen
+        .getByTestId('sandbox-table')
+        .querySelector('tbody tr');
+      fireEvent.click(within(secondRow as HTMLElement).getByRole('checkbox'));
+      fireEvent.click(screen.getByTestId('sandbox-actions-kebab'));
+      expect(screen.getByTestId('delete-selected-sandboxes')).toHaveTextContent(
+        'Delete selected (2)',
+      );
+      expect(
+        bottomPagination().getByRole('button', { name: 'Go to next page' }),
+      ).toBeDisabled();
+      fireEvent.click(
+        bottomPagination().getByRole('button', { name: 'Go to previous page' }),
+      );
+      expect(mockUseSandboxPage).toHaveBeenLastCalledWith('team-a', {
+        pageSize: 10,
+        pageToken: '',
+        labelSelector: undefined,
+      });
+    });
+
+    it('offers a first-page reset when a continuation token is rejected', () => {
+      mockUseSandboxPage.mockImplementation((_workspace, request) =>
+        request.pageToken
+          ? {
+              isLoading: false,
+              isError: true,
+              error: new Error('token expired'),
+              data: undefined,
+            }
+          : {
+              isLoading: false,
+              isError: false,
+              data: { items: [makeSandbox('agent-1')], nextPageToken: 'stale' },
+            },
+      );
+      renderPage();
+      fireEvent.click(
+        bottomPagination().getByRole('button', { name: 'Go to next page' }),
+      );
+      expect(screen.getByText('token expired')).toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Start at first page' }),
+      );
+      expect(mockUseSandboxPage).toHaveBeenLastCalledWith('team-a', {
+        pageSize: 10,
+        pageToken: '',
+        labelSelector: undefined,
+      });
+      expect(bottomPagination().getByText('Page 1')).toBeInTheDocument();
+    });
     it('lists every sandbox of the workspace until a selector is applied', () => {
       renderPage();
       expect(mockUseSandboxes).toHaveBeenCalledWith('team-a', undefined);
@@ -353,7 +475,11 @@ describe('SandboxListPage list', () => {
 
     it('reads the summary of this workspace', () => {
       renderPage();
-      expect(mockUseWorkspaceDraftSummary).toHaveBeenCalledWith('team-a', true);
+      expect(mockUseWorkspaceDraftSummary).toHaveBeenCalledWith(
+        'team-a',
+        true,
+        ['agent-1', 'agent-2'],
+      );
     });
 
     it('badges the sandboxes that have rules pending, in the table', () => {
@@ -418,6 +544,7 @@ describe('SandboxListPage list', () => {
       expect(mockUseWorkspaceDraftSummary).toHaveBeenCalledWith(
         'team-a',
         false,
+        ['agent-1', 'agent-2'],
       );
       expect(screen.queryByText(/pending rule/)).not.toBeInTheDocument();
     });

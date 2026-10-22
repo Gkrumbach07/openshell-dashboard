@@ -26,6 +26,7 @@ const mockSandbox: Sandbox = {
 
 jest.mock('../../api/sandboxes', () => ({
   useSandboxes: jest.fn(),
+  useSandboxPage: jest.fn(),
   deleteSandbox: jest.fn(),
   useStopSandbox: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
   useStartSandbox: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
@@ -96,8 +97,16 @@ jest.mock('../../hooks/useJsonValidation', () => ({
   }),
 }));
 
-import { useSandboxes } from '../../api/sandboxes';
+import { useSandboxes, useSandboxPage } from '../../api/sandboxes';
+import { pagedResult } from './pagedHookMock';
 const mockUseSandboxes = useSandboxes as jest.Mock;
+const mockUseSandboxPage = useSandboxPage as jest.Mock;
+
+beforeEach(() => {
+  mockUseSandboxPage.mockImplementation((workspace, request) =>
+    pagedResult(mockUseSandboxes(workspace, request.labelSelector), request),
+  );
+});
 
 const renderPage = () =>
   render(
@@ -184,9 +193,12 @@ describe('SandboxListPage', () => {
     );
 
     expect(screen.getByText('Workspace selector')).toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText('Filter by name'), {
-      target: { value: 'research' },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText('Filter current page by name'),
+      {
+        target: { value: 'research' },
+      },
+    );
     expect(screen.getByText('research-runner')).toBeInTheDocument();
     expect(screen.queryByText('test-sandbox')).not.toBeInTheDocument();
   });

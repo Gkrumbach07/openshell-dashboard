@@ -114,7 +114,7 @@
 //	               listed across workspaces, each carrying its
 //	               own workspace; a workspace's endpoints; the
 //	               unnamed service endpoint                    allworkspaces_test.go
-//	list shapes    lists are JSON arrays, not pager envelopes  contract_test.go
+//	list shapes    legacy arrays and opt-in cursor pages       contract_test.go, list_pagination_test.go
 //
 // Most of these tests run in a workspace other than "default" on purpose.
 // Every workspace-scoped call carries a workspace selector, and only a second

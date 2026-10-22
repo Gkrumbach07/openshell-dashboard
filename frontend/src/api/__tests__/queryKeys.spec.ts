@@ -1,6 +1,11 @@
 import { QueryClient, hashKey } from '@tanstack/react-query';
 
-import { sandboxKeys, templateKeys } from '../queryKeys';
+import {
+  allWorkspacesKeys,
+  sandboxKeys,
+  templateKeys,
+  workspaceKeys,
+} from '../queryKeys';
 
 // A label selector is text the user types. A list keyed by it must never be
 // the same cache entry as a sandbox or a template, whatever was typed.
@@ -83,4 +88,42 @@ describe.each(families)('$kind query keys', ({ list, detail, scope }) => {
       expect(client.getQueryState(key)?.isInvalidated).toBe(false),
     );
   });
+});
+
+it('keeps cursor pages distinct and under mutation invalidation prefixes', async () => {
+  const client = new QueryClient();
+  const pages = [
+    sandboxKeys.page('team-a', {
+      pageSize: 10,
+      pageToken: '',
+      labelSelector: 'type=tool',
+    }),
+    sandboxKeys.page('team-a', {
+      pageSize: 10,
+      pageToken: 'next',
+      labelSelector: 'type=tool',
+    }),
+    sandboxKeys.page('team-a', {
+      pageSize: 20,
+      pageToken: '',
+      labelSelector: 'type=tool',
+    }),
+  ];
+  expect(new Set(pages.map(hashKey)).size).toBe(3);
+  pages.forEach((key) => client.setQueryData(key, 'cached'));
+  client.setQueryData(sandboxKeys.page('team-b', { pageSize: 10 }), 'other');
+  await client.invalidateQueries({ queryKey: sandboxKeys.scope('team-a') });
+  pages.forEach((key) =>
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true),
+  );
+  expect(
+    client.getQueryState(sandboxKeys.page('team-b', { pageSize: 10 }))
+      ?.isInvalidated,
+  ).toBe(false);
+  expect(hashKey(workspaceKeys.page({ pageSize: 10 }))).not.toBe(
+    hashKey(workspaceKeys.detail('10')),
+  );
+  expect(hashKey(allWorkspacesKeys.sandboxPage({ pageSize: 10 }))).not.toBe(
+    hashKey(allWorkspacesKeys.sandboxes('')),
+  );
 });

@@ -1,4 +1,5 @@
 import type { LogFilters } from '../types';
+import type { PageRequest } from './pagination';
 
 export const sandboxKeys = {
   all: ['sandboxes'] as const,
@@ -9,6 +10,16 @@ export const sandboxKeys = {
   // start with `scope`, which is what the mutations invalidate.
   list: (workspace: string, labelSelector = '') =>
     ['sandboxes', workspace, { labelSelector }] as const,
+  page: (workspace: string, request: PageRequest) =>
+    [
+      'sandboxes',
+      workspace,
+      {
+        pageSize: request.pageSize,
+        pageToken: request.pageToken ?? '',
+        labelSelector: request.labelSelector ?? '',
+      },
+    ] as const,
   detail: (workspace: string, name: string) =>
     ['sandboxes', workspace, name] as const,
   // Every list of a workspace and every sandbox in it.
@@ -45,6 +56,15 @@ export const workspaceKeys = {
     labelSelector
       ? (['workspaces', { labelSelector }] as const)
       : (['workspaces'] as const),
+  page: (request: PageRequest) =>
+    [
+      'workspaces',
+      {
+        pageSize: request.pageSize,
+        pageToken: request.pageToken ?? '',
+        labelSelector: request.labelSelector ?? '',
+      },
+    ] as const,
   detail: (name: string) => ['workspaces', name] as const,
   members: (workspace: string) => ['members', workspace] as const,
   services: (workspace: string) => ['workspace-services', workspace] as const,
@@ -61,6 +81,16 @@ export const allWorkspacesKeys = {
   allSandboxes: ['all-workspaces', 'sandboxes'] as const,
   sandboxes: (labelSelector = '') =>
     ['all-workspaces', 'sandboxes', labelSelector] as const,
+  sandboxPage: (request: PageRequest) =>
+    [
+      'all-workspaces',
+      'sandboxes',
+      {
+        pageSize: request.pageSize,
+        pageToken: request.pageToken ?? '',
+        labelSelector: request.labelSelector ?? '',
+      },
+    ] as const,
   providers: ['all-workspaces', 'providers'] as const,
   allTemplates: ['all-workspaces', 'templates'] as const,
   templates: (labelSelector = '') =>
@@ -104,8 +134,10 @@ export const policyKeys = {
   draftSummary: ['draft-summary'] as const,
   // One workspace's summary. Prefixed by `draftSummary`, so invalidating that
   // covers every workspace's.
-  workspaceDraftSummary: (workspace: string) =>
-    ['draft-summary', workspace] as const,
+  workspaceDraftSummary: (workspace: string, names?: readonly string[]) =>
+    names
+      ? (['draft-summary', workspace, { sandboxNames: names }] as const)
+      : (['draft-summary', workspace] as const),
 };
 
 export const gatewayKeys = {

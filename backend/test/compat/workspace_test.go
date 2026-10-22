@@ -65,8 +65,8 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	name := randName("cw")
 
 	t.Run("list includes default", func(t *testing.T) {
-		// A JSON array here (not a pager envelope) is the contract the
-		// frontend depends on; see ListAll in .claude/rules/openshell-api.md.
+		// An unpaged request keeps the array contract for existing clients;
+		// the dashboard uses the opt-in page envelope.
 		var list []workspace
 		mustJSON(t, http.MethodGet, "/api/v1/workspaces", nil, &list, http.StatusOK)
 		for _, ws := range list {

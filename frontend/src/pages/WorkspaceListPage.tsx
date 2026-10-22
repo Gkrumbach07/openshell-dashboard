@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -13,15 +13,15 @@ import {
   EmptyStateFooter,
   MenuToggle,
   PageSection,
-  Pagination,
   SearchInput,
   Spinner,
   Title,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
+  ToolbarToggleGroup,
 } from '@patternfly/react-core';
-import { CubesIcon, EllipsisVIcon } from '@patternfly/react-icons';
+import { CubesIcon, EllipsisVIcon, FilterIcon } from '@patternfly/react-icons';
 import {
   ActionsColumn,
   Table,
@@ -32,19 +32,26 @@ import {
   Tr,
 } from '@patternfly/react-table';
 
-import { deleteWorkspace, useWorkspaces } from '../api/workspaces';
+import { deleteWorkspace, useWorkspacePage } from '../api/workspaces';
 import { allWorkspacesKeys, workspaceKeys } from '../api/queryKeys';
 import { useAlerts } from '../app/AlertContext';
 import { useUserRole } from '../api/rbac';
 import CreateWorkspaceModal from '../components/CreateWorkspaceModal';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import CursorPagination from '../components/CursorPagination';
+import CursorPageTransition from '../components/CursorPageTransition';
 import LabelsList from '../components/LabelsList';
 import PhaseLabel from '../components/PhaseLabel';
 import RefreshErrorAlert, {
   isRefreshError,
 } from '../components/RefreshErrorAlert';
 import { useBulkDelete } from '../hooks/useBulkDelete';
-import { useListPage } from '../hooks/useListPage';
+import {
+  isCursorPagePending,
+  useCursorListPage,
+  useCursorPageResult,
+} from '../hooks/useCursorListPage';
+import { useCursorSelection } from '../hooks/useCursorSelection';
 import { useI18n } from '../i18n';
 import { formatAge } from '../utils/formatters';
 
@@ -69,29 +76,54 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
   // gateway does the filtering and refuses a selector that is not key=value
   // pairs, so it is sent when the search is submitted, not on every key.
   const [selectorInput, setSelectorInput] = useState('');
+  const resultsRef = useRef<HTMLHeadingElement>(null);
   const [labelSelector, setLabelSelector] = useState('');
-  const workspaces = useWorkspaces(labelSelector || undefined);
   const queryClient = useQueryClient();
   const { addSuccess } = useAlerts();
   const { isPlatformAdmin } = useUserRole();
   const [isCreateOpen, setCreateOpen] = useState(false);
   const {
     page,
-    setPage,
+    pageToken,
+    reset,
+    next,
+    previous,
     perPage,
     onPerPageSelect,
+    isTransitioning,
+    markLoaded,
+  } = useCursorListPage(labelSelector);
+  const {
     selected,
     toggleAll,
     toggleOne,
     pageAllSelected,
+    reconcilePage,
     clearSelection,
-    isActionsOpen,
-    setActionsOpen,
-    deleteTargets,
-    setDeleteTargets,
-    closeDeleteModal,
-    pageOf,
-  } = useListPage();
+  } = useCursorSelection(labelSelector);
+  const [isActionsOpen, setActionsOpen] = useState(false);
+  const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
+  const closeDeleteModal = () => setDeleteTargets(null);
+  const workspaces = useWorkspacePage({
+    pageSize: perPage,
+    pageToken,
+    labelSelector: labelSelector || undefined,
+  });
+  useCursorPageResult({ page, markLoaded, reset }, workspaces);
+  useEffect(() => {
+    if (!workspaces.data || workspaces.isFetching || workspaces.isError) return;
+    reconcilePage(
+      `${perPage}\0${pageToken}`,
+      workspaces.data.items.map((workspace) => workspace.metadata.name),
+    );
+  }, [
+    workspaces.data,
+    workspaces.isFetching,
+    workspaces.isError,
+    perPage,
+    pageToken,
+    reconcilePage,
+  ]);
 
   // `openshell workspace delete <names...>`: one delete per workspace. The
   // reason the gateway gives for each one it refuses is kept, so that a
@@ -110,30 +142,20 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
   const applySelector = (selector: string) => {
     setSelectorInput(selector);
     setLabelSelector(selector.trim());
-    setPage(1);
     // A workspace the new filter hides must not stay selected: it would be
     // deleted without being on screen.
     clearSelection();
   };
 
-  if (workspaces.isLoading) {
-    return (
-      <PageSection>
-        <Bullseye>
-          <Spinner aria-label={t('loading')} />
-        </Bullseye>
-      </PageSection>
-    );
-  }
-
   // The list is polled. A refresh that fails leaves the workspaces that
   // loaded before on screen, with a note above them; only a list that never
   // loaded takes the page.
   const refreshFailed = isRefreshError(workspaces);
+  const pageFailed = workspaces.isError && page > 1;
 
   // A failure of the filtered list is shown beside the filter, where the
   // selector that caused it can be corrected.
-  if (workspaces.isError && !labelSelector && !refreshFailed) {
+  if (workspaces.isError && !labelSelector && !refreshFailed && page === 1) {
     return (
       <PageSection>
         <Alert
@@ -151,17 +173,11 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
     );
   }
 
-  const allRows = workspaces.data ?? [];
-  // The rows of the page that is shown. The list is polled and workspaces
-  // are deleted, here and elsewhere, so the page that was chosen can cease to
-  // exist: pageOf shows the last page that has rows then, not an empty
-  // table, and drops from the selection what is no longer listed.
-  const rows = pageOf(allRows, (workspace) => workspace.metadata.name);
+  const allRows = workspaces.data?.items ?? [];
+  const rows = allRows;
   const pageNames = rows.map((workspace) => workspace.metadata.name);
-  // What is selected and still listed. The list refreshes by itself, and a
-  // workspace somebody else deleted in the meantime is not one to delete.
-  const listedNames = new Set(allRows.map((w) => w.metadata.name));
-  const selectedNames = selected.filter((name) => listedNames.has(name));
+  // Selected names can belong to earlier pages, which are no longer loaded.
+  const selectedNames = selected;
 
   const targets = deleteTargets ?? [];
   const isBulk = targets.length > 1;
@@ -225,6 +241,17 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
     setDeleteTargets(failedNames);
   };
 
+  const paginationProps = {
+    perPage,
+    page,
+    hasNext: Boolean(workspaces.data?.nextPageToken),
+    isLoading: isCursorPagePending(workspaces, isTransitioning),
+    isError: workspaces.isError,
+    onPrevious: previous,
+    onNext: () => next(workspaces.data?.nextPageToken ?? ''),
+    onPerPageSelect,
+  };
+
   return (
     <>
       <PageSection>
@@ -234,7 +261,7 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
         <PageSection>{renderWorkspaceHeader()}</PageSection>
       )}
       <PageSection>
-        {refreshFailed && (
+        {refreshFailed && !pageFailed && (
           <RefreshErrorAlert
             title={t('refreshFailed.title')}
             staleNote={t('refreshFailed.stale')}
@@ -245,7 +272,12 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
             data-testid="workspace-refresh-error"
           />
         )}
-        {allRows.length === 0 && !labelSelector ? (
+        {allRows.length === 0 &&
+        !workspaces.isLoading &&
+        !workspaces.isPlaceholderData &&
+        !labelSelector &&
+        page === 1 &&
+        !workspaces.isError ? (
           <EmptyState
             titleText={t('empty.title')}
             icon={CubesIcon}
@@ -301,7 +333,9 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
                       <DropdownList>
                         <DropdownItem
                           key="delete-selected"
-                          isDisabled={selectedNames.length === 0}
+                          isDisabled={
+                            selectedNames.length === 0 || isTransitioning
+                          }
                           onClick={() => openDelete(selectedNames)}
                           data-testid="delete-selected-workspaces"
                         >
@@ -315,126 +349,155 @@ const WorkspaceListPage: React.FC<WorkspaceListPageProps> = ({
                     </Dropdown>
                   </ToolbarItem>
                 )}
-                <ToolbarItem>
-                  <SearchInput
-                    aria-label={t('filter.label')}
-                    placeholder={t('filter.placeholder')}
-                    value={selectorInput}
-                    onChange={(_event, value) => setSelectorInput(value)}
-                    onSearch={(_event, value) => applySelector(value)}
-                    onClear={() => applySelector('')}
-                    submitSearchButtonLabel={t('filter.apply')}
-                    resetButtonLabel={t('filter.clear')}
-                    data-testid="workspace-label-filter"
-                  />
-                </ToolbarItem>
-                <ToolbarItem align={{ default: 'alignEnd' }}>
-                  <Pagination
-                    itemCount={allRows.length}
-                    perPage={perPage}
-                    page={page}
-                    onSetPage={(_event, p) => setPage(p)}
-                    onPerPageSelect={(_event, pp) => onPerPageSelect(pp)}
-                    isCompact
-                  />
+                <ToolbarToggleGroup toggleIcon={<FilterIcon />} breakpoint="lg">
+                  <ToolbarItem>
+                    <SearchInput
+                      aria-label={t('filter.label')}
+                      placeholder={t('filter.placeholder')}
+                      value={selectorInput}
+                      onChange={(_event, value) => setSelectorInput(value)}
+                      onSearch={(_event, value) => applySelector(value)}
+                      onClear={() => applySelector('')}
+                      submitSearchButtonLabel={t('filter.apply')}
+                      resetButtonLabel={t('filter.clear')}
+                      data-testid="workspace-label-filter"
+                    />
+                  </ToolbarItem>
+                </ToolbarToggleGroup>
+                <ToolbarItem
+                  variant="pagination"
+                  align={{ default: 'alignEnd' }}
+                >
+                  <CursorPagination variant="top" {...paginationProps} />
                 </ToolbarItem>
               </ToolbarContent>
             </Toolbar>
-            {workspaces.isError && !refreshFailed && (
+            {(workspaces.isError && !refreshFailed) || pageFailed ? (
               <Alert
                 variant="danger"
                 isInline
-                title={t('filter.failed')}
+                title={
+                  page > 1 ? t('pagination.loadFailed') : t('filter.failed')
+                }
                 data-testid="workspace-label-filter-error"
               >
                 {(workspaces.error as Error).message}
-              </Alert>
-            )}
-            <Table
-              aria-label={t('table.ariaLabel')}
-              data-testid="workspace-table"
-            >
-              <Thead>
-                <Tr>
-                  {isPlatformAdmin && (
-                    <Th
-                      select={{
-                        onSelect: (_event, isSelecting) =>
-                          toggleAll(pageNames, isSelecting),
-                        isSelected: pageAllSelected(pageNames),
-                      }}
-                      aria-label={t('bulkDelete.selectAll')}
-                    />
-                  )}
-                  <Th>{t('table.name')}</Th>
-                  <Th>{t('table.phase')}</Th>
-                  <Th>{t('table.labels')}</Th>
-                  <Th>{t('table.age')}</Th>
-                  {isPlatformAdmin && (
-                    <Th screenReaderText={t('table.actions')} />
-                  )}
-                </Tr>
-              </Thead>
-              <Tbody>
-                {rows.map((workspace, rowIndex) => (
-                  <Tr key={workspace.metadata.name}>
-                    {isPlatformAdmin && (
-                      <Td
-                        select={{
-                          rowIndex,
-                          onSelect: (_event, isSelecting) =>
-                            toggleOne(workspace.metadata.name, isSelecting),
-                          isSelected: selected.includes(
-                            workspace.metadata.name,
-                          ),
-                        }}
-                      />
-                    )}
-                    <Td dataLabel={t('table.name')}>
-                      <Button
-                        variant="link"
-                        isInline
-                        onClick={() => onSelect?.(workspace.metadata.name)}
-                        data-testid={`workspace-link-${workspace.metadata.name}`}
-                      >
-                        {workspace.metadata.name}
-                      </Button>
-                    </Td>
-                    <Td dataLabel={t('table.phase')}>
-                      <PhaseLabel phase={workspace.phase} />
-                    </Td>
-                    <Td dataLabel={t('table.labels')}>
-                      <LabelsList labels={workspace.metadata.labels} />
-                    </Td>
-                    <Td dataLabel={t('table.age')}>
-                      {formatAge(workspace.metadata.createdAtMs)}
-                    </Td>
-                    {isPlatformAdmin && (
-                      <Td isActionCell>
-                        <ActionsColumn
-                          items={[
-                            {
-                              title: t('delete.action'),
-                              onClick: () =>
-                                openDelete([workspace.metadata.name]),
-                            },
-                          ]}
-                        />
-                      </Td>
-                    )}
-                  </Tr>
-                ))}
-                {/* Only a selector that was applied can have matched
-                    nothing. */}
-                {rows.length === 0 && !workspaces.isError && labelSelector && (
-                  <Tr>
-                    <Td colSpan={isPlatformAdmin ? 6 : 4}>
-                      {t('filter.noMatch')}
-                    </Td>
-                  </Tr>
+                {page > 1 && (
+                  <Button variant="link" onClick={reset}>
+                    {t('pagination.startAtFirst')}
+                  </Button>
                 )}
-              </Tbody>
-            </Table>
+              </Alert>
+            ) : null}
+            <h2 ref={resultsRef} tabIndex={-1} className="pf-v6-screen-reader">
+              {tCommon('pagination.workspaceResults')}
+            </h2>
+            {workspaces.isLoading ||
+            (isTransitioning && !workspaces.data && !workspaces.isError) ? (
+              <Bullseye>
+                <Spinner aria-label={t('loading')} />
+              </Bullseye>
+            ) : (
+              <CursorPageTransition
+                loading={Boolean(
+                  isTransitioning && workspaces.isPlaceholderData,
+                )}
+                loadingLabel={t('loading')}
+              >
+                <Table
+                  aria-label={t('table.ariaLabel')}
+                  data-testid="workspace-table"
+                >
+                  <Thead>
+                    <Tr>
+                      {isPlatformAdmin && (
+                        <Th
+                          select={{
+                            onSelect: (_event, isSelecting) =>
+                              toggleAll(pageNames, isSelecting),
+                            isSelected: pageAllSelected(pageNames),
+                          }}
+                          aria-label={t('bulkDelete.selectAll')}
+                        />
+                      )}
+                      <Th>{t('table.name')}</Th>
+                      <Th>{t('table.phase')}</Th>
+                      <Th>{t('table.labels')}</Th>
+                      <Th>{t('table.age')}</Th>
+                      {isPlatformAdmin && (
+                        <Th screenReaderText={t('table.actions')} />
+                      )}
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {rows.map((workspace, rowIndex) => (
+                      <Tr key={workspace.metadata.name}>
+                        {isPlatformAdmin && (
+                          <Td
+                            select={{
+                              rowIndex,
+                              onSelect: (_event, isSelecting) =>
+                                toggleOne(workspace.metadata.name, isSelecting),
+                              isSelected: selected.includes(
+                                workspace.metadata.name,
+                              ),
+                            }}
+                          />
+                        )}
+                        <Td dataLabel={t('table.name')}>
+                          <Button
+                            variant="link"
+                            isInline
+                            onClick={() => onSelect?.(workspace.metadata.name)}
+                            data-testid={`workspace-link-${workspace.metadata.name}`}
+                          >
+                            {workspace.metadata.name}
+                          </Button>
+                        </Td>
+                        <Td dataLabel={t('table.phase')}>
+                          <PhaseLabel phase={workspace.phase} />
+                        </Td>
+                        <Td dataLabel={t('table.labels')}>
+                          <LabelsList labels={workspace.metadata.labels} />
+                        </Td>
+                        <Td dataLabel={t('table.age')}>
+                          {formatAge(workspace.metadata.createdAtMs)}
+                        </Td>
+                        {isPlatformAdmin && (
+                          <Td isActionCell>
+                            <ActionsColumn
+                              items={[
+                                {
+                                  title: t('delete.action'),
+                                  onClick: () =>
+                                    openDelete([workspace.metadata.name]),
+                                },
+                              ]}
+                            />
+                          </Td>
+                        )}
+                      </Tr>
+                    ))}
+                    {/* Only a selector that was applied can have matched
+                    nothing. */}
+                    {rows.length === 0 &&
+                      !workspaces.isError &&
+                      labelSelector && (
+                        <Tr>
+                          <Td colSpan={isPlatformAdmin ? 6 : 4}>
+                            {t('filter.noMatch')}
+                          </Td>
+                        </Tr>
+                      )}
+                  </Tbody>
+                </Table>
+              </CursorPageTransition>
+            )}
+            <CursorPagination
+              variant="bottom"
+              resultsRef={resultsRef}
+              {...paginationProps}
+            />
           </>
         )}
       </PageSection>

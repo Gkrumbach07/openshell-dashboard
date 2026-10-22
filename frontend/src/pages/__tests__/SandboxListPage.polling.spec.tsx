@@ -13,6 +13,7 @@ jest.mock('../../api/auth', () => ({
 }));
 jest.mock('../../api/sandboxes', () => ({
   useSandboxes: jest.fn(),
+  useSandboxPage: jest.fn(),
   deleteSandbox: jest.fn(),
   useStopSandbox: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
   useStartSandbox: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
@@ -62,8 +63,19 @@ jest.mock('../../components/CreateSandboxModal', () => ({
   },
 }));
 
-import { useSandboxes } from '../../api/sandboxes';
+import { useSandboxes, useSandboxPage } from '../../api/sandboxes';
+import { pagedResult } from './pagedHookMock';
 const mockUseSandboxes = useSandboxes as jest.Mock;
+const mockUseSandboxPage = useSandboxPage as jest.Mock;
+
+const bottomPagination = () =>
+  within(screen.getByRole('navigation', { name: 'Bottom pagination' }));
+
+beforeEach(() => {
+  mockUseSandboxPage.mockImplementation((workspace, request) =>
+    pagedResult(mockUseSandboxes(workspace, request.labelSelector), request),
+  );
+});
 
 const sandbox = (index: number): Sandbox => ({
   metadata: {
@@ -247,7 +259,9 @@ describe('SandboxListPage while it is being used', () => {
     it('shows the last page that has rows, not an empty table', () => {
       mockUseSandboxes.mockReturnValue(loaded(sandboxes(11)));
       const view = render(page());
-      fireEvent.click(screen.getByRole('button', { name: 'Go to next page' }));
+      fireEvent.click(
+        bottomPagination().getByRole('button', { name: 'Go to next page' }),
+      );
       expect(shownNames()).toEqual(['sb-11']);
 
       // The eleventh sandbox is deleted, here or elsewhere.
@@ -264,11 +278,13 @@ describe('SandboxListPage while it is being used', () => {
   describe('the selection', () => {
     const filterByName = (text: string) =>
       fireEvent.change(
-        screen.getByRole('textbox', { name: 'Filter sandboxes by name' }),
+        screen.getByRole('textbox', {
+          name: 'Filter current page of sandboxes by name',
+        }),
         { target: { value: text } },
       );
 
-    it('lets go of a sandbox that the name filter hides, for good', () => {
+    it('clears selection when the current-page name filter changes', () => {
       mockUseSandboxes.mockReturnValue(loaded(sandboxes(3)));
       render(page());
       selectRow('sb-01');
@@ -280,17 +296,17 @@ describe('SandboxListPage while it is being used', () => {
 
       filterByName('sb-01');
       expect(screen.getByTestId('delete-selected-sandboxes')).toHaveTextContent(
-        'Delete selected (1)',
+        'Delete selected',
       );
 
       // Clearing the filter does not select it again behind the user's back.
       filterByName('');
       expect(screen.getByTestId('delete-selected-sandboxes')).toHaveTextContent(
-        'Delete selected (1)',
+        'Delete selected',
       );
     });
 
-    it('lets go of everything a label selector leaves out', () => {
+    it('clears selection when the label selector changes', () => {
       mockUseSandboxes.mockImplementation((_workspace, selector) =>
         loaded(selector ? [sandbox(2)] : sandboxes(3)),
       );
@@ -309,14 +325,7 @@ describe('SandboxListPage while it is being used', () => {
       );
 
       openActions();
-      expect(screen.getByTestId('delete-selected-sandboxes')).toHaveTextContent(
-        'Delete selected (1)',
-      );
-      fireEvent.click(deleteSelected());
-      // One left: the question names it and asks for it to be typed.
-      expect(
-        screen.getByText(/Sandbox "sb-02" will be permanently deleted/),
-      ).toBeInTheDocument();
+      expect(deleteSelected()).toBeDisabled();
     });
 
     it('lets go of a sandbox that is gone from the list', () => {
@@ -338,7 +347,9 @@ describe('SandboxListPage while it is being used', () => {
       mockUseSandboxes.mockReturnValue(loaded(sandboxes(11)));
       render(page());
       selectRow('sb-01');
-      fireEvent.click(screen.getByRole('button', { name: 'Go to next page' }));
+      fireEvent.click(
+        bottomPagination().getByRole('button', { name: 'Go to next page' }),
+      );
       selectRow('sb-11');
 
       openActions();
@@ -359,8 +370,10 @@ describe('SandboxListPage while it is being used', () => {
     it('counts the sandboxes it does not spell out in a long bulk delete', () => {
       mockUseSandboxes.mockReturnValue(loaded(sandboxes(12)));
       render(page());
-      fireEvent.click(screen.getByRole('button', { name: /1 - 10 of 12/ }));
-      fireEvent.click(screen.getByRole('menuitem', { name: '20 per page' }));
+      fireEvent.change(
+        screen.getByRole('combobox', { name: 'Items per page' }),
+        { target: { value: '20' } },
+      );
       fireEvent.click(
         screen.getByRole('checkbox', { name: 'Select all rows' }),
       );

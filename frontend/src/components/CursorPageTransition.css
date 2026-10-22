@@ -1,0 +1,15 @@
+.cursor-page-transition {
+  position: relative;
+}
+
+.cursor-page-transition__content--loading {
+  visibility: hidden;
+}
+
+.cursor-page-transition__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

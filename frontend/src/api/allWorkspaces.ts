@@ -3,6 +3,8 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { RESOURCE_POLL_MS, SANDBOX_POLL_MS } from '../constants';
 import { get } from './client';
 import { allWorkspacesKeys } from './queryKeys';
+import { pagedPath } from './pagination';
+import type { ListPage, PageRequest } from './pagination';
 import type {
   Provider,
   Sandbox,
@@ -23,6 +25,19 @@ const withLabelSelector = (path: string, labelSelector?: string): string =>
 
 export const listAllSandboxes = (labelSelector?: string): Promise<Sandbox[]> =>
   get<Sandbox[]>(withLabelSelector('/api/v1/sandboxes', labelSelector));
+
+export const listAllSandboxPage = (
+  request: PageRequest,
+): Promise<ListPage<Sandbox>> =>
+  get<ListPage<Sandbox>>(pagedPath('/api/v1/sandboxes', request));
+
+export const useAllSandboxPage = (request: PageRequest) =>
+  useQuery({
+    queryKey: allWorkspacesKeys.sandboxPage(request),
+    queryFn: () => listAllSandboxPage(request),
+    placeholderData: keepPreviousData,
+    refetchInterval: SANDBOX_POLL_MS,
+  });
 
 // The gateway has no filter for providers, in a workspace or across them.
 export const listAllProviders = (): Promise<Provider[]> =>

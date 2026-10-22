@@ -79,4 +79,19 @@ export default {
   actions: {
     retry: 'Retry',
   },
+  pagination: {
+    itemsPerPage: 'Items per page',
+    perPage: '{{count}} per page',
+    previous: 'Go to previous page',
+    next: 'Go to next page',
+    previousText: 'Previous',
+    nextText: 'Next',
+    page: 'Page {{number}}',
+    topNavigation: 'Top pagination',
+    bottomNavigation: 'Bottom pagination',
+    loaded: 'Page {{number}} loaded',
+    sandboxResults: 'Sandbox results',
+    workspaceResults: 'Workspace results',
+    resourceResults: '{{title}} results',
+  },
 } as const;

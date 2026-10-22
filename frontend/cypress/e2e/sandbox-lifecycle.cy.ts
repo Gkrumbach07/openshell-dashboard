@@ -7,7 +7,7 @@ describe('Sandbox Lifecycle', () => {
     cy.visit('/workspaces/default');
     cy.wait('@authConfig');
     cy.wait('@whoami');
-    cy.wait('@listSandboxes');
+    cy.wait('@listSandboxes').its('request.query.pageSize').should('eq', '10');
     // Switch to table/list view for consistent selectors
     cy.get('[data-testid="view-toggle-list"]').click();
   });

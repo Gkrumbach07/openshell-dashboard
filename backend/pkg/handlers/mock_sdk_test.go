@@ -126,6 +126,7 @@ func readCreateOptions(opts []openshell.CreateOption) sentCreate {
 // mockSDKSandboxes provides injectable sandbox operations.
 type mockSDKSandboxes struct {
 	listFn          func(ctx context.Context, workspace string, opts ...openshell.ListOptions) ([]*openshell.Sandbox, error)
+	listPageFn      func(ctx context.Context, workspace string, opts ...openshell.ListOptions) (*openshell.Page[*openshell.Sandbox], error)
 	createFn        func(ctx context.Context, workspace, name string, spec *openshell.SandboxSpec, opts ...openshell.CreateOption) (*openshell.Sandbox, error)
 	getFn           func(ctx context.Context, workspace, name string) (*openshell.Sandbox, error)
 	deleteFn        func(ctx context.Context, workspace, name string) error
@@ -165,6 +166,11 @@ func (m *mockServerStream) Recv() (*pb.SandboxStreamEvent, error) {
 }
 
 func (m *mockSDKSandboxes) List(workspace string, opts ...openshell.ListOptions) (*openshell.Pager[*openshell.Sandbox], error) {
+	if m.listPageFn != nil {
+		return openshell.NewPager(opts[0].PageToken, func(ctx context.Context, _ string) (*openshell.Page[*openshell.Sandbox], error) {
+			return m.listPageFn(ctx, workspace, opts...)
+		}), nil
+	}
 	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[*openshell.Sandbox], error) {
 		items, err := m.ListAll(ctx, workspace, opts...)
 		return &openshell.Page[*openshell.Sandbox]{Items: items}, err
@@ -432,6 +438,7 @@ type mockSDKWorkspaces struct {
 	createFn       func(ctx context.Context, name string, labels map[string]string) (*openshell.Workspace, error)
 	getFn          func(ctx context.Context, name string) (*openshell.Workspace, error)
 	listFn         func(ctx context.Context, opts ...openshell.ListOptions) ([]*openshell.Workspace, error)
+	listPageFn     func(ctx context.Context, opts ...openshell.ListOptions) (*openshell.Page[*openshell.Workspace], error)
 	deleteFn       func(ctx context.Context, name string) error
 	addMemberFn    func(ctx context.Context, workspace, principalSubject string, role openshell.WorkspaceRole) (*openshell.WorkspaceMember, error)
 	removeMemberFn func(ctx context.Context, workspace, principalSubject string) error
@@ -453,6 +460,11 @@ func (m *mockSDKWorkspaces) Get(ctx context.Context, name string) (*openshell.Wo
 }
 
 func (m *mockSDKWorkspaces) List(opts ...openshell.ListOptions) (*openshell.Pager[*openshell.Workspace], error) {
+	if m.listPageFn != nil {
+		return openshell.NewPager(opts[0].PageToken, func(ctx context.Context, _ string) (*openshell.Page[*openshell.Workspace], error) {
+			return m.listPageFn(ctx, opts...)
+		}), nil
+	}
 	return openshell.NewPager("", func(ctx context.Context, _ string) (*openshell.Page[*openshell.Workspace], error) {
 		items, err := m.ListAll(ctx, opts...)
 		return &openshell.Page[*openshell.Workspace]{Items: items}, err

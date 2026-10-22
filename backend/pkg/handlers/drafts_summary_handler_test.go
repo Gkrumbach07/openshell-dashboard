@@ -244,6 +244,48 @@ func TestWorkspaceDraftSummaryWireShape(t *testing.T) {
 	}
 }
 
+func TestWorkspaceDraftSummaryForNamedPage(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.sandboxes.listFn = func(context.Context, string, ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
+		t.Fatal("a named page must not list every sandbox")
+		return nil, nil
+	}
+	inbox := &draftInbox{chunks: map[string][]openshell.PolicyChunk{
+		"team-a/busy": {{ID: "c1", Status: "pending"}},
+	}}
+	sdk.policy.getDraftFn = inbox.get
+	w := serve(t, draftSummaryRoutes(sdk), http.MethodGet, "/workspaces/team-a/draft-summary?sandbox=busy&sandbox=quiet&sandbox=busy", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", w.Code, w.Body.String())
+	}
+	want := map[draftRead]int{
+		{workspace: "team-a", sandbox: "busy", filter: "pending"}:  1,
+		{workspace: "team-a", sandbox: "quiet", filter: "pending"}: 1,
+	}
+	if got := inbox.readSet(); !reflect.DeepEqual(got, want) {
+		t.Errorf("draft reads = %+v, want %+v", got, want)
+	}
+	var body models.DraftSummary
+	decodeInto(t, w, &body)
+	if body.TotalPending != 1 || len(body.Sandboxes) != 1 || body.Sandboxes[0].SandboxName != "busy" {
+		t.Errorf("summary = %+v", body)
+	}
+}
+
+func TestWorkspaceDraftSummaryRejectsInvalidNamedPage(t *testing.T) {
+	sdk := &mockSDK{}
+	sdk.sandboxes.listFn = func(context.Context, string, ...openshell.ListOptions) ([]*openshell.Sandbox, error) {
+		t.Fatal("invalid named page must not list")
+		return nil, nil
+	}
+	for _, query := range []string{"sandbox=", "sandbox=bad%2Fname", strings.Repeat("sandbox=agent&", 101)} {
+		w := serve(t, draftSummaryRoutes(sdk), http.MethodGet, "/workspaces/team-a/draft-summary?"+query, "")
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d; body: %s", query, w.Code, w.Body.String())
+		}
+	}
+}
+
 // The list of sandboxes is the one call the summary cannot do without, so
 // its failure is the answer.
 func TestDraftSummaryListFails(t *testing.T) {

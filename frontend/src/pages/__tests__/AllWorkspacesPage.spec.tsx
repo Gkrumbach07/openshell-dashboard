@@ -11,6 +11,7 @@ import type {
 
 jest.mock('../../api/allWorkspaces', () => ({
   useAllSandboxes: jest.fn(),
+  useAllSandboxPage: jest.fn(),
   useAllProviders: jest.fn(),
   useAllTemplates: jest.fn(),
   useAllServices: jest.fn(),
@@ -24,10 +25,19 @@ jest.mock('../../api/auth', () => ({
 import {
   useAllProviders,
   useAllSandboxes,
+  useAllSandboxPage,
   useAllServices,
   useAllTemplates,
 } from '../../api/allWorkspaces';
 const mockUseAllSandboxes = useAllSandboxes as jest.Mock;
+const mockUseAllSandboxPage = useAllSandboxPage as jest.Mock;
+import { pagedResult } from './pagedHookMock';
+
+beforeEach(() => {
+  mockUseAllSandboxPage.mockImplementation((request) =>
+    pagedResult(mockUseAllSandboxes(request.labelSelector), request),
+  );
+});
 const mockUseAllProviders = useAllProviders as jest.Mock;
 const mockUseAllTemplates = useAllTemplates as jest.Mock;
 const mockUseAllServices = useAllServices as jest.Mock;
@@ -196,11 +206,14 @@ describe('AllWorkspacesPage', () => {
     expect(image.closest('td')).toHaveClass('pf-m-truncate');
   });
 
-  it('counts each list on its tab', () => {
+  it('does not show an inaccurate sandbox total', () => {
     renderPage();
     expect(screen.getByRole('tab', { name: /Sandboxes/ })).toHaveTextContent(
-      'Sandboxes 3',
+      'Sandboxes',
     );
+    expect(
+      screen.getByRole('tab', { name: /Sandboxes/ }),
+    ).not.toHaveTextContent('3');
     expect(screen.getByRole('tab', { name: /Providers/ })).toHaveTextContent(
       'Providers 2',
     );
@@ -270,7 +283,9 @@ describe('AllWorkspacesPage', () => {
 
   it('filters the rows by workspace or name as it is typed', () => {
     renderPage();
-    const filter = screen.getByRole('textbox', { name: 'Filter sandboxes' });
+    const filter = screen.getByRole('textbox', {
+      name: 'Filter current page of sandboxes',
+    });
 
     fireEvent.change(filter, { target: { value: 'team-b' } });
     expect(rowsOf('all-sandboxes-table')).toHaveLength(2);
@@ -281,7 +296,7 @@ describe('AllWorkspacesPage', () => {
     expect(rows[0]).toHaveTextContent('builder');
 
     fireEvent.change(filter, { target: { value: 'nothing-like-this' } });
-    expect(screen.getByText('No sandboxes match this filter.')).toBeVisible();
+    expect(screen.getByText('No sandboxes match on this page.')).toBeVisible();
   });
 
   // `--selector`: the gateway applies it, so it goes to the request when it
@@ -303,6 +318,65 @@ describe('AllWorkspacesPage', () => {
     expect(rowsOf('all-sandboxes-table')).toHaveLength(2);
     // Templates keep their own selector.
     expect(mockUseAllTemplates).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('adds the type label to the all-workspaces sandbox selector', () => {
+    renderPage();
+    const selector = screen.getByRole('textbox', {
+      name: 'Filter sandboxes by label selector',
+    });
+    fireEvent.change(selector, { target: { value: 'team=ml' } });
+    fireEvent.keyDown(selector, { key: 'Enter' });
+    const type = screen.getByRole('textbox', {
+      name: 'Filter sandboxes by type label',
+    });
+    fireEvent.change(type, { target: { value: 'type=tool' } });
+    fireEvent.keyDown(type, { key: 'Enter' });
+    expect(mockUseAllSandboxPage).toHaveBeenLastCalledWith({
+      pageSize: 10,
+      pageToken: '',
+      labelSelector: 'team=ml,type=tool',
+    });
+    expect(
+      screen.getByRole('tab', { name: 'Sandboxes' }),
+    ).not.toHaveTextContent('3');
+  });
+
+  it('keeps the type field visible when its selector matches no sandboxes', () => {
+    mockUseAllSandboxes.mockImplementation((selector?: string) =>
+      ok(selector === 'type=tool' ? [] : sandboxes),
+    );
+    renderPage();
+    const type = screen.getByRole('textbox', {
+      name: 'Filter sandboxes by type label',
+    });
+    fireEvent.change(type, { target: { value: 'type=tool' } });
+    fireEvent.keyDown(type, { key: 'Enter' });
+    expect(screen.getByTestId('all-sandboxes-table')).toBeInTheDocument();
+    expect(type).toHaveValue('type=tool');
+    expect(screen.queryByTestId('all-sandboxes-empty')).not.toBeInTheDocument();
+  });
+
+  it('rejects a conflicting type key without changing the request', () => {
+    renderPage();
+    const selector = screen.getByRole('textbox', {
+      name: 'Filter sandboxes by label selector',
+    });
+    fireEvent.change(selector, { target: { value: 'type=agent' } });
+    fireEvent.keyDown(selector, { key: 'Enter' });
+    const type = screen.getByRole('textbox', {
+      name: 'Filter sandboxes by type label',
+    });
+    fireEvent.change(type, { target: { value: 'type=tool' } });
+    fireEvent.keyDown(type, { key: 'Enter' });
+    expect(
+      screen.getByTestId('all-sandboxes-type-label-error'),
+    ).toHaveTextContent('already uses type');
+    expect(mockUseAllSandboxPage).toHaveBeenLastCalledWith({
+      pageSize: 10,
+      pageToken: '',
+      labelSelector: 'type=agent',
+    });
   });
 
   it('shows why a label selector was refused and keeps the box', () => {

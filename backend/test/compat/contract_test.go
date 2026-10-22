@@ -68,10 +68,9 @@ func TestDeleteEnvelopeContract(t *testing.T) {
 	}
 }
 
-// TestListEndpointsReturnArrays guards the pagination migration. The SDK's
-// List now returns a *Pager[T]; handlers must use ListAll so the BFF keeps
-// emitting a plain JSON array. If a handler regressed to List, this catches
-// it as an object-instead-of-array decode.
+// TestListEndpointsReturnArrays guards the legacy response contract. Requests
+// without pageSize still emit plain arrays for existing consumers; requests
+// with pageSize use the explicit page envelope tested separately.
 func TestListEndpointsReturnArrays(t *testing.T) {
 	paths := []string{
 		"/api/v1/workspaces",

@@ -7,7 +7,7 @@ describe('Workspace List', () => {
     cy.visit('/workspaces');
     cy.wait('@authConfig');
     cy.wait('@whoami');
-    cy.wait('@listWorkspaces');
+    cy.wait('@listWorkspaces').its('request.query.pageSize').should('eq', '10');
   });
 
   it('displays workspace list heading', () => {
@@ -40,10 +40,13 @@ describe('Workspace List', () => {
   });
 
   it('shows error state when workspaces fail to load', () => {
-    cy.intercept('GET', '/api/v1/workspaces', {
-      statusCode: 500,
-      body: { code: 'INTERNAL', message: 'Internal error' },
-    }).as('workspacesError');
+    cy.intercept(
+      { method: 'GET', pathname: '/api/v1/workspaces' },
+      {
+        statusCode: 500,
+        body: { code: 'INTERNAL', message: 'Internal error' },
+      },
+    ).as('workspacesError');
 
     cy.visit('/workspaces');
     cy.wait('@workspacesError');

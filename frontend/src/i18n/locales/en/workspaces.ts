@@ -8,6 +8,10 @@ export default {
   },
   create: 'Create workspace',
   actionsToolbar: 'Workspace actions',
+  pagination: {
+    loadFailed: 'Could not load this page',
+    startAtFirst: 'Start at first page',
+  },
   filter: {
     label: 'Filter workspaces by label selector',
     placeholder: 'Filter by label, e.g. env=staging',
