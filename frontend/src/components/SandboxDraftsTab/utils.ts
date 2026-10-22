@@ -51,7 +51,7 @@ export const chunkStatusIcon = (
 
 // The statuses `openshell draft get --status` filters by. The empty one is no
 // filter at all.
-// Each label is a key of the sandbox namespace.
+// Each label is a key of the sandboxes namespace.
 export const CHUNK_STATUS_FILTERS = [
   // Shut, the toggle is the only thing saying what is being filtered, so the
   // one option that is not itself a status has to name it.

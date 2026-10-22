@@ -10,7 +10,6 @@ const NAMESPACES = [
   'workspaces',
   'gateway',
   'crossWorkspace',
-  'sandbox',
   'sandboxes',
 ] as const;
 

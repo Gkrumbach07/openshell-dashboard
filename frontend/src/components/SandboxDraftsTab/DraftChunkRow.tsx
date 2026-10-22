@@ -58,7 +58,7 @@ const DraftChunkRow: React.FC<DraftChunkRowProps> = ({
   onSetRejecting,
   onSetRejectReason,
 }) => {
-  const { t } = useI18n('sandbox');
+  const { t } = useI18n('sandboxes');
   const { approve, reject, undo } = actions;
   const annotation = approvalAnnotation(chunk);
   // The gateway takes an approval for a pending or a rejected chunk, and a

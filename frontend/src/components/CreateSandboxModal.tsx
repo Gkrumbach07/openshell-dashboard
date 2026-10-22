@@ -48,7 +48,7 @@ const CreateSandboxModal: React.FC<CreateSandboxModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { t } = useI18n('sandbox');
+  const { t } = useI18n('sandboxes');
   const form = useCreateSandboxForm();
   // A field of the folded section that holds a value keeps the section
   // open: whatever it holds is sent, so it is never sent out of sight.

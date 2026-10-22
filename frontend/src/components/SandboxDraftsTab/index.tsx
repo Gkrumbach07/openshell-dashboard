@@ -48,7 +48,7 @@ const SandboxDraftsTab: React.FC<SandboxDraftsTabProps> = ({
   workspace,
   sandboxName,
 }) => {
-  const { t } = useI18n('sandbox');
+  const { t } = useI18n('sandboxes');
   const { isWorkspaceAdmin } = useWorkspaceRole(workspace);
   const [statusFilter, setStatusFilter] = useState('');
   const [isStatusOpen, setStatusOpen] = useState(false);

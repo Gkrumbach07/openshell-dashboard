@@ -44,7 +44,7 @@ type CreateSandboxFromTemplateModalProps = {
 const CreateSandboxFromTemplateModal: React.FC<
   CreateSandboxFromTemplateModalProps
 > = ({ workspace, templateName, isOpen, onClose }) => {
-  const { t } = useI18n('sandbox');
+  const { t } = useI18n('sandboxes');
   const providers = useProviders(workspace);
   const createFromTemplate = useCreateSandboxFromTemplate(workspace);
   const { addSuccess } = useAlerts();
