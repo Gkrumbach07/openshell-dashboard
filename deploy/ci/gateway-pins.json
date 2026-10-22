@@ -34,10 +34,10 @@
     "file, so CI requires the exact form it writes: after a hand edit, run",
     "`python3 deploy/ci/upstream/follow.py format-pins`."
   ],
-  "release": "0.1.5",
-  "sdk": "v0.0.0-20261020123705-bdb956f2cd65",
-  "gateway_image": "ghcr.io/nvidia/openshell/gateway:0.1.5@sha256:ca0bc15a045017ee20bfab682f1a561eca6e6c6ed7d021d20641da24aaa6dfb6",
-  "supervisor_image": "ghcr.io/nvidia/openshell/supervisor:0.1.5@sha256:fabcd01f656e9d23df4386f82e80b4f48b90f3452d7d5c58889007643a069161",
+  "release": "0.1.6",
+  "sdk": "v0.0.0-20261027154453-ac7f615cd12d",
+  "gateway_image": "ghcr.io/nvidia/openshell/gateway:0.1.6@sha256:f0b36dba21d282c52e498c25289658cfd6cd4f343b0069fde5609e25b002cdea",
+  "supervisor_image": "ghcr.io/nvidia/openshell/supervisor:0.1.6@sha256:ce859a7d77ee515d3fe0b3c7dc61286516f402eb1d25c761d806d9ae5ed96c0b",
   "sandbox_image": "ghcr.io/nvidia/openshell-community/sandboxes/base:latest@sha256:aeef1c63f00e2913ea002ccb3aaf925f338b5c5d70e63576f0d95c16a138044e",
   "config_schema": "v2"
 }
