@@ -1,17 +1,5 @@
-export const workspaceOf = (item: {
-  metadata: { workspace?: string };
-}): string => item.metadata.workspace ?? '';
-
-// Names are unique only within a workspace.
-export const scopedName = (item: {
-  metadata: { workspace?: string; name: string };
-}): string => `${workspaceOf(item)}/${item.metadata.name}`;
-
-export const ImageReference: React.FC<{ image?: string }> = ({ image }) =>
-  image ? (
-    <span className="pf-v6-u-font-family-monospace" title={image}>
-      {image}
-    </span>
-  ) : (
-    <>-</>
-  );
+// The cells the lists across workspaces share. The helpers live with the
+// rest of the workspace-scoped naming (utils/workspaceNames) and the image
+// cell with the sandbox components; this keeps the one import those lists use.
+export { scopedName, workspaceOf } from '../utils/workspaceNames';
+export { default as ImageReference } from './sandbox/ImageReference';
