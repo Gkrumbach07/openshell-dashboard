@@ -31,6 +31,9 @@ func (m *mockSDK) Services() openshell.ServiceInterface     { return &m.services
 func (m *mockSDK) Exec() openshell.ExecInterface            { return &m.exec }
 func (m *mockSDK) Files() openshell.FileInterface           { return &m.files }
 func (m *mockSDK) Health() openshell.HealthInterface        { return &m.health }
+func (m *mockSDK) SandboxSuspendResume() openshell.SandboxSuspendResumeInterface {
+	panic("not implemented")
+}
 func (m *mockSDK) SSH() openshell.SSHInterface              { panic("not implemented") }
 func (m *mockSDK) TCP() openshell.TCPInterface              { panic("not implemented") }
 func (m *mockSDK) Config() openshell.ConfigInterface        { return &m.config }
